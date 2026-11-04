@@ -39,6 +39,9 @@ using ColourValidFn = bool (*)(void* unused, const GameString* code, int costume
 // A launch that has not reached the jump's second step by then has failed
 // (the jump is normally there within a few frames).
 constexpr int kLaunchFrames = 60 * 10;
+// After the picks are written the game loads the stage and fighters (about
+// 4 s); a load still not done after this long is reported as failed.
+constexpr int kLoadFrames = 60 * 60;
 // A launch waiting for the main menu gives up after this long.
 constexpr int kWaitForMenuFrames = 60 * 120;
 constexpr int kTargets = 3;
@@ -184,6 +187,28 @@ void WriteStage(uint8_t* modeData, const MatchPicks& picks)
 
 // After the second step the flow's loader is the new mode's, with a fresh
 // data object; the next step copies it into the battle setting.
+// Game thread: from the picks to the battle. The jump state stays current
+// while the game loads; leaving it for the main menu, or never leaving it,
+// means no battle came, which a linked match must hear about rather than
+// wait for.
+void WatchLoading(LaunchFailed onFailed)
+{
+	auto frames = std::make_shared<int>(0);
+	RunEachGameFrame([onFailed = std::move(onFailed), frames]() mutable {
+		const uintptr_t kind = SceneStateKind(CurrentSceneState());
+		const char* why = kind == sfv::scene::kMainMenuVtable ? "the game went back to the main menu while loading"
+			: kind != sfv::scene::kJumpStateVtable            ? nullptr
+			: ++*frames >= kLoadFrames                        ? "the battle did not load within a minute"
+															  : "";
+		if (why && !*why) return true; // still loading
+		if (why) {
+			Log("launch: failed: %s", why);
+			if (onFailed) onFailed(why);
+		}
+		return false;
+	});
+}
+
 void* h_JumpSecondStep(uint8_t* jumpState)
 {
 	void* next = o_jumpSecondStep(jumpState);
@@ -200,10 +225,12 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 		return next;
 	}
 	const MatchPicks picks = std::move(s_pending.picks);
+	LaunchFailed onFailed = std::move(s_pending.onFailed);
 	s_pending = Pending{};
 	for (int player = 0; player < jump::kPlayers; player++) WriteFighter(modeData, player, picks.players[player]);
 	WriteStage(modeData, picks);
 	GiveBackGameRef(flow);
+	WatchLoading(std::move(onFailed));
 	return next;
 }
 
