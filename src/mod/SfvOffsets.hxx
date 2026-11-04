@@ -452,6 +452,12 @@ constexpr uint32_t kRoundCause = 0;
 constexpr uint32_t kRoundWinner = 4;
 constexpr uint32_t kRoundFinish = 12;
 constexpr int32_t kCauseKo = 2;
+// At a round's end the rule unit (rva 0x480120) copies the battle statistics
+// (StatsUnit+248, see manager::kUncheckedSizes) into the round record after
+// its first 64 bytes, filling it: restored, not hashed.
+constexpr uint32_t kRoundStats = 64;
+constexpr uint32_t kRoundStatsSize = kRoundStride - kRoundStats;
+static_assert(kRounds + kMaxRounds * kRoundStride == kDecided, "the round records end where the judgement starts");
 } // namespace battledata
 
 // FlowUnit (rva 0x3C8860 builds it): the round flow's state machine. Its
@@ -532,11 +538,22 @@ constexpr uint32_t kNodeFunction = 0x30;
 // differed, in about 70% of 7-frame rollbacks, while the fighters' regions
 // never did. Identified by size, each unique in the table (one 112, two 300,
 // one 528 bytes); Bind checks the counts.
-struct PresentationSize {
+//
+// The battle statistics (StatsUnit, type id rva 0x3A665F0) are left out the
+// same way: its task (rva 0x4BA550, after the fighters' tasks) adds each
+// frame's time to a per-player bucket chosen by fighter-state predicates,
+// and a frame replayed after a restore can land in a neighbouring bucket
+// (the synctest with both players mashing: two counters 1000 apart, their
+// sum equal; no fighter region differed). Only UI text and a mode score read
+// them (rva 0x3EDCE0, 0x494FE0, 0x6536A0); the fight does not. One region of
+// 77804 bytes (+248..+78052, registered at rva 0x4B0570).
+struct UncheckedSize {
 	uint64_t size;
 	int count;
+	const char* kind; // the region name's suffix
 };
-constexpr PresentationSize kPresentationSizes[] = {{112, 1}, {300, 2}, {528, 1}};
+constexpr UncheckedSize kUncheckedSizes[] = {
+	{112, 1, ".presentation"}, {300, 2, ".presentation"}, {528, 1, ".presentation"}, {77804, 1, ".stats"}};
 } // namespace manager
 
 } // namespace sfve::mod::sfv

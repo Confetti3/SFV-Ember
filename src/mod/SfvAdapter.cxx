@@ -97,8 +97,9 @@ uint8_t* SfvAdapter::FindUnit(uint32_t typeRva) const
 	return GameFindUnit(rollbackUnit_, typeRva);
 }
 
-// Every region of the game's rollback manager. The presentation regions and
-// the replay unit's counters are restored but not hashed.
+// Every region of the game's rollback manager. The presentation regions, the
+// battle statistics and the replay unit's counters are restored but not
+// hashed.
 bool SfvAdapter::AddGameRegions(uint8_t* manager)
 {
 	auto* begin = Field<RegionEntry*>(manager, sfv::manager::kRegionsBegin);
@@ -110,27 +111,27 @@ bool SfvAdapter::AddGameRegions(uint8_t* manager)
 	uint8_t* replayUnit = FindUnit(sfv::unit::kReplayUnitType);
 	const uint8_t* replayCounters = replayUnit ? replayUnit + sfv::replayunit::kCounters : nullptr;
 	if (!replayUnit) Log("adapter: no replay unit; its tick counters stay in the hash");
-	int presentation[std::size(sfv::manager::kPresentationSizes)] = {};
+	int unchecked[std::size(sfv::manager::kUncheckedSizes)] = {};
 	for (RegionEntry* r = begin; r < end; r++) {
 		if (!r->ptr || r->size == 0 || r->size > kMaxRegionSize) {
 			Log("adapter: region %zu looks wrong (%p, %llu bytes)", size_t(r - begin), (void*)r->ptr, r->size);
 			return false;
 		}
 		const char* kind = r->ptr == replayCounters && r->size == sfv::replayunit::kCountersSize ? ".replaycount" : "";
-		for (size_t k = 0; k < std::size(sfv::manager::kPresentationSizes); k++) {
-			if (r->size != sfv::manager::kPresentationSizes[k].size) continue;
-			kind = ".presentation";
-			presentation[k]++;
+		for (size_t k = 0; k < std::size(sfv::manager::kUncheckedSizes); k++) {
+			if (r->size != sfv::manager::kUncheckedSizes[k].size) continue;
+			kind = sfv::manager::kUncheckedSizes[k].kind;
+			unchecked[k]++;
 		}
 		char name[40];
 		snprintf(name, sizeof(name), "game.%zu%s", size_t(r - begin), kind);
 		layout_.Add(name, r->ptr, (size_t)r->size, !*kind);
 	}
-	for (size_t k = 0; k < std::size(sfv::manager::kPresentationSizes); k++) {
-		if (presentation[k] != sfv::manager::kPresentationSizes[k].count) {
-			Log("adapter: expected %d presentation region(s) of %llu bytes, found %d; hashes may include them",
-				sfv::manager::kPresentationSizes[k].count,
-				(unsigned long long)sfv::manager::kPresentationSizes[k].size, presentation[k]);
+	for (size_t k = 0; k < std::size(sfv::manager::kUncheckedSizes); k++) {
+		if (unchecked[k] != sfv::manager::kUncheckedSizes[k].count) {
+			Log("adapter: expected %d %s region(s) of %llu bytes, found %d; hashes may include them",
+				sfv::manager::kUncheckedSizes[k].count, sfv::manager::kUncheckedSizes[k].kind + 1,
+				(unsigned long long)sfv::manager::kUncheckedSizes[k].size, unchecked[k]);
 		}
 	}
 	return true;
@@ -162,7 +163,15 @@ void SfvAdapter::AddStateOutsideTheGameSnapshot(uint8_t* ruleUnit, uint8_t* batt
 	const size_t counters = layout_.Add("inputunit.counters", inputUnit_ + iu::kCounters, iu::kCountersSize);
 	layout_.IgnoreForPeers(counters, iu::kSyncClock - iu::kCounters);
 	layout_.Add("ruleunit.judge", ruleUnit + sfv::ruleunit::kJudgeState, 4);
-	layout_.Add("battledata.results", battleData + sfv::battledata::kResults, sfv::battledata::kResultsSize);
+	namespace bd = sfv::battledata;
+	layout_.Add("battledata.results", battleData + bd::kResults, bd::kRounds - bd::kResults);
+	for (int i = 0; i < bd::kMaxRounds; i++) {
+		uint8_t* record = battleData + bd::kRounds + i * bd::kRoundStride;
+		const std::string name = "battledata.round" + std::to_string(i + 1);
+		layout_.Add(name, record, bd::kRoundStats);
+		layout_.Add(name + ".stats", record + bd::kRoundStats, bd::kRoundStatsSize, false);
+	}
+	layout_.Add("battledata.judgement", battleData + bd::kDecided, bd::kResults + bd::kResultsSize - bd::kDecided);
 	layout_.Add("battledata.flowflags", battleData + sfv::battledata::kFlowFlags, sfv::battledata::kFlowFlagsSize);
 	flow_.AddTo(layout_);
 }
