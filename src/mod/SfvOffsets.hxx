@@ -346,6 +346,15 @@ constexpr uint32_t kStateSize = 0x30;   // through +0x1BF
 constexpr uint32_t kMinTicks = 0x1A4;   // ticks per frame = 1 + max(this, extra)
 constexpr uint32_t kExtraTicks = 0x1A8; // the game's own rollback replays through this
 constexpr uint32_t kTickCount = 0x1B8;  // bumped once per battle tick
+// Counts since the battle frame was reset (rva 0x4D8830): updates (+0x198),
+// updates that ran ticks (+0x19C) and the clock those advance by +0x1B0
+// (+0x1B4, float). They include the updates a process runs before its layout
+// binds, one or two more in one copy than the other. Only the slow-motion
+// schedule reads +0x198 (rva 0x4DC6A0, 0x4D2850), and slow motion (+0x1A0) is
+// only ever zeroed or copied in this build (rva 0x4D8830, 0x4E9230).
+constexpr uint32_t kUpdates = 0x198;
+constexpr uint32_t kTickedUpdates = 0x19C;
+constexpr uint32_t kClock = 0x1B4;
 } // namespace battleframe
 
 namespace inputunit {
@@ -359,6 +368,9 @@ constexpr uint32_t kRingStride = 0x800;
 // the game's snapshot (its netcode resets them after a restore).
 constexpr uint32_t kCounters = 0x2170;
 constexpr uint32_t kCountersSize = 0xA8;
+// QueryPerformanceCounter's low part when the unit starts its frame sync
+// (rva 0x423630); online play measures time from it (rva 0x420170).
+constexpr uint32_t kSyncClock = 0x2214;
 } // namespace inputunit
 
 namespace rollbackunit {

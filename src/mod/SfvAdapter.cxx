@@ -149,12 +149,18 @@ void SfvAdapter::CollectPostRestore(uint8_t* manager)
 
 // What a battle tick changes that the game's snapshot leaves out: its netcode
 // manages the counters itself, and its own rollback never crossed a round's
-// end, which is where the rest changes.
+// end, which is where the rest changes. The counters' per-process values (the
+// updates each process ran before binding, a clock reading) are left out of
+// the hash peers compare.
 void SfvAdapter::AddStateOutsideTheGameSnapshot(uint8_t* ruleUnit, uint8_t* battleData, uintptr_t base)
 {
 	layout_.Add("global.rng", reinterpret_cast<uint8_t*>(base + sfv::rng::kGlobal + sfv::rng::kState), 4);
-	layout_.Add("battleframe", battleFrame_ + sfv::battleframe::kState, sfv::battleframe::kStateSize);
-	layout_.Add("inputunit.counters", inputUnit_ + sfv::inputunit::kCounters, sfv::inputunit::kCountersSize);
+	namespace bf = sfv::battleframe;
+	namespace iu = sfv::inputunit;
+	const size_t frame = layout_.Add("battleframe", battleFrame_ + bf::kState, bf::kStateSize);
+	for (uint32_t own : {bf::kUpdates, bf::kTickedUpdates, bf::kClock}) layout_.IgnoreForPeers(frame, own - bf::kState);
+	const size_t counters = layout_.Add("inputunit.counters", inputUnit_ + iu::kCounters, iu::kCountersSize);
+	layout_.IgnoreForPeers(counters, iu::kSyncClock - iu::kCounters);
 	layout_.Add("ruleunit.judge", ruleUnit + sfv::ruleunit::kJudgeState, 4);
 	layout_.Add("battledata.results", battleData + sfv::battledata::kResults, sfv::battledata::kResultsSize);
 	layout_.Add("battledata.flowflags", battleData + sfv::battledata::kFlowFlags, sfv::battledata::kFlowFlagsSize);
