@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <mutex>
 #include <vector>
@@ -14,27 +15,15 @@ namespace sfve::mod {
 namespace {
 
 std::mutex s_mutex;
-std::map<uintptr_t, uint64_t> s_hits; // rva -> count
+// The writing instruction's rva and its callers' (innermost first), -> count.
+constexpr int kChain = 4;
+using Chain = std::array<uintptr_t, kChain>;
+std::map<Chain, uint64_t> s_hits;
 uintptr_t s_base;
 uintptr_t s_size; // writes from outside the game (our own save/restore copies) count as rva 0
 PVOID s_handler;
 
-LONG CALLBACK OnException(EXCEPTION_POINTERS* info)
-{
-	if (info->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP || !(info->ContextRecord->Dr6 & 1)) {
-		return EXCEPTION_CONTINUE_SEARCH;
-	}
-	// A data breakpoint fires after the write: the address is the next
-	// instruction; good enough to find the writing function.
-	const uintptr_t ip = reinterpret_cast<uintptr_t>(info->ExceptionRecord->ExceptionAddress);
-	const uintptr_t at = ip >= s_base && ip < s_base + s_size ? ip - s_base : 0;
-	{
-		std::lock_guard lock(s_mutex);
-		s_hits[at]++;
-	}
-	info->ContextRecord->Dr6 = 0;
-	return EXCEPTION_CONTINUE_EXECUTION;
-}
+LONG CALLBACK OnException(EXCEPTION_POINTERS* info);
 
 struct Request {
 	uint32_t threadId;
@@ -104,17 +93,21 @@ void DisarmWriteWatch(uint32_t gameThreadId)
 
 std::string WriteWatchHits()
 {
-	std::vector<std::pair<uint64_t, uintptr_t>> hits;
+	std::vector<std::pair<uint64_t, Chain>> hits;
 	{
 		std::lock_guard lock(s_mutex);
-		for (const auto& [rva, count] : s_hits) hits.emplace_back(count, rva);
+		for (const auto& [chain, count] : s_hits) hits.emplace_back(count, chain);
 	}
 	std::sort(hits.rbegin(), hits.rend());
 	std::string out;
-	char item[48];
-	for (const auto& [count, rva] : hits) {
-		snprintf(item, sizeof(item), "%s0x%llX:%llu", out.empty() ? "" : " ", (unsigned long long)rva,
-			(unsigned long long)count);
+	char item[32];
+	for (const auto& [count, chain] : hits) {
+		if (!out.empty()) out += ' ';
+		for (int i = 0; i < kChain && (i == 0 || chain[i]); i++) {
+			snprintf(item, sizeof(item), "%s0x%llX", i ? "<" : "", (unsigned long long)chain[i]);
+			out += item;
+		}
+		snprintf(item, sizeof(item), ":%llu", (unsigned long long)count);
 		out += item;
 	}
 	return out;
@@ -177,6 +170,31 @@ int WalkFrames(CONTEXT context, StackBounds stack, DWORD64* frames, int maxFrame
 	} __except (EXCEPTION_EXECUTE_HANDLER) {
 	}
 	return count;
+}
+
+// Records the write with the calls that led to it: a setter shared by many
+// callers (a random generator's Seed) says little without them.
+LONG CALLBACK OnException(EXCEPTION_POINTERS* info)
+{
+	if (info->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP || !(info->ContextRecord->Dr6 & 1)) {
+		return EXCEPTION_CONTINUE_SEARCH;
+	}
+	// A data breakpoint fires after the write: the address is the next
+	// instruction; good enough to find the writing function.
+	const NT_TIB* tib = reinterpret_cast<const NT_TIB*>(NtCurrentTeb());
+	const StackBounds stack{reinterpret_cast<DWORD64>(tib->StackLimit), reinterpret_cast<DWORD64>(tib->StackBase)};
+	DWORD64 frames[kChain] = {};
+	const int count = WalkFrames(*info->ContextRecord, stack, frames, kChain);
+	Chain chain{};
+	for (int i = 0; i < count; i++) {
+		chain[i] = frames[i] >= s_base && frames[i] < s_base + s_size ? frames[i] - s_base : 0;
+	}
+	{
+		std::lock_guard lock(s_mutex);
+		s_hits[chain]++;
+	}
+	info->ContextRecord->Dr6 = 0;
+	return EXCEPTION_CONTINUE_EXECUTION;
 }
 
 } // namespace

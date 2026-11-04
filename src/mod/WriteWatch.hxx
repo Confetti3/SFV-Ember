@@ -4,8 +4,9 @@
 //
 // A hardware write breakpoint (debug register 0) on the game thread; every
 // write is caught by a vectored exception handler that records the writing
-// instruction's address (as an RVA) and lets the game go on. Used to find the
-// code behind a region that the synctest reports, then read in IDA.
+// instruction's address and its callers' (as RVAs) and lets the game go on.
+// Used to find the code behind a region that the synctest reports, then read
+// in IDA.
 
 #include <stdint.h>
 
@@ -17,7 +18,7 @@ namespace sfve::mod {
 // `gameThreadId`. Replaces any previous watch.
 bool ArmWriteWatch(uint32_t gameThreadId, uintptr_t address, int length);
 void DisarmWriteWatch(uint32_t gameThreadId);
-// "rva:count rva:count ...", most frequent first.
+// "rva<caller<caller:count ...", most frequent first (0: outside the game).
 std::string WriteWatchHits();
 
 // The call stack of a thread right now, as return addresses ("0x<rva>" in the
