@@ -38,7 +38,8 @@ uint8_t* GameGetManager(uint8_t* rollbackUnit);
 // The battle's match data (sfv::battledata), from any unit.
 uint8_t* GameGetBattleData(uint8_t* anyUnit);
 
-// The game's allocator for small closures (freed by the game's delegates).
+// The battle code's operator new (closures for the game's delegates, which
+// free them); hooked so every allocation comes zeroed.
 void* GameAlloc(size_t size);
 
 // The battle's unit of a type (sfv::unit::k*Type), found from any unit the

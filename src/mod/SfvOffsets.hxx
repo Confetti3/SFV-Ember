@@ -62,8 +62,10 @@ constexpr CodeSite kFindUnit{"FindUnit", 0x4CE5D0,
 constexpr CodeSite kGetBattleData{"GetBattleData", 0x307F90,
 	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x48, 0x8D, 0x54, 0x24, 0x20, 0xE8}};
 
-// void* GameAlloc(size_t): the allocator the flow's delegates take their
-// closures from; the delegate's own destroy function frees them.
+// void* GameAlloc(size_t): the battle code's operator new (FMemory::Malloc
+// with no alignment): units, parts (e.g. the factories at rva 0x2F4710 and
+// 0x2F4830) and the closures of the flow's delegates, which the delegate's
+// own destroy function frees. Hooked to zero what it hands out.
 constexpr CodeSite kGameAlloc{"GameAlloc", 0x4EA630,
 	{0x33, 0xD2, 0xE9, 0xB9, 0xCA, 0xC4, 0x00, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC}};
 

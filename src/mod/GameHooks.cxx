@@ -1,5 +1,6 @@
 #include "mod/GameHooks.hxx"
 
+#include "mod/ControlPipe.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -7,6 +8,11 @@
 #include <MinHook.h>
 
 #include <windows.h>
+
+#include <stdio.h>
+#include <string.h>
+
+#include <atomic>
 
 namespace sfve::mod {
 
@@ -29,7 +35,9 @@ FlowMessageFn o_flowMessage;
 uintptr_t s_stateMessageType;
 FindUnitFn s_findUnit;
 GetBattleDataFn s_getBattleData;
-GameAllocFn s_gameAlloc;
+GameAllocFn o_gameAlloc;
+std::atomic<uint64_t> s_zeroedAllocs;
+std::atomic<uint64_t> s_zeroedBytes;
 uintptr_t s_imageBase;
 
 void h_BattleFrame(uint8_t* battleFrame)
@@ -60,6 +68,24 @@ uint64_t h_FlowMessage(uint8_t* receiver, uint8_t* message)
 	return o_flowMessage(receiver, message);
 }
 
+// The battle code's operator new hands out memory as the heap left it, and
+// its objects do not set every field they own before the battle uses them:
+// padding, arrays filled on first use, the halves of 8-byte slots a 4-byte
+// value went into. Each process's leftovers differ, so two copies playing the
+// same match held different bytes in their rollback state until the game
+// wrote them (some only at a round start). Zeroed memory is the same in every
+// process; nothing correct can depend on what the heap left.
+void* h_GameAlloc(size_t size)
+{
+	void* p = o_gameAlloc(size);
+	if (p) {
+		memset(p, 0, size);
+		s_zeroedAllocs.fetch_add(1, std::memory_order_relaxed);
+		s_zeroedBytes.fetch_add(size, std::memory_order_relaxed);
+	}
+	return p;
+}
+
 } // namespace
 
 bool HookCodeSite(uintptr_t base, const CodeSite& site, void* detour, void** original)
@@ -78,13 +104,20 @@ bool InstallGameHooks(uintptr_t base, BattleListener* listener)
 	s_stateMessageType = base + sfv::flow::kStateMessageType;
 	s_findUnit = reinterpret_cast<FindUnitFn>(base + sfv::kFindUnit.rva);
 	s_getBattleData = reinterpret_cast<GetBattleDataFn>(base + sfv::kGetBattleData.rva);
-	s_gameAlloc = reinterpret_cast<GameAllocFn>(base + sfv::kGameAlloc.rva);
 	s_imageBase = base;
 	const bool ok = HookCodeSite(base, sfv::kInputRecord, (void*)h_InputRecord, (void**)&o_inputRecord) &&
 		HookCodeSite(base, sfv::kRollbackUnitPre, (void*)h_UnitTick, (void**)&o_unitTick) &&
 		HookCodeSite(base, sfv::kBattleFrameUpdate, (void*)h_BattleFrame, (void**)&o_battleFrame) &&
-		HookCodeSite(base, sfv::kFlowMessage, (void*)h_FlowMessage, (void**)&o_flowMessage);
-	Log("hooks: %s", ok ? "battle frame, input record, rollback unit and battle flow hooked" : "INCOMPLETE");
+		HookCodeSite(base, sfv::kFlowMessage, (void*)h_FlowMessage, (void**)&o_flowMessage) &&
+		HookCodeSite(base, sfv::kGameAlloc, (void*)h_GameAlloc, (void**)&o_gameAlloc);
+	Log("hooks: %s", ok ? "battle frame, input record, rollback unit, battle flow and allocator hooked" : "INCOMPLETE");
+	RegisterStatus("zeroedAllocs", [] {
+		char text[64];
+		snprintf(text, sizeof(text), "{\"count\":%llu,\"bytes\":%llu}",
+			(unsigned long long)s_zeroedAllocs.load(std::memory_order_relaxed),
+			(unsigned long long)s_zeroedBytes.load(std::memory_order_relaxed));
+		return std::string(text);
+	});
 	return ok;
 }
 
@@ -112,7 +145,7 @@ uint8_t* GameGetBattleData(uint8_t* anyUnit)
 
 void* GameAlloc(size_t size)
 {
-	return s_gameAlloc(size);
+	return h_GameAlloc(size);
 }
 
 } // namespace sfve::mod
