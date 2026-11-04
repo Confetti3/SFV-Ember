@@ -64,6 +64,11 @@ uintptr_t SceneStateKind(const uint8_t* state)
 	return state ? *reinterpret_cast<const uintptr_t*>(state) - s_imageBase : 0;
 }
 
+bool SceneChangePending()
+{
+	return s_manager && *reinterpret_cast<uint8_t**>(s_manager + sfv::scene::kManagerNextState);
+}
+
 bool ChangeScene(uint8_t* stateClass, uint8_t* initMessage)
 {
 	if (!s_manager) return false;

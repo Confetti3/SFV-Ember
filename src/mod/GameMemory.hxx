@@ -41,6 +41,33 @@ inline bool ReleaseKeepingAlive(uint8_t* control)
 	return false;
 }
 
+// UE4's FString: {characters, count including the terminator, capacity}.
+// One the mod builds points at its own text; game functions that take one
+// copy it.
+struct GameString {
+	const wchar_t* data;
+	int32_t count;
+	int32_t capacity;
+};
+static_assert(sizeof(GameString) == 16);
+
+// The other reference the game hands objects around in (the battle flow,
+// its loaders): {object, block}, the block being {int32 uses, int32 weaks,
+// object, destroy}, counted without atomics on the game thread
+// (GetBattleFlow's callers release it so: rva 0x603120).
+struct GameRef {
+	uint8_t* object;
+	uint8_t* block;
+};
+static_assert(sizeof(GameRef) == 16);
+
+// Gives back the use a getter took, on the game thread. Never the last: the
+// object is the game's.
+inline void GiveBackGameRef(const GameRef& ref)
+{
+	if (ref.block && *reinterpret_cast<int32_t*>(ref.block) > 1) (*reinterpret_cast<int32_t*>(ref.block))--;
+}
+
 // Heap and code addresses of a Windows x64 process (1 TB up to the end of
 // user space), 4-byte aligned. They differ between processes even when the
 // state is the same, so hashes read them as zero.

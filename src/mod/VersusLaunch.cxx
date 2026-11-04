@@ -10,7 +10,9 @@
 
 #include <stdlib.h>
 
+#include <memory>
 #include <sstream>
+#include <utility>
 
 namespace sfve::mod {
 
@@ -18,17 +20,10 @@ namespace {
 
 namespace jump = sfv::jump;
 
-// The game's FString: {characters, count including the terminator, capacity}.
-struct GameString {
-	wchar_t* data;
-	int32_t count;
-	int32_t capacity;
-};
-
 using GetClassFn = uint8_t* (*)(const wchar_t* package);
 using NewObjectFn = uint8_t* (*)(uint8_t* outer, uint8_t* objectClass);
 using JumpStepFn = void* (*)(uint8_t* jumpState);
-using GetFlowFn = GameSharedPtr* (*)(GameSharedPtr* out);
+using GetFlowFn = GameRef* (*)(GameRef* out);
 using EnsureLoaderFn = void (*)(uint8_t* flow, int providerType);
 using GameDataFn = uint8_t* (*)();
 using PlayerRefFn = uint8_t* (*)(uint8_t* gameData, int player);
@@ -37,18 +32,27 @@ using CopyFn = uint8_t* (*)(uint8_t* out, const uint8_t* from);
 using AssignStringFn = void (*)(uint8_t* to, const GameString* from, int extra);
 using FreeFn = void (*)(void* block);
 
+// A launch that has not reached the jump's second step by then has failed
+// (the jump is normally there within a few frames).
+constexpr int kLaunchFrames = 60 * 10;
+// A launch waiting for the main menu gives up after this long.
+constexpr int kWaitForMenuFrames = 60 * 120;
+constexpr int kTargets = 3;
+constexpr int kDataTypeForTarget[kTargets] = {jump::kVersusCpuType, jump::kVersusType, jump::kTrainingType};
+
 uintptr_t s_base;
 bool s_installed; // both jump steps hooked: without them the jump crashes from the menu
 bool s_checkOwnership;
 JumpStepFn o_jumpCopyPlayers;
 JumpStepFn o_jumpSecondStep;
 
-// Game thread only: the launch in progress, from Launch until the second
-// step has written its picks.
+// Game thread only: the launch in progress, from Launch until the jump's
+// second step has written its picks, or the launch failed.
 struct Pending {
 	uint8_t* message = nullptr; // the init message the mod made (the jump keeps it)
 	bool loaderGiven = false;
 	MatchPicks picks;
+	LaunchFailed onFailed;
 };
 Pending s_pending;
 
@@ -72,7 +76,7 @@ void FreeGameBlock(uint8_t* owner, uint32_t pointerOffset)
 
 void AssignString(uint8_t* gameString, const std::wstring& text)
 {
-	const GameString from{const_cast<wchar_t*>(text.c_str()), (int32_t)text.size() + 1, (int32_t)text.size() + 1};
+	const GameString from{text.c_str(), (int32_t)text.size() + 1, (int32_t)text.size() + 1};
 	At<AssignStringFn>(sfv::kAssignString)(gameString, &from, 0);
 }
 
@@ -82,15 +86,6 @@ std::string Narrow(const uint8_t* gameString)
 	std::string out;
 	for (int i = 0; s.data && i < s.count && s.data[i]; i++) out += (char)s.data[i];
 	return out;
-}
-
-// The game's own reference blocks for the battle flow: {int32 uses, int32
-// weaks, object, destroy}. Gives back the use the getter took (never the
-// last: the flow is the game's). The game counts these without atomics, on
-// this same thread.
-void GiveBackFlowUse(uint8_t* control)
-{
-	if (control && *reinterpret_cast<int32_t*>(control) > 1) (*reinterpret_cast<int32_t*>(control))--;
 }
 
 uint8_t* ModeData(uint8_t* flow)
@@ -104,35 +99,52 @@ bool IsOurJump(uint8_t* jumpState)
 	return s_pending.message && Field<uint8_t*>(jumpState, jump::kJumpStateMessage) == s_pending.message;
 }
 
+// Ends the launch in progress, reporting why to whoever asked for it.
+void FailLaunch(const std::string& why)
+{
+	Log("launch: failed: %s", why.c_str());
+	const LaunchFailed onFailed = std::move(s_pending.onFailed);
+	s_pending = Pending{};
+	if (onFailed) onFailed(why);
+}
+
 // The first step copies the players from the flow's loader into the battle
 // setting. Without a loader (the main menu reset the flow) it would read
 // through null; give it one holding the setting's own players, so the copy
-// changes nothing.
+// changes nothing. If even that cannot be had, the jump is sent back to the
+// main menu (its own "-1" target), which that step checks first.
 void* h_JumpCopyPlayers(uint8_t* jumpState)
 {
 	if (IsOurJump(jumpState) && !s_pending.loaderGiven) {
 		s_pending.loaderGiven = true;
-		GameSharedPtr flow{};
+		GameRef flow{};
 		At<GetFlowFn>(sfv::kGetBattleFlow)(&flow);
-		if (flow.object && !Field<uint8_t*>(flow.object, jump::kFlowLoader)) {
+		bool haveLoader = flow.object && Field<uint8_t*>(flow.object, jump::kFlowLoader);
+		if (flow.object && !haveLoader) {
 			At<EnsureLoaderFn>(sfv::kEnsureLoader)(flow.object, jump::kProviderType);
 			uint8_t* provider = ModeData(flow.object);
 			uint8_t* gameData = At<GameDataFn>(sfv::kGameData)();
-			for (int player = 0; provider && gameData && player < jump::kPlayers; player++) {
+			haveLoader = provider && gameData;
+			for (int player = 0; haveLoader && player < jump::kPlayers; player++) {
 				uint8_t* ref = At<PlayerRefFn>(sfv::kPlayerRef)(gameData, player);
 				At<GetPlayerSetupFn>(sfv::kGetPlayerSetup)(ref, provider + jump::kProviderPlayers + jump::kPlayerSetupSize * player);
 			}
-			if (!provider) Log("launch: the flow has no provider of type %d; the jump will fail", jump::kProviderType);
 		}
-		GiveBackFlowUse(flow.control);
+		GiveBackGameRef(flow);
+		if (!haveLoader) {
+			Field<int32_t>(s_pending.message, jump::kMessageMode) = jump::kModeBackToMainMenu;
+			FailLaunch("the battle flow has no loader to give the jump; back to the main menu");
+		}
 	}
 	return o_jumpCopyPlayers(jumpState);
 }
 
 void WriteFighter(uint8_t* modeData, int player, const FighterPick& pick)
 {
+	const uint8_t* current = Virtual<const uint8_t*>(modeData, jump::kDataGetChara, player);
+	if (!current) return Log("launch: player %d has no fighter record; left as it is", player + 1);
 	alignas(8) uint8_t chara[jump::kCharPkgSize];
-	At<CopyFn>(sfv::kCopyCharPkg)(chara, Virtual<const uint8_t*>(modeData, jump::kDataGetChara, player));
+	At<CopyFn>(sfv::kCopyCharPkg)(chara, current);
 	const std::string before = Narrow(chara + jump::kCharCode);
 	if (!pick.fighter.empty()) AssignString(chara + jump::kCharCode, pick.fighter);
 	if (pick.costume >= 0) Field<int32_t>(chara, jump::kCharCostume) = pick.costume;
@@ -143,18 +155,23 @@ void WriteFighter(uint8_t* modeData, int player, const FighterPick& pick)
 	Virtual<void>(modeData, jump::kDataSetCode, player, (const uint8_t*)chara);
 	Log("launch: player %d %s -> %s costume %d colour %d", player + 1, before.c_str(), Narrow(chara + jump::kCharCode).c_str(),
 		Field<int32_t>(chara, jump::kCharCostume), Field<int32_t>(chara, jump::kCharColour));
+	// What the copy allocated: the code's characters and the items' array
+	// (its 16-byte items hold no pointers: the copy is a memcpy).
 	FreeGameBlock(chara, jump::kCharCode);
 	FreeGameBlock(chara, jump::kCharItems);
 }
 
-void WriteStage(uint8_t* modeData, const std::wstring& stage)
+void WriteStage(uint8_t* modeData, const MatchPicks& picks)
 {
+	const uint8_t* current = Virtual<const uint8_t*>(modeData, jump::kDataGetSpec);
+	if (!current) return Log("launch: no match record; the stage is left as it is");
 	alignas(8) uint8_t spec[jump::kSpecPkgSize];
-	At<CopyFn>(sfv::kCopySpecPkg)(spec, Virtual<const uint8_t*>(modeData, jump::kDataGetSpec));
+	At<CopyFn>(sfv::kCopySpecPkg)(spec, current);
 	const std::string before = Narrow(spec + jump::kSpecStage);
-	if (!stage.empty()) AssignString(spec + jump::kSpecStage, stage);
+	if (!picks.stage.empty()) AssignString(spec + jump::kSpecStage, picks.stage);
 	Virtual<void>(modeData, jump::kDataSetSpec, (const uint8_t*)spec);
-	Log("launch: stage %s -> %s", before.c_str(), Narrow(spec + jump::kSpecStage).c_str());
+	Log("launch: stage %s -> %s (time %d, rounds %d)", before.c_str(), Narrow(spec + jump::kSpecStage).c_str(),
+		Field<int32_t>(spec, jump::kSpecTime), Field<int32_t>(spec, jump::kSpecRounds));
 	FreeGameBlock(spec, jump::kSpecStage);
 }
 
@@ -164,44 +181,63 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 {
 	void* next = o_jumpSecondStep(jumpState);
 	if (!IsOurJump(jumpState)) return next;
-	const MatchPicks picks = s_pending.picks;
-	s_pending = Pending{};
-	GameSharedPtr flow{};
+	GameRef flow{};
 	At<GetFlowFn>(sfv::kGetBattleFlow)(&flow);
 	uint8_t* modeData = flow.object ? ModeData(flow.object) : nullptr;
-	if (!modeData) {
-		Log("launch: the jump has no mode data; the battle uses the defaults");
-	} else {
-		Log("launch: mode data type %d", Virtual<int>(modeData, jump::kDataType));
-		for (int player = 0; player < jump::kPlayers; player++) WriteFighter(modeData, player, picks.players[player]);
-		WriteStage(modeData, picks.stage);
+	const int wantedType = kDataTypeForTarget[(int)s_pending.picks.target];
+	const int type = modeData ? Virtual<int>(modeData, jump::kDataType) : -1;
+	if (type != wantedType) {
+		// Too late to go back: the battle loads with the mode's defaults.
+		GiveBackGameRef(flow);
+		FailLaunch("the jump's mode data is type " + std::to_string(type) + ", not " + std::to_string(wantedType));
+		return next;
 	}
-	GiveBackFlowUse(flow.control);
+	const MatchPicks picks = std::move(s_pending.picks);
+	s_pending = Pending{};
+	for (int player = 0; player < jump::kPlayers; player++) WriteFighter(modeData, player, picks.players[player]);
+	WriteStage(modeData, picks);
+	GiveBackGameRef(flow);
 	return next;
 }
 
-// Game thread: from the main menu into the battle jump.
-void Launch(const MatchPicks& picks)
+// Game thread: from the main menu into the battle jump. Until the jump's
+// second step takes the picks, a watcher ends a launch the game did not
+// carry out (another scene came instead, or it never got that far).
+void Launch(const MatchPicks& picks, LaunchFailed onFailed)
 {
-	if (!s_installed) return Log("launch: refused, the battle jump is not hooked");
+	auto refuse = [&](const char* why) {
+		Log("launch: refused, %s", why);
+		if (onFailed) onFailed(why);
+	};
+	if (!s_installed) return refuse("the battle jump is not hooked");
 	uint8_t* menu = CurrentSceneState();
-	if (SceneStateKind(menu) != sfv::scene::kMainMenuVtable) return Log("launch: refused, the game is not on the main menu");
-	if (s_pending.message) return Log("launch: refused, a launch is already under way");
+	if (SceneStateKind(menu) != sfv::scene::kMainMenuVtable) return refuse("the game is not on the main menu");
+	if (s_pending.message) return refuse("a launch is already under way");
+	if (SceneChangePending()) return refuse("the main menu is already changing scene");
 	uint8_t* messageClass = At<GetClassFn>(sfv::kJumpMessageClass)(L"/Script/KiwiGame");
 	uint8_t* jumpClass = At<GetClassFn>(sfv::kJumpStateClass)(L"/Script/KiwiGame");
 	uint8_t* message = messageClass ? At<NewObjectFn>(sfv::kNewObject)(menu, messageClass) : nullptr;
-	if (!jumpClass || !message) return Log("launch: the battle jump's classes are missing");
+	if (!jumpClass || !message) return refuse("the battle jump's classes are missing");
 	Field<int32_t>(message, jump::kMessageMode) = (int32_t)picks.target;
 	Field<uint8_t>(message, jump::kMessageCopySetting) = 0;
 	Field<uint8_t>(message, jump::kMessageSwapSides) = 0;
 	Field<uint8_t>(message, jump::kMessageCheckOwnership) = s_checkOwnership ? 1 : 0;
-	s_pending = Pending{message, false, picks};
+	if (!ChangeScene(jumpClass, message)) return refuse("the scene manager is not known");
+	s_pending = Pending{message, false, picks, std::move(onFailed)};
 	Log("launch: battle jump, target %d", (int)picks.target);
-	ChangeScene(jumpClass, message);
+	auto frames = std::make_shared<int>(0);
+	RunEachGameFrame([message, frames] {
+		if (s_pending.message != message) return false; // done, or failed already
+		const uintptr_t kind = SceneStateKind(CurrentSceneState());
+		const bool onTheWay = kind == sfv::scene::kMainMenuVtable || kind == sfv::scene::kJumpStateVtable;
+		if (!onTheWay) FailLaunch("the game went to another scene");
+		else if (++*frames >= kLaunchFrames) FailLaunch("the jump did not reach its second step");
+		else return true;
+		return false;
+	});
 }
 
 constexpr size_t kMaxCode = 8;
-constexpr int kMaxVariant = 99; // costumes and colours
 
 bool ParseCode(const std::string& text, std::wstring* code)
 {
@@ -214,12 +250,13 @@ bool ParseCode(const std::string& text, std::wstring* code)
 	return true;
 }
 
+// A costume or colour: up to two digits, or "-"/nothing for the default.
 bool ParseVariant(const std::string& text, int* value)
 {
 	if (text.empty() || text == "-") return *value = -1, true;
 	if (text.size() > 2 || text.find_first_not_of("0123456789") != std::string::npos) return false;
 	*value = atoi(text.c_str());
-	return *value <= kMaxVariant;
+	return true;
 }
 
 // "CODE[:costume[:colour]]" or "-".
@@ -257,16 +294,26 @@ bool InstallVersusLaunch(uintptr_t imageBase, bool checkOwnership)
 	return s_installed;
 }
 
-void QueueLaunch(const MatchPicks& picks)
+void QueueLaunch(const MatchPicks& picks, LaunchFailed onFailed)
 {
-	RunOnGameThread([picks] { Launch(picks); });
+	RunOnGameThread([picks, onFailed = std::move(onFailed)]() mutable { Launch(picks, std::move(onFailed)); });
 }
 
-void LaunchOnMainMenu(const MatchPicks& picks)
+void LaunchOnMainMenu(const MatchPicks& picks, std::function<bool()> stillWanted, LaunchFailed onFailed)
 {
-	RunEachGameFrame([picks] {
-		if (SceneStateKind(CurrentSceneState()) != sfv::scene::kMainMenuVtable) return true;
-		Launch(picks);
+	auto frames = std::make_shared<int>(0);
+	RunEachGameFrame([picks, stillWanted = std::move(stillWanted), onFailed = std::move(onFailed), frames]() mutable {
+		if (stillWanted && !stillWanted()) {
+			Log("launch: no longer wanted before the main menu came");
+			return false;
+		}
+		if (SceneStateKind(CurrentSceneState()) == sfv::scene::kMainMenuVtable) {
+			Launch(picks, std::move(onFailed));
+			return false;
+		}
+		if (++*frames < kWaitForMenuFrames) return true;
+		Log("launch: refused, the main menu did not come");
+		if (onFailed) onFailed("the main menu did not come");
 		return false;
 	});
 }

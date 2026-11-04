@@ -171,13 +171,18 @@ constexpr uint32_t kJumpStateMessage = 848; // the jump state's init message
 constexpr int kModeVersusCpu = 0;
 constexpr int kModeVersus = 1;
 constexpr int kModeTraining = 2;
+constexpr int kModeBackToMainMenu = -1;
 constexpr uint32_t kFlowLoader = 16;     // Flow: the loader
 constexpr uint32_t kLoaderProvider = 16; // Loader: the mode's provider
 constexpr int kProviderType = 14;        // a provider type registered by the flow reset (rva 0x71A790)
 constexpr uint32_t kProviderPlayers = 8; // Provider: PlayerSetup[]
 constexpr uint32_t kPlayerSetupSize = 96;
 constexpr int kPlayers = 2;
-constexpr int kVersusType = 3; // the mode data object's type for local versus
+// The mode data object's type for each target (the first step's mapping:
+// 0 -> 4, 2 -> 0, else 3).
+constexpr int kVersusCpuType = 4;
+constexpr int kVersusType = 3;
+constexpr int kTrainingType = 0;
 
 // The mode data object's virtual functions (byte offsets in its vtable).
 constexpr uint32_t kDataType = 8;       // int ()
@@ -196,6 +201,8 @@ constexpr uint32_t kCharCostume = 16;
 constexpr uint32_t kCharColour = 20;
 constexpr uint32_t kCharItems = 24;
 constexpr uint32_t kSpecPkgSize = 40;
+constexpr uint32_t kSpecTime = 4;
+constexpr uint32_t kSpecRounds = 8;
 constexpr uint32_t kSpecStage = 16;
 
 } // namespace jump
@@ -204,7 +211,9 @@ namespace scene {
 
 constexpr uint32_t kManagerCurrentState = 904; // (unrelated to the title state's own +904)
 constexpr uint32_t kIdleStep = 0x12AF480; // an empty function: a state waiting on something else
+constexpr uint32_t kManagerNextState = 912;
 constexpr uintptr_t kMainMenuVtable = 0x2D98660; // MainMenuState (class getter rva 0xC20E70)
+constexpr uintptr_t kJumpStateVtable = 0x2D85920; // BattleJumpSetupState (its tick, rva 0x5F9FE0, at +0x580)
 
 } // namespace scene
 

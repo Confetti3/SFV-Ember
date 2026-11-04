@@ -7,7 +7,8 @@
 // SFV has its own way into a battle without character select: the "battle
 // jump" scene state (BattleJumpSetupState), which the game uses to go from
 // a battle into training with the same players. The mod starts it from the
-// main menu with a target of its own (local versus) and:
+// main menu with a target of its own (local versus, versus CPU, training)
+// and:
 //   - before its first step, which reads the battle flow's loader (left by
 //     the previous battle; leaving the main menu resets the flow), gives the
 //     flow a loader so that step has one to read;
@@ -18,6 +19,7 @@
 
 #include <stdint.h>
 
+#include <functional>
 #include <string>
 
 namespace sfve::mod {
@@ -54,13 +56,19 @@ bool ParseSetup(const std::string& setup, FighterPick* fighter, std::wstring* st
 // battles. Off while developing; the public version turns it on.
 bool InstallVersusLaunch(uintptr_t imageBase, bool checkOwnership);
 
+// Called on the game thread when a launch is refused or fails on the way
+// (the game then stays on, or goes back to, the main menu, or loads the
+// battle with the mode's defaults).
+using LaunchFailed = std::function<void(const std::string& why)>;
+
 // Starts the battle from the main menu; any thread (runs on the game thread).
-// Refused (logged) when the game is not on the main menu.
-void QueueLaunch(const MatchPicks& picks);
+// Refused when the game is not on the main menu or a launch is under way.
+void QueueLaunch(const MatchPicks& picks, LaunchFailed onFailed = {});
 
 // Launches once the game is on the main menu (from the title or a battle's
-// end it may not be yet); any thread.
-void LaunchOnMainMenu(const MatchPicks& picks);
+// end it may not be yet), unless stillWanted() turns false first or the
+// menu does not come within two minutes; any thread.
+void LaunchOnMainMenu(const MatchPicks& picks, std::function<bool()> stillWanted, LaunchFailed onFailed);
 
 // Control command: "launch [versus|cpu|training] [P1] [P2] [stage]", a player
 // as CODE[:costume[:colour]] or "-" to keep the default.

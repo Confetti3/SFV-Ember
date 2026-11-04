@@ -113,7 +113,8 @@ TEST_CASE("a grant that arrives before the joiner's connected event is kept")
 	joiner.TakeCommands();
 	std::array<uint8_t, 32> capability{};
 	capability[0] = 1;
-	const json grant = {{"kind", "sfve_grant"}, {"generation", 1}, {"capability", capability}, {"seed", 5}, {"delay", 2}};
+	const json grant = {{"kind", "sfve_grant"}, {"generation", 1}, {"capability", capability}, {"seed", 5}, {"delay", 2},
+		{"setup", "KEN"}};
 	joiner.OnEvent(json{{"type", "message"}, {"epoch", 1}, {"peer", "HOST"}, {"message_id", 1}, {"payload", grant.dump()}}.dump());
 	CHECK(joiner.GetPhase() == MatchLink::Phase::Opening);
 	joiner.OnEvent(json{{"type", "connected"}, {"epoch", 1}, {"peer", "HOST"}, {"room", std::array<uint8_t, 16>{1}}, {"control", 1}}.dump());
@@ -148,7 +149,8 @@ TEST_CASE("a failed link, a departed peer or a malformed grant fail the match")
 	joiner.Join("sf4e1:invite", "");
 	joiner.OnEvent(json{{"type", "connected"}, {"epoch", 1}, {"peer", "HOST"}, {"room", h.room}, {"control", 1}}.dump());
 	REQUIRE(joiner.GetPhase() == MatchLink::Phase::WaitingForGrant);
-	const json grant = {{"kind", "sfve_grant"}, {"generation", 1}, {"capability", std::array<uint8_t, 32>{}}, {"seed", 5}, {"delay", 1}};
+	const json grant = {{"kind", "sfve_grant"}, {"generation", 1}, {"capability", std::array<uint8_t, 32>{}}, {"seed", 5}, {"delay", 1},
+		{"setup", "KEN"}};
 	joiner.OnEvent(json{{"type", "message"}, {"epoch", 1}, {"peer", "HOST"}, {"message_id", 1}, {"payload", grant.dump()}}.dump());
 	CHECK(joiner.GetPhase() == MatchLink::Phase::Failed); // an all-zero capability
 
@@ -195,6 +197,101 @@ TEST_CASE("a setup over the bound fails the match")
 		{"setup", std::string(MatchLink::kMaxSetup + 1, 'x')}};
 	joiner.OnEvent(json{{"type", "message"}, {"epoch", 1}, {"peer", "HOST"}, {"message_id", 2}, {"payload", grant.dump()}}.dump());
 	CHECK(joiner.GetPhase() == MatchLink::Phase::Failed);
+}
+
+namespace {
+
+std::array<uint8_t, 32> SomeCapability()
+{
+	std::array<uint8_t, 32> c{};
+	c[0] = 1;
+	return c;
+}
+
+json Event(const char* type, json fields)
+{
+	fields["type"] = type;
+	fields["epoch"] = 1;
+	return fields;
+}
+
+json Message(const char* peer, const json& payload)
+{
+	return Event("message", {{"peer", peer}, {"message_id", 2}, {"payload", payload.dump()}});
+}
+
+// A joiner that has the host's grant and its helper's link, not the start.
+MatchLink LinkedJoiner()
+{
+	MatchLink joiner("sfv-test", kMaxPacket, Deps(9, 50002));
+	joiner.Join("sf4e1:invite", "RYU");
+	joiner.OnEvent(Event("connected", {{"peer", "HOST"}, {"room", std::array<uint8_t, 16>{}}, {"control", 1}}).dump());
+	joiner.OnEvent(Message("HOST", {{"kind", "sfve_grant"}, {"generation", 1}, {"capability", SomeCapability()},
+		{"seed", 5}, {"delay", 1}, {"setup", "KEN"}}).dump());
+	joiner.OnEvent(Event("game_ready", {{"peer", "HOST"}, {"generation", 1}, {"virtual_port", 60002},
+		{"max_packet", kMaxPacket}}).dump());
+	return joiner;
+}
+
+} // namespace
+
+TEST_CASE("the joiner starts only on the host's word that it has both setups")
+{
+	MatchLink joiner = LinkedJoiner();
+	CHECK(joiner.GetPhase() == MatchLink::Phase::Linking);
+	joiner.OnEvent(Message("OTHER", {{"kind", "sfve_start"}}).dump()); // not the host
+	CHECK(joiner.GetPhase() == MatchLink::Phase::Linking);
+	joiner.OnEvent(Message("HOST", {{"kind", "sfve_start"}}).dump());
+	REQUIRE(joiner.GetPhase() == MatchLink::Phase::Ready);
+	CHECK(joiner.GetEndpoints().setups[0] == "KEN");
+	CHECK(joiner.GetEndpoints().setups[1] == "RYU");
+}
+
+TEST_CASE("wrongly typed fields from the peer or the helper fail the match without throwing")
+{
+	// The joiner's setup as a number.
+	MatchLink host("sfv-test", kMaxPacket, Deps(1, 50001));
+	host.Host(1, "KEN");
+	host.OnEvent(Event("hosted", {{"invitation", "i"}, {"room", std::array<uint8_t, 16>{}}}).dump());
+	host.OnEvent(Event("connected", {{"peer", "JOINER"}, {"room", std::array<uint8_t, 16>{}}, {"control", 2}}).dump());
+	CHECK_NOTHROW(host.OnEvent(Message("JOINER", {{"kind", "sfve_setup"}, {"setup", 1}}).dump()));
+	CHECK(host.GetPhase() == MatchLink::Phase::Failed);
+
+	// Grants with a string seed, a short capability, a numeric setup, a
+	// negative delay.
+	const json grants[] = {
+		{{"kind", "sfve_grant"}, {"generation", 1}, {"capability", SomeCapability()}, {"seed", "x"}, {"delay", 1}, {"setup", ""}},
+		{{"kind", "sfve_grant"}, {"generation", 1}, {"capability", std::array<uint8_t, 31>{1}}, {"seed", 5}, {"delay", 1}, {"setup", ""}},
+		{{"kind", "sfve_grant"}, {"generation", 1}, {"capability", SomeCapability()}, {"seed", 5}, {"delay", 1}, {"setup", 1}},
+		{{"kind", "sfve_grant"}, {"generation", 1}, {"capability", SomeCapability()}, {"seed", 5}, {"delay", -3}, {"setup", ""}},
+	};
+	for (const json& grant : grants) {
+		MatchLink joiner("sfv-test", kMaxPacket, Deps(9, 50002));
+		joiner.Join("sf4e1:invite", "RYU");
+		joiner.OnEvent(Event("connected", {{"peer", "HOST"}, {"room", std::array<uint8_t, 16>{}}, {"control", 1}}).dump());
+		CHECK_NOTHROW(joiner.OnEvent(Message("HOST", grant).dump()));
+		CHECK(joiner.GetPhase() == MatchLink::Phase::Failed);
+	}
+
+	// The helper's own events, malformed.
+	MatchLink link("sfv-test", kMaxPacket, Deps(1, 50001));
+	link.Host(1, "");
+	CHECK_NOTHROW(link.OnEvent(json{{"type", 5}}.dump()));
+	CHECK(link.GetPhase() == MatchLink::Phase::Opening);
+	CHECK_NOTHROW(link.OnEvent(Event("hosted", {{"invitation", "i"}, {"room", "abc"}}).dump()));
+	CHECK(link.GetPhase() == MatchLink::Phase::Failed);
+}
+
+TEST_CASE("text that is not UTF-8 is carried without throwing")
+{
+	ScriptedHelpers h;
+	const std::string notUtf8 = "KEN \xff\xfe";
+	h.host.Host(1, notUtf8);
+	h.Pump();
+	CHECK_NOTHROW(h.host.Describe());
+	h.joiner.Join(h.host.Invitation(), "RYU");
+	CHECK_NOTHROW(h.Pump());
+	CHECK(h.joiner.GetPhase() == MatchLink::Phase::Ready); // the setup arrives with the bytes replaced
 }
 
 TEST_CASE("the GGPO packet bound follows the input size as Ember computes it")

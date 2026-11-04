@@ -127,8 +127,11 @@ struct StackBounds {
 	DWORD64 high = 0;
 };
 
-// The thread's stack, from its TEB (NT_TIB: StackBase, then StackLimit).
-StackBounds ThreadStackBounds(HANDLE thread)
+using QueryThreadFn = LONG(NTAPI*)(HANDLE, int, void*, ULONG, ULONG*);
+
+// The thread's stack, from its TEB (NT_TIB: StackBase, then StackLimit);
+// read while it is suspended, so the limit cannot move meanwhile.
+StackBounds ThreadStackBounds(HANDLE thread, QueryThreadFn query)
 {
 	struct BasicInformation {
 		LONG exitStatus;
@@ -138,9 +141,6 @@ StackBounds ThreadStackBounds(HANDLE thread)
 		LONG priority;
 		LONG basePriority;
 	} info{};
-	using QueryFn = LONG(NTAPI*)(HANDLE, int, void*, ULONG, ULONG*);
-	static const auto query =
-		reinterpret_cast<QueryFn>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationThread"));
 	if (!query || query(thread, 0 /* ThreadBasicInformation */, &info, sizeof(info), nullptr) < 0 || !info.teb) return {};
 	const NT_TIB* tib = static_cast<const NT_TIB*>(info.teb);
 	return {reinterpret_cast<DWORD64>(tib->StackLimit), reinterpret_cast<DWORD64>(tib->StackBase)};
@@ -187,20 +187,20 @@ std::string ThreadStack(uint32_t threadId)
 	constexpr int kMaxFrames = 64;
 	DWORD64 frames[kMaxFrames];
 	int count = 0;
+	// Looked up before the thread is suspended: GetProcAddress can take the
+	// loader lock.
+	static const auto query =
+		reinterpret_cast<QueryThreadFn>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationThread"));
 	HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, threadId);
 	if (!thread) return "error cannot open the thread";
-	const StackBounds stack = ThreadStackBounds(thread);
-	if (!stack.high) {
-		CloseHandle(thread);
-		return "error cannot find the thread's stack";
-	}
 	if (SuspendThread(thread) == (DWORD)-1) {
 		CloseHandle(thread);
 		return "error cannot suspend the thread";
 	}
+	const StackBounds stack = ThreadStackBounds(thread, query);
 	CONTEXT context{};
 	context.ContextFlags = CONTEXT_FULL;
-	if (GetThreadContext(thread, &context)) count = WalkFrames(context, stack, frames, kMaxFrames);
+	if (stack.high && GetThreadContext(thread, &context)) count = WalkFrames(context, stack, frames, kMaxFrames);
 	ResumeThread(thread);
 	CloseHandle(thread);
 	std::string out;

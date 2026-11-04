@@ -22,6 +22,10 @@ uint8_t* CurrentSceneState();
 // The state's vtable as an rva into the game exe (0 for null).
 uintptr_t SceneStateKind(const uint8_t* state);
 
+// A scene change is already asked for (the manager has a next state).
+// Game thread only.
+bool SceneChangePending();
+
 // Asks the manager to change to a state of `stateClass` (a UClass*), with an
 // optional init message the new state receives. Game thread only; false
 // before the manager is known.

@@ -2,7 +2,7 @@ param([int]$lag = 0, [int]$delay = 2, [int]$frame = 3000, [int]$mashFrom = 600, 
 # Two linked copies that start their battle from the main menu by themselves.
 Set-Location C:\Users\user\Desktop\sf4\sfv-ember
 python -I tools\sfve.py kill | Out-Null
-$stageArg = if ($stage) { "-sfve_stage=$stage" } else { '-sfve_background=1' }
+$stageArg = if ($stage) { "-sfve_stage=$stage" } else { "-sfve_stage=S25" }
 python -I tools\sfve.py launch 0 --mode netplay -- '-sfve_pads=01' '-sfve_background=1' '-sfve_mash=101' "-sfve_mash_from=$mashFrom" "-sfve_delay=$delay" '-sfve_link=1' "-sfve_lag=$lag" "-sfve_fighter=$p1" $stageArg | Out-Null
 python -I tools\sfve.py ctl 0 "freeze $frame" | Out-Null
 python -I tools\sfve.py ctl 0 host | Out-Null

@@ -36,23 +36,50 @@ constexpr UINT kExitGuardFailed = 0x5F0E0001;
 
 bool s_started = false;
 
+// The stage a linked match is played on when the host names none: both
+// copies must load the same one, and their own defaults can differ.
+constexpr const char* kDefaultLinkedStage = "S25";
+
+sfve::mod::HelperLink* s_link = nullptr; // the netplay mode owns it for the process's life
+
 // The linked match's battle, from both players' setups: the host's fighter
 // as P1, the joiner's as P2, on the host's stage, launched from the main
-// menu on both copies (each copy decodes the same two setups).
+// menu on both copies (each copy decodes the same two setups). Anything
+// short of a fully named battle, or a launch that fails, abandons the match
+// so the battle the players start runs offline rather than out of step.
 void LaunchLinkedMatch(const sfve::MatchLink::Endpoints& match)
 {
 	using namespace sfve::mod;
 	MatchPicks picks;
 	std::wstring hostStage, joinerStage;
 	if (!ParseSetup(match.setups[0], &picks.players[0], &hostStage) ||
-		!ParseSetup(match.setups[1], &picks.players[1], &joinerStage)) {
-		Log("netplay: a player's setup is not valid (\"%s\" / \"%s\"); start the battle from the menus",
-			match.setups[0].c_str(), match.setups[1].c_str());
+		!ParseSetup(match.setups[1], &picks.players[1], &joinerStage) || picks.players[0].fighter.empty() ||
+		picks.players[1].fighter.empty() || hostStage.empty()) {
+		s_link->Abandon("the players' setups do not name both fighters and a stage (" + JsonString(match.setups[0]) +
+			" / " + JsonString(match.setups[1]) + ")");
 		return;
 	}
 	picks.stage = hostStage;
-	Log("netplay: launching \"%s\" vs \"%s\" once on the main menu", match.setups[0].c_str(), match.setups[1].c_str());
-	LaunchOnMainMenu(picks);
+	Log("netplay: launching %s vs %s once on the main menu", JsonString(match.setups[0]).c_str(),
+		JsonString(match.setups[1]).c_str());
+	LaunchOnMainMenu(
+		picks, [] { return s_link->Ready().has_value() && !s_link->Failed(); },
+		[](const std::string& why) { s_link->Abandon("the battle could not be launched: " + why); });
+}
+
+// This copy's setup: its fighter and, for when it hosts, the stage.
+std::string LocalSetup(const sfve::mod::ModConfig& config)
+{
+	using namespace sfve::mod;
+	const std::string setup = (config.fighter.empty() ? "-" : config.fighter) + " " +
+		(config.stage.empty() ? kDefaultLinkedStage : config.stage);
+	FighterPick fighter;
+	std::wstring stage;
+	if (config.fighter.empty() || !ParseSetup(setup, &fighter, &stage)) {
+		Log("netplay: -sfve_fighter / -sfve_stage do not name a fighter and a stage (%s); a linked match will not start",
+			JsonString(setup).c_str());
+	}
+	return setup;
 }
 
 std::unique_ptr<sfve::mod::BattleMode> MakeMode(const sfve::mod::ModConfig& config)
@@ -63,9 +90,8 @@ std::unique_ptr<sfve::mod::BattleMode> MakeMode(const sfve::mod::ModConfig& conf
 	case ModMode::Netplay: {
 		std::unique_ptr<HelperLink> link;
 		if (config.helperLink) {
-			const std::string setup = config.stage.empty() ? config.fighter
-				: (config.fighter.empty() ? "-" : config.fighter) + " " + config.stage;
-			link = std::make_unique<HelperLink>(config.delay, setup, LaunchLinkedMatch);
+			link = std::make_unique<HelperLink>(config.delay, LocalSetup(config), LaunchLinkedMatch);
+			s_link = link.get();
 			link->Start(); // a failure shows in the status; the battle then waits
 			link->RegisterCommands();
 		}

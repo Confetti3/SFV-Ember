@@ -1,6 +1,7 @@
 #include "mod/OfflineDialogs.hxx"
 
 #include "mod/GameHooks.hxx"
+#include "mod/GameMemory.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
@@ -14,13 +15,6 @@
 namespace sfve::mod {
 
 namespace {
-
-// The game's FString: {characters, count including the terminator, capacity}.
-struct GameString {
-	const wchar_t* data;
-	int32_t count;
-	int32_t capacity;
-};
 
 using ShowErrorFn = uint64_t (*)(void* errorService, uint32_t code);
 using ShowNamedDialogFn = void* (*)(const GameString* dialogId, const GameString* argument);
@@ -82,6 +76,7 @@ void LeaveTitleWhenItWaits()
 			Log("dialogs: the title goes on to the main menu");
 			return false;
 		}
+		if (SceneStateKind(state) == sfv::scene::kMainMenuVtable) return false; // it got there by itself
 		if (++*frames < kTitleWaitFrames) return true;
 		Log("dialogs: the title never waited for its boot window; showing the offline notice after all");
 		ShowOfflineNotice();

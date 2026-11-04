@@ -41,8 +41,12 @@ public:
 	// Starts the helper and the pump. False (logged) when the helper is
 	// missing or does not come up.
 	bool Start();
-	void Host(std::string setup);
-	void Join(const std::string& invitation, std::string setup);
+	// Empty, or why nothing was started (already started, a bad setup).
+	std::string Host(std::string setup);
+	std::string Join(const std::string& invitation, std::string setup);
+	// The match cannot be played as linked (its battle could not be
+	// launched): Failed() from now on, so the battle runs offline.
+	void Abandon(const std::string& why);
 
 	// The match's endpoints once the link is ready.
 	std::optional<MatchLink::Endpoints> Ready() const;

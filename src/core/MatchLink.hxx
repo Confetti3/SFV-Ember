@@ -15,8 +15,13 @@
 //
 // Each side also brings its setup: an opaque text the game defines (SFV:
 // its player's fighter; the host's also names the stage). The host's goes
-// in the grant; the joiner answers the grant with its own. The match is
-// ready once the link is and both setups are known.
+// in the grant; the joiner answers the grant with its own, and the host,
+// with both, tells the joiner to start. The match is ready on a side once
+// its helper link is and that side knows the host has both setups, so a
+// joiner never starts a battle its host will not.
+//
+// Everything from the peer is checked field by field: a malformed or
+// wrongly typed event fails the match, it never throws.
 //
 // The helper's protocol is Ember's (rust/sf4-net/src/service/protocol.rs):
 // commands and events are JSON objects tagged by "type", fenced by a room
@@ -24,6 +29,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
+#include <nlohmann/json_fwd.hpp>
 
 #include <array>
 #include <functional>
@@ -88,15 +95,16 @@ private:
 		std::array<uint8_t, 32> capability{};
 		uint32_t seed = 0;
 		int inputDelay = 0;
-		std::string setup; // the host's
 	};
 
-	void Command(const std::string& json);
+	void Command(const nlohmann::json& command);
+	void HandleEvent(const nlohmann::json& event);
 	void OnConnected(const std::string& peer, const std::array<uint8_t, 16>& room, uint64_t control);
 	void OnMessage(const std::string& peer, const std::string& payload);
 	void OnGameReady(const std::string& peer, uint64_t generation, uint16_t virtualPort, size_t maxPacket);
-	void OnPeerSetup(const std::string& payload);
-	void Send(const std::string& payload);
+	void OnGrant(const nlohmann::json& grant);
+	void OnPeerSetup(const nlohmann::json& message);
+	void Send(const nlohmann::json& payload);
 	void ReadyWhenComplete();
 	void Prepare(bool dial);
 	void Fail(std::string why);
@@ -106,8 +114,9 @@ private:
 	const Dependencies deps_;
 	bool host_ = false;
 	std::string setup_;      // this side's
-	std::string peerSetup_;  // the host's setup reaches the joiner in the grant
+	std::string peerSetup_;  // the other side's: in the grant (joiner), in its answer (host)
 	bool havePeerSetup_ = false;
+	bool started_ = false;   // the host has both setups (the host itself, or its start message)
 	bool linked_ = false;    // the helper reported the game link ready
 	int hostDelay_ = 0;
 	uint64_t epoch_ = 1;
