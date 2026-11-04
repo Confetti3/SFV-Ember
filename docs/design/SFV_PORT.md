@@ -1,7 +1,10 @@
 # Porting Ember to Street Fighter V
 
-Started 2026-11-04. Status: framework and rollback core built and tested
-against a mock game; nothing has touched the real game yet.
+Started 2026-11-04. Status (2026-11-04): two copies of SFV on one PC play
+whole matches over loopback GGPO with simulated lag, rollbacks across KOs and
+round ends included, and finish on the same screen. The in-game synctest
+passes a full match with perturbed rollbacks every 7 frames. Not yet: two
+PCs, the Ember helper, rooms, and cross-copy state hashes (see Open work).
 
 ## Goal
 
@@ -54,13 +57,15 @@ src/mod/     sfv_ember.dll   NetGuard, BuildCheck, SfvAdapter (game side)
 src/core/    static lib      StateLayout, RollbackSession (GGPO), SyncTest, NetPolicy
 src/shared/  static lib      modules copied verbatim from SF4 Ember
 src/testbed/ static lib      MockFighter: deterministic fighter with switchable bugs
-tests/       sfve_tests.exe  doctest, 17 cases
+tests/       sfve_tests.exe  doctest
+tools/       sfve.py, sfve_mcp.py, compare.py, diffstate.py: launch, drive and compare copies
 ```
 
 The seam is `GameAdapter` (`src/core/GameAdapter.hxx`): a layout of memory
-regions, `Advance(inputs, resimulating)` that runs exactly one tick, and
-`AfterLoad()` for post-restore fix-ups. `MockFighter` implements it today;
-`SfvAdapter` will implement it over SFV.
+regions, `Advance(inputs, resimulating)` that runs exactly one tick,
+`Capture()` that refreshes state the adapter keeps as a record before every
+save and hash, and `AfterLoad()` for post-restore fix-ups. `MockFighter`
+implements it for the tests, `SfvAdapter` over SFV.
 
 ### Carried over from Ember
 
@@ -91,74 +96,70 @@ part: a rollback manager holds a table of `{pointer, size}` memory regions,
 copies them on Store, writes them back on Restore and then runs a list of
 post-restore callbacks. Offline it simply never opens a snapshot frame.
 
-The adapter therefore:
+The adapter (`SfvAdapter`) therefore:
 
 1. Builds its `StateLayout` from that region table when a battle starts.
-2. Adds the state the battle ticks advance that the game's snapshot leaves
-   out (the reference project found input-history counters, battle-frame
-   counters, a tick counter, and the pawn/camera animation clocks; we confirm
-   each with our own synctest).
-3. Marks the animation clocks **restored but unchecked**: they depend on how
-   ticks fall into rendered frames, which differs per machine, and hashing them
-   gives hundreds of false desyncs a match.
-4. Masks pointer words (heap and vtable addresses) out of the hash, learned
-   from local matches and shipped with the mod so every peer masks the same
-   words.
-5. Runs exactly one battle tick on demand through the original battle-frame
-   function, with both players' inputs written into the game's per-tick input
-   record (after the game applies button config, so custom layouts and
-   keyboards agree on both sides).
+2. Adds what a battle tick changes that the game's snapshot leaves out: the
+   battle frame's counters, the input unit's frame counters and the global
+   random generator, plus everything a round's end changes (below).
+3. Restores but does not hash the presentation regions (camera and pawn
+   animation clocks, which follow how ticks fall into rendered frames) and
+   the replay unit's tick counters (they follow the replay recorder, which
+   stops at a round's end outside the snapshot). Pointer words are hashed as
+   zero.
+4. Runs one GGPO frame as exactly one original battle-frame update with the
+   game's extra-tick (its own replay) count forced to zero, both players'
+   inputs written into the per-tick input record after button config is
+   applied. A rollback replays by calling the same update again.
+5. Reseeds the battle's clock-seeded random generators at session start.
 
-Round intros, round calls and KOs may need lockstep rather than rollback at
-first (the reference project does this); revisit once the basic loop works.
+### Round ends
 
-### Driving the engine's own rollback from GGPO
+The game's own rollback never crossed a round's end, so its snapshot leaves
+out what a KO changes. A KO on a guessed input, removed by the rollback that
+corrects the guess, left the battle stopped. Now part of the layout:
 
-The battle already does everything a rollback needs; the port supplies the
-frame ids and the inputs, not a second save system:
+- the rule unit's judge state (`ruleunit.judge`), which goes from 2 to 3 when
+  it judges a KO or time-out;
+- the match data's round results (round count, round records, the round-over
+  reason the Fight state polls) and the flags the Fight and Finish states set
+  (`battledata.*`);
+- the round flow itself (`SfvFlow`): FlowUnit's current and requested state
+  and each state's phase, sequencer and own fields, kept as a record the
+  adapter captures before every save (`GameAdapter::Capture`) and writes back
+  after a load. Writing it back moves the current-state shared pointer (use
+  counts kept right) and rebuilds a state's phase delegate the way the game
+  binds one (a closure from the game's allocator, freed by the delegate).
 
-| GGPO asks | The game does |
-| --- | --- |
-| save frame f | its per-tick Store tasks copy every region into its ring once a snapshot frame is open; we open frame f each tick, and the save callback records "ring frame f" |
-| load frame f | its own Restore of ring frame f, which also runs its post-restore callbacks |
-| advance K frames | one battle-frame update with K extra ticks (how its own rollback resimulates), each tick's inputs taken from GGPO's queue at the input-record hook |
+Outside the fight (intros, round calls, the KO and results) frames still run
+in lockstep: the flow there waits on presentation a replay does not repeat
+the same way. The synctest mirrors that (lockstep frames are never rolled
+back; entering lockstep checks the guessed frames before it).
 
-Inside one rendered frame: GGPO calls (add local input, which may load and
-queue K resimulated frames; synchronize; advance) only queue inputs and frame
-ids. Then the original battle-frame function runs once with K extra ticks,
-consuming the queue tick by tick. GGPO never reads save buffers (only the
-pointer and checksum), so recording "ring frame f" in the save callback and
-having the game fill it during the tick is safe.
+### Tested (2026-11-04, this PC)
 
-What the game's snapshot leaves out is added by the adapter as extra regions
-(saved and restored around the game's own Store/Restore), found with the
-in-game synctest.
+- Unit tests (mock fighter): synctest at distances 1-8, injected bug classes
+  found and located, two sessions over loopback, a round flow in the layout
+  latching a KO where an offline run does, captured records, lockstep floors.
+- In game, one copy: the synctest with perturbed (wrong-input) rollbacks every
+  7 frames passes a whole two-round match, rolling back across both round ends
+  (the flow switched back and forth, delegates rebuilt).
+- In game, two copies over loopback GGPO, 30 ms simulated lag each way, input
+  delay 1, mashing from frame 600: 12,000 frames, about 1,500 rollbacks of up
+  to 3 frames, two of them across a round's end; both finish the match on the
+  same frame of the same win pose. The screens are not byte-identical (hair
+  and cloth physics and small differences spread over the frame, about 5% of
+  pixels).
 
-### Proof before networking
+### Open work
 
-`RunSyncTest` saves every frame, rolls back `distance` frames every `distance`
-frames, replays with the same inputs and compares each replayed frame's hash
-with the original, naming the regions and first byte that differ. Against
-`MockFighter` it passes at every distance 1-8, and it catches each injected
-bug class (state outside the layout, a simulation that reads a non-input). The
-same harness runs inside SFV in milestone 3: that is how missing state is
-found.
-
-### Tested so far (mock game, this PC, 2026-11-04)
-
-- Save/load round trip, masked words, unchecked regions, layout ids.
-- Synctest at distances 1-8; finds and locates both bug classes.
-- Two `RollbackSession`s over loopback UDP in one process: 600+ frames,
-  hundreds of rollbacks, every confirmed frame hash equal on both peers and
-  equal to an offline run; input delay 2; an unmasked pointer shows up as a
-  cross-peer mismatch while play is identical; a peer leaving ends the other
-  session cleanly.
-- Network policy: loopback only, IPv4/IPv6/mapped, allowed peers, name lookups.
-
-Not tested: anything in the real game. The proxy and guard are built
-(`xinput1_3.dll` exports match the game's ordinal imports) but have not been
-run.
-
+- **Cross-copy state hashes.** About 30 game regions hash differently between
+  two copies from the first frame even while play stays in sync (pooled
+  effect objects listed in a different order, per-process leftovers). Desync
+  detection between peers needs per-word masks learned from such runs; the
+  match data and the flow record already match.
+- Pacing (frame stretching instead of holding whole frames), two PCs through
+  the Ember helper, rooms.
 ## Prior art
 
 [sfvrproject/sfv-rollback](https://github.com/sfvrproject/sfv-rollback)
@@ -170,20 +171,22 @@ exe with our own analysis. It targets the same exe build (`0x648AD3A4`).
 ## Milestones
 
 1. **Framework and rollback core** — done: this repo, tests green.
-2. **Static analysis and offline boot.** IDA database of the installed exe
+2. **Static analysis and offline boot** — done. IDA database of the installed exe
    (on D:), our own offsets for: battle frame, input record, rollback manager
    (region table, Store/Restore, post-restore list), offline title route. Fill
    `SfvOffsets.hxx` with signatures; BuildCheck verifies them.
    *Done when* the mod loads in game, the guard logs zero allowed outbound
    connections, the game boots to the main menu offline, and BuildCheck says
    verified.
-3. **One-process rollback in game.** `SfvAdapter` reads the region table, adds
+3. **One-process rollback in game** — done, with one gap: the synctest
+   match ran with one pad idle and the other mashing only in the perturbed
+   replays, not "mashing on both pads". `SfvAdapter` reads the region table, adds
    outside state, injects inputs and runs single ticks; in-game synctest in a
    local Versus match.
    *Done when* a full match passes synctest at distance 7 with mashing on both
    pads.
-4. **Two instances on one PC** over loopback GGPO, then two PCs through the
-   Ember helper.
+4. **Two instances on one PC** over loopback GGPO — done (see Tested). Next:
+   two PCs through the Ember helper.
 5. **Ember integration**: rooms, Ember ID, overlay, spectators, replays.
 
 ## Not doing
@@ -199,6 +202,7 @@ exe with our own analysis. It targets the same exe build (`0x648AD3A4`).
 1. Project name and repository: local folder `sfv-ember` only for now, no
    GitHub repository. Name it, and say whether it should be pushed.
 2. The firewall rule (layer 2) — commands are in the summary message.
-3. Testing on this PC: launching SFV (inert mod first, guard only), and later
-   two instances side by side.
-4. Character availability offline (see Not doing).
+3. Character availability offline (see Not doing).
+4. The optional privacy-policy consent in SFV's first-run prompts was
+   declined; the Options screen only offers to revoke it. Nothing needs it
+   offline.
