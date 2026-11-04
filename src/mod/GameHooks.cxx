@@ -105,6 +105,9 @@ bool InstallGameHooks(uintptr_t base, BattleListener* listener)
 	s_findUnit = reinterpret_cast<FindUnitFn>(base + sfv::kFindUnit.rva);
 	s_getBattleData = reinterpret_cast<GetBattleDataFn>(base + sfv::kGetBattleData.rva);
 	s_imageBase = base;
+	// The flow's delegates allocate through it even if the hook below is not
+	// installed; hooking replaces this with the trampoline.
+	o_gameAlloc = reinterpret_cast<GameAllocFn>(base + sfv::kGameAlloc.rva);
 	const bool ok = HookCodeSite(base, sfv::kInputRecord, (void*)h_InputRecord, (void**)&o_inputRecord) &&
 		HookCodeSite(base, sfv::kRollbackUnitPre, (void*)h_UnitTick, (void**)&o_unitTick) &&
 		HookCodeSite(base, sfv::kBattleFrameUpdate, (void*)h_BattleFrame, (void**)&o_battleFrame) &&
