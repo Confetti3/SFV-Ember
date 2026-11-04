@@ -13,6 +13,7 @@
 #include "mod/BuildCheck.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameHooks.hxx"
+#include "mod/GameScene.hxx"
 #include "mod/VirtualPads.hxx"
 #include "mod/Log.hxx"
 #include "mod/ModConfig.hxx"
@@ -20,10 +21,13 @@
 #include "mod/HelperLink.hxx"
 #include "mod/NetplayMode.hxx"
 #include "mod/NetGuard.hxx"
+#include "mod/OfflineDialogs.hxx"
 #include "mod/SfvOffsets.hxx"
 #include "mod/SyncTestMode.hxx"
 
 #include <windows.h>
+
+#include <algorithm>
 
 namespace {
 
@@ -93,6 +97,11 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 		Log("inert: only the network guard is active");
 		return 1;
 	}
+	// The offline start-up's dialogs go in every mode the mod is active in.
+	InstallGameScene(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)));
+	InstallOfflineDialogs(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)),
+		static_cast<OfflineDialogs>(std::clamp(Config().offlineDialogs, 0, 2)));
+	RegisterStatus("suppressedDialogs", [] { return std::to_string(SuppressedDialogs()); });
 	if (Config().mode == ModMode::Inert) {
 		Log("inert by request");
 		return 1;

@@ -60,6 +60,7 @@ add_library(sfv_ember SHARED
     src/mod/ControlPipe.cxx
     src/mod/VirtualPads.cxx
     src/mod/NetGuard.cxx
+    src/mod/OfflineDialogs.cxx
     src/mod/BuildCheck.cxx
     src/mod/BackgroundPlay.cxx
     src/mod/MultiInstance.cxx
@@ -67,6 +68,8 @@ add_library(sfv_ember SHARED
     src/mod/SfvFlow.cxx
     src/mod/FramePacer.cxx
     src/mod/HelperLink.cxx
+    src/mod/GameScene.cxx
+    src/mod/GameThread.cxx
     src/mod/GameHooks.cxx
     src/mod/BattleDriver.cxx
     src/mod/SyncTestMode.cxx

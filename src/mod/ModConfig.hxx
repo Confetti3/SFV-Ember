@@ -43,6 +43,9 @@ struct ModConfig {
 	bool perturb = false;
 	int lagMs = 0;
 	bool helperLink = false; // netplay endpoints, seed and delay come from a HelperLink
+	// Offline start-up dialogs kept from showing: 0 none, 1 the download
+	// failures, 2 those and the offline-mode notice.
+	int offlineDialogs = 2;
 };
 
 const ModConfig& Config();

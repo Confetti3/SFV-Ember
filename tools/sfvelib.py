@@ -15,6 +15,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes as wt
 import hashlib
+import json
 import os
 import shutil
 import struct
@@ -210,12 +211,28 @@ def run_route(index: int, route: list[tuple[int, str, float]]) -> None:
         time.sleep(wait_s)
 
 
-def boot_to_menu(index: int) -> None:
-    """From a fresh launch to the main menu: the offline notices take A twice."""
-    time.sleep(20)
-    focus(status_pid(index))
-    request(index, "pad 0 A:150 -:4000 A:150 -:4000")
-    time.sleep(12)
+MAIN_MENU_SCENE = "0x2D98660"  # the main menu state's vtable rva (status "scene")
+
+
+def scene(index: int) -> str:
+    """The game's current scene state kind, or "" while unknown."""
+    try:
+        return json.loads(request(index, "status")[3:]).get("scene", "")
+    except (OSError, ValueError):
+        return ""
+
+
+def boot_to_menu(index: int, timeout: float = 90.0) -> None:
+    """From a fresh launch to the main menu. The mod hides the offline start-up
+    dialogs and leaves the title by itself, so this only waits."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if scene(index) == MAIN_MENU_SCENE:
+            time.sleep(1)  # the menu's own intro
+            focus(status_pid(index))
+            return
+        time.sleep(1)
+    raise TimeoutError(f"instance {index} did not reach the main menu in {timeout:.0f} s")
 
 
 def fight(index: int) -> None:

@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "mod/BuildCheck.hxx"
+
 namespace sfve::mod {
 
 using BattleFrameFn = void (*)(uint8_t* battleFrame);
@@ -23,6 +25,9 @@ public:
 	// The battle flow announced a new state (sfv::flow).
 	virtual void OnFlowState(int state) = 0;
 };
+
+// Hooks one verified code site (MinHook, enabled at once); logs a failure.
+bool HookCodeSite(uintptr_t imageBase, const CodeSite& site, void* detour, void** original);
 
 // Hooks the verified build's functions. The listener must outlive the game.
 bool InstallGameHooks(uintptr_t imageBase, BattleListener* listener);

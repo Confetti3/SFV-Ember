@@ -120,4 +120,55 @@ std::string WriteWatchHits()
 	return out;
 }
 
+std::string ThreadStack(uint32_t threadId)
+{
+	constexpr int kMaxFrames = 64;
+	DWORD64 frames[kMaxFrames];
+	int count = 0;
+	HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, threadId);
+	if (!thread) return "error cannot open the thread";
+	if (SuspendThread(thread) == (DWORD)-1) {
+		CloseHandle(thread);
+		return "error cannot suspend the thread";
+	}
+	// Nothing here may allocate or take a lock: the suspended thread may hold one.
+	CONTEXT context{};
+	context.ContextFlags = CONTEXT_FULL;
+	if (GetThreadContext(thread, &context)) {
+		while (count < kMaxFrames && context.Rip) {
+			frames[count++] = context.Rip;
+			DWORD64 imageBase = 0;
+			PRUNTIME_FUNCTION entry = RtlLookupFunctionEntry(context.Rip, &imageBase, nullptr);
+			if (!entry) { // a leaf function: the return address is on top of the stack
+				context.Rip = *reinterpret_cast<DWORD64*>(context.Rsp);
+				context.Rsp += 8;
+				continue;
+			}
+			void* handlerData = nullptr;
+			DWORD64 establisher = 0;
+			RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, context.Rip, entry, &context, &handlerData, &establisher, nullptr);
+		}
+	}
+	ResumeThread(thread);
+	CloseHandle(thread);
+	std::string out;
+	char item[160];
+	for (int i = 0; i < count; i++) {
+		HMODULE module = nullptr;
+		GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+			reinterpret_cast<LPCWSTR>(frames[i]), &module);
+		const uintptr_t offset = frames[i] - reinterpret_cast<uintptr_t>(module);
+		if (module == GetModuleHandleW(nullptr)) {
+			snprintf(item, sizeof(item), " 0x%llX", (unsigned long long)offset);
+		} else {
+			char name[MAX_PATH] = "?";
+			if (module) GetModuleFileNameA(module, name, sizeof(name));
+			const char* file = strrchr(name, '\\');
+			snprintf(item, sizeof(item), " %s+0x%llX", file ? file + 1 : name, (unsigned long long)offset);
+		}
+		out += item;
+	}
+	return out;
+}
+
 } // namespace sfve::mod

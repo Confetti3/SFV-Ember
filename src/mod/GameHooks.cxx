@@ -60,7 +60,9 @@ uint64_t h_FlowMessage(uint8_t* receiver, uint8_t* message)
 	return o_flowMessage(receiver, message);
 }
 
-bool Hook(uintptr_t base, const CodeSite& site, void* detour, void** original)
+} // namespace
+
+bool HookCodeSite(uintptr_t base, const CodeSite& site, void* detour, void** original)
 {
 	void* target = reinterpret_cast<void*>(base + site.rva);
 	MH_STATUS st = MH_CreateHook(target, detour, original);
@@ -68,8 +70,6 @@ bool Hook(uintptr_t base, const CodeSite& site, void* detour, void** original)
 	if (st != MH_OK) Log("hooks: %s failed (%d)", site.name, (int)st);
 	return st == MH_OK;
 }
-
-} // namespace
 
 bool InstallGameHooks(uintptr_t base, BattleListener* listener)
 {
@@ -80,10 +80,10 @@ bool InstallGameHooks(uintptr_t base, BattleListener* listener)
 	s_getBattleData = reinterpret_cast<GetBattleDataFn>(base + sfv::kGetBattleData.rva);
 	s_gameAlloc = reinterpret_cast<GameAllocFn>(base + sfv::kGameAlloc.rva);
 	s_imageBase = base;
-	const bool ok = Hook(base, sfv::kInputRecord, (void*)h_InputRecord, (void**)&o_inputRecord) &&
-		Hook(base, sfv::kRollbackUnitPre, (void*)h_UnitTick, (void**)&o_unitTick) &&
-		Hook(base, sfv::kBattleFrameUpdate, (void*)h_BattleFrame, (void**)&o_battleFrame) &&
-		Hook(base, sfv::kFlowMessage, (void*)h_FlowMessage, (void**)&o_flowMessage);
+	const bool ok = HookCodeSite(base, sfv::kInputRecord, (void*)h_InputRecord, (void**)&o_inputRecord) &&
+		HookCodeSite(base, sfv::kRollbackUnitPre, (void*)h_UnitTick, (void**)&o_unitTick) &&
+		HookCodeSite(base, sfv::kBattleFrameUpdate, (void*)h_BattleFrame, (void**)&o_battleFrame) &&
+		HookCodeSite(base, sfv::kFlowMessage, (void*)h_FlowMessage, (void**)&o_flowMessage);
 	Log("hooks: %s", ok ? "battle frame, input record, rollback unit and battle flow hooked" : "INCOMPLETE");
 	return ok;
 }

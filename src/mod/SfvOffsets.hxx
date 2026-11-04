@@ -67,8 +67,55 @@ constexpr CodeSite kGetBattleData{"GetBattleData", 0x307F90,
 constexpr CodeSite kGameAlloc{"GameAlloc", 0x4EA630,
 	{0x33, 0xD2, 0xE9, 0xB9, 0xCA, 0xC4, 0x00, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC}};
 
-constexpr CodeSite kSites[] = {
-	kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage, kFindUnit, kGetBattleData, kGameAlloc};
+// uint64 ShowErrorDialog(ErrorDialogService*, uint32 code): the error-dialog
+// service's listener on the game's network-error broadcast (registered at
+// rva 0x57ABF0; the broadcast drains the queue that rva 0x10F7070 fills).
+// Looks the code up in its table (filled at rva 0x5CD7E0; 0x80003 ->
+// "Dialog_ERROR_0030") and posts that dialog; returns 0 for a code it has no
+// dialog for. While a dialog it opened is up, its count (+112) is above 0,
+// and boot (rva 0x68B310) waits for that count to drop.
+constexpr CodeSite kShowErrorDialog{"ShowErrorDialog", 0x570400,
+	{0x40, 0x55, 0x57, 0x41, 0x54, 0x41, 0x56, 0x48, 0x8D, 0x6C, 0x24, 0xC1, 0x48, 0x81, 0xEC, 0xF8}};
+
+// void* ShowNamedDialog(const FString* dialogId, const FString* argument):
+// posts a dialog by its text id with no result callback.
+constexpr CodeSite kShowNamedDialog{"ShowNamedDialog", 0x763170,
+	{0x4C, 0x8B, 0xDC, 0x55, 0x53, 0x49, 0x8D, 0x6B, 0xA1, 0x48, 0x81, 0xEC, 0xE8, 0x00, 0x00, 0x00}};
+
+// void ChangeSceneState(SceneManager*, UClass* stateClass, UObject* initMessage):
+// how every scene change starts (states call it through rva 0x584D20 with
+// their manager, state + 768).
+constexpr CodeSite kChangeSceneState{"ChangeSceneState", 0x584B70,
+	{0x48, 0x85, 0xD2, 0x0F, 0x84, 0x99, 0x01, 0x00, 0x00, 0x48, 0x89, 0x5C, 0x24, 0x20, 0x48, 0x89}};
+
+// The title state's step that leaves the title for the main menu: what its
+// boot window's "Login" command (handler rva 0x5EA630) selects.
+constexpr CodeSite kTitleLeaveStep{"TitleLeaveStep", 0x5E4D70,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x50, 0x48}};
+
+constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
+	kFindUnit, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kTitleLeaveStep};
+
+namespace scene {
+
+constexpr uint32_t kManagerCurrentState = 904;
+constexpr uint32_t kIdleStep = 0x12AF480; // an empty function: a state waiting on something else
+
+} // namespace scene
+
+// The title screen's state (vtable rva 0x2D8AC78; its tick, rva 0x5FA730,
+// counts +904 down and then calls the step at +824). After boot it opens the
+// "AdvertiseWindow", a Scaleform window that runs the online sign-in, and
+// waits (idle step) for the window's command; offline the window sends
+// "Login" only once the offline notice is closed.
+namespace title {
+
+constexpr uintptr_t kVtable = 0x2D8AC78;
+constexpr uint32_t kStep = 824;
+constexpr uint32_t kStepDelay = 904;       // frames before the step runs
+constexpr int kLoginDelayFrames = 60;      // what the "Login" command sets
+
+} // namespace title
 
 inline const GameBuild* VerifiedBuild()
 {
@@ -76,7 +123,22 @@ inline const GameBuild* VerifiedBuild()
 	return &build;
 }
 
-// The battle's random number generators: objects {vtable, uint32 state} whose
+namespace dialogs {
+
+// The online start-up's downloads, as the game's error codes (shown in hex):
+// EULA 0x80003 (task completion rva 0xF912F0), privacy policy 0x80047
+// (0xF91660), URL list 0x80048 (0xF91710), GDPR text 0x8004A (0xF91370). They
+// fail only because NetGuard blocks the CDN.
+constexpr uint32_t kBlockedDownloadCodes[] = {0x80003, 0x80047, 0x80048, 0x8004A};
+
+// "Gameplay will continue in offline mode": posted by boot (rva 0x68B310)
+// after it sets the game's offline flag, and by the search-failure branch
+// (rva 0x69CC40). Not "Dialog_QA_Y_0026", a yes/no question.
+constexpr const wchar_t* kOfflineNotice = L"Dialog_INFO_0011";
+
+} // namespace dialogs
+
+// The battle's random number generators:objects {vtable, uint32 state} whose
 // generator is an LCG (1664525, 1013904223; rva 0x32B2B0) and whose
 // constructors seed the state from _time64 (rva 0x3C7DE0 and others), so two
 // processes start with different seeds. One of them is a global object.

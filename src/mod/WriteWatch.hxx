@@ -20,4 +20,9 @@ void DisarmWriteWatch(uint32_t gameThreadId);
 // "rva:count rva:count ...", most frequent first.
 std::string WriteWatchHits();
 
+// The call stack of a thread right now, as return addresses ("0x<rva>" in the
+// game, "module+0x<offset>" elsewhere), innermost first. The thread is
+// suspended only while its frames are walked.
+std::string ThreadStack(uint32_t threadId);
+
 } // namespace sfve::mod
