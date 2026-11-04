@@ -29,12 +29,14 @@ def looks_like_address(v: int) -> bool:
 
 
 def masked(address: int, b: bytes) -> bytearray:
-    """The state hash's masking: 8 bytes at each 4-byte-aligned address word."""
+    """The state hash's masking: 8 bytes at each 4-byte-aligned address word
+    (not tested 4 bytes into one it found)."""
     m = bytearray(b)
     off = (4 - (address & 3)) & 3
     while off + 8 <= len(b):
         if looks_like_address(int.from_bytes(b[off:off + 8], "little")):
             m[off:off + 8] = bytes(8)
+            off += 4
         off += 4
     return m
 

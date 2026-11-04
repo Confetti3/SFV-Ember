@@ -51,7 +51,11 @@ void Mark(std::vector<uint64_t>& marks, size_t unitIndex)
 // from address `at`) that hold an address: a region may start anywhere in an
 // object, and packed structures keep addresses on 4-byte boundaries. The
 // original bytes are tested, so zeroing one word cannot hide or create
-// another. Words cut by the chunk's edges are left alone.
+// another. The position 4 bytes into an address is not tested: its low half
+// is that address's high half, and with a small value after it the pair can
+// look like an address in one process and not in another (a heap address's
+// high half is 0x204 in one, 0x246 in the other). Words cut by the chunk's
+// edges are left alone.
 void StateLayout::ZeroAddresses(uint8_t* bytes, size_t n, uintptr_t at) const
 {
 	uint8_t original[kChunk];
@@ -59,7 +63,9 @@ void StateLayout::ZeroAddresses(uint8_t* bytes, size_t n, uintptr_t at) const
 	for (size_t off = (4 - (at & 3)) & 3; off + 8 <= n; off += 4) {
 		uint64_t value;
 		memcpy(&value, original + off, 8);
-		if (addressTest_(value)) memset(bytes + off, 0, 8);
+		if (!addressTest_(value)) continue;
+		memset(bytes + off, 0, 8);
+		off += 4; // past the address's high half
 	}
 }
 

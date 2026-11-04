@@ -234,3 +234,30 @@ TEST_CASE("the layout id changes with what peers compare")
 	CHECK(plain.LayoutId() != excluded.LayoutId());
 	CHECK(masked.LayoutId() != excluded.LayoutId());
 }
+
+namespace {
+// The mod's test (GameMemory.hxx LooksLikeAddress), for the overlap case.
+bool HeapLike(uint64_t value) { return value >= (1ull << 40) && value <= 0x00007FFFFFFFFFFFull && (value & 3) == 0; }
+} // namespace
+
+TEST_CASE("an address's high half and the value after it are not taken for another address")
+{
+	// The same object in two processes: an address, then a small int. Read 4
+	// bytes in, the pair looks like an address only where the address's high
+	// half happens to be a multiple of 4.
+	alignas(8) uint8_t one[16] = {}, two[16] = {};
+	const uint64_t addressOne = 0x00000204F5F982A4ull, addressTwo = 0x00000246994182A4ull;
+	const uint32_t value = 0x640;
+	memcpy(one, &addressOne, 8);
+	memcpy(one + 8, &value, 4);
+	memcpy(two, &addressTwo, 8);
+	memcpy(two + 8, &value, 4);
+	StateLayout a, b;
+	a.Add("r", one, sizeof(one));
+	b.Add("r", two, sizeof(two));
+	a.SetAddressTest(HeapLike);
+	b.SetAddressTest(HeapLike);
+	CHECK(a.HashLive() == b.HashLive());
+	two[8] = 1; // the value itself still counts
+	CHECK(a.HashLive() != b.HashLive());
+}
