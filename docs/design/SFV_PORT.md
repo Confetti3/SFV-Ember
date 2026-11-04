@@ -252,20 +252,27 @@ with neutral inputs, and no check restores to one's start.
   draw (the game snapshots it with the generator, fighter+0xC50, and the
   reseed had left each process's pre-battle draw). That run had no
   rollbacks (2 frames of delay hide 0 ms).
-  **Open: a real divergence under rollbacks.** 60 ms, input delay 1, RYU vs
-  KEN, seeds 31337/4242: about 490 rollbacks of up to 4 frames, checkpoints
-  equal to 2340 and different from 2400 on, the same in two runs; only one
-  region differs (557 KB), two counters 1000 apart with an equal sum. Holding
-  the copies at 2340 (which moves the rollbacks) avoided it. The in-game
-  synctest with both players mashing (`-sfve_mash` now drives both in
-  synctest), distance 4, perturbed: 9 checks in 7,100 frames differ, in
-  per-player statistics the battle keeps every frame (rva 0x4BA550 adds one
-  frame's time to a bucket chosen by the fighter's state: one replayed frame
-  counted in another bucket, the same 1000 step), a 136-byte object whose
-  pointer (+0x80, written each frame at rva 0x485232) is set when played and
-  null replayed, a 16-bit counter one higher when played (44-byte regions),
-  and a per-player flag (204-byte regions, +0x8C). Each needs: what the code
-  reads that a restore does not bring back, and whether the fight reads it.
+  **Rollback runs (60 ms, input delay 1, about 490 rollbacks of up to 4
+  frames).** RYU vs KEN, seeds 31337/4242: checkpoints differed from 2400 on
+  in `battledata.results`. The cause was the battle statistics (StatsUnit,
+  rva 0x4BA550): each frame's time goes into a per-player bucket chosen by
+  fighter-state predicates, a frame replayed after a restore can land in a
+  neighbouring bucket (two counters 1000 apart, the sum equal), and at a
+  round's end the rule unit copies the statistics into the round record.
+  Only UI text and a mode score read them, so the StatsUnit region and the
+  records' copies are restored but not hashed (`kUncheckedSizes`, the
+  records split into hashed 64-byte headers and unhashed statistics).
+  Restoring CharaActionPart's unregistered flags (+0xE0) was tried and
+  changed nothing. Now 75 of 76 checkpoints match; CMY vs CNL, seeds
+  777/90210: 74 of 76. **Open:** the checkpoints that still differ do so
+  for one checkpoint and then agree again: a fighter's 204-byte region,
+  dword +0x8C (probably fighter+0x2C0, written by the fighter reset at rva
+  0x35DD20 and around the flow's state switches), 1 in one timeline and 0 in
+  the other. The synctest with both players mashing (`-sfve_mash` drives
+  both there), distance 4, perturbed, finds the same dword, plus
+  projectile visuals reconciled against their UE actors (ProjectileVisualPart,
+  136 bytes: +0x80 is the actor pointer; a 44-byte region with a 16-bit
+  counter at +0x26 differs on the same frames).
   A boot crash seen after Steam restarted was
   Steam's (its registry named a dead client process; restarting Steam fixed
   it), not the mod's. `perturb` finds `scan`'s `game.N` names only while
