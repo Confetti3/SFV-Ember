@@ -111,7 +111,39 @@ The adapter (`SfvAdapter`) therefore:
    game's extra-tick (its own replay) count forced to zero, both players'
    inputs written into the per-tick input record after button config is
    applied. A rollback replays by calling the same update again.
-5. Reseeds the battle's clock-seeded random generators at session start.
+5. Reseeds the battle's clock-seeded random generators at session start,
+   and gives the match data the same start time on both copies: every round
+   start reseeds each fighter's generator from it (`battledata::kStartTime`).
+6. Zeroes what the battle code allocates (its operator new, `GameAlloc`), so
+   fields an object leaves unset until first use hold the same bytes in every
+   process (below).
+
+### What peers compare
+
+The state hash has two scopes (`HashScope`). The local one (synctest, load
+checks) covers everything that must replay exactly in one process. The
+peers' one, which `RollbackSession` keeps for every hashed frame and as the
+per-region checkpoint lists, also leaves out what two healthy processes
+legitimately hold differently: dwords masked for peers and regions excluded
+from peers (both still saved, restored and synctest-checked). Checkpoint
+lists are sorted by size and hash, so two processes that list the game's
+regions in different orders produce the same list. Masks and exclusions are
+part of the layout id.
+
+Two linked copies used to disagree on about 30 regions from the first frame
+while playing identically. The causes, and what each became:
+
+| Differed | Why | Now |
+| --- | --- | --- |
+| The fighters' random generators (24-byte regions) and what follows from them (CharaUnit records) | every round start reseeds them from the match data's `_time64()` start time, each process's own clock | same start time on both copies (a real desync source: the fighters draw from these every tick and for random picks) |
+| CharaUnit, CharaMotionPart, CharaStatusPart, the fighter and projectile ActionParts, HUD and camera records, TimeUnit, ProjectileGroupUnit handles, the flow record's own fields | heap leftovers: padding, arrays filled on first use, the unused half of an 8-byte slot, never written (or only at a round start) | allocations zeroed |
+| A VfxUnit record | the address test took an address's high half plus the next value for an address in one process only | the 4 bytes into a found address are not tested |
+| Battle frame +0x198, +0x19C, +0x1B4 | updates counted since its reset, including those each process runs before its layout binds | masked for peers (only the slow-motion schedule reads +0x198; slow motion is never set) |
+| Input unit +0x2214 | QueryPerformanceCounter's low part at frame-sync start | masked for peers |
+
+`perturb <frame> <region> <offset> <add>` nudges one copy's state on purpose,
+so the peers' checkpoints should differ from the next checkpoint on (the
+mock's two-session test shows that; the in-game run is owed, see Open work).
 
 ### Round ends
 
@@ -206,11 +238,16 @@ with neutral inputs, and no check restores to one's start.
 
 ### Open work
 
-- **Cross-copy state hashes.** About 30 game regions hash differently between
-  two copies from the first frame even while play stays in sync (pooled
-  effect objects listed in a different order, per-process leftovers). Desync
-  detection between peers needs per-word masks learned from such runs; the
-  match data and the flow record already match mid-fight.
+- **Cross-copy state hashes** (see "What peers compare"). Verified in game:
+  with the start time shared, the fighters' generators match at every frame
+  dumped to 4200 across a round end at 30 ms lag; with allocations zeroed,
+  two linked copies at no lag differ only in the four masked values to frame
+  1200. Owed: the build with the masks and the address-test fix (expected:
+  `compare.py` reports no unmatched region and every logged checkpoint
+  equal), several seeds at 0 and 30 ms lag across a round end, and a
+  `perturb` run (blocked 2026-11-04 by the game crashing at boot after Steam
+  restarted, rva 0x742A34: the online subsystem's identity interface is
+  null; the mod inert crashes the same way).
 - **Save cost.** A save copies and hashes about 1 MB (0.7 ms on this PC,
   logged on every checkpoint line); a 4-frame rollback saves 4 times. The
   round results (557 KB) change only at a round's end and are the obvious
