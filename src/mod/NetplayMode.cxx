@@ -33,6 +33,7 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	session_ = std::make_unique<RollbackSession>(adapter);
 	started_ = false;
 	frames_ = lockstepHolds_ = 0;
+	lastFightFrame_ = -1;
 	pacer_.Reset();
 }
 
@@ -54,9 +55,14 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	}
 	if (session_->Running()) pacer_.Frame(*session_, last_ == RollbackSession::StepResult::PredictionStall);
 	const int frame = session_->Frame();
-	const PackedInput local = !config_.mashSeed ? adapter.Sampled(0)
-		: frame >= config_.mashFrom              ? input::Mash(config_.mashSeed, frame)
-												 : 0;
+	// Outside the fight a player has nothing to do, and their input is sent
+	// as neutral (see HoldForLockstep).
+	const bool fighting = adapter.Fighting();
+	if (fighting) lastFightFrame_ = frame;
+	const PackedInput local = !fighting         ? 0
+		: !config_.mashSeed                     ? adapter.Sampled(0)
+		: frame >= config_.mashFrom             ? input::Mash(config_.mashSeed, frame)
+												: 0;
 	// A linked match that ended in the last frame restarts here, before this
 	// frame is saved and played, on both copies alike (MatchEnd).
 	if (link_) {
@@ -95,6 +101,7 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	// At least one frame: lockstep (below) waits for the other side's input
 	// for the next frame, which it has always sent by then.
 	c.inputDelay = delay < 1 ? 1 : delay;
+	inputDelay_ = c.inputDelay;
 	// Both copies are at the battle's first frame: give the clock-seeded
 	// random generators the same seeds before anything is simulated.
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
@@ -128,13 +135,23 @@ void NetplayMode::DumpIfRequested()
 
 // Outside the fight (intros, round calls, the KO and results) the battle flow
 // waits on presentation (announcer, banners) that a replay does not repeat
-// the same way; a frame played there on a guess and then replayed could shift
-// it. So there a frame only runs once both players' inputs for it are
-// confirmed: no guess, no rollback. (The synctest shows the flow record
-// diverging on replays across intro and round-over states, never in a fight.)
+// the same way, so no frame there may ever be rolled back. (The synctest
+// shows the flow record diverging on replays across intro and round-over
+// states, never in a fight.)
+//
+// Both sides send neutral input outside the fight, and GGPO predicts the
+// other side's input as its last one, so once only neutral inputs are left
+// in flight every guess there is right and frames run at full speed. Real
+// inputs can still be in flight just after a fight ends: the other side
+// sampled them while it still saw the fight going on, for frames up to its
+// input delay ahead, and it may have seen the fight going on for up to
+// GGPO's prediction window past the real end. For those frames each frame
+// runs only once both players' inputs for it are confirmed: no guess, no
+// rollback.
 bool NetplayMode::HoldForLockstep(const SfvAdapter& adapter)
 {
 	if (adapter.Fighting() || !session_->Running()) return false;
+	if (lastFightFrame_ < 0 || session_->Frame() > lastFightFrame_ + inputDelay_ + kMaxPredictionFrames + 1) return false;
 	// Until the first inputs have crossed (only the delay's padding frames so
 	// far) there is nothing to wait for, and waiting would stop both sides.
 	const int confirmed = session_->LastConfirmedFrame();

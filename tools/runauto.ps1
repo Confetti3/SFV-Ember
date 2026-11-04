@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$frame = 3000, [int]$mashFrom = 600, [int]$waitSeconds = 240, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = '', [double]$gain = 0)
+param([int]$lag = 0, [int]$delay = 2, [int]$frame = 3000, [int]$mashFrom = 600, [int]$waitSeconds = 240, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = '', [double]$gain = 0, [switch]$keep)
 # Two linked copies that start their battle from the main menu by themselves.
 Set-Location C:\Users\user\Desktop\sf4\sfv-ember
 python -I tools\sfve.py kill | Out-Null
@@ -22,4 +22,6 @@ while ((Get-Date) -lt $deadline) {
 python -I tools\compare.py | Select-Object -First 2
 python -I tools\sfve.py shot 0 D:\sfv-re\shots\f0.png | Out-Null
 python -I tools\sfve.py shot 1 D:\sfv-re\shots\f1.png | Out-Null
+# The copies sit frozen on the compared frame; close them unless asked to keep them.
+if (!$keep) { python -I tools\sfve.py kill | Out-Null }
 

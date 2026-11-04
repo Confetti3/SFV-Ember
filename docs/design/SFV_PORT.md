@@ -212,11 +212,13 @@ state before a lockstep frame.
   at the same session frame; tested: the second match stays in step).
   Leaving or changing fighters needs a way to choose (overlay) and a
   second match generation on the link.
-- Lockstep outside the fight costs speed at high ping: intros, KOs and
-  round calls wait for confirmed inputs, so with 1 frame of delay and an
-  80 ms round trip they run at about 12 fps. Raising the input delay while
-  outside the fight (GGPO allows changing it) would keep them at full
-  speed.
+- Lockstep outside the fight used to cost speed at high ping (intros, KOs
+  and round calls waited for confirmed inputs: about 12 fps at an 80 ms
+  round trip). Now both sides send neutral input outside the fight, so
+  every guess there is right; only the first input delay + 9 frames after
+  a fight ends (inputs sampled while a side still saw the fight) wait.
+  Tested: 12,000 frames across a round end at full speed, 25 held frames
+  instead of thousands, the same frame on both copies.
 - Picking: fighters and stage come from the command line or the pipe; an
   in-game way to host, join and pick (overlay) is next.
 - Two PCs over a real network (one PC so far), rooms.

@@ -64,6 +64,10 @@ private:
 	bool started_ = false;
 	uint64_t frames_ = 0;
 	uint64_t lockstepHolds_ = 0;
+	int lastFightFrame_ = -1; // the last session frame that started in the fight
+	int inputDelay_ = 1;
+	// GGPO_MAX_PREDICTION_FRAMES: how far a side can run on guessed inputs.
+	static constexpr int kMaxPredictionFrames = 8;
 	FramePacer pacer_;
 	int dumpFrame_ = -1;   // "dump <frame>": write that frame's saved state to the log folder
 	int freezeFrame_ = -1; // "freeze <frame>": stop advancing there (to compare screens)
