@@ -98,36 +98,64 @@ TEST_CASE("perturbed replays pass for a correct game and catch state the wrong t
 
 namespace {
 
-// Counts frames in its layout and remembers every frame a load went back to.
+// Counts frames in its layout, reads no inputs on frames [ignoreFrom,
+// ignoreTo), and remembers every frame a load went back to and every input
+// an ignored frame was given.
 class FrameCounter : public GameAdapter {
 public:
-	FrameCounter() { layout_.Add("frame", &frame_, sizeof(frame_)); }
+	FrameCounter(int ignoreFrom, int ignoreTo) : ignoreFrom_(ignoreFrom), ignoreTo_(ignoreTo)
+	{
+		layout_.Add("frame", &frame_, sizeof(frame_));
+	}
 	std::string BuildId() const override { return "counter"; }
 	StateLayout& Layout() override { return layout_; }
-	void Advance(const FrameInputs&, bool) override { frame_++; }
+	bool InputsMatter() const override { return frame_ < ignoreFrom_ || frame_ >= ignoreTo_; }
+	void Advance(const FrameInputs& inputs, bool) override
+	{
+		if (!InputsMatter() && (inputs.p[0] || inputs.p[1])) inputsWhileIgnored++;
+		frame_++;
+	}
 	void AfterLoad() override { loads.push_back(frame_); }
 	std::vector<int> loads;
+	int inputsWhileIgnored = 0;
 
 private:
 	int frame_ = 0;
+	int ignoreFrom_;
+	int ignoreTo_;
 	StateLayout layout_;
 };
 
 } // namespace
 
-TEST_CASE("checks restore no state before a lockstep frame, and check the guesses before one")
+TEST_CASE("checks start only on frames that read inputs, and replay across those that do not")
 {
-	FrameCounter game;
+	FrameCounter game(23, 40);
 	SyncTester tester(game, 7);
-	for (int frame = 0; frame < 60; frame++) {
-		const bool fighting = frame < 23 || frame >= 40;
-		REQUIRE(tester.Step(ScriptedFrame(frame, 42), fighting ? FramePlay::MayRollBack : FramePlay::Lockstep));
-	}
-	// Checks at 7, 14, 21 restore 0, 7, 14. Before lockstep frame 23 the
-	// guessed frames 16..22 are checked (restore 16). Frames 23..39 are
-	// lockstep, so later checks restore no earlier than state 40: at 42 from
-	// 40, at 49 from 42, at 56 from 49.
+	for (int frame = 0; frame < 60; frame++) REQUIRE(tester.Step(ScriptedFrame(frame, 42)));
+	// A check every 7 frames starts from the oldest frame within 7 that reads
+	// inputs: at 7, 14, 21 from 0, 7, 14; at 28 from 21 (replaying across
+	// 23..27, which read none); at 35 none (28..34 read none); at 42, 49 and
+	// 56 from 40, 42 and 49.
 	CHECK(tester.Report().rollbacks == 7);
-	const std::vector<int> expected = {0, 7, 14, 16, 40, 42, 49};
+	const std::vector<int> expected = {0, 7, 14, 21, 40, 42, 49};
 	CHECK(game.loads == expected);
+	CHECK(game.inputsWhileIgnored == 0); // played and replayed with neutral inputs
+}
+
+TEST_CASE("a mock fight whose inputs are ignored for a while survives perturbed rollbacks")
+{
+	MockFighter game;
+	game.IgnoreInputsBetween(300, 360);
+	SyncTester tester(game, 7, false, true);
+	for (int frame = 0; frame < 600; frame++) REQUIRE(tester.Step(ScriptedFrame(frame, 42)));
+	CHECK(tester.Report().ok);
+	// 85 checks, less the 8 (at 308..357) whose window reads no inputs.
+	CHECK(tester.Report().rollbacks == 77);
+	bool crossed = false;
+	for (const int target : game.RollbackTargets()) {
+		CHECK((target < 300 || target >= 360));
+		crossed |= target < 300 && target + 7 > 300;
+	}
+	CHECK(crossed); // some check replayed into the ignored stretch
 }

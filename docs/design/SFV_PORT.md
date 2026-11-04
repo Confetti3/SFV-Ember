@@ -135,17 +135,25 @@ corrects the guess, left the battle stopped. Now part of the layout:
   own fields hold pointers keep only their base. If a check fails later the
   record stops touching the game and logs why.
 
-Outside the fight (intros, round calls, the KO and results) frames still run
-in lockstep: the flow there waits on presentation a replay does not repeat
-the same way. The synctest mirrors that: before a lockstep frame it checks
-the guessed frames since the last confirmed one, and no check restores a
-state before a lockstep frame.
+No rollback starts outside the fight (intros, round calls, the KO and
+results): the flow there waits on presentation a replay does not repeat the
+same way. The game reads no player input there (`GameAdapter::InputsMatter`,
+SFV: `Fighting()`), so `RollbackSession` gives those frames neutral inputs
+and tells GGPO to ignore theirs (`ggpo_set_inputs_ignored`, the GGPO port's
+`ignored-inputs.patch`): an input for such a frame that differs from its
+guess is not a misprediction. Every rollback therefore starts on a fight
+frame; one may still replay across the fight's end (the flow record
+handles that), and a guessed KO it takes back puts the fight back. Nothing
+waits for confirmed inputs, so play runs at full speed throughout. The
+synctest follows the same rule: ignored frames are played and replayed
+with neutral inputs, and no check restores to one's start.
 
 ### Tested (2026-11-04, this PC)
 
 - Unit tests (mock fighter): synctest at distances 1-8, injected bug classes
   found and located, two sessions over loopback, a round flow in the layout
-  latching a KO where an offline run does (with rollbacks), lockstep floors.
+  latching a KO where an offline run does (with rollbacks), no check or
+  session rollback starting on a frame whose inputs are ignored.
 - In game, one copy: the synctest with perturbed (wrong-input) rollbacks every
   7 frames passes a whole two-round match, rolling back across both round ends
   (the flow switched back and forth, delegates rebuilt). Phase functions are
@@ -216,18 +224,14 @@ state before a lockstep frame.
 - Ember's interface: SFV will show Ember's own shell through a shared
   Ember library (docs/design/EMBER_LIBRARY.md); the D3D11 overlay host
   is ready for it (`src/overlay`).
-- After the match (older note): a linked match rematches by itself (`MatchEnd`: the
-  results menu is skipped and the game's own restart runs on both copies
-  at the same session frame; tested: the second match stays in step).
-  Leaving or changing fighters needs a way to choose (overlay) and a
-  second match generation on the link.
+- Changing fighters between matches needs Ember's room (a second match
+  generation on the link), which comes with Ember's shell.
 - Lockstep outside the fight used to cost speed at high ping (intros, KOs
   and round calls waited for confirmed inputs: about 12 fps at an 80 ms
-  round trip). Now both sides send neutral input outside the fight, so
-  every guess there is right; only the first input delay + 9 frames after
-  a fight ends (inputs sampled while a side still saw the fight) wait.
-  Tested: 12,000 frames across a round end at full speed, 25 held frames
-  instead of thousands, the same frame on both copies.
+  round trip). It is gone: inputs there are ignored (above), so nothing
+  waits. Tested in game: a linked best-of-3 with 30 s rounds at full speed,
+  580 rollbacks, the same result read on both copies and the same leave
+  frame.
 - Picking: fighters and stage come from the command line or the pipe; an
   in-game way to host, join and pick (overlay) is next.
 - Two PCs over a real network (one PC so far), rooms.

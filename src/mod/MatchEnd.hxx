@@ -4,10 +4,10 @@
 // a results menu (rematch, character select, exit...) that each player
 // answers on their own copy; two linked copies could take different ways
 // out. While a linked session runs, the mod keeps that menu from opening
-// and decides for both copies at the same session frame: the match ends
-// inside the battle flow's lockstep stretch (outside the fight frames only
-// run once both players' inputs are confirmed), so both copies reach it on
-// the same frame and nothing before it is ever rolled back.
+// and decides for both copies at the same session frame: the session holds
+// a pending end until the frame it was seen on is confirmed (NetplayMode),
+// so a guessed end that a rollback takes back is never acted on, and both
+// copies act on the same frame.
 //
 // The decision is the mod's (MatchEndChoice), the same on both copies:
 // a rematch (the game's own restart, what "Continue" does: same fighters

@@ -72,27 +72,32 @@ void SyncTester::Fail(int frame, const char* what)
 	report_.message = text;
 }
 
-bool SyncTester::Step(const FrameInputs& inputs, FramePlay play)
+bool SyncTester::Step(const FrameInputs& inputs)
 {
 	if (!report_.ok) return false;
-	const bool lockstep = play == FramePlay::Lockstep;
-	// Before it plays a lockstep frame, a session corrects every guessed frame
-	// since the last confirmed one.
-	if (lockstep && rollbackFloor_ < frame_ && !CheckRollback(OldestRestorable(), frame_)) return false;
 	Save(frame_);
-	At(frame_).inputs = inputs;
-	game_.Advance(inputs, false);
+	Saved& s = At(frame_);
+	s.inputs = inputs;
+	s.restorable = game_.InputsMatter();
+	game_.Advance(AsPlayed(inputs), false);
 	report_.framesRun = ++frame_;
-	if (lockstep) {
-		rollbackFloor_ = frame_; // confirmed: never restored past
-		return true;
-	}
 	return frame_ % distance_ != 0 || CheckRollback(OldestRestorable(), frame_);
 }
 
-int SyncTester::OldestRestorable() const
+int SyncTester::OldestRestorable()
 {
-	return std::max(rollbackFloor_, frame_ - distance_);
+	for (int k = std::max(0, frame_ - distance_); k < frame_; k++) {
+		if (At(k).restorable) return k;
+	}
+	return frame_;
+}
+
+// As RollbackSession::InputsForThisFrame, asked again on every replayed
+// frame: a replay that changes the course of the game (a guessed KO taken
+// back) changes which frames read inputs.
+FrameInputs SyncTester::AsPlayed(const FrameInputs& inputs) const
+{
+	return game_.InputsMatter() ? inputs : FrameInputs{};
 }
 
 bool SyncTester::CheckRollback(int from, int now)
@@ -104,7 +109,7 @@ bool SyncTester::CheckRollback(int from, int now)
 		// The timeline a misprediction would have played, then thrown away.
 		layout.LoadFrom(At(from).bytes.data());
 		game_.AfterLoad();
-		for (int k = from; k < now; k++) game_.Advance(Perturbed(At(k).inputs, k), true);
+		for (int k = from; k < now; k++) game_.Advance(AsPlayed(Perturbed(At(k).inputs, k)), true);
 	}
 	layout.LoadFrom(At(from).bytes.data());
 	game_.AfterLoad();
@@ -116,7 +121,7 @@ bool SyncTester::CheckRollback(int from, int now)
 	}
 	bool diverged = false;
 	for (int k = from; k < now; k++) {
-		game_.Advance(At(k).inputs, true);
+		game_.Advance(AsPlayed(At(k).inputs), true);
 		if (diverged || layout.HashLive() == At(k + 1).hash) continue;
 		Fail(k + 1, "replayed frame differs");
 		if (!learn_) return false;

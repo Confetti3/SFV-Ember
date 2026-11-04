@@ -10,6 +10,11 @@
 // simulation reads something that is not its inputs. The report names the
 // regions that differ and the first differing byte in each.
 //
+// Frames follow netplay's rule (GameAdapter::InputsMatter): a frame whose
+// inputs the game ignores is played with neutral inputs, and no check
+// restores to its start, since a session never mispredicts it; a check from
+// an earlier frame still replays across it, as a rollback does.
+//
 // SyncTester is incremental so it can run inside the game, one rendered frame
 // per Step (the mod's synctest mode); RunSyncTest drives it in a loop for the
 // mock game.
@@ -51,10 +56,6 @@ struct SyncTestReport {
 	std::map<std::string, RegionDiff> regionExamples; // the first difference seen in each
 };
 
-// How a session plays a frame: on guessed inputs it may roll back (during
-// the fight), or in lockstep once both inputs are confirmed (outside it).
-enum class FramePlay { MayRollBack, Lockstep };
-
 class SyncTester {
 public:
 	// `learn`: keep going after a difference, tallying the regions involved
@@ -66,22 +67,25 @@ public:
 	SyncTester(GameAdapter& game, int distance, bool learn = false, bool perturb = false);
 
 	// One forward frame, then a rollback check when one is due. Returns false
-	// once a check has failed (never in learning mode). Lockstep frames mirror
-	// a session: the guessed frames before one are checked before it is
-	// played, and no check restores to before the state after it.
-	bool Step(const FrameInputs& inputs, FramePlay play = FramePlay::MayRollBack);
+	// once a check has failed (never in learning mode).
+	bool Step(const FrameInputs& inputs);
 	const SyncTestReport& Report() const { return report_; }
 
 private:
 	struct Saved {
 		std::vector<uint8_t> bytes;
 		uint64_t hash = 0;
-		FrameInputs inputs; // what the frame starting from this state was played with
+		FrameInputs inputs;      // the players' inputs for the frame starting from this state
+		bool restorable = false; // that frame read them: a rollback may start here
 	};
 
 	Saved& At(int frame) { return saved_[frame % saved_.size()]; }
 	void Save(int frame);
-	int OldestRestorable() const;
+	// The oldest state within the distance a rollback may start from, or
+	// frame_ when there is none.
+	int OldestRestorable();
+	// The inputs a session gives the frame the game is about to play.
+	FrameInputs AsPlayed(const FrameInputs& inputs) const;
 	// Restores state `from`, replays to `now` and compares every frame.
 	bool CheckRollback(int from, int now);
 	void Fail(int frame, const char* what);
@@ -92,7 +96,6 @@ private:
 	bool learn_;
 	bool perturb_;
 	int frame_ = 0;
-	int rollbackFloor_ = 0; // the earliest state a check may restore
 	std::vector<Saved> saved_;
 	SyncTestReport report_;
 };
