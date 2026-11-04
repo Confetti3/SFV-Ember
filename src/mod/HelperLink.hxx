@@ -40,6 +40,10 @@ public:
 
 	// The match's endpoints once the link is ready.
 	std::optional<MatchLink::Endpoints> Ready() const;
+	// The helper did not come up, its connection broke, or the link failed:
+	// no match will come from it.
+	bool Failed() const;
+	std::string Failure() const; // why, without the invitation (a secret)
 	std::string Describe() const; // JSON for the status report
 	void RegisterCommands();
 

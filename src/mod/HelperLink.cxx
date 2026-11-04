@@ -146,6 +146,21 @@ std::optional<MatchLink::Endpoints> HelperLink::Ready() const
 	return link_.GetEndpoints();
 }
 
+bool HelperLink::Failed() const
+{
+	std::lock_guard lock(mutex_);
+	return !failure_.empty() || client_.State() == sf4e::platform::HelperState::Failed ||
+		link_.GetPhase() == MatchLink::Phase::Failed;
+}
+
+std::string HelperLink::Failure() const
+{
+	std::lock_guard lock(mutex_);
+	if (!failure_.empty()) return failure_;
+	if (client_.State() == sf4e::platform::HelperState::Failed) return "the helper connection broke";
+	return link_.Failure();
+}
+
 std::string HelperLink::Describe() const
 {
 	std::lock_guard lock(mutex_);

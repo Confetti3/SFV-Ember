@@ -66,6 +66,12 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	uint32_t seed = kSessionSeed;
 	int delay = config_.delay;
 	if (link_) {
+		if (link_->Failed()) {
+			// No match will come: the battle runs offline instead of waiting.
+			Log("netplay: no match link (%s); the battle runs offline", link_->Failure().c_str());
+			started_ = true;
+			return true;
+		}
 		const std::optional<MatchLink::Endpoints> match = link_->Ready();
 		if (!match) return false;
 		c.localPlayer = match->localPlayer;
