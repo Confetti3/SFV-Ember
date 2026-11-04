@@ -636,3 +636,25 @@ Scope: a private room, two players, one game per Ready, an explicit end that ret
 9. **Selection on SFV.** A `DrawSelection` provided by the host, built from `GameMenu` rows over `ReadContentLists()` (the pick rows of the overlay plan's SfvPanel). Do not port `FighterSelector` for this slice.
 
 After that, in order: read a winner (results, sets, rankings), rounds and time in `MatchPicks`, the generic pick model (decision a) with V-Skill and V-Trigger if they turn out to be pre-match choices, public rooms through the room host's `game` key, and spectators.
+
+## 7. x64 / C++20 compile probe (2026-11-04, snapshot 820dc938c)
+
+The NEUTRAL set (section 1.1, plus the refactor-first files) was compiled with SFV's flags (x64, `/W4 /permissive- /utf-8`, `/MD`, C++20, x64-windows-static-md): 103 `.cxx` files and one translation unit per NEUTRAL header, `/c` only. A canary confirmed C4244 fires with these flags. **There were no narrowing or pointer-to-int warnings in Ember's own code, no inline asm and no `SetWindowLong` without `Ptr`.** The whole set builds in about 1.5 minutes on this PC. Everything that failed is listed below, with the step that absorbs it.
+
+| Class | Sites | Cause | Fix / step |
+|---|---|---|---|
+| 32-bit layout `static_assert`s | 7 | `common/KeyboardSlots.hxx`, `common/ReplayRecorder.hxx` describe SF4 engine objects | Both are SF4-only: add them to section 1.2 |
+| Dimps pointer casts (C4311/C4302/C4312) | 129 | `IrohRoom*`, `IrohMatchSession`, `MatchAuthority.hxx`, `RoomMessageTag.hxx` and `RoomRecoveryRuntime.hxx` reach Dimps through `sf4e__SessionProtocol.hxx`, then `SessionPlainTypes.hxx` under `_WIN32` | Step 6: the plain (room host) branch becomes the default, Dimps only under an SF4 define; its `typedef unsigned int DWORD` becomes `std::uint32_t`. `IrohRoom*` is therefore not "unchanged" until step 6 |
+| `path::u8string()` is `std::u8string` (C++20) | 6 | `launcher/update/PackageInstaller.cxx:566,674,773,784` | One `Utf8(const fs::path&)` helper; also covers the deprecated `u8path` (10 sites, incl. `ZipExtract.cxx:98`, `ReplayInputDetails.hxx:68`) |
+| Comparing two enum types (C5054, C++20) | 14 | `ui/ControllerNavigation.hxx:26-31` `static_assert`s | Cast both sides to `int` |
+| spdlog wide file name | 1 | `platform/VideoLinkServe.cxx:22` needs `SPDLOG_WCHAR_FILENAMES`, which SF4's overlay triplet sets | SFV adds an x64 overlay triplet with the same option (part of the logging decision in 1.3) |
+| Missing includes | ~10 | e.g. `common/ButtonLayoutCapture.hxx` uses `optional`/`vector` without including them | Include what is used |
+| `/permissive-` `typename` | 2 | `sf4e/sf4e__Platform.hxx:149,156` (SF4 adapter, reached via `SessionClient`) | One word each, if SF4 ever builds `/permissive-` |
+| /W4 noise | ~15 | shadowing, unused parameters, `strncpy`/`getenv`, `NOMINMAX` redefinitions (`CountryPicker.cxx:10`, `JsonFileStore.hxx:3`) | Fix in place |
+
+**NEUTRAL files that reach SF4-only headers the plan did not list:**
+- `ui/ApplicationShell.hxx` (included by every `ApplicationShell__*`) pulls `FighterCatalog`, `GameDisplayConfig`, `ControllerView`, `ReplaysPanel` → `ReplayExport`/`ReplayFiles`, and `PlayerPreferences`. `ApplicationShell__Values.cxx` reaches `FighterCatalog` through `ReplaySummaryText` → `SelectionLabels`. Steps 5 and 7 (catalog and capabilities) cut these. The shell is Ember's interface and moves into the library; the overlay plan's "do not copy ApplicationShell" rule was for the SFV stand-in panel, which the maintainer rejected.
+- `ui/OverlayLayers.cxx` → `TrainingPanel.hxx`; `netplay/ControllerInventory.hxx` and `common/ControllerHints.hxx` → `ControllerView.hxx`; `session/RandomFighterPick.hxx` → `RandomFighter.hxx`; `launcher/GameLocator.cxx` → `SteamKeyValues.hxx`; `github_release_client_internal.hxx` → `PackageInventory.hxx` (step 8).
+- `ui/lab/UiLab.cxx` is the D3D9 harness (`imgui_impl_dx9`, `FighterSelector`, `TrainingPanel`): it goes to section 1.2, and SFV gets its own DX11 lab.
+
+**SFV's `vcpkg.json` needs:** `fmt`, `spdlog` (with wide file names) and `zlib`. The two GGPO overlay ports differ: SFV's carries `ignored-inputs.patch`. Reconcile them before the library shares `ggponet.h`. The simplest fix is to add the patch to Ember's port, since the call is opt-in.
