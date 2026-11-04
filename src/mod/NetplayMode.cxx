@@ -31,8 +31,8 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	std::lock_guard lock(mutex_);
 	session_ = std::make_unique<RollbackSession>(adapter);
 	started_ = false;
-	frames_ = held_ = lockstepHolds_ = timesyncEventsSeen_ = 0;
-	holdBudget_ = 0;
+	frames_ = lockstepHolds_ = 0;
+	pacer_.Reset();
 }
 
 void NetplayMode::Frame(SfvAdapter& adapter)
@@ -61,10 +61,11 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		return;
 	}
 	const bool frozen = freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_;
-	if (frozen || HoldForLockstep(adapter) || HoldForTimeSync()) {
+	if (frozen || HoldForLockstep(adapter)) {
 		session_->Poll(); // held frames still receive inputs
 		return;
 	}
+	if (session_->Running()) pacer_.Frame(*session_, last_ == RollbackSession::StepResult::PredictionStall);
 	const int frame = session_->Frame();
 	const PackedInput local = !config_.mashSeed ? adapter.Sampled(0)
 		: frame >= config_.mashFrom              ? input::Mash(config_.mashSeed, frame)
@@ -111,20 +112,6 @@ bool NetplayMode::HoldForLockstep(const SfvAdapter& adapter)
 	return true;
 }
 
-bool NetplayMode::HoldForTimeSync()
-{
-	const RollbackSession::Stats& stats = session_->GetStats();
-	if (stats.timesyncEvents != timesyncEventsSeen_) {
-		// A fresh estimate of how far ahead we are replaces the old one.
-		timesyncEventsSeen_ = stats.timesyncEvents;
-		holdBudget_ = stats.timesyncFramesAhead > 0 ? stats.timesyncFramesAhead : 0;
-	}
-	if (holdBudget_ <= 0 || frames_ % kHoldEveryFrames != 0) return false;
-	holdBudget_--;
-	held_++;
-	return true;
-}
-
 std::string NetplayMode::Describe() const
 {
 	std::lock_guard lock(mutex_);
@@ -134,13 +121,13 @@ std::string NetplayMode::Describe() const
 	snprintf(text, sizeof(text),
 		"{\"live\":%s,\"running\":%s,\"failure\":%s,\"frame\":%d,\"confirmed\":%d,\"last\":\"%s\","
 		"\"advanced\":%llu,\"rollbacks\":%llu,\"resimulated\":%llu,\"longestRollback\":%d,\"stalls\":%llu,"
-		"\"held\":%llu,\"lockstepHolds\":%llu,\"framesAhead\":%d}",
+		"\"lockstepHolds\":%llu,\"pacing\":",
 		session_->Live() ? "true" : "false", session_->Running() ? "true" : "false",
 		JsonString(session_->FailureReason()).c_str(), session_->Frame(), session_->LastConfirmedFrame(),
 		StepName(last_), (unsigned long long)s.framesAdvanced, (unsigned long long)s.rollbacks,
 		(unsigned long long)s.resimulatedFrames, s.longestRollback, (unsigned long long)s.predictionStalls,
-		(unsigned long long)held_, (unsigned long long)lockstepHolds_, s.timesyncFramesAhead);
-	return text;
+		(unsigned long long)lockstepHolds_);
+	return text + pacer_.Describe() + "}";
 }
 
 void NetplayMode::RegisterCommands()

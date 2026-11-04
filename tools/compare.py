@@ -43,7 +43,7 @@ def main(a: int = 0, b: int = 1) -> int:
     sa, sb = netplay_status(a), netplay_status(b)
     for index, s in ((a, sa), (b, sb)):
         print(f"copy {index}: frame {s['frame']} confirmed {s['confirmed']} rollbacks {s['rollbacks']} "
-              f"longest {s['longestRollback']} stalls {s['stalls']} held {s['held']}")
+              f"longest {s['longestRollback']} stalls {s['stalls']} pacing {s['pacing']}")
     confirmed = min(sa["confirmed"], sb["confirmed"])
     if confirmed < 1:
         print("nothing confirmed yet")

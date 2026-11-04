@@ -95,6 +95,15 @@ public:
 	const std::string& FailureReason() const { return failure_; }
 	int Frame() const { return frame_; }
 	int LastConfirmedFrame() const;
+	// GGPO's time-sync view of the remote player: how many frames each side
+	// sees itself behind the other (half the difference is how far ahead this
+	// side runs), and the round-trip time.
+	struct Rift {
+		double localFramesBehind;
+		double remoteFramesBehind;
+		int pingMs;
+	};
+	bool ReadRift(Rift* out) const;
 	// Hash of the state saved for `frame`, if it was hashed (see
 	// Config::hashEveryFrames) and is still in the history. After the frame is
 	// confirmed this is final, so peers can compare it.
@@ -144,6 +153,7 @@ private:
 	GameAdapter& game_;
 	GGPOSession* session_ = nullptr;
 	int localHandle_ = -1;
+	int remoteHandle_ = -1;
 	Config config_;
 	sf4e::gate::GgpoGateModel gate_{};
 	sf4e::gate::AbortLatch latch_;

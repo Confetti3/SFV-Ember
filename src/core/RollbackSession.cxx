@@ -102,7 +102,7 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 			CloseNow();
 			return refuse("ggpo_add_player failed");
 		}
-		if (player == config.localPlayer) localHandle_ = handle;
+		(player == config.localPlayer ? localHandle_ : remoteHandle_) = handle;
 	}
 	ggpo_set_frame_delay(session_, localHandle_, config.inputDelay);
 	ggpo_set_disconnect_timeout(session_, config.disconnectTimeoutMs);
@@ -196,7 +196,7 @@ void RollbackSession::CloseNow()
 		ggpo_close_session(session_);
 		session_ = nullptr;
 	}
-	localHandle_ = -1;
+	localHandle_ = remoteHandle_ = -1;
 	gate_.OnSessionClosed();
 	for (Slot& s : pool_) s.used = false;
 }
@@ -226,6 +226,16 @@ int RollbackSession::LastConfirmedFrame() const
 	int frame = -1;
 	if (session_ && ggpo_get_last_confirmed_frame(session_, &frame) == GGPO_OK) return frame;
 	return -1;
+}
+
+bool RollbackSession::ReadRift(Rift* out) const
+{
+	if (!session_ || remoteHandle_ < 0) return false;
+	GGPONetworkStats stats{};
+	if (ggpo_get_network_stats(session_, remoteHandle_, &stats) != GGPO_OK) return false;
+	*out = {(double)stats.timesync.local_frames_behind, (double)stats.timesync.remote_frames_behind,
+		stats.network.ping};
+	return true;
 }
 
 bool RollbackSession::HashAt(int frame, uint64_t* out) const
