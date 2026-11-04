@@ -9,7 +9,7 @@
 //   -sfve_port=N         netplay: this copy's UDP port   (default 7000 + 2*instance)
 //   -sfve_peer_port=N    netplay: the other copy's port on loopback
 //   -sfve_delay=N        netplay: input delay frames (default 0: most rollbacks)
-//   -sfve_mash=N         drive this copy's player with seeded random inputs
+//   -sfve_mash=N         drive this copy's player (synctest: both) with seeded random inputs
 //   -sfve_mash_from=F    ...starting at session frame F (no input before)
 //   -sfve_distance=N     synctest rollback distance (default 7)
 //   -sfve_pads=0,1       XInput slots that are virtual pads from the start

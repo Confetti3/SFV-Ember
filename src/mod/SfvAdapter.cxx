@@ -220,6 +220,9 @@ int SfvAdapter::ReseedRandom(uint32_t seed)
 			// Region size and offset place the generator the same way in every process.
 			const uint32_t place = (uint32_t)(r.size * 2654435761u) ^ (uint32_t)((at - begin) * 40503u);
 			*reinterpret_cast<uint32_t*>(at + sfv::rng::kState) = seed ^ place;
+			if (r.size == sfv::rng::kFighterPairSize && at == begin) {
+				*reinterpret_cast<uint32_t*>(at + sfv::rng::kFighterDraw) = 0;
+			}
 			reseeded++;
 		}
 	}

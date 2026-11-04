@@ -1,6 +1,7 @@
 #include "mod/SyncTestMode.hxx"
 
 #include "mod/ControlPipe.hxx"
+#include "mod/GameInput.hxx"
 #include "mod/Log.hxx"
 
 #include <stdio.h>
@@ -30,14 +31,22 @@ void SyncTestMode::Frame(SfvAdapter& adapter)
 		adapter.RunOriginal(); // the battle goes on without checks
 		return;
 	}
-	const FrameInputs inputs{{adapter.Sampled(0), adapter.Sampled(1)}};
-	const bool going = tester_->Step(inputs);
+	const bool going = tester_->Step(Inputs(adapter));
 	if (learn_) {
 		LogNewRegions(adapter);
 	} else if (!going && !failureLogged_) {
 		failureLogged_ = true;
 		LogFailure();
 	}
+}
+
+FrameInputs SyncTestMode::Inputs(SfvAdapter& adapter) const
+{
+	if (!mashSeed_) return FrameInputs{{adapter.Sampled(0), adapter.Sampled(1)}};
+	const int frame = tester_->Report().framesRun;
+	if (frame < mashFrom_) return FrameInputs{};
+	// A second seed for P2 that no P1 seed shares by accident of small numbers.
+	return FrameInputs{{input::Mash(mashSeed_, frame), input::Mash(mashSeed_ * 2654435761u + 1, frame)}};
 }
 
 void SyncTestMode::LogFailure() const

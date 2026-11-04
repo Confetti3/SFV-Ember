@@ -332,6 +332,12 @@ namespace rng {
 constexpr uint32_t kVtable = 0x2C4F078;   // data: the generator class's vtable
 constexpr uint32_t kGlobal = 0x3966538;   // data: the global generator object
 constexpr uint32_t kState = 0x8;          // uint32 state after the vtable
+// A fighter's generator is followed by the value its tick drew from it
+// (rva 0x37D64E: fighter+0xC50 = generator at fighter+0xC40, next()); the
+// game snapshots the pair as one region of this size. Reseeding the
+// generator leaves the draw from before the battle, which differs per process.
+constexpr uint32_t kFighterDraw = 0x10;
+constexpr uint32_t kFighterPairSize = 24;
 } // namespace rng
 
 namespace flow {
