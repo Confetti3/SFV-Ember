@@ -193,10 +193,12 @@ void Launch(const MatchPicks& picks)
 	Field<int32_t>(message, jump::kMessageMode) = (int32_t)picks.target;
 	Field<uint8_t>(message, jump::kMessageCopySetting) = 0;
 	Field<uint8_t>(message, jump::kMessageSwapSides) = 0;
-	// Not the game's ownership check: it rewrites picks from this copy's own
-	// entitlements (and picks a fallback stage by rand()), so two linked
-	// copies could load different battles.
-	Field<uint8_t>(message, jump::kMessageCheckOwnership) = 0;
+	// The game's own ownership check, as its menus run it: the mod unlocks
+	// nothing (SFV_PORT.md, "Not doing"). It judges both players by this
+	// copy's entitlements, so linked copies that own different content can
+	// load different battles (an unowned fighter ends the jump); how to
+	// handle that is open (SFV_PORT.md, open questions).
+	Field<uint8_t>(message, jump::kMessageCheckOwnership) = 1;
 	s_pending = Pending{message, false, picks};
 	Log("launch: battle jump, target %d", (int)picks.target);
 	ChangeScene(jumpClass, message);

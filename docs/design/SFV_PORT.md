@@ -157,6 +157,43 @@ state before a lockstep frame.
   and cloth physics and small differences spread over the frame, about 5% of
   pixels).
 
+- In game, two copies linked through Ember's helper (`sf4-net`, Iroh, the
+  loopback bridge), from a cold start with no input at all
+  (`tools/runauto.ps1`): both boot past the offline dialogs to the main
+  menu (about 20 s), link (host's grant and setup, joiner's setup), launch
+  the same battle from the main menu with the players' picks (host P1,
+  joiner P2) and fight it with rollback: 3,000 frames with 30 ms lag, 336
+  rollbacks, the same frame on both screens.
+
+### Boot and match start without menus
+
+- **Offline dialogs** (`OfflineDialogs`). Boot's failed EULA download
+  ("Failed to retrieve data. [80003]", and the other CDN downloads' codes)
+  is dropped at the error-dialog service, which is only one listener on the
+  game's error broadcast: boot still sees the code and goes offline, and it
+  waits only while that service counts an open dialog. The offline notice
+  (`Dialog_INFO_0011`) is dropped by its id; the title then waits for its
+  boot window's "Login", which offline comes only when that notice closes,
+  so the mod makes the same two writes that command makes. If the title
+  never waits that way the notice is shown after all. `-sfve_dialogs`.
+- **Game thread** (`GameScene`, `GameThread`). The scene manager's tick is
+  hooked: it runs queued work once a frame between two frames of a state,
+  and gives the current scene state (status `scene`).
+- **Launch** (`VersusLaunch`). SFV's battle jump (`BattleJumpSetupState`,
+  the game's way from a battle into training) started from the main menu
+  with a target of the mod's own: local versus, versus CPU or training.
+  Before its first step the mod gives the battle flow a loader (leaving the
+  main menu resets the flow, and that step reads the previous battle's);
+  after its second step it writes the fighters, costumes, colours and stage
+  into the new mode's data object through the object's own setters. The
+  game's ownership check then runs as in its menus, and the game loads and
+  enters the battle itself (about 4 s). `launch versus RYU:0:1 CNL -`.
+- **Linked start** (`MatchLink` setups, `HelperLink`). Each side brings a
+  setup (`-sfve_fighter=CODE[:costume[:colour]]`, the host also
+  `-sfve_stage=CODE`); the host's travels in the grant, the joiner's
+  answers it. Once both are known and the link is ready, both copies launch
+  the same battle on the main menu.
+
 ### Open work
 
 - **Cross-copy state hashes.** About 30 game regions hash differently between
@@ -168,8 +205,11 @@ state before a lockstep frame.
   logged on every checkpoint line); a 4-frame rollback saves 4 times. The
   round results (557 KB) change only at a round's end and are the obvious
   first saving.
-- Pacing (frame stretching instead of holding whole frames), two PCs through
-  the Ember helper, rooms.
+- After the match: the game's results menu waits for a player; linked copies
+  need the same choice (rematch or main menu) made for both.
+- Picking: fighters and stage come from the command line or the pipe; an
+  in-game way to host, join and pick (overlay) is next.
+- Two PCs over a real network (one PC so far), rooms.
 
 ## Prior art
 
@@ -230,7 +270,14 @@ loopback-only rule stays true in the finished design.
 1. Project name and repository: local folder `sfv-ember` only for now, no
    GitHub repository. Name it, and say whether it should be pushed.
 2. The firewall rule (layer 2) — commands are in the summary message.
-3. Character availability offline (see Not doing).
+3. Character availability offline (see Not doing). The match launch runs
+   the game's own ownership check on each copy, judging both players by
+   that copy's entitlements, as the game's menus do. Two players who own
+   different fighters, costumes or stages can therefore load different
+   battles; an unowned fighter ends the launch. Options: (a) each player
+   may only pick what both own (the setups would carry ownership); (b) each
+   copy checks only its own player's pick and shows the opponent's as
+   picked, as online play does; (c) leave as is. Undecided.
 4. The optional privacy-policy consent in SFV's first-run prompts was
    declined; the Options screen only offers to revoke it. Nothing needs it
    offline.

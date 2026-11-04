@@ -161,7 +161,8 @@ namespace jump {
 // -1 back to the main menu; the last step goes to VersusBattleState for 0
 // and 1, TrainingBattleState for 2), +44 (training only) copy the setting's
 // fighters, +45 swap sides in that copy, +46 run the ownership check (rva
-// 0x5E2D10: replaces unowned costumes/colours/stages, the stage by rand()).
+// 0x5E2D10: replaces unowned costumes/colours/stages, the stage by rand(),
+// and leaves the jump for an unowned fighter).
 constexpr uint32_t kMessageMode = 40;
 constexpr uint32_t kMessageCopySetting = 44;
 constexpr uint32_t kMessageSwapSides = 45;
