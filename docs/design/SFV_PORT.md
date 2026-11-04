@@ -238,7 +238,7 @@ with neutral inputs, and no check restores to one's start.
 
 ### Open work
 
-- **Cross-copy s- **Cross-copy state hashes** (see "What peers compare"). Verified in game
+- **Cross-copy state hashes** (see "What peers compare"). Verified in game
   (2026-11-04, the build with the masks, two linked copies, 30 ms lag, 30 s
   rounds): every checkpoint list and every overall hash equal on both copies
   for 4,500 frames across a round end. Then `perturb 4300 global.rng 0 1` on
@@ -246,8 +246,27 @@ with neutral inputs, and no check restores to one's start.
   differed from 4560 on (the first checkpoint after the change reached hashed
   state; until then the generator's draw had not shown). The fighters' pawn
   regions (positions) are not hashed, so a desync that only moves a fighter
-  shows once it reaches hashed state, not on the frame itself. Still owed:
-  more seeds, and a 0 ms run. A boot crash seen after Steam restarted was
+  shows once it reaches hashed state, not on the frame itself.
+  0 ms, other fighters and seeds (KEN vs CMY): all 76 checkpoints equal,
+  frame 0 included once the reseed also cleared each fighter's last random
+  draw (the game snapshots it with the generator, fighter+0xC50, and the
+  reseed had left each process's pre-battle draw). That run had no
+  rollbacks (2 frames of delay hide 0 ms).
+  **Open: a real divergence under rollbacks.** 60 ms, input delay 1, RYU vs
+  KEN, seeds 31337/4242: about 490 rollbacks of up to 4 frames, checkpoints
+  equal to 2340 and different from 2400 on, the same in two runs; only one
+  region differs (557 KB), two counters 1000 apart with an equal sum. Holding
+  the copies at 2340 (which moves the rollbacks) avoided it. The in-game
+  synctest with both players mashing (`-sfve_mash` now drives both in
+  synctest), distance 4, perturbed: 9 checks in 7,100 frames differ, in
+  per-player statistics the battle keeps every frame (rva 0x4BA550 adds one
+  frame's time to a bucket chosen by the fighter's state: one replayed frame
+  counted in another bucket, the same 1000 step), a 136-byte object whose
+  pointer (+0x80, written each frame at rva 0x485232) is set when played and
+  null replayed, a 16-bit counter one higher when played (44-byte regions),
+  and a per-player flag (204-byte regions, +0x8C). Each needs: what the code
+  reads that a restore does not bring back, and whether the fight reads it.
+  A boot crash seen after Steam restarted was
   Steam's (its registry named a dead client process; restarting Steam fixed
   it), not the mod's. `perturb` finds `scan`'s `game.N` names only while
   the layout is the one `scan` read (it is rebuilt between rounds).
