@@ -36,6 +36,10 @@ namespace sfve {
 
 class RollbackSession {
 public:
+	// Every kCheckpointInterval frames the session also keeps one hash per
+	// region, so peers that disagree can find where. The latest few are kept.
+	static constexpr int kCheckpointInterval = 60;
+
 	struct Config {
 		int localPlayer = 0;               // 0 = P1, 1 = P2
 		uint16_t localPort = 0;
@@ -44,7 +48,11 @@ public:
 		int inputDelay = 0;                // frames
 		int disconnectTimeoutMs = 5000;
 		int disconnectNotifyStartMs = 750;
-		bool verifyLoads = false;          // re-hash every restored state
+		bool verifyLoads = false;          // re-hash every restored state (hashes every save)
+		// Frames between the state hashes HashAt keeps. Hashing a state costs
+		// several times what copying it does and GGPO never reads it, so by
+		// default only checkpoints are hashed; the loopback tests hash every frame.
+		int hashEveryFrames = kCheckpointInterval;
 	};
 
 	enum class StepResult {
@@ -87,15 +95,13 @@ public:
 	const std::string& FailureReason() const { return failure_; }
 	int Frame() const { return frame_; }
 	int LastConfirmedFrame() const;
-	// Hash of the state saved for `frame`, if it is still in the history.
-	// After the frame is confirmed this is final, so peers can compare it.
+	// Hash of the state saved for `frame`, if it was hashed (see
+	// Config::hashEveryFrames) and is still in the history. After the frame is
+	// confirmed this is final, so peers can compare it.
 	bool HashAt(int frame, uint64_t* out) const;
 	// The saved bytes of `frame` while its save is still in the pool (the
 	// latest frames), laid out by StateLayout::SaveTo; null otherwise.
 	const uint8_t* SavedState(int frame) const;
-	// Every kCheckpointInterval frames the session also keeps one hash per
-	// region, so peers that disagree can find where. The latest few are kept.
-	static constexpr int kCheckpointInterval = 60;
 	bool RegionHashesAt(int frame, std::vector<uint64_t>* out) const;
 	int LatestCheckpoint(int atOrBefore) const;
 	const Stats& GetStats() const { return stats_; }
@@ -104,6 +110,7 @@ public:
 private:
 	struct Slot {
 		bool used = false;
+		bool hashed = false;
 		int frame = -1;
 		uint64_t hash = 0;
 		std::vector<uint8_t> bytes;

@@ -67,9 +67,6 @@ public:
 
 	uint64_t LayoutId() const;
 
-	// GGPO's 32-bit checksum, folded from the 64-bit hash.
-	static int Checksum32(uint64_t hash) { return (int)(uint32_t)(hash ^ (hash >> 32)); }
-
 private:
 	uint64_t HashRegion(size_t index, const uint8_t* bytes) const;
 	void ZeroAddresses(uint8_t* bytes, size_t n, uintptr_t at) const;

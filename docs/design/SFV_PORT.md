@@ -200,6 +200,23 @@ exe with our own analysis. It targets the same exe build (`0x648AD3A4`).
    two PCs through the Ember helper.
 5. **Ember integration**: rooms, Ember ID, overlay, spectators, replays.
 
+### Plan for the full port (2026-11-04)
+
+How SF4 Ember is split (sf4-current): the `sf4-net` helper only carries
+traffic (Iroh QUIC, admission, Raft room recovery, a loopback UDP bridge for
+GGPO, HTTP to the bridge server). Rooms, the match protocol, GGPO, results and
+chat all run in C++ in the game process; GGPO only ever talks to a loopback
+port the helper relays. SFV Ember keeps that split, so the network guard's
+loopback-only rule stays true in the finished design.
+
+| Step | Work | Where |
+| --- | --- | --- |
+| A. Rollback quality | lazy hashing (done), pacing by frame stretching (continuous rift, `PacingController`), presentation during replays (sound, effects), learned cross-copy hash masks for desync detection, auto input delay from the helper's probe | sfv-ember |
+| B. Helper link | `HelperProcess`/`HelperClient` and the IPC framing from Ember; `sf4-net` started with an SFV game id so SFV and SF4 peers can never meet (ALPNs, invitation prefix, ports, handshake magic); GGPO through the helper's loopback bridge; SFV input size in the packet bound | sfv-ember + a game id option in `sf4-net` (Ember repo) |
+| C. Rooms and match flow | the room/session layer made game-neutral (match data without Dimps types), SFV's character select driven from it, results from the round judge | shared session code, SFV adapters |
+| D. Overlay | ImGui on DX11 (`IDXGISwapChain::Present`/`ResizeBuffers`), the Ember shell, controller navigation | sfv-ember |
+| E. Services | Ember ID, Discord, the bridge server accepting `game = "sfv"`, spectators (GGPO spectator backend), replays (SFV's own format) | Ember helper and server |
+
 ## Not doing
 
 - Any character, costume or entitlement unlock. Offline, SFV may treat

@@ -308,26 +308,32 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 		return false;
 	}
 	StateLayout& layout = game_.Layout();
-	LARGE_INTEGER started, finished, perSecond;
+	LARGE_INTEGER started, copied, hashed, perSecond;
 	QueryPerformanceCounter(&started);
 	layout.SaveTo(slot->bytes.data());
+	QueryPerformanceCounter(&copied);
 	slot->used = true;
 	slot->frame = frame;
-	slot->hash = layout.HashSaved(slot->bytes.data());
-	QueryPerformanceCounter(&finished);
-	history_[frame % kHistory] = {frame, slot->hash};
-	if (frame % kCheckpointInterval == 0) {
+	const bool checkpoint = frame % kCheckpointInterval == 0;
+	slot->hashed = checkpoint || config_.verifyLoads || frame % config_.hashEveryFrames == 0;
+	slot->hash = slot->hashed ? layout.HashSaved(slot->bytes.data()) : 0;
+	QueryPerformanceCounter(&hashed);
+	if (slot->hashed) history_[frame % kHistory] = {frame, slot->hash};
+	if (checkpoint) {
 		layout.RegionHashesSaved(slot->bytes.data(), checkpoints_[frame]); // a replay overwrites it
 		QueryPerformanceFrequency(&perSecond);
-		CoreLog("checkpoint: frame %d hash %016llx (save %lld us)", frame, (unsigned long long)slot->hash,
-			(finished.QuadPart - started.QuadPart) * 1000000 / perSecond.QuadPart);
+		const auto us = [&](const LARGE_INTEGER& a, const LARGE_INTEGER& b) {
+			return (b.QuadPart - a.QuadPart) * 1000000 / perSecond.QuadPart;
+		};
+		CoreLog("checkpoint: frame %d hash %016llx (copy %lld us, hash %lld us)", frame,
+			(unsigned long long)slot->hash, us(started, copied), us(copied, hashed));
 		while (checkpoints_.size() > kCheckpointsKept) checkpoints_.erase(checkpoints_.begin());
 	}
 	frame_ = frame;
 
 	*buffer = reinterpret_cast<unsigned char*>(slot);
-	*len = 1; // GGPO asserts on a zero length; it never reads the bytes
-	*checksum = StateLayout::Checksum32(slot->hash);
+	*len = 1;      // GGPO asserts on a zero length; it never reads the bytes
+	*checksum = 0; // nor the checksum (only its synctest backend would)
 	return true;
 }
 
