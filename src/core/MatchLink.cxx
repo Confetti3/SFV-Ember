@@ -13,6 +13,7 @@ using json = nlohmann::json;
 
 constexpr uint64_t kGeneration = 1; // one match per link for now
 constexpr const char* kGrantKind = "sfve_grant";
+constexpr const char* kSetupKind = "sfve_setup"; // the joiner's setup, answering the grant
 
 bool AllZero(const std::array<uint8_t, 32>& bytes)
 {
@@ -40,19 +41,23 @@ MatchLink::MatchLink(std::string build, size_t maxPacket, Dependencies deps)
 {
 }
 
-void MatchLink::Host(int inputDelay)
+void MatchLink::Host(int inputDelay, std::string setup)
 {
 	if (phase_ != Phase::Idle) return;
+	if (setup.size() > kMaxSetup) return Fail("this side's setup is too long");
 	host_ = true;
 	hostDelay_ = inputDelay;
+	setup_ = std::move(setup);
 	phase_ = Phase::Opening;
 	Command(json{{"type", "host"}, {"epoch", epoch_}, {"build", build_}}.dump());
 }
 
-void MatchLink::Join(const std::string& invitation)
+void MatchLink::Join(const std::string& invitation, std::string setup)
 {
 	if (phase_ != Phase::Idle) return;
+	if (setup.size() > kMaxSetup) return Fail("this side's setup is too long");
 	host_ = false;
+	setup_ = std::move(setup);
 	phase_ = Phase::Opening;
 	Command(json{{"type", "join"}, {"epoch", epoch_}, {"invitation", invitation}, {"build", build_}}.dump());
 }
@@ -114,16 +119,26 @@ void MatchLink::OnConnected(const std::string& peer, const std::array<uint8_t, 1
 	deps_.random(grant_.capability.data(), grant_.capability.size());
 	deps_.random(reinterpret_cast<uint8_t*>(&grant_.seed), sizeof(grant_.seed));
 	grant_.inputDelay = hostDelay_;
-	const json grant = {{"kind", kGrantKind}, {"generation", grant_.generation}, {"capability", grant_.capability},
-		{"seed", grant_.seed}, {"delay", grant_.inputDelay}};
-	Command(json{{"type", "send"}, {"epoch", epoch_}, {"peer", peer_}, {"message_id", nextMessageId_++},
-		{"payload", grant.dump()}, {"control", control_}}.dump());
+	grant_.setup = setup_;
+	Send(json{{"kind", kGrantKind}, {"generation", grant_.generation}, {"capability", grant_.capability},
+		{"seed", grant_.seed}, {"delay", grant_.inputDelay}, {"setup", grant_.setup}}
+			.dump());
 	Prepare(false);
+}
+
+void MatchLink::Send(const std::string& payload)
+{
+	Command(json{{"type", "send"}, {"epoch", epoch_}, {"peer", peer_}, {"message_id", nextMessageId_++},
+		{"payload", payload}, {"control", control_}}
+			.dump());
 }
 
 void MatchLink::OnMessage(const std::string& peer, const std::string& payload)
 {
-	if (host_) return;
+	if (host_) {
+		if (peer == peer_) OnPeerSetup(payload);
+		return;
+	}
 	if (phase_ == Phase::Opening && peer_.empty()) {
 		earlyGrant_ = payload; // kept until the room is known
 		return;
@@ -135,8 +150,27 @@ void MatchLink::OnMessage(const std::string& peer, const std::string& payload)
 	grant_.capability = grant.value("capability", std::array<uint8_t, 32>{});
 	grant_.seed = grant.value("seed", uint32_t(0));
 	grant_.inputDelay = grant.value("delay", 0);
+	grant_.setup = grant.value("setup", std::string());
 	if (grant_.generation == 0 || AllZero(grant_.capability)) return Fail("the host's grant is malformed");
+	if (grant_.setup.size() > kMaxSetup) return Fail("the host's setup is too long");
+	peerSetup_ = grant_.setup;
+	havePeerSetup_ = true;
+	Send(json{{"kind", kSetupKind}, {"setup", setup_}}.dump());
 	Prepare(true);
+}
+
+// The host: the joiner's answer to the grant.
+void MatchLink::OnPeerSetup(const std::string& payload)
+{
+	if (havePeerSetup_ || phase_ == Phase::Failed) return;
+	const json message = json::parse(payload, nullptr, false);
+	if (!message.is_object() || message.value("kind", std::string()) != kSetupKind) return;
+	const json setup = message.value("setup", json());
+	if (!setup.is_string()) return Fail("the joiner's setup is malformed");
+	peerSetup_ = setup.get<std::string>();
+	if (peerSetup_.size() > kMaxSetup) return Fail("the joiner's setup is too long");
+	havePeerSetup_ = true;
+	ReadyWhenComplete();
 }
 
 // The host listens and the joiner dials, as Ember links P1 to each peer.
@@ -154,7 +188,16 @@ void MatchLink::OnGameReady(const std::string& peer, uint64_t generation, uint16
 {
 	if (phase_ != Phase::Linking || peer != peer_ || generation != grant_.generation) return;
 	if (virtualPort == 0 || maxPacket != maxPacket_) return Fail("the helper's link does not match the grant");
-	endpoints_ = {host_ ? 0 : 1, localPort_, virtualPort, grant_.seed, grant_.inputDelay};
+	endpoints_ = {host_ ? 0 : 1, localPort_, virtualPort, grant_.seed, grant_.inputDelay, {}};
+	linked_ = true;
+	ReadyWhenComplete();
+}
+
+void MatchLink::ReadyWhenComplete()
+{
+	if (!linked_ || !havePeerSetup_ || phase_ != Phase::Linking) return;
+	endpoints_.setups[0] = host_ ? setup_ : peerSetup_;
+	endpoints_.setups[1] = host_ ? peerSetup_ : setup_;
 	phase_ = Phase::Ready;
 }
 

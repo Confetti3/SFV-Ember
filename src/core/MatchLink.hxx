@@ -13,6 +13,11 @@
 // The joiner, on the grant, asks its helper to dial. When the helper reports
 // the link ready, Endpoints() has what the RollbackSession needs.
 //
+// Each side also brings its setup: an opaque text the game defines (SFV:
+// its player's fighter; the host's also names the stage). The host's goes
+// in the grant; the joiner answers the grant with its own. The match is
+// ready once the link is and both setups are known.
+//
 // The helper's protocol is Ember's (rust/sf4-net/src/service/protocol.rs):
 // commands and events are JSON objects tagged by "type", fenced by a room
 // epoch. The grant travels as the opaque payload of a "send".
@@ -53,6 +58,7 @@ public:
 		uint16_t remotePort;  // the helper's loopback port for the peer
 		uint32_t seed;
 		int inputDelay;
+		std::string setups[2]; // by player: the host's (P1), the joiner's (P2)
 	};
 
 	struct Dependencies {
@@ -62,8 +68,11 @@ public:
 
 	MatchLink(std::string build, size_t maxPacket, Dependencies deps);
 
-	void Host(int inputDelay);
-	void Join(const std::string& invitation);
+	// A setup longer than kMaxSetup fails the match.
+	static constexpr size_t kMaxSetup = 256;
+
+	void Host(int inputDelay, std::string setup);
+	void Join(const std::string& invitation, std::string setup);
 	void OnEvent(const std::string& eventJson);
 	std::vector<std::string> TakeCommands();
 
@@ -79,12 +88,16 @@ private:
 		std::array<uint8_t, 32> capability{};
 		uint32_t seed = 0;
 		int inputDelay = 0;
+		std::string setup; // the host's
 	};
 
 	void Command(const std::string& json);
 	void OnConnected(const std::string& peer, const std::array<uint8_t, 16>& room, uint64_t control);
 	void OnMessage(const std::string& peer, const std::string& payload);
 	void OnGameReady(const std::string& peer, uint64_t generation, uint16_t virtualPort, size_t maxPacket);
+	void OnPeerSetup(const std::string& payload);
+	void Send(const std::string& payload);
+	void ReadyWhenComplete();
 	void Prepare(bool dial);
 	void Fail(std::string why);
 
@@ -92,6 +105,10 @@ private:
 	const size_t maxPacket_;
 	const Dependencies deps_;
 	bool host_ = false;
+	std::string setup_;      // this side's
+	std::string peerSetup_;  // the host's setup reaches the joiner in the grant
+	bool havePeerSetup_ = false;
+	bool linked_ = false;    // the helper reported the game link ready
 	int hostDelay_ = 0;
 	uint64_t epoch_ = 1;
 	uint64_t nextMessageId_ = 2; // the helper delivers native messages numbered from 2 (id 1 stays wrapped)

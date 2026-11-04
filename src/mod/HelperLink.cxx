@@ -10,6 +10,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <utility>
+
 namespace sfve::mod {
 
 namespace {
@@ -58,8 +60,10 @@ uint16_t FreeLoopbackPort()
 
 } // namespace
 
-HelperLink::HelperLink(int inputDelay)
+HelperLink::HelperLink(int inputDelay, std::string setup, ReadyFn onReady)
 	: inputDelay_(inputDelay),
+	  setup_(std::move(setup)),
+	  onReady_(std::move(onReady)),
 	  link_(kBuild, GgpoMaximumPacket(sizeof(PackedInput)), MatchLink::Dependencies{Random, FreeLoopbackPort})
 {
 }
@@ -97,17 +101,17 @@ bool HelperLink::Start()
 	return true;
 }
 
-void HelperLink::Host()
+void HelperLink::Host(std::string setup)
 {
 	std::lock_guard lock(mutex_);
-	link_.Host(inputDelay_);
+	link_.Host(inputDelay_, std::move(setup));
 	SendCommands();
 }
 
-void HelperLink::Join(const std::string& invitation)
+void HelperLink::Join(const std::string& invitation, std::string setup)
 {
 	std::lock_guard lock(mutex_);
-	link_.Join(invitation);
+	link_.Join(invitation, std::move(setup));
 	SendCommands();
 }
 
@@ -135,6 +139,7 @@ void HelperLink::Pump()
 			logged = link_.GetPhase();
 			Log("helper: match link %s%s%s", PhaseName(logged), link_.Failure().empty() ? "" : ": ",
 				link_.Failure().c_str());
+			if (logged == MatchLink::Phase::Ready && onReady_) onReady_(link_.GetEndpoints());
 		}
 	}
 }
@@ -170,13 +175,15 @@ std::string HelperLink::Describe() const
 
 void HelperLink::RegisterCommands()
 {
-	RegisterCommand("host", [this](const std::string&) {
-		Host();
+	RegisterCommand("host", [this](const std::string& setup) {
+		Host(setup.empty() ? setup_ : setup);
 		return std::string("ok");
 	});
-	RegisterCommand("join", [this](const std::string& invitation) {
-		if (invitation.empty()) return std::string("error usage: join <invitation>");
-		Join(invitation);
+	RegisterCommand("join", [this](const std::string& args) {
+		const size_t space = args.find(' ');
+		const std::string invitation = args.substr(0, space);
+		if (invitation.empty()) return std::string("error usage: join <invitation> [setup]");
+		Join(invitation, space == std::string::npos ? setup_ : args.substr(space + 1));
 		return std::string("ok");
 	});
 	RegisterStatus("link", [this] { return Describe(); });

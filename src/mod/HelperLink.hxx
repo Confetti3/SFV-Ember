@@ -9,14 +9,17 @@
 //
 // A worker thread pumps helper events into a MatchLink and its commands back
 // to the helper, so a link can be made from the menus before a battle starts.
-// Pipe commands: "host" (open a room; the invitation shows in the status) and
-// "join <invitation>".
+// Pipe commands: "host [setup]" (open a room; the invitation shows in the
+// status) and "join <invitation> [setup]"; without one, this copy's setup
+// from the command line. When the match is ready (linked, both setups known)
+// the pump calls onReady once.
 
 #include "core/MatchLink.hxx"
 
 #include "platform/HelperClient.hxx"
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -27,7 +30,10 @@ namespace sfve::mod {
 
 class HelperLink {
 public:
-	explicit HelperLink(int inputDelay);
+	using ReadyFn = std::function<void(const MatchLink::Endpoints&)>;
+
+	// `setup` is this copy's (MatchLink); `onReady` runs on the pump thread.
+	HelperLink(int inputDelay, std::string setup, ReadyFn onReady);
 	~HelperLink();
 	HelperLink(const HelperLink&) = delete;
 	HelperLink& operator=(const HelperLink&) = delete;
@@ -35,8 +41,8 @@ public:
 	// Starts the helper and the pump. False (logged) when the helper is
 	// missing or does not come up.
 	bool Start();
-	void Host();
-	void Join(const std::string& invitation);
+	void Host(std::string setup);
+	void Join(const std::string& invitation, std::string setup);
 
 	// The match's endpoints once the link is ready.
 	std::optional<MatchLink::Endpoints> Ready() const;
@@ -52,6 +58,8 @@ private:
 	void SendCommands(); // with mutex_ held
 
 	const int inputDelay_;
+	const std::string setup_;
+	const ReadyFn onReady_;
 	sf4e::platform::HelperProcess process_;
 	sf4e::platform::HelperClient client_;
 	mutable std::mutex mutex_; // MatchLink is used by the pump and the pipe threads

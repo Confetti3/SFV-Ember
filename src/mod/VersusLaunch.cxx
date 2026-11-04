@@ -38,6 +38,7 @@ using AssignStringFn = void (*)(uint8_t* to, const GameString* from, int extra);
 using FreeFn = void (*)(void* block);
 
 uintptr_t s_base;
+bool s_installed; // both jump steps hooked: without them the jump crashes from the menu
 JumpStepFn o_jumpCopyPlayers;
 JumpStepFn o_jumpSecondStep;
 
@@ -181,6 +182,7 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 // Game thread: from the main menu into the battle jump.
 void Launch(const MatchPicks& picks)
 {
+	if (!s_installed) return Log("launch: refused, the battle jump is not hooked");
 	uint8_t* menu = CurrentSceneState();
 	if (SceneStateKind(menu) != sfv::scene::kMainMenuVtable) return Log("launch: refused, the game is not on the main menu");
 	if (s_pending.message) return Log("launch: refused, a launch is already under way");
@@ -191,40 +193,82 @@ void Launch(const MatchPicks& picks)
 	Field<int32_t>(message, jump::kMessageMode) = (int32_t)picks.target;
 	Field<uint8_t>(message, jump::kMessageCopySetting) = 0;
 	Field<uint8_t>(message, jump::kMessageSwapSides) = 0;
-	Field<uint8_t>(message, jump::kMessageCheckOwnership) = 1;
+	// Not the game's ownership check: it rewrites picks from this copy's own
+	// entitlements (and picks a fallback stage by rand()), so two linked
+	// copies could load different battles.
+	Field<uint8_t>(message, jump::kMessageCheckOwnership) = 0;
 	s_pending = Pending{message, false, picks};
 	Log("launch: battle jump, target %d", (int)picks.target);
 	ChangeScene(jumpClass, message);
 }
 
-// "CODE[:costume[:colour]]" or "-".
-FighterPick ParsePick(const std::string& word)
+constexpr size_t kMaxCode = 8;
+constexpr int kMaxVariant = 99; // costumes and colours
+
+bool ParseCode(const std::string& text, std::wstring* code)
 {
-	FighterPick pick;
-	if (word.empty() || word == "-") return pick;
+	if (text == "-") return code->clear(), true;
+	if (text.empty() || text.size() > kMaxCode) return false;
+	for (char c : text) {
+		if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) return false;
+	}
+	code->assign(text.begin(), text.end());
+	return true;
+}
+
+bool ParseVariant(const std::string& text, int* value)
+{
+	if (text.empty() || text == "-") return *value = -1, true;
+	if (text.size() > 2 || text.find_first_not_of("0123456789") != std::string::npos) return false;
+	*value = atoi(text.c_str());
+	return *value <= kMaxVariant;
+}
+
+// "CODE[:costume[:colour]]" or "-".
+bool ParsePick(const std::string& word, FighterPick* pick)
+{
+	*pick = FighterPick{};
+	if (word.empty() || word == "-") return true;
 	std::istringstream in(word);
-	std::string code, costume, colour;
+	std::string code, costume, colour, extra;
 	std::getline(in, code, ':');
 	std::getline(in, costume, ':');
 	std::getline(in, colour, ':');
-	pick.fighter.assign(code.begin(), code.end());
-	if (!costume.empty()) pick.costume = atoi(costume.c_str());
-	if (!colour.empty()) pick.colour = atoi(colour.c_str());
-	return pick;
+	return !std::getline(in, extra, ':') && ParseCode(code, &pick->fighter) && ParseVariant(costume, &pick->costume) &&
+		ParseVariant(colour, &pick->colour);
 }
 
 } // namespace
 
+bool ParseSetup(const std::string& setup, FighterPick* fighter, std::wstring* stage)
+{
+	std::istringstream in(setup);
+	std::string pick, stageCode, extra;
+	in >> pick >> stageCode;
+	stage->clear();
+	return !(in >> extra) && ParsePick(pick, fighter) && (stageCode.empty() || ParseCode(stageCode, stage));
+}
+
 bool InstallVersusLaunch(uintptr_t imageBase)
 {
 	s_base = imageBase;
-	return HookCodeSite(imageBase, sfv::kJumpCopyPlayers, (void*)h_JumpCopyPlayers, (void**)&o_jumpCopyPlayers) &&
+	s_installed = HookCodeSite(imageBase, sfv::kJumpCopyPlayers, (void*)h_JumpCopyPlayers, (void**)&o_jumpCopyPlayers) &&
 		HookCodeSite(imageBase, sfv::kJumpSecondStep, (void*)h_JumpSecondStep, (void**)&o_jumpSecondStep);
+	return s_installed;
 }
 
 void QueueLaunch(const MatchPicks& picks)
 {
 	RunOnGameThread([picks] { Launch(picks); });
+}
+
+void LaunchOnMainMenu(const MatchPicks& picks)
+{
+	RunEachGameFrame([picks] {
+		if (SceneStateKind(CurrentSceneState()) != sfv::scene::kMainMenuVtable) return true;
+		Launch(picks);
+		return false;
+	});
 }
 
 void RegisterVersusLaunchCommands()
@@ -237,9 +281,10 @@ void RegisterVersusLaunchCommands()
 		if (target == "cpu") picks.target = LaunchTarget::VersusCpu;
 		else if (target == "training") picks.target = LaunchTarget::Training;
 		else if (!target.empty() && target != "versus") return std::string("error usage: launch [versus|cpu|training] [P1] [P2] [stage]");
-		picks.players[0] = ParsePick(p1);
-		picks.players[1] = ParsePick(p2);
-		if (stage != "-") picks.stage.assign(stage.begin(), stage.end());
+		if (!ParsePick(p1, &picks.players[0]) || !ParsePick(p2, &picks.players[1]) ||
+			(!stage.empty() && !ParseCode(stage, &picks.stage))) {
+			return std::string("error a player is CODE[:costume[:colour]] or -, a stage CODE or -");
+		}
 		QueueLaunch(picks);
 		return std::string("ok queued");
 	});

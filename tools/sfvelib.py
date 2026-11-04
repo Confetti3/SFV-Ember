@@ -144,6 +144,16 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
     if not reply.startswith("ok "):
         kill_pid(proc.pid)
         raise SfveError(f"instance {index} answered '{reply}'; killed")
+    # The pipe answers as soon as the guard is in; the mode's own commands
+    # (freeze, host, ...) exist once the battle status does.
+    if mode != "inert":
+        deadline = time.monotonic() + GUARD_TIMEOUT_S
+        while '"battle":' not in reply and time.monotonic() < deadline:
+            time.sleep(0.2)
+            reply = request(index, "status")
+        if '"battle":' not in reply:
+            kill_pid(proc.pid)
+            raise SfveError(f"instance {index} did not finish starting the mod; killed")
     return Instance(index, proc.pid)
 
 

@@ -42,11 +42,20 @@ struct MatchPicks {
 	std::wstring stage; // the game's stage code
 };
 
+// A player's setup as the match link carries it: "CODE[:costume[:colour]]",
+// then (the host's) a stage code, space separated; "-" keeps a default.
+// Codes are 1 to 8 capital letters or digits. False for anything else.
+bool ParseSetup(const std::string& setup, FighterPick* fighter, std::wstring* stage);
+
 bool InstallVersusLaunch(uintptr_t imageBase);
 
 // Starts the battle from the main menu; any thread (runs on the game thread).
 // Refused (logged) when the game is not on the main menu.
 void QueueLaunch(const MatchPicks& picks);
+
+// Launches once the game is on the main menu (from the title or a battle's
+// end it may not be yet); any thread.
+void LaunchOnMainMenu(const MatchPicks& picks);
 
 // Control command: "launch [versus|cpu|training] [P1] [P2] [stage]", a player
 // as CODE[:costume[:colour]] or "-" to keep the default.
