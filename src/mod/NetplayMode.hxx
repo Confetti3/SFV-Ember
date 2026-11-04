@@ -24,7 +24,7 @@
 //
 // Pipe commands (cross-copy desync checks): "hash <frame>", "checkpoint
 // [frame]" (latest confirmed per-region checkpoint), "dump <frame>" (that
-// frame's saved state to a file) and "freeze <frame>" (hold the battle at that
+// frame's saved state to a file, once it is confirmed) and "freeze <frame>" (hold the battle at that
 // frame so both screens can be compared).
 
 #include "core/RollbackSession.hxx"
@@ -35,6 +35,7 @@
 
 #include <memory>
 #include <mutex>
+#include <vector>
 
 namespace sfve::mod {
 
@@ -74,6 +75,7 @@ private:
 	std::string lastResult_ = "null"; // the last linked match's result (JSON)
 	FramePacer pacer_;
 	int dumpFrame_ = -1;   // "dump <frame>": write that frame's saved state to the log folder
+	std::vector<uint8_t> dumpBytes_; // its latest save, until it is confirmed
 	int freezeFrame_ = -1; // "freeze <frame>": stop advancing there (to compare screens)
 	RollbackSession::StepResult last_ = RollbackSession::StepResult::NoSession;
 };

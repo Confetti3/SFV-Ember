@@ -72,6 +72,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	const bool endPending = link_ && EndedVersusBattlePending();
 	if (frozen || (endPending && session_->LastConfirmedFrame() < session_->Frame())) {
 		session_->Poll(); // held frames still receive inputs
+		DumpIfRequested(); // and get confirmed
 		return;
 	}
 	if (session_->Running()) pacer_.Frame(*session_, last_ == RollbackSession::StepResult::PredictionStall);
@@ -150,12 +151,24 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	return true;
 }
 
-// Layout: per region {uint64 size, uint64 address}, then its bytes.
+// Layout: per region {uint64 size, uint64 address}, then its bytes. Written
+// once the frame is confirmed, so two copies' dumps of a frame are final. The
+// session may free the frame's save before then, so its latest save (a
+// rollback replays and saves it again) is copied while it is kept.
 void NetplayMode::DumpIfRequested()
 {
-	if (dumpFrame_ < 0 || session_->Frame() != dumpFrame_) return;
-	const uint8_t* bytes = session_->SavedState(dumpFrame_);
-	if (!bytes) return;
+	if (dumpFrame_ < 0) return;
+	if (const uint8_t* saved = session_->SavedState(dumpFrame_)) {
+		dumpBytes_.assign(saved, saved + session_->Layout().TotalSize());
+	}
+	// With input delay a frame's inputs can be confirmed before it is played.
+	if (session_->Frame() < dumpFrame_ || session_->LastConfirmedFrame() < dumpFrame_) return;
+	if (dumpBytes_.empty()) {
+		Log("netplay: frame %d was not kept; nothing dumped", dumpFrame_);
+		dumpFrame_ = -1;
+		return;
+	}
+	const uint8_t* bytes = dumpBytes_.data();
 	const std::wstring path = LogFolder() + L"\\state-" + std::to_wstring(config_.instance) + L"-" +
 		std::to_wstring(dumpFrame_) + L".bin";
 	FILE* f = nullptr;
@@ -169,6 +182,7 @@ void NetplayMode::DumpIfRequested()
 	fclose(f);
 	Log("netplay: dumped frame %d to %ls", dumpFrame_, path.c_str());
 	dumpFrame_ = -1;
+	dumpBytes_.clear();
 }
 
 std::string NetplayMode::Describe() const
@@ -211,6 +225,7 @@ void NetplayMode::RegisterCommands()
 	RegisterCommand("dump", [this](const std::string& args) {
 		std::lock_guard lock(mutex_);
 		dumpFrame_ = atoi(args.c_str());
+		dumpBytes_.clear();
 		return std::string("ok");
 	});
 	RegisterCommand("hash", [this](const std::string& args) {
