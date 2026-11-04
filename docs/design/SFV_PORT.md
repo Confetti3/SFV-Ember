@@ -143,7 +143,7 @@ while playing identically. The causes, and what each became:
 
 `perturb <frame> <region> <offset> <add>` nudges one copy's state on purpose,
 so the peers' checkpoints should differ from the next checkpoint on (the
-mock's two-session test shows that; the in-game run is owed, see Open work).
+mock's two-session test shows that; in game, see Open work).
 
 ### Round ends
 
@@ -238,17 +238,20 @@ with neutral inputs, and no check restores to one's start.
 
 ### Open work
 
-- **Cross-copy state hashes** (see "What peers compare"). Verified in game:
-  with the start time shared, the fighters' generators match at every frame
-  dumped to 4200 across a round end at 30 ms lag; with allocations zeroed,
-  two linked copies at no lag differ only in the four masked values to frame
-  1200. Owed: the build with the masks and the address-test fix (expected:
-  `compare.py` reports no unmatched region and every logged checkpoint
-  equal), several seeds at 0 and 30 ms lag across a round end, and a
-  `perturb` run (blocked 2026-11-04 by the game crashing at boot after Steam
-  restarted, rva 0x742A34: the online subsystem's identity interface is
-  null; the mod inert crashes the same way).
-- **Save cost.** A save copies and hashes about 1 MB (0.7 ms on this PC,
+- **Cross-copy s- **Cross-copy state hashes** (see "What peers compare"). Verified in game
+  (2026-11-04, the build with the masks, two linked copies, 30 ms lag, 30 s
+  rounds): every checkpoint list and every overall hash equal on both copies
+  for 4,500 frames across a round end. Then `perturb 4300 global.rng 0 1` on
+  one copy only: the fighters' positions diverged, and the peers' checkpoints
+  differed from 4560 on (the first checkpoint after the change reached hashed
+  state; until then the generator's draw had not shown). The fighters' pawn
+  regions (positions) are not hashed, so a desync that only moves a fighter
+  shows once it reaches hashed state, not on the frame itself. Still owed:
+  more seeds, and a 0 ms run. A boot crash seen after Steam restarted was
+  Steam's (its registry named a dead client process; restarting Steam fixed
+  it), not the mod's. `perturb` finds `scan`'s `game.N` names only while
+  the layout is the one `scan` read (it is rebuilt between rounds).
+ A save copies and hashes about 1 MB (0.7 ms on this PC,
   logged on every checkpoint line); a 4-frame rollback saves 4 times. The
   round results (557 KB) change only at a round's end and are the obvious
   first saving.
