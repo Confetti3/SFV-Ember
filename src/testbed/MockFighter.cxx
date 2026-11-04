@@ -22,10 +22,12 @@ uint32_t NextRandom(uint32_t& state)
 
 } // namespace
 
-MockFighter::MockFighter(unsigned bugs) : bugs_(bugs), heapMarker_(std::make_unique<int>(0))
+MockFighter::MockFighter(unsigned bugs, bool flowInLayout)
+	: bugs_(bugs), flowInLayout_(flowInLayout), heapMarker_(std::make_unique<int>(0))
 {
 	world_.rng = 0x5eed1234u;
 	world_.roundTimer = 99 * 60;
+	world_.koAt = -1;
 	for (int p = 0; p < kPlayers; p++) {
 		Fighter& f = world_.fighters[p];
 		f = {};
@@ -44,6 +46,7 @@ void MockFighter::Build()
 	const size_t world = layout_.Add("world", &world_, sizeof(world_));
 	if (!(bugs_ & kBugUnmaskedPointer)) layout_.IgnoreWord(world, offsetof(World, owner));
 	layout_.Add("presentation", &presentation_, sizeof(presentation_), false);
+	if (flowInLayout_) layout_.Add("flow", &flowKoFrame_, sizeof(flowKoFrame_));
 }
 
 std::string MockFighter::BuildId() const
@@ -108,6 +111,12 @@ void MockFighter::Advance(const FrameInputs& inputs, bool resimulating)
 
 	if (world_.roundTimer > 0) world_.roundTimer--;
 	world_.frame++;
+
+	if (world_.koAt < 0 && (world_.fighters[0].health == 0 || world_.fighters[1].health == 0)) {
+		world_.koAt = world_.frame;
+	}
+	// The round flow reacts to the battle's KO a little later, like SFV's.
+	if (flowKoFrame_ < 0 && world_.koAt >= 0 && world_.frame - world_.koAt >= 2) flowKoFrame_ = world_.koAt;
 	presentation_.animationClock += 1.0f / 60.0f;
 }
 

@@ -10,9 +10,11 @@
 // shared; or, for automated tests, seeded random play (-sfve_mash=N), which
 // needs no window focus.
 //
-// Rollback only while the players fight. Intros, round calls and KOs are
-// timed by the battle flow, outside the rollback snapshot, so there frames
-// run in lockstep: only once both inputs are confirmed. Time sync holds back
+// Rollback only while the players fight. Outside the fight (intros, round
+// calls, the KO and results) the battle flow waits on presentation the
+// snapshot does not hold, so there frames run in lockstep: only once both
+// inputs are confirmed. The flow itself is part of the rollback state, so a
+// guessed KO that a rollback removes puts the fight back. Time sync holds back
 // one frame in every kHoldEveryFrames while GGPO says this side runs ahead.
 //
 // Pipe commands (cross-copy desync checks): "hash <frame>", "checkpoint

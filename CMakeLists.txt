@@ -57,6 +57,7 @@ add_library(sfv_ember SHARED
     src/mod/BackgroundPlay.cxx
     src/mod/MultiInstance.cxx
     src/mod/SfvAdapter.cxx
+    src/mod/SfvFlow.cxx
     src/mod/GameHooks.cxx
     src/mod/BattleDriver.cxx
     src/mod/SyncTestMode.cxx

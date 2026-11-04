@@ -3,9 +3,11 @@
 // GameAdapter over Street Fighter V's battle.
 //
 // Layout: every region of the game's own rollback manager (what its online
-// rollback saves), plus the state its snapshot leaves out because its netcode
-// manages it separately: the battle frame's counters and the input unit's
-// frame counters. Pointer words are masked as the synctest finds them.
+// rollback saves), plus the state its snapshot leaves out: the battle frame's
+// counters and the input unit's frame counters (its netcode manages them),
+// and what a round's end changes (the rule unit's judgement, the match
+// data's round results and flow flags, the round flow as a FlowRollback
+// record). Pointer words are masked as the synctest finds them.
 //
 // Advance runs exactly one original battle-frame update with the extra-tick
 // count forced to zero, so one call is one GGPO frame, and both players'
@@ -14,6 +16,8 @@
 
 #include "core/GameAdapter.hxx"
 #include "mod/GameHooks.hxx"
+#include "mod/SfvFlow.hxx"
+#include "mod/SfvOffsets.hxx"
 
 #include <stdint.h>
 
@@ -29,10 +33,12 @@ public:
 	void SeeBattleFrame(uint8_t* battleFrame, BattleFrameFn original);
 	void SeeRollbackUnit(uint8_t* rollbackUnit) { rollbackUnit_ = rollbackUnit; }
 
-	// Builds the layout once all three objects of this battle are known.
+	// Builds the layout once this battle's objects are known.
 	bool Bind();
 	bool Bound() const { return bound_; }
 	uint8_t* BattleFrame() const { return battleFrame_; }
+	uint8_t* FindUnit(uint32_t typeRva) const { return rollbackUnit_ ? GameFindUnit(rollbackUnit_, typeRva) : nullptr; }
+	uint8_t* FlowUnit() const { return FindUnit(sfv::unit::kFlowUnitType); }
 
 	// From the input-record hook: remembers what the game computed for each
 	// pad this tick, then writes the injected inputs over it while Advance runs.
@@ -42,11 +48,11 @@ public:
 	// with ticks stopped): the last original update recorded at least one tick.
 	uint32_t TicksInLastUpdate() const { return ticksInLastUpdate_; }
 
-	// The battle flow's current state (outside the rollback snapshot): intros,
-	// round calls and KOs are timed by it, so they must not be rolled back.
-	void SeeFlowState(int state) { flowState_ = state; }
-	int FlowState() const { return flowState_; }
+	// The state the battle flow last announced (part of the rollback state).
+	void SeeFlowState(int state) { flow_.Announce(state); }
+	int FlowState() const { return flow_.Announced(); }
 	bool Fighting() const;
+	const FlowRollback::Stats& FlowStats() const { return flow_.GetStats(); }
 
 	// The original update with no injection (outside any session).
 	void RunOriginal();
@@ -55,7 +61,9 @@ public:
 	StateLayout& Layout() override { return layout_; }
 	const StateLayout& Layout() const { return layout_; }
 	void Advance(const FrameInputs& inputs, bool resimulating) override;
-	// What the game's own Restore does after copying the regions back.
+	void Capture() override { flow_.Capture(); }
+	// What the game's own Restore does after copying the regions back, then
+	// the flow record written back.
 	void AfterLoad() override;
 
 	std::string Describe() const; // JSON for the status report
@@ -75,6 +83,9 @@ public:
 
 private:
 	void Forget();
+	bool AddGameRegions(uint8_t* manager);
+	void CollectPostRestore(uint8_t* manager);
+	void AddStateOutsideTheGameSnapshot(uint8_t* ruleUnit, uintptr_t base);
 	void RunUpdate();
 
 	uint8_t* battleFrame_ = nullptr;
@@ -91,7 +102,7 @@ private:
 	PackedInput sampled_[kPlayers] = {};
 	uint32_t ticksInLastUpdate_ = 0;
 	uint32_t ticksThisUpdate_ = 0;
-	int flowState_ = -1;
+	FlowRollback flow_;
 };
 
 } // namespace sfve::mod

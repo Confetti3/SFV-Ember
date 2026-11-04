@@ -94,10 +94,12 @@ void NetplayMode::DumpIfRequested()
 	dumpFrame_ = -1;
 }
 
-// Outside the fight (intros, round calls, KOs) the battle flow, which the
-// rollback snapshot does not cover, times what happens; a frame played there
-// on a guess and then replayed would shift it. So there a frame only runs once
-// both players' inputs for it are confirmed: no guess, no rollback.
+// Outside the fight (intros, round calls, the KO and results) the battle flow
+// waits on presentation (announcer, banners) that a replay does not repeat
+// the same way; a frame played there on a guess and then replayed could shift
+// it. So there a frame only runs once both players' inputs for it are
+// confirmed: no guess, no rollback. (The synctest shows the flow record
+// diverging on replays across intro and round-over states, never in a fight.)
 bool NetplayMode::HoldForLockstep(const SfvAdapter& adapter)
 {
 	if (adapter.Fighting() || !session_->Running()) return false;

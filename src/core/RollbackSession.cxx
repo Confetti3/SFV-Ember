@@ -308,6 +308,7 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 		return false;
 	}
 	StateLayout& layout = game_.Layout();
+	game_.Capture();
 	layout.SaveTo(slot->bytes.data());
 	slot->used = true;
 	slot->frame = frame;
@@ -343,6 +344,7 @@ bool RollbackSession::Load(unsigned char* buffer)
 	if (depth > stats_.longestRollback) stats_.longestRollback = depth;
 	frame_ = slot->frame;
 
+	if (config_.verifyLoads) game_.Capture(); // what the restore left in the game
 	if (config_.verifyLoads && layout.HashLive() != slot->hash) {
 		stats_.loadMismatches++;
 		CoreLog("session: frame %d restored with a different hash", slot->frame);

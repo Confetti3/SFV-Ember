@@ -26,7 +26,7 @@ struct Pair {
 	MockFighter gameA, gameB;
 	RollbackSession a{gameA}, b{gameB};
 
-	Pair(unsigned bugs, int delay) : gameA(bugs), gameB(bugs)
+	Pair(unsigned bugs, int delay, bool flowInLayout = false) : gameA(bugs, flowInLayout), gameB(bugs, flowInLayout)
 	{
 		const uint16_t base = PortBase();
 		RollbackSession::Config ca, cb;
@@ -173,4 +173,23 @@ TEST_CASE("a peer that only polls while it holds frames keeps receiving inputs")
 	}
 	CHECK(pair.b.LastConfirmedFrame() >= pair.b.Frame() - 1);
 	CHECK(pair.b.Live());
+}
+
+TEST_CASE("a round flow that is part of the rollback state latches the KO where an offline run does")
+{
+	MockFighter reference;
+	for (int f = 0; f < 1500 && reference.FlowKoFrame() < 0; f++) reference.Advance(ScriptedFrame(f, kSeed), false);
+	REQUIRE(reference.FlowKoFrame() > 0);
+
+	Pair pair(kBugNone, 0, true);
+	const ULONGLONG start = GetTickCount64();
+	while ((pair.gameA.FlowKoFrame() < 0 || pair.gameB.FlowKoFrame() < 0) && GetTickCount64() - start < 30000) {
+		pair.a.Step(ScriptedInput(0, pair.a.Frame(), kSeed));
+		pair.b.Step(ScriptedInput(1, pair.b.Frame(), kSeed));
+		Sleep(0);
+	}
+	MESSAGE("KO at " << reference.FlowKoFrame() << "; rollbacks " << pair.a.GetStats().rollbacks << " / "
+					 << pair.b.GetStats().rollbacks);
+	CHECK(pair.gameA.FlowKoFrame() == reference.FlowKoFrame());
+	CHECK(pair.gameB.FlowKoFrame() == reference.FlowKoFrame());
 }

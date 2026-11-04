@@ -55,38 +55,62 @@ void SfvAdapter::Forget()
 	postRestore_.clear();
 	inputUnit_ = nullptr;
 	rollbackUnit_ = nullptr;
+	flow_.Forget();
 }
 
 bool SfvAdapter::Bind()
 {
 	if (bound_) return true;
 	if (!battleFrame_ || !inputUnit_ || !rollbackUnit_) return false;
+	uint8_t* flowUnit = FlowUnit();
+	uint8_t* ruleUnit = FindUnit(sfv::unit::kVersusRuleUnitType);
+	if (!flowUnit || !ruleUnit) return false; // not created yet
 
+	layout_.Clear();
+	layout_.SetAddressTest(LooksLikeAddress);
 	uint8_t* manager = GameGetManager(rollbackUnit_);
+	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	if (!AddGameRegions(manager) || !flow_.Bind(flowUnit, base)) {
+		layout_.Clear();
+		return false;
+	}
+	gameRegions_ = layout_.Regions().size();
+	CollectPostRestore(manager);
+	AddStateOutsideTheGameSnapshot(ruleUnit, base);
+	bound_ = true;
+	Log("adapter: bound: %zu game regions + %zu outside the game's snapshot, %zu bytes", gameRegions_,
+		layout_.Regions().size() - gameRegions_, layout_.TotalSize());
+	return true;
+}
+
+// Every region of the game's rollback manager. The presentation regions and
+// the replay unit's counters are restored but not hashed.
+bool SfvAdapter::AddGameRegions(uint8_t* manager)
+{
 	auto* begin = Field<RegionEntry*>(manager, sfv::manager::kRegionsBegin);
 	auto* end = Field<RegionEntry*>(manager, sfv::manager::kRegionsEnd);
 	if (!begin || end <= begin || size_t(end - begin) > kMaxRegions) {
 		Log("adapter: the rollback manager has no regions (%p..%p)", (void*)begin, (void*)end);
 		return false;
 	}
-	layout_.Clear();
-	layout_.SetAddressTest(LooksLikeAddress);
+	uint8_t* replayUnit = FindUnit(sfv::unit::kReplayUnitType);
+	const uint8_t* replayCounters = replayUnit ? replayUnit + sfv::replayunit::kCounters : nullptr;
+	if (!replayUnit) Log("adapter: no replay unit; its tick counters stay in the hash");
 	int presentation[std::size(sfv::manager::kPresentationSizes)] = {};
 	for (RegionEntry* r = begin; r < end; r++) {
 		if (!r->ptr || r->size == 0 || r->size > kMaxRegionSize) {
 			Log("adapter: region %zu looks wrong (%p, %llu bytes)", size_t(r - begin), (void*)r->ptr, r->size);
-			layout_.Clear();
 			return false;
 		}
-		bool checked = true;
+		const char* kind = r->ptr == replayCounters && r->size == sfv::replayunit::kCountersSize ? ".replaycount" : "";
 		for (size_t k = 0; k < std::size(sfv::manager::kPresentationSizes); k++) {
 			if (r->size != sfv::manager::kPresentationSizes[k].size) continue;
-			checked = false;
+			kind = ".presentation";
 			presentation[k]++;
 		}
-		char name[32];
-		snprintf(name, sizeof(name), checked ? "game.%zu" : "game.%zu.presentation", size_t(r - begin));
-		layout_.Add(name, r->ptr, (size_t)r->size, checked);
+		char name[40];
+		snprintf(name, sizeof(name), "game.%zu%s", size_t(r - begin), kind);
+		layout_.Add(name, r->ptr, (size_t)r->size, !*kind);
 	}
 	for (size_t k = 0; k < std::size(sfv::manager::kPresentationSizes); k++) {
 		if (presentation[k] != sfv::manager::kPresentationSizes[k].count) {
@@ -95,7 +119,11 @@ bool SfvAdapter::Bind()
 				(unsigned long long)sfv::manager::kPresentationSizes[k].size, presentation[k]);
 		}
 	}
-	gameRegions_ = layout_.Regions().size();
+	return true;
+}
+
+void SfvAdapter::CollectPostRestore(uint8_t* manager)
+{
 	postRestore_.clear();
 	uint8_t* sentinel = Field<uint8_t*>(manager, sfv::manager::kPostRestoreList);
 	for (uint8_t* node = Field<uint8_t*>(sentinel, 0); node && node != sentinel; node = Field<uint8_t*>(node, 0)) {
@@ -103,14 +131,21 @@ bool SfvAdapter::Bind()
 		postRestore_.push_back({Field<PostRestore>(node, sfv::manager::kNodeFunction).fn,
 			Field<void*>(node, sfv::manager::kNodeContext)});
 	}
-	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+}
+
+// What a battle tick changes that the game's snapshot leaves out: its netcode
+// manages the counters itself, and its own rollback never crossed a round's
+// end, which is where the rest changes.
+void SfvAdapter::AddStateOutsideTheGameSnapshot(uint8_t* ruleUnit, uintptr_t base)
+{
 	layout_.Add("global.rng", reinterpret_cast<uint8_t*>(base + sfv::rng::kGlobal + sfv::rng::kState), 4);
 	layout_.Add("battleframe", battleFrame_ + sfv::battleframe::kState, sfv::battleframe::kStateSize);
 	layout_.Add("inputunit.counters", inputUnit_ + sfv::inputunit::kCounters, sfv::inputunit::kCountersSize);
-	bound_ = true;
-	Log("adapter: bound: %zu game regions + 3 outside the game's snapshot, %zu bytes", gameRegions_,
-		layout_.TotalSize());
-	return true;
+	layout_.Add("ruleunit.judge", ruleUnit + sfv::ruleunit::kJudgeState, 4);
+	uint8_t* battleData = GameGetBattleData(rollbackUnit_);
+	layout_.Add("battledata.results", battleData + sfv::battledata::kResults, sfv::battledata::kResultsSize);
+	layout_.Add("battledata.flowflags", battleData + sfv::battledata::kFlowFlags, sfv::battledata::kFlowFlagsSize);
+	layout_.Add("flow", &flow_.Record(), sizeof(FlowRecord));
 }
 
 void SfvAdapter::OnInputRecord(uint8_t* inputUnit)
@@ -126,7 +161,7 @@ void SfvAdapter::OnInputRecord(uint8_t* inputUnit)
 
 bool SfvAdapter::Fighting() const
 {
-	return flowState_ == sfv::flow::kFight;
+	return flow_.Announced() == sfv::flow::kFight;
 }
 
 void SfvAdapter::RunUpdate()
@@ -178,6 +213,7 @@ void SfvAdapter::AfterLoad()
 	// member function of the object they were registered for).
 	const int32_t frameId[2] = {0, 0};
 	for (const PostRestore& cb : postRestore_) cb.fn(cb.context, frameId);
+	flow_.Apply();
 }
 
 std::string SfvAdapter::BuildId() const
@@ -189,12 +225,14 @@ std::string SfvAdapter::BuildId() const
 
 std::string SfvAdapter::Describe() const
 {
-	char text[256];
+	const FlowRollback::Stats& flow = flow_.GetStats();
+	char text[384];
 	snprintf(text, sizeof(text),
 		"{\"bound\":%s,\"gameRegions\":%zu,\"regions\":%zu,\"bytes\":%zu,\"ticksLastUpdate\":%u,\"sampled\":[%u,%u],"
-		"\"flowState\":%d}",
+		"\"flowState\":%d,\"flowSwitches\":%llu,\"delegatesRebuilt\":%llu,\"refusedReleases\":%llu}",
 		bound_ ? "true" : "false", gameRegions_, layout_.Regions().size(), layout_.TotalSize(), ticksInLastUpdate_,
-		sampled_[0], sampled_[1], flowState_);
+		sampled_[0], sampled_[1], flow_.Announced(), (unsigned long long)flow.stateSwitches,
+		(unsigned long long)flow.delegatesRebuilt, (unsigned long long)flow.refusedReleases);
 	return text;
 }
 

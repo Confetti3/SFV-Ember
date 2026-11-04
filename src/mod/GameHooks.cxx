@@ -5,6 +5,8 @@
 
 #include <MinHook.h>
 
+#include <windows.h>
+
 namespace sfve::mod {
 
 namespace {
@@ -13,6 +15,13 @@ using InputRecordFn = uint64_t (*)(uint8_t* inputUnit, uint32_t predictRemote);
 using UnitTickFn = void (*)(uint8_t* rollbackUnit);
 using GetManagerFn = uint8_t* (*)(uint8_t* context);
 using FlowMessageFn = uint64_t (*)(uint8_t* receiver, uint8_t* message);
+struct SharedPtr {
+	uint8_t* object;
+	uint8_t* control;
+};
+using FindUnitFn = SharedPtr* (*)(uint8_t* battle, SharedPtr* out, const void* type, uint32_t index);
+using GetBattleDataFn = uint8_t* (*)(uint8_t* context);
+using GameAllocFn = void* (*)(size_t size);
 
 BattleListener* s_listener;
 BattleFrameFn o_battleFrame;
@@ -21,6 +30,10 @@ UnitTickFn o_unitTick;
 GetManagerFn s_getManager;
 FlowMessageFn o_flowMessage;
 uintptr_t s_stateMessageType;
+FindUnitFn s_findUnit;
+GetBattleDataFn s_getBattleData;
+GameAllocFn s_gameAlloc;
+uintptr_t s_imageBase;
 
 void h_BattleFrame(uint8_t* battleFrame)
 {
@@ -66,6 +79,10 @@ bool InstallGameHooks(uintptr_t base, BattleListener* listener)
 	s_listener = listener;
 	s_getManager = reinterpret_cast<GetManagerFn>(base + sfv::kGetManager.rva);
 	s_stateMessageType = base + sfv::flow::kStateMessageType;
+	s_findUnit = reinterpret_cast<FindUnitFn>(base + sfv::kFindUnit.rva);
+	s_getBattleData = reinterpret_cast<GetBattleDataFn>(base + sfv::kGetBattleData.rva);
+	s_gameAlloc = reinterpret_cast<GameAllocFn>(base + sfv::kGameAlloc.rva);
+	s_imageBase = base;
 	const bool ok = Hook(base, sfv::kInputRecord, (void*)h_InputRecord, (void**)&o_inputRecord) &&
 		Hook(base, sfv::kRollbackUnitPre, (void*)h_UnitTick, (void**)&o_unitTick) &&
 		Hook(base, sfv::kBattleFrameUpdate, (void*)h_BattleFrame, (void**)&o_battleFrame) &&
@@ -74,9 +91,31 @@ bool InstallGameHooks(uintptr_t base, BattleListener* listener)
 	return ok;
 }
 
+uint8_t* GameFindUnit(uint8_t* anyUnit, uint32_t typeRva)
+{
+	uint8_t* owner = *reinterpret_cast<uint8_t**>(anyUnit + sfv::unit::kContext + sfv::unit::kContextOwner);
+	uint8_t* battle = owner ? *reinterpret_cast<uint8_t**>(owner + sfv::unit::kOwnerBattle) : nullptr;
+	if (!battle) return nullptr;
+	SharedPtr found{};
+	s_findUnit(battle, &found, reinterpret_cast<const void*>(s_imageBase + typeRva), 0);
+	// Hand back the reference: the battle keeps the unit alive.
+	if (found.control) InterlockedDecrement(reinterpret_cast<volatile LONG*>(found.control + 8));
+	return found.object;
+}
+
 uint8_t* GameGetManager(uint8_t* rollbackUnit)
 {
 	return s_getManager(rollbackUnit + sfv::rollbackunit::kManagerContext);
+}
+
+uint8_t* GameGetBattleData(uint8_t* anyUnit)
+{
+	return s_getBattleData(anyUnit + sfv::unit::kContext);
+}
+
+void* GameAlloc(size_t size)
+{
+	return s_gameAlloc(size);
 }
 
 } // namespace sfve::mod

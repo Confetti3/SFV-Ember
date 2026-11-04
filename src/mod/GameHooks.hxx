@@ -3,6 +3,7 @@
 // The game functions the mod hooks (SfvOffsets.hxx), reported to one
 // listener on the game thread.
 
+#include <stddef.h>
 #include <stdint.h>
 
 namespace sfve::mod {
@@ -19,7 +20,7 @@ public:
 	virtual void OnInputRecord(uint8_t* inputUnit) = 0;
 	// A battle tick reached its snapshot task.
 	virtual void OnRollbackUnitTick(uint8_t* rollbackUnit) = 0;
-	// The battle flow (outside the rollback snapshot) entered a state.
+	// The battle flow announced a new state (sfv::flow).
 	virtual void OnFlowState(int state) = 0;
 };
 
@@ -28,5 +29,15 @@ bool InstallGameHooks(uintptr_t imageBase, BattleListener* listener);
 
 // The game's GetManager, for the rollback unit's context.
 uint8_t* GameGetManager(uint8_t* rollbackUnit);
+
+// The battle's match data (sfv::battledata), from any unit.
+uint8_t* GameGetBattleData(uint8_t* anyUnit);
+
+// The game's allocator for small closures (freed by the game's delegates).
+void* GameAlloc(size_t size);
+
+// The battle's unit of a type (sfv::unit::k*Type), found from any unit the
+// way units find each other; null when there is none.
+uint8_t* GameFindUnit(uint8_t* anyUnit, uint32_t typeRva);
 
 } // namespace sfve::mod

@@ -62,8 +62,10 @@ public:
 	SyncTester(GameAdapter& game, int distance, bool learn = false, bool perturb = false);
 
 	// One forward frame, then a rollback check when one is due. Returns false
-	// once a check has failed (never in learning mode).
-	bool Step(const FrameInputs& inputs);
+	// once a check has failed (never in learning mode). A frame played with
+	// `rollbackAllowed` false is one a session plays in lockstep: no check
+	// rolls back to it or past it.
+	bool Step(const FrameInputs& inputs, bool rollbackAllowed = true);
 	const SyncTestReport& Report() const { return report_; }
 
 private:
@@ -84,6 +86,7 @@ private:
 	bool learn_;
 	bool perturb_;
 	int frame_ = 0;
+	int rollbackFloor_ = 0; // the earliest frame a check may restore
 	std::vector<Saved> saved_;
 	SyncTestReport report_;
 };
