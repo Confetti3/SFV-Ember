@@ -69,8 +69,9 @@ public:
 
 	// Gives every random generator in the battle state (and the global one) a
 	// seed derived from `seed` and the generator's place in its region, the
-	// same in every process. The game seeds them from the clock. Returns how
-	// many were reseeded.
+	// same in every process, and sets the match's start time (which the round
+	// starts reseed the fighters' generators from) to `seed`. The game takes
+	// both from the clock. Returns how many generators were reseeded.
 	int ReseedRandom(uint32_t seed);
 
 	// The game's post-restore callbacks, run by its own Restore (logged at bind).

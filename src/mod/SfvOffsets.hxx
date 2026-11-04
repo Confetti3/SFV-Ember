@@ -406,6 +406,11 @@ constexpr uint32_t kResultsSize = 563060 - 6404;
 // fighters may act).
 constexpr uint32_t kFlowFlags = 566176;
 constexpr uint32_t kFlowFlagsSize = 4;
+// int: _time64() when the match data is reset (rva 0x304EC0, on its +80
+// record). A fighter's random generator is reseeded at every round start
+// with side + this + rounds judged * 8 (CharaUnit, rva 0x37B43E), so two
+// processes' fighters draw different numbers unless it is the same.
+constexpr uint32_t kStartTime = 108;
 
 // The match's result (MatchResult), all inside kResults..: the versus rule
 // unit's tick (rva 0x487CD0) commits each judged round (judge rva 0x485240)

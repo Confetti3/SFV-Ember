@@ -218,6 +218,8 @@ int SfvAdapter::ReseedRandom(uint32_t seed)
 		}
 	}
 	*reinterpret_cast<uint32_t*>(base + sfv::rng::kGlobal + sfv::rng::kState) = seed;
+	// The clock reading the round starts reseed the fighters' generators from.
+	Field<uint32_t>(battleData_, sfv::battledata::kStartTime) = seed;
 	return reseeded + 1;
 }
 
