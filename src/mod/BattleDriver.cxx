@@ -38,11 +38,6 @@ void BattleDriver::OnBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 	if (frames_ % kStatusEveryFrames == 0) PublishStatus();
 }
 
-void BattleDriver::OnFlowState(int state)
-{
-	adapter_.SeeFlowState(state);
-}
-
 void BattleDriver::LogInventory() const
 {
 	const StateLayout& layout = adapter_.Layout();

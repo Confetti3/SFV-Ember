@@ -180,6 +180,12 @@ constexpr uint32_t kRequestFlag = 316;     // uint8
 // phase's function is bound into a delegate whose closure is a GameAlloc
 // block; setting a phase (rva 0x414670) replaces the delegate.
 namespace flowstate {
+// The delegate the phase binder (rva 0x477FE0) builds: these four functions
+// and a 16-byte closure {phase function, state}.
+constexpr uint32_t kPhaseDelegateVtable = 0x305E758; // data
+constexpr uint32_t kPhaseDelegateDestroy = 0x1099220;
+constexpr uint32_t kPhaseDelegateCopy = 0x4C19E0;
+constexpr uint32_t kPhaseDelegateInvoke = 0x447A60;
 constexpr uint32_t kArg = 8;           // int
 constexpr uint32_t kPhase = 64;        // int
 constexpr uint32_t kDelegate = 72;     // {vtable, destroy, copy, closure, invoke}
@@ -199,25 +205,24 @@ struct ClassSize {
 	uint32_t vtable;
 	uint32_t size;
 	bool keepOwn = true; // false: its own fields hold pointers the record must not restore
+	// Bit k: the 8-byte word at kBaseSize + 8k holds heap leftovers until the
+	// state first runs (seen differing between two copies); kept, not hashed.
+	uint8_t leftoverWords = 0;
 };
 // Allocation sizes of the flow's state classes, read from the `mov ecx, size`
 // before each allocation in the flow builders (rva 0x4257F0, and 0x423DD0 for
 // 0x2C6A3F8); a class's size is the same in every builder. A state of a class
 // not listed keeps only the base: its own fields are never read or written.
 constexpr ClassSize kClassSizes[] = {
-	{0x2C6A390, 152}, {0x2C6A3F8, 160}, {0x2C6A4C8, 152}, {0x2C6A530, 152}, {0x2C6A598, 160},
-	{0x2C6A600, 152}, {0x2C6A668, 168}, {0x2C6A6D0, 144}, {0x2C6A7A8, 144}, {0x2C6A810, 144},
-	{0x2C6A878, 184}, {0x2C6A8E0, 144}, {0x2C6A948, 144}, {0x2C6A460, 144}, {0x2C6A2C0, 152},
+	{0x2C6A390, 152}, {0x2C6A4C8, 152}, {0x2C6A530, 152}, {0x2C6A598, 160},
+	{0x2C6A600, 152}, {0x2C6A6D0, 144}, {0x2C6A7A8, 144}, {0x2C6A810, 144},
+	{0x2C6A878, 184, true, 0x18}, {0x2C6A8E0, 144}, {0x2C6A948, 144}, {0x2C6A460, 144}, {0x2C6A2C0, 152},
 	{0x2C6A328, 160}, {0x2C6AB00, 176}, {0x2C6A258, 160},
-	// The builder stores a heap closure and its callback in this one's fields.
-	{0x2C6AA18, 184, false}};
+	// Own fields holding heap pointers: the builder's closure and callback
+	// (0x2C6AA18), addresses seen at +152 (0x2C6A3F8) and +160 (0x2C6A668, Finish).
+	{0x2C6AA18, 184, false}, {0x2C6A3F8, 160, false}, {0x2C6A668, 168, false}};
 constexpr uint32_t kMaxSize = 184;
 } // namespace flowstate
-
-// MSVC std::shared_ptr control block.
-namespace sharedctl {
-constexpr uint32_t kUses = 8; // long
-} // namespace sharedctl
 
 namespace manager {
 constexpr uint32_t kRegionsBegin = 0x10;     // {void* ptr; uint64 size}[]

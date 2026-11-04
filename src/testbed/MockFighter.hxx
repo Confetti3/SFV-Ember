@@ -15,8 +15,9 @@
 //   processes hash differently while playing identically.
 //
 // Like SFV, the mock has a round flow: it latches the KO two frames after the
-// battle records it. Outside the rollback state (SFV's own layout) a KO on
-// guessed inputs can be latched for good; in it, the flow rolls back too.
+// battle records it. It is part of the rollback state, as the SFV adapter
+// makes the game's flow; kBugFlowOutsideLayout leaves it out (as the game's
+// own snapshot does), so a KO on guessed inputs can be latched for good.
 
 #include "core/GameAdapter.hxx"
 
@@ -29,6 +30,7 @@ enum MockBug : unsigned {
 	kBugStateOutsideLayout = 1u << 0,
 	kBugReadsNonInput = 1u << 1,
 	kBugUnmaskedPointer = 1u << 2,
+	kBugFlowOutsideLayout = 1u << 3,
 };
 
 // Input bits the mock reads.
@@ -41,9 +43,7 @@ enum MockInput : PackedInput {
 
 class MockFighter : public GameAdapter {
 public:
-	// `flowInLayout`: the round flow is part of the rollback state (what the
-	// SFV adapter does with the game's flow), instead of living outside it.
-	explicit MockFighter(unsigned bugs = kBugNone, bool flowInLayout = false);
+	explicit MockFighter(unsigned bugs = kBugNone);
 
 	std::string BuildId() const override;
 	StateLayout& Layout() override { return layout_; }
@@ -85,8 +85,7 @@ private:
 	int32_t comboCounter_ = 0;     // outside the layout (kBugStateOutsideLayout)
 	int32_t callsSinceStart_ = 0;  // never state (kBugReadsNonInput)
 	int resimulated_ = 0;
-	bool flowInLayout_;
-	int32_t flowKoFrame_ = -1;   // the round flow: outside the layout unless flowInLayout_
+	int32_t flowKoFrame_ = -1;   // the round flow (outside the layout with kBugFlowOutsideLayout)
 	std::unique_ptr<int> heapMarker_;
 	StateLayout layout_;
 };

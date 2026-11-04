@@ -1,5 +1,6 @@
 #include "mod/SfvAdapter.hxx"
 
+#include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
 
@@ -21,20 +22,7 @@ struct RegionEntry {
 
 constexpr uint64_t kMaxRegionSize = 64ull << 20;
 
-// Heap and code addresses of a Windows x64 process (1 TB up to the end of
-// user space), 4-byte aligned. They differ between processes even when the
-// state is the same, so hashes read them as zero.
-bool LooksLikeAddress(uint64_t value)
-{
-	return value >= (1ull << 40) && value <= 0x00007FFFFFFFFFFFull && (value & 3) == 0;
-}
 constexpr size_t kMaxRegions = 4096;
-
-template <typename T>
-T& Field(uint8_t* object, uint32_t offset)
-{
-	return *reinterpret_cast<T*>(object + offset);
-}
 
 } // namespace
 
@@ -55,6 +43,7 @@ void SfvAdapter::Forget()
 	postRestore_.clear();
 	inputUnit_ = nullptr;
 	rollbackUnit_ = nullptr;
+	waitingFor_ = nullptr;
 	flow_.Forget();
 }
 
@@ -62,25 +51,48 @@ bool SfvAdapter::Bind()
 {
 	if (bound_) return true;
 	if (!battleFrame_ || !inputUnit_ || !rollbackUnit_) return false;
-	uint8_t* flowUnit = FlowUnit();
+	uint8_t* flowUnit = FindUnit(sfv::unit::kFlowUnitType);
 	uint8_t* ruleUnit = FindUnit(sfv::unit::kVersusRuleUnitType);
-	if (!flowUnit || !ruleUnit) return false; // not created yet
-
+	uint8_t* battleData = GameGetBattleData(rollbackUnit_);
+	if (!flowUnit || !ruleUnit || !battleData) {
+		WaitingToBind(!flowUnit ? "the flow unit" : !ruleUnit ? "the versus rule unit" : "the match data");
+		return false;
+	}
+	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	if (!flow_.Bind(flowUnit, base)) {
+		WaitingToBind("a flow it can record");
+		return false;
+	}
 	layout_.Clear();
 	layout_.SetAddressTest(LooksLikeAddress);
 	uint8_t* manager = GameGetManager(rollbackUnit_);
-	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
-	if (!AddGameRegions(manager) || !flow_.Bind(flowUnit, base)) {
+	if (!AddGameRegions(manager)) {
 		layout_.Clear();
+		flow_.Forget();
+		WaitingToBind("a usable region table");
 		return false;
 	}
 	gameRegions_ = layout_.Regions().size();
 	CollectPostRestore(manager);
-	AddStateOutsideTheGameSnapshot(ruleUnit, base);
+	AddStateOutsideTheGameSnapshot(ruleUnit, battleData, base);
 	bound_ = true;
 	Log("adapter: bound: %zu game regions + %zu outside the game's snapshot, %zu bytes", gameRegions_,
 		layout_.Regions().size() - gameRegions_, layout_.TotalSize());
 	return true;
+}
+
+// Logs, once per battle, what keeps the layout from being built (the battle
+// runs unchanged meanwhile).
+void SfvAdapter::WaitingToBind(const char* what)
+{
+	if (waitingFor_ == what) return;
+	waitingFor_ = what;
+	Log("adapter: not bound yet: waiting for %s", what);
+}
+
+uint8_t* SfvAdapter::FindUnit(uint32_t typeRva) const
+{
+	return GameFindUnit(rollbackUnit_, typeRva);
 }
 
 // Every region of the game's rollback manager. The presentation regions and
@@ -136,13 +148,12 @@ void SfvAdapter::CollectPostRestore(uint8_t* manager)
 // What a battle tick changes that the game's snapshot leaves out: its netcode
 // manages the counters itself, and its own rollback never crossed a round's
 // end, which is where the rest changes.
-void SfvAdapter::AddStateOutsideTheGameSnapshot(uint8_t* ruleUnit, uintptr_t base)
+void SfvAdapter::AddStateOutsideTheGameSnapshot(uint8_t* ruleUnit, uint8_t* battleData, uintptr_t base)
 {
 	layout_.Add("global.rng", reinterpret_cast<uint8_t*>(base + sfv::rng::kGlobal + sfv::rng::kState), 4);
 	layout_.Add("battleframe", battleFrame_ + sfv::battleframe::kState, sfv::battleframe::kStateSize);
 	layout_.Add("inputunit.counters", inputUnit_ + sfv::inputunit::kCounters, sfv::inputunit::kCountersSize);
 	layout_.Add("ruleunit.judge", ruleUnit + sfv::ruleunit::kJudgeState, 4);
-	uint8_t* battleData = GameGetBattleData(rollbackUnit_);
 	layout_.Add("battledata.results", battleData + sfv::battledata::kResults, sfv::battledata::kResultsSize);
 	layout_.Add("battledata.flowflags", battleData + sfv::battledata::kFlowFlags, sfv::battledata::kFlowFlagsSize);
 	flow_.AddTo(layout_);
@@ -169,6 +180,7 @@ void SfvAdapter::RunUpdate()
 	ticksThisUpdate_ = 0;
 	original_(battleFrame_);
 	ticksInLastUpdate_ = ticksThisUpdate_;
+	flow_.Capture(); // the record mirrors the game whenever it is saved or hashed
 }
 
 void SfvAdapter::RunOriginal()
@@ -214,6 +226,7 @@ void SfvAdapter::AfterLoad()
 	const int32_t frameId[2] = {0, 0};
 	for (const PostRestore& cb : postRestore_) cb.fn(cb.context, frameId);
 	flow_.Apply();
+	flow_.Capture(); // what the restore left in the game, so a load check sees it
 }
 
 std::string SfvAdapter::BuildId() const
@@ -229,10 +242,10 @@ std::string SfvAdapter::Describe() const
 	char text[384];
 	snprintf(text, sizeof(text),
 		"{\"bound\":%s,\"gameRegions\":%zu,\"regions\":%zu,\"bytes\":%zu,\"ticksLastUpdate\":%u,\"sampled\":[%u,%u],"
-		"\"flowState\":%d,\"flowSwitches\":%llu,\"delegatesRebuilt\":%llu,\"refusedReleases\":%llu}",
+		"\"flowState\":%d,\"flowSwitches\":%llu,\"delegatesRebound\":%llu,\"keptUses\":%llu}",
 		bound_ ? "true" : "false", gameRegions_, layout_.Regions().size(), layout_.TotalSize(), ticksInLastUpdate_,
 		sampled_[0], sampled_[1], flow_.Announced(), (unsigned long long)flow.stateSwitches,
-		(unsigned long long)flow.delegatesRebuilt, (unsigned long long)flow.refusedReleases);
+		(unsigned long long)flow.delegatesRebound, (unsigned long long)flow.keptUses);
 	return text;
 }
 

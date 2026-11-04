@@ -32,7 +32,7 @@ void SyncTestMode::Frame(SfvAdapter& adapter)
 	}
 	const FrameInputs inputs{{adapter.Sampled(0), adapter.Sampled(1)}};
 	// As in netplay: outside the fight frames are confirmed, never rolled back.
-	const bool going = tester_->Step(inputs, adapter.Fighting());
+	const bool going = tester_->Step(inputs, adapter.Fighting() ? FramePlay::MayRollBack : FramePlay::Lockstep);
 	if (learn_) {
 		LogNewRegions(adapter);
 	} else if (!going && !failureLogged_) {

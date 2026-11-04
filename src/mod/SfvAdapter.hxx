@@ -7,7 +7,8 @@
 // counters and the input unit's frame counters (its netcode manages them),
 // and what a round's end changes (the rule unit's judgement, the match
 // data's round results and flow flags, the round flow as a FlowRollback
-// record). Pointer words are masked as the synctest finds them.
+// record, which mirrors the game after every update and every load). Pointer
+// words are masked as the synctest finds them.
 //
 // Advance runs exactly one original battle-frame update with the extra-tick
 // count forced to zero, so one call is one GGPO frame, and both players'
@@ -17,7 +18,6 @@
 #include "core/GameAdapter.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/SfvFlow.hxx"
-#include "mod/SfvOffsets.hxx"
 
 #include <stdint.h>
 
@@ -37,8 +37,6 @@ public:
 	bool Bind();
 	bool Bound() const { return bound_; }
 	uint8_t* BattleFrame() const { return battleFrame_; }
-	uint8_t* FindUnit(uint32_t typeRva) const { return rollbackUnit_ ? GameFindUnit(rollbackUnit_, typeRva) : nullptr; }
-	uint8_t* FlowUnit() const { return FindUnit(sfv::unit::kFlowUnitType); }
 
 	// From the input-record hook: remembers what the game computed for each
 	// pad this tick, then writes the injected inputs over it while Advance runs.
@@ -50,9 +48,7 @@ public:
 
 	// The state the battle flow last announced (part of the rollback state).
 	void SeeFlowState(int state) { flow_.Announce(state); }
-	int FlowState() const { return flow_.Announced(); }
 	bool Fighting() const;
-	const FlowRollback::Stats& FlowStats() const { return flow_.GetStats(); }
 
 	// The original update with no injection (outside any session).
 	void RunOriginal();
@@ -61,7 +57,6 @@ public:
 	StateLayout& Layout() override { return layout_; }
 	const StateLayout& Layout() const { return layout_; }
 	void Advance(const FrameInputs& inputs, bool resimulating) override;
-	void Capture() override { flow_.Capture(); }
 	// What the game's own Restore does after copying the regions back, then
 	// the flow record written back.
 	void AfterLoad() override;
@@ -83,9 +78,11 @@ public:
 
 private:
 	void Forget();
+	uint8_t* FindUnit(uint32_t typeRva) const;
+	void WaitingToBind(const char* what);
 	bool AddGameRegions(uint8_t* manager);
 	void CollectPostRestore(uint8_t* manager);
-	void AddStateOutsideTheGameSnapshot(uint8_t* ruleUnit, uintptr_t base);
+	void AddStateOutsideTheGameSnapshot(uint8_t* ruleUnit, uint8_t* battleData, uintptr_t base);
 	void RunUpdate();
 
 	uint8_t* battleFrame_ = nullptr;
@@ -93,6 +90,7 @@ private:
 	uint8_t* inputUnit_ = nullptr;
 	uint8_t* rollbackUnit_ = nullptr;
 	bool bound_ = false;
+	const char* waitingFor_ = nullptr; // what Bind last waited for (logged once)
 	StateLayout layout_;
 	size_t gameRegions_ = 0;
 	std::vector<PostRestore> postRestore_;

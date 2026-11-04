@@ -26,7 +26,7 @@ struct Pair {
 	MockFighter gameA, gameB;
 	RollbackSession a{gameA}, b{gameB};
 
-	Pair(unsigned bugs, int delay, bool flowInLayout = false) : gameA(bugs, flowInLayout), gameB(bugs, flowInLayout)
+	Pair(unsigned bugs, int delay) : gameA(bugs), gameB(bugs)
 	{
 		const uint16_t base = PortBase();
 		RollbackSession::Config ca, cb;
@@ -181,7 +181,7 @@ TEST_CASE("a round flow that is part of the rollback state latches the KO where 
 	for (int f = 0; f < 1500 && reference.FlowKoFrame() < 0; f++) reference.Advance(ScriptedFrame(f, kSeed), false);
 	REQUIRE(reference.FlowKoFrame() > 0);
 
-	Pair pair(kBugNone, 0, true);
+	Pair pair(kBugNone, 0);
 	const ULONGLONG start = GetTickCount64();
 	while ((pair.gameA.FlowKoFrame() < 0 || pair.gameB.FlowKoFrame() < 0) && GetTickCount64() - start < 30000) {
 		pair.a.Step(ScriptedInput(0, pair.a.Frame(), kSeed));
@@ -190,6 +190,7 @@ TEST_CASE("a round flow that is part of the rollback state latches the KO where 
 	}
 	MESSAGE("KO at " << reference.FlowKoFrame() << "; rollbacks " << pair.a.GetStats().rollbacks << " / "
 					 << pair.b.GetStats().rollbacks);
+	REQUIRE(pair.a.GetStats().rollbacks + pair.b.GetStats().rollbacks > 0); // the guesses were corrected
 	CHECK(pair.gameA.FlowKoFrame() == reference.FlowKoFrame());
 	CHECK(pair.gameB.FlowKoFrame() == reference.FlowKoFrame());
 }

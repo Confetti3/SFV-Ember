@@ -4,14 +4,17 @@
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
 
-#include <windows.h>
-
 #include <stddef.h>
 #include <string.h>
+
+#include <iterator>
 
 namespace sfve::mod {
 
 namespace {
+
+namespace fs = sfv::flowstate;
+namespace fu = sfv::flowunit;
 
 // The game's delegate (flowstate::kDelegate), as its own code reads it.
 struct GameDelegate {
@@ -20,187 +23,260 @@ struct GameDelegate {
 	const void* copy;
 	void* closure;
 	const void* invoke;
-	bool Active() const { return invoke && destroy; } // the sequencer's test (rva 0x3E3680)
+	bool Bound() const { return invoke && destroy; } // the sequencer's test (rva 0x3E3680)
 };
 static_assert(sizeof(GameDelegate) == 40);
 
-struct SharedPtr {
-	uint8_t* object;
-	uint8_t* control;
+// What the phase binder's closure holds.
+struct PhaseClosure {
+	uintptr_t function;
+	uint8_t* state;
 };
+static_assert(sizeof(PhaseClosure) == 16);
 
-template <typename T>
-T& Field(uint8_t* object, uint32_t offset)
+static_assert(fs::kMaxSize - fs::kBaseSize <= sizeof(FlowStateRecord::own));
+static_assert(offsetof(FlowRecord, states) % 8 == 0 && offsetof(FlowStateRecord, own) % 8 == 0 &&
+	sizeof(FlowStateRecord) % 8 == 0, "own fields on 8-byte words, as the hash masks them");
+
+// Every field the record keeps, game side and record side, so Capture and
+// Apply cannot list different fields.
+template <typename F>
+void VisitStateFields(uint8_t* state, FlowStateRecord& r, F&& f)
 {
-	return *reinterpret_cast<T*>(object + offset);
+	f(Field<int32_t>(state, fs::kArg), r.arg);
+	f(Field<int32_t>(state, fs::kPhase), r.phase);
+	f(Field<float>(state, fs::kWait), r.wait);
+	f(Field<float>(state, fs::kElapsed), r.elapsed);
+	f(Field<int32_t>(state, fs::kRate), r.rate);
+	f(Field<int32_t>(state, fs::kStep), r.step);
+	f(Field<int32_t>(state, fs::kEnabled), r.enabled);
+	f(Field<int32_t>(state, fs::kMarkedPhase), r.markedPhase);
+	f(Field<int32_t>(state, fs::kMarkCount), r.markCount);
 }
 
-// How many bytes of a state the record keeps: the class's whole size, or
-// only the base when its own fields are unknown or hold pointers.
-size_t KeptSize(uintptr_t vtableRva)
+template <typename F>
+void VisitUnitFields(uint8_t* flow, FlowRecord& r, F&& f)
 {
-	for (const sfv::flowstate::ClassSize& c : sfv::flowstate::kClassSizes) {
-		if (c.vtable == vtableRva) return c.keepOwn ? c.size : sfv::flowstate::kBaseSize;
+	f(Field<int32_t>(flow, fu::kCurrentIndex), r.current);
+	f(Field<int32_t>(flow, fu::kRequestedIndex), r.requested);
+	f(Field<int32_t>(flow, fu::kRequestArg), r.requestArg);
+	f(Field<uint8_t>(flow, fu::kRequestFlag), r.requestFlag);
+}
+
+constexpr auto kToRecord = [](auto& game, auto& record) { record = game; };
+constexpr auto kToGame = [](auto& game, auto& record) { game = record; };
+
+constexpr bool EachClassOnce()
+{
+	for (size_t i = 0; i < std::size(fs::kClassSizes); i++) {
+		for (size_t j = i + 1; j < std::size(fs::kClassSizes); j++) {
+			if (fs::kClassSizes[i].vtable == fs::kClassSizes[j].vtable) return false;
+		}
 	}
-	return 0;
+	return true;
+}
+static_assert(EachClassOnce(), "a class listed twice: only the first entry would be used");
+
+const fs::ClassSize* FindClass(uintptr_t vtableRva)
+{
+	for (const fs::ClassSize& c : fs::kClassSizes) {
+		if (c.vtable == vtableRva) return &c;
+	}
+	return nullptr;
 }
 
 } // namespace
 
-static_assert(sfv::flowstate::kMaxSize - sfv::flowstate::kBaseSize <= sizeof(FlowStateRecord::own));
-static_assert(offsetof(FlowStateRecord, own) % 8 == 0 && offsetof(FlowRecord, states) % 8 == 0);
-
 bool FlowRollback::Bind(uint8_t* flowUnit, uintptr_t imageBase)
 {
 	Forget();
-	const auto* begin = Field<SharedPtr*>(flowUnit, sfv::flowunit::kStatesBegin);
-	const auto* end = Field<SharedPtr*>(flowUnit, sfv::flowunit::kStatesEnd);
+	base_ = imageBase;
+	const auto* begin = Field<const GameSharedPtr*>(flowUnit, fu::kStatesBegin);
+	const auto* end = Field<const GameSharedPtr*>(flowUnit, fu::kStatesEnd);
 	if (!begin || end <= begin || size_t(end - begin) > kMaxFlowStates) {
-		Log("flow: %p has no state list (%p..%p)", (void*)flowUnit, (void*)begin, (void*)end);
+		Log("flow: %p has no state list (%p..%p)", (void*)flowUnit, (const void*)begin, (const void*)end);
 		return false;
 	}
-	for (const SharedPtr* s = begin; s < end; s++) {
+	for (const GameSharedPtr* s = begin; s < end; s++) {
 		if (!s->object || !s->control) {
 			Log("flow: state %zu is empty", size_t(s - begin));
 			states_.clear();
 			return false;
 		}
 		const uintptr_t vtable = Field<uintptr_t>(s->object, 0) - imageBase;
-		size_t kept = KeptSize(vtable);
-		if (!kept) {
-			Log("flow: state %zu has an unknown class (vtable rva 0x%llx); its own fields are not kept",
+		const fs::ClassSize* known = FindClass(vtable);
+		if (!known) {
+			Log("flow: state %zu has an unknown class (vtable rva 0x%llx); only its base is kept",
 				size_t(s - begin), (unsigned long long)vtable);
-			kept = sfv::flowstate::kBaseSize;
 		}
-		states_.push_back({s->object, s->control, kept});
+		const size_t kept = known && known->keepOwn ? known->size : fs::kBaseSize;
+		states_.push_back({s->object, s->control, kept, known ? known->leftoverWords : uint8_t(0)});
 	}
 	flow_ = flowUnit;
+	listBegin_ = begin;
+	listEnd_ = end;
 	record_.stateCount = (int32_t)states_.size();
 	Capture();
+	if (broken_) return false;
 	Log("flow: bound %p with %zu states (current %d)", (void*)flow_, states_.size(), record_.current);
 	return true;
-}
-
-void FlowRollback::AddTo(StateLayout& layout)
-{
-	const size_t region = layout.Add("flow", &record_, sizeof(record_));
-	for (size_t i = 0; i < kMaxFlowStates; i++) {
-		const size_t own = offsetof(FlowRecord, states) + i * sizeof(FlowStateRecord) + offsetof(FlowStateRecord, own);
-		for (size_t at = 0; at < sizeof(FlowStateRecord::own); at += 8) layout.IgnoreWord(region, own + at);
-	}
 }
 
 void FlowRollback::Forget()
 {
 	flow_ = nullptr;
+	listBegin_ = listEnd_ = nullptr;
+	broken_ = false;
 	states_.clear();
 	const int32_t announced = record_.announced;
 	record_ = {};
 	record_.announced = announced;
 }
 
+void FlowRollback::AddTo(StateLayout& layout)
+{
+	const size_t region = layout.Add("flow", &record_, sizeof(record_));
+	for (size_t i = 0; i < states_.size(); i++) {
+		const size_t own = offsetof(FlowRecord, states) + i * sizeof(FlowStateRecord) + offsetof(FlowStateRecord, own);
+		for (size_t k = 0; k < sizeof(FlowStateRecord::own) / 8; k++) {
+			if (states_[i].leftoverWords & (1u << k)) layout.IgnoreWord(region, own + 8 * k);
+		}
+	}
+}
+
 void FlowRollback::Capture()
 {
-	if (!flow_) return;
-	record_.current = Field<int32_t>(flow_, sfv::flowunit::kCurrentIndex);
-	record_.requested = Field<int32_t>(flow_, sfv::flowunit::kRequestedIndex);
-	record_.requestArg = Field<int32_t>(flow_, sfv::flowunit::kRequestArg);
-	record_.requestFlag = Field<uint8_t>(flow_, sfv::flowunit::kRequestFlag);
+	if (!Usable()) return;
+	if (!StateListUnchanged()) return;
+	VisitUnitFields(flow_, record_, kToRecord);
 	for (size_t i = 0; i < states_.size(); i++) {
-		uint8_t* object = states_[i].object;
+		State& s = states_[i];
 		FlowStateRecord& r = record_.states[i];
-		r.arg = Field<int32_t>(object, sfv::flowstate::kArg);
-		r.phase = Field<int32_t>(object, sfv::flowstate::kPhase);
-		const GameDelegate& d = Field<GameDelegate>(object, sfv::flowstate::kDelegate);
-		r.delegate = {d.vtable, reinterpret_cast<const void*>(d.destroy), d.copy, d.invoke, {}};
-		// An inactive delegate's closure was freed; only an active one is read.
-		if (d.Active() && d.closure) r.delegate.closure = *static_cast<const PhaseClosure*>(d.closure);
-		r.sequencer.wait = Field<float>(object, sfv::flowstate::kWait);
-		r.sequencer.elapsed = Field<float>(object, sfv::flowstate::kElapsed);
-		r.sequencer.rate = Field<int32_t>(object, sfv::flowstate::kRate);
-		r.sequencer.step = Field<int32_t>(object, sfv::flowstate::kStep);
-		r.sequencer.enabled = Field<int32_t>(object, sfv::flowstate::kEnabled);
-		r.markedPhase = Field<int32_t>(object, sfv::flowstate::kMarkedPhase);
-		r.markCount = Field<int32_t>(object, sfv::flowstate::kMarkCount);
-		memcpy(r.own, object + sfv::flowstate::kBaseSize, states_[i].kept - sfv::flowstate::kBaseSize);
+		VisitStateFields(s.object, r, kToRecord);
+		if (!CaptureDelegate(s, r)) return;
+		CheckOwnFields(s);
+		memcpy(r.own, s.object + fs::kBaseSize, s.kept - fs::kBaseSize);
 	}
 }
 
 void FlowRollback::Apply()
 {
-	if (!flow_) return;
+	if (!Usable()) return;
+	if (!StateListUnchanged()) return;
 	for (size_t i = 0; i < states_.size(); i++) {
-		uint8_t* object = states_[i].object;
-		const FlowStateRecord& r = record_.states[i];
-		Field<int32_t>(object, sfv::flowstate::kArg) = r.arg;
-		Field<int32_t>(object, sfv::flowstate::kPhase) = r.phase;
-		ApplyDelegate(object, r.delegate);
-		Field<float>(object, sfv::flowstate::kWait) = r.sequencer.wait;
-		Field<float>(object, sfv::flowstate::kElapsed) = r.sequencer.elapsed;
-		Field<int32_t>(object, sfv::flowstate::kRate) = r.sequencer.rate;
-		Field<int32_t>(object, sfv::flowstate::kStep) = r.sequencer.step;
-		Field<int32_t>(object, sfv::flowstate::kEnabled) = r.sequencer.enabled;
-		Field<int32_t>(object, sfv::flowstate::kMarkedPhase) = r.markedPhase;
-		Field<int32_t>(object, sfv::flowstate::kMarkCount) = r.markCount;
-		memcpy(object + sfv::flowstate::kBaseSize, r.own, states_[i].kept - sfv::flowstate::kBaseSize);
+		const State& s = states_[i];
+		FlowStateRecord& r = record_.states[i];
+		VisitStateFields(s.object, r, kToGame);
+		ApplyDelegate(s, r);
+		if (broken_) return;
+		memcpy(s.object + fs::kBaseSize, r.own, s.kept - fs::kBaseSize);
 	}
 	SwitchCurrent(record_.current);
-	Field<int32_t>(flow_, sfv::flowunit::kCurrentIndex) = record_.current;
-	Field<int32_t>(flow_, sfv::flowunit::kRequestedIndex) = record_.requested;
-	Field<int32_t>(flow_, sfv::flowunit::kRequestArg) = record_.requestArg;
-	Field<uint8_t>(flow_, sfv::flowunit::kRequestFlag) = (uint8_t)record_.requestFlag;
+	VisitUnitFields(flow_, record_, kToGame);
+}
+
+// The flow's state list is fixed once the battle has built it; the record
+// only ever addresses the states it saw at Bind.
+bool FlowRollback::StateListUnchanged()
+{
+	if (Field<const GameSharedPtr*>(flow_, fu::kStatesBegin) == listBegin_ &&
+		Field<const GameSharedPtr*>(flow_, fu::kStatesEnd) == listEnd_) {
+		return true;
+	}
+	Break("the flow's state list changed");
+	return false;
+}
+
+// Records which phase function a bound delegate calls, after checking it is
+// the phase binder's delegate: the only shape Apply can rebuild.
+bool FlowRollback::CaptureDelegate(const State& state, FlowStateRecord& r)
+{
+	const GameDelegate& d = Field<GameDelegate>(state.object, fs::kDelegate);
+	if (!d.Bound()) {
+		r.boundPhase = 0;
+		return true;
+	}
+	const auto rva = [&](const void* p) { return reinterpret_cast<uintptr_t>(p) - base_; };
+	const auto* closure = static_cast<const PhaseClosure*>(d.closure);
+	if (rva(d.vtable) != fs::kPhaseDelegateVtable || rva(reinterpret_cast<const void*>(d.destroy)) != fs::kPhaseDelegateDestroy ||
+		rva(d.copy) != fs::kPhaseDelegateCopy || rva(d.invoke) != fs::kPhaseDelegateInvoke || !closure ||
+		closure->state != state.object || closure->function <= base_) {
+		Break("a state's delegate is not a phase binding");
+		return false;
+	}
+	r.boundPhase = (uint32_t)(closure->function - base_);
+	return true;
 }
 
 // Leaves the state's delegate bound to the recorded phase function. When the
 // live one already is, nothing changes; otherwise the live closure is freed
-// the way the game resets a delegate (a state's Exit, rva 0x414DD0) and a
-// new one is built the way the game binds a phase (rva 0x477FE0).
-void FlowRollback::ApplyDelegate(uint8_t* object, const DelegateRecord& want)
+// the way a state's Exit resets its delegate (rva 0x414DD0) and a new one is
+// built the way the phase binder builds one (rva 0x477FE0), without running
+// the phase (the binder's assignment would).
+void FlowRollback::ApplyDelegate(const State& state, const FlowStateRecord& r)
 {
-	GameDelegate& live = Field<GameDelegate>(object, sfv::flowstate::kDelegate);
-	const bool same = live.Active() == want.Active() &&
-		(!want.Active() || (live.closure && *static_cast<const PhaseClosure*>(live.closure) == want.closure &&
-							   live.invoke == want.invoke && reinterpret_cast<const void*>(live.destroy) == want.destroy));
-	if (same) return;
-	if (live.Active()) {
+	GameDelegate& live = Field<GameDelegate>(state.object, fs::kDelegate);
+	const uint32_t liveRva =
+		live.Bound() ? (uint32_t)(static_cast<const PhaseClosure*>(live.closure)->function - base_) : 0;
+	if (liveRva == r.boundPhase) return;
+	if (live.Bound()) {
 		live.destroy(live.closure);
 		live.invoke = nullptr;
 		live.destroy = nullptr;
+		live.closure = nullptr;
 	}
-	if (want.Active()) {
-		void* closure = GameAlloc(sizeof(PhaseClosure));
-		memcpy(closure, &want.closure, sizeof(PhaseClosure));
-		live.vtable = want.vtable;
-		live.copy = want.copy;
+	if (r.boundPhase) {
+		auto* closure = static_cast<PhaseClosure*>(GameAlloc(sizeof(PhaseClosure)));
+		if (!closure) {
+			Break("the game's allocator returned nothing");
+			return;
+		}
+		*closure = {base_ + r.boundPhase, state.object};
+		live.vtable = reinterpret_cast<const void*>(base_ + fs::kPhaseDelegateVtable);
+		live.copy = reinterpret_cast<const void*>(base_ + fs::kPhaseDelegateCopy);
 		live.closure = closure;
-		live.invoke = want.invoke;
-		live.destroy = reinterpret_cast<void (*)(void*)>(const_cast<void*>(want.destroy));
+		live.invoke = reinterpret_cast<const void*>(base_ + fs::kPhaseDelegateInvoke);
+		live.destroy = reinterpret_cast<void (*)(void*)>(base_ + fs::kPhaseDelegateDestroy);
 	}
-	stats_.delegatesRebuilt++;
+	stats_.delegatesRebound++;
+}
+
+// A class's own fields are kept as plain data. One that holds an address
+// (an owned allocation a restore would bring back stale) stops being kept,
+// and kClassSizes should say so: this depends on heap contents, so it can
+// differ between copies.
+void FlowRollback::CheckOwnFields(State& state)
+{
+	for (size_t at = fs::kBaseSize, k = 0; at + 8 <= state.kept; at += 8, k++) {
+		if (state.leftoverWords & (1u << k)) continue;
+		if (!LooksLikeAddress(Field<uint64_t>(state.object, (uint32_t)at))) continue;
+		Log("flow: a state of class 0x%llx holds an address at +%zu; only its base is kept from now on",
+			(unsigned long long)(Field<uintptr_t>(state.object, 0) - base_), at);
+		state.kept = fs::kBaseSize;
+		return;
+	}
 }
 
 // Points the flow's current-state shared pointer at state `index`, keeping
-// the use counts right. The flow's list owns every state, so a release never
-// frees one; a count that says otherwise is left alone.
+// the use counts right. The flow's list owns every state, so a release is
+// never a state's last use; a count that says otherwise is left alone.
 void FlowRollback::SwitchCurrent(int index)
 {
-	SharedPtr& current = Field<SharedPtr>(flow_, sfv::flowunit::kCurrent);
+	GameSharedPtr& current = Field<GameSharedPtr>(flow_, fu::kCurrent);
 	const State* want = index >= 0 && size_t(index) < states_.size() ? &states_[index] : nullptr;
-	uint8_t* object = want ? want->object : nullptr;
-	if (current.object == object) return;
-	uint8_t* control = want ? want->control : nullptr;
-	if (control) InterlockedIncrement(&Field<volatile LONG>(control, sfv::sharedctl::kUses));
-	uint8_t* released = current.control;
-	current = {object, control};
-	if (released) {
-		volatile LONG& uses = Field<volatile LONG>(released, sfv::sharedctl::kUses);
-		if (uses > 1) {
-			InterlockedDecrement(&uses);
-		} else {
-			stats_.refusedReleases++;
-		}
-	}
+	const GameSharedPtr next = want ? GameSharedPtr{want->object, want->control} : GameSharedPtr{};
+	if (current.object == next.object) return;
+	if (next.control) AddRef(next.control);
+	const GameSharedPtr released = current;
+	current = next;
+	if (released.control && !ReleaseKeepingAlive(released.control)) stats_.keptUses++;
 	stats_.stateSwitches++;
+}
+
+void FlowRollback::Break(const char* why)
+{
+	if (!broken_) Log("flow: %s; the round flow is no longer restored", why);
+	broken_ = true;
 }
 
 } // namespace sfve::mod

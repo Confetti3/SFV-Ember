@@ -308,15 +308,19 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 		return false;
 	}
 	StateLayout& layout = game_.Layout();
-	game_.Capture();
+	LARGE_INTEGER started, finished, perSecond;
+	QueryPerformanceCounter(&started);
 	layout.SaveTo(slot->bytes.data());
 	slot->used = true;
 	slot->frame = frame;
 	slot->hash = layout.HashSaved(slot->bytes.data());
+	QueryPerformanceCounter(&finished);
 	history_[frame % kHistory] = {frame, slot->hash};
 	if (frame % kCheckpointInterval == 0) {
 		layout.RegionHashesSaved(slot->bytes.data(), checkpoints_[frame]); // a replay overwrites it
-		CoreLog("checkpoint: frame %d hash %016llx", frame, (unsigned long long)slot->hash);
+		QueryPerformanceFrequency(&perSecond);
+		CoreLog("checkpoint: frame %d hash %016llx (save %lld us)", frame, (unsigned long long)slot->hash,
+			(finished.QuadPart - started.QuadPart) * 1000000 / perSecond.QuadPart);
 		while (checkpoints_.size() > kCheckpointsKept) checkpoints_.erase(checkpoints_.begin());
 	}
 	frame_ = frame;
@@ -344,7 +348,6 @@ bool RollbackSession::Load(unsigned char* buffer)
 	if (depth > stats_.longestRollback) stats_.longestRollback = depth;
 	frame_ = slot->frame;
 
-	if (config_.verifyLoads) game_.Capture(); // what the restore left in the game
 	if (config_.verifyLoads && layout.HashLive() != slot->hash) {
 		stats_.loadMismatches++;
 		CoreLog("session: frame %d restored with a different hash", slot->frame);

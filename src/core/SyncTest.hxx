@@ -51,6 +51,10 @@ struct SyncTestReport {
 	std::map<std::string, RegionDiff> regionExamples; // the first difference seen in each
 };
 
+// How a session plays a frame: on guessed inputs it may roll back (during
+// the fight), or in lockstep once both inputs are confirmed (outside it).
+enum class FramePlay { MayRollBack, Lockstep };
+
 class SyncTester {
 public:
 	// `learn`: keep going after a difference, tallying the regions involved
@@ -62,10 +66,10 @@ public:
 	SyncTester(GameAdapter& game, int distance, bool learn = false, bool perturb = false);
 
 	// One forward frame, then a rollback check when one is due. Returns false
-	// once a check has failed (never in learning mode). A frame played with
-	// `rollbackAllowed` false is one a session plays in lockstep: no check
-	// rolls back to it or past it.
-	bool Step(const FrameInputs& inputs, bool rollbackAllowed = true);
+	// once a check has failed (never in learning mode). Lockstep frames mirror
+	// a session: the guessed frames before one are checked before it is
+	// played, and no check restores to before the state after it.
+	bool Step(const FrameInputs& inputs, FramePlay play = FramePlay::MayRollBack);
 	const SyncTestReport& Report() const { return report_; }
 
 private:
@@ -77,7 +81,9 @@ private:
 
 	Saved& At(int frame) { return saved_[frame % saved_.size()]; }
 	void Save(int frame);
-	bool CheckRollback(int now);
+	int OldestRestorable() const;
+	// Restores state `from`, replays to `now` and compares every frame.
+	bool CheckRollback(int from, int now);
 	void Fail(int frame, const char* what);
 	static FrameInputs Perturbed(const FrameInputs& inputs, int frame);
 
@@ -86,7 +92,7 @@ private:
 	bool learn_;
 	bool perturb_;
 	int frame_ = 0;
-	int rollbackFloor_ = 0; // the earliest frame a check may restore
+	int rollbackFloor_ = 0; // the earliest state a check may restore
 	std::vector<Saved> saved_;
 	SyncTestReport report_;
 };

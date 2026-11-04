@@ -62,10 +62,10 @@ tools/       sfve.py, sfve_mcp.py, compare.py, diffstate.py: launch, drive and c
 ```
 
 The seam is `GameAdapter` (`src/core/GameAdapter.hxx`): a layout of memory
-regions, `Advance(inputs, resimulating)` that runs exactly one tick,
-`Capture()` that refreshes state the adapter keeps as a record before every
-save and hash, and `AfterLoad()` for post-restore fix-ups. `MockFighter`
-implements it for the tests, `SfvAdapter` over SFV.
+regions, `Advance(inputs, resimulating)` that runs exactly one tick, and
+`AfterLoad()` for post-restore fix-ups. An adapter that keeps state as a
+record in its own memory keeps it equal to the game after every Advance and
+AfterLoad. `MockFighter` implements it for the tests, `SfvAdapter` over SFV.
 
 ### Carried over from Ember
 
@@ -140,10 +140,11 @@ back; entering lockstep checks the guessed frames before it).
 
 - Unit tests (mock fighter): synctest at distances 1-8, injected bug classes
   found and located, two sessions over loopback, a round flow in the layout
-  latching a KO where an offline run does, captured records, lockstep floors.
+  latching a KO where an offline run does (with rollbacks), lockstep floors.
 - In game, one copy: the synctest with perturbed (wrong-input) rollbacks every
   7 frames passes a whole two-round match, rolling back across both round ends
-  (the flow switched back and forth, delegates rebuilt).
+  (the flow switched back and forth, delegates rebuilt). Phase functions are
+  hashed as rvas, so a wrong rebinding would fail it.
 - In game, two copies over loopback GGPO, 30 ms simulated lag each way, input
   delay 1, mashing from frame 600: 12,000 frames, about 1,500 rollbacks of up
   to 3 frames, two of them across a round's end; both finish the match on the

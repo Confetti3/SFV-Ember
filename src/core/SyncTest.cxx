@@ -1,5 +1,7 @@
 #include "core/SyncTest.hxx"
 
+#include <algorithm>
+
 #include <stdio.h>
 #include <string.h>
 
@@ -49,7 +51,6 @@ SyncTester::SyncTester(GameAdapter& game, int distance, bool learn, bool perturb
 void SyncTester::Save(int frame)
 {
 	Saved& s = At(frame);
-	game_.Capture();
 	game_.Layout().SaveTo(s.bytes.data());
 	s.hash = game_.Layout().HashSaved(s.bytes.data());
 }
@@ -71,26 +72,34 @@ void SyncTester::Fail(int frame, const char* what)
 	report_.message = text;
 }
 
-bool SyncTester::Step(const FrameInputs& inputs, bool rollbackAllowed)
+bool SyncTester::Step(const FrameInputs& inputs, FramePlay play)
 {
 	if (!report_.ok) return false;
+	const bool lockstep = play == FramePlay::Lockstep;
+	// Before it plays a lockstep frame, a session corrects every guessed frame
+	// since the last confirmed one.
+	if (lockstep && rollbackFloor_ < frame_ && !CheckRollback(OldestRestorable(), frame_)) return false;
 	Save(frame_);
 	At(frame_).inputs = inputs;
 	game_.Advance(inputs, false);
 	report_.framesRun = ++frame_;
-	const bool due = frame_ - distance_ >= rollbackFloor_ && (frame_ % distance_ == 0 || !rollbackAllowed);
-	// Entering lockstep, a session first corrects the guessed frames before it
-	// (the check), then never rolls back past this one.
-	const bool ok = !due || CheckRollback(frame_);
-	if (!rollbackAllowed) rollbackFloor_ = frame_;
-	return ok;
+	if (lockstep) {
+		rollbackFloor_ = frame_; // confirmed: never restored past
+		return true;
+	}
+	return frame_ % distance_ != 0 || CheckRollback(OldestRestorable(), frame_);
 }
 
-bool SyncTester::CheckRollback(int now)
+int SyncTester::OldestRestorable() const
 {
+	return std::max(rollbackFloor_, frame_ - distance_);
+}
+
+bool SyncTester::CheckRollback(int from, int now)
+{
+	if (from >= now) return true;
 	StateLayout& layout = game_.Layout();
 	Save(now);
-	const int from = now - distance_;
 	if (perturb_) {
 		// The timeline a misprediction would have played, then thrown away.
 		layout.LoadFrom(At(from).bytes.data());
@@ -100,7 +109,6 @@ bool SyncTester::CheckRollback(int now)
 	layout.LoadFrom(At(from).bytes.data());
 	game_.AfterLoad();
 	report_.rollbacks++;
-	game_.Capture(); // what the restore left in the game
 	if (layout.HashLive() != At(from).hash) {
 		report_.loadMismatch = true;
 		Fail(from, "restored state differs from the save");
@@ -109,7 +117,6 @@ bool SyncTester::CheckRollback(int now)
 	bool diverged = false;
 	for (int k = from; k < now; k++) {
 		game_.Advance(At(k).inputs, true);
-		game_.Capture();
 		if (diverged || layout.HashLive() == At(k + 1).hash) continue;
 		Fail(k + 1, "replayed frame differs");
 		if (!learn_) return false;

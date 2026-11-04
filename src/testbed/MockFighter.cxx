@@ -22,8 +22,8 @@ uint32_t NextRandom(uint32_t& state)
 
 } // namespace
 
-MockFighter::MockFighter(unsigned bugs, bool flowInLayout)
-	: bugs_(bugs), flowInLayout_(flowInLayout), heapMarker_(std::make_unique<int>(0))
+MockFighter::MockFighter(unsigned bugs)
+	: bugs_(bugs), heapMarker_(std::make_unique<int>(0))
 {
 	world_.rng = 0x5eed1234u;
 	world_.roundTimer = 99 * 60;
@@ -46,7 +46,7 @@ void MockFighter::Build()
 	const size_t world = layout_.Add("world", &world_, sizeof(world_));
 	if (!(bugs_ & kBugUnmaskedPointer)) layout_.IgnoreWord(world, offsetof(World, owner));
 	layout_.Add("presentation", &presentation_, sizeof(presentation_), false);
-	if (flowInLayout_) layout_.Add("flow", &flowKoFrame_, sizeof(flowKoFrame_));
+	if (!(bugs_ & kBugFlowOutsideLayout)) layout_.Add("flow", &flowKoFrame_, sizeof(flowKoFrame_));
 }
 
 std::string MockFighter::BuildId() const

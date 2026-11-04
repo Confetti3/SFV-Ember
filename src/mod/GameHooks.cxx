@@ -1,5 +1,6 @@
 #include "mod/GameHooks.hxx"
 
+#include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
 
@@ -15,11 +16,7 @@ using InputRecordFn = uint64_t (*)(uint8_t* inputUnit, uint32_t predictRemote);
 using UnitTickFn = void (*)(uint8_t* rollbackUnit);
 using GetManagerFn = uint8_t* (*)(uint8_t* context);
 using FlowMessageFn = uint64_t (*)(uint8_t* receiver, uint8_t* message);
-struct SharedPtr {
-	uint8_t* object;
-	uint8_t* control;
-};
-using FindUnitFn = SharedPtr* (*)(uint8_t* battle, SharedPtr* out, const void* type, uint32_t index);
+using FindUnitFn = GameSharedPtr* (*)(uint8_t* battle, GameSharedPtr* out, const void* type, uint32_t index);
 using GetBattleDataFn = uint8_t* (*)(uint8_t* context);
 using GameAllocFn = void* (*)(size_t size);
 
@@ -96,10 +93,10 @@ uint8_t* GameFindUnit(uint8_t* anyUnit, uint32_t typeRva)
 	uint8_t* owner = *reinterpret_cast<uint8_t**>(anyUnit + sfv::unit::kContext + sfv::unit::kContextOwner);
 	uint8_t* battle = owner ? *reinterpret_cast<uint8_t**>(owner + sfv::unit::kOwnerBattle) : nullptr;
 	if (!battle) return nullptr;
-	SharedPtr found{};
+	GameSharedPtr found{};
 	s_findUnit(battle, &found, reinterpret_cast<const void*>(s_imageBase + typeRva), 0);
 	// Hand back the reference: the battle keeps the unit alive.
-	if (found.control) InterlockedDecrement(reinterpret_cast<volatile LONG*>(found.control + 8));
+	if (found.control) ReleaseKeepingAlive(found.control);
 	return found.object;
 }
 

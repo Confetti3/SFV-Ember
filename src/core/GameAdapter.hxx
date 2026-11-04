@@ -44,13 +44,11 @@ public:
 	// should not start sounds or one-shot effects for them.
 	virtual void Advance(const FrameInputs& inputs, bool resimulating) = 0;
 
-	// Called before the layout is saved or hashed: brings state the adapter
-	// keeps in its own memory (as part of the layout) up to date with the game.
-	virtual void Capture() {}
-
 	// Called right after the layout's memory was written back, for fix-ups a
 	// plain copy cannot do (the game's own post-restore callbacks, state the
-	// adapter keeps as a record).
+	// adapter keeps as a record). An adapter that keeps such a record keeps it
+	// equal to the game after every Advance and AfterLoad, so saves and hashes
+	// see it current.
 	virtual void AfterLoad() {}
 };
 
