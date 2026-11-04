@@ -12,6 +12,13 @@ Roots: **S** = `C:\Users\user\Desktop\sf4\sf4-current` (branch `release`); **V**
 
 **Correction to the platform-common reader.** V's `src/overlay/` is not untracked. It was committed at `53da8f0` ("Overlay host for Ember's interface on SFV"). `V/src/overlay/Overlay.hxx:25-37` already exposes `OverlayUi{applyScale, draw}` and `SetOverlayUi`, which is where Ember's shell plugs in on SFV. `git status` in V is clean.
 
+## 0. Decisions (the maintainer, 2026-11-04)
+
+- Start now, on a branch of the Ember repo (`feat/ember-library`, off `release`), in its own worktree; nothing merges to `release` or `nightly` without the maintainer. Step 0 (test-only goldens) first.
+- Pick model: **game-defined dimensions** (5.1 (a)). The review's "limits first" step (6, step L) comes before it; the generic model follows.
+- The large mechanical move (steps 9-10) lands **right after a Stable release**, so the next merge into `nightly` carries it once.
+- Development skips the ownership check; the public version keeps it.
+
 ---
 
 ## 1. The library boundary
@@ -467,3 +474,164 @@ ember-core/
 9. **Toolchain friction, not checked.** I could not verify that `sf4e_ui`, `room_model` and `session_server` compile under V's C++20 `/W4 /permissive- /utf-8`. Before step 9, compile `ember/` once with V's flags in a scratch configure.
 10. **What SFV's first release offers.** Slice 1 has no winner (so no sets, records or rankings), no spectators, no Training, no replays and no public rooms. Should SFV wait for result reading (gap (a)) before anyone outside sees it?
 11. **Overlap of work.** Steps 3–6 touch `NetplayRuntime*` and `SessionClient`, the files with the most active Nightly churn. Expect merge conflicts with in-flight Nightly work; land each step quickly.
+
+---
+
+## 6. Review of this design (skeptic pass, 2026-11-04)
+
+Where this section and sections 1-5 disagree, this section wins; its corrected slice is the plan of record.
+
+The plan's overall direction holds up, but several of its key claims are wrong. Five problems matter most:
+
+1. **The runtime is coupled to SF4 far more than the plan says.** Besides the `fSystem` and `Dimps` calls the plan counts, it calls SF4 Ember's own hook layer (input devices, the pad layer, saved preferences, game events, Steam and others) directly.
+2. **The shell does not draw fighter select.** The SF4 overlay host draws it, keeps the player's pick, and builds the screen data. The plan leaves all of that in SF4, so SFV would have nothing to pick with.
+3. **The adapter only goes one way.** About 22 calls go from the SF4 battle hooks back into the runtime, and none of them are in the interface.
+4. **Ports are handed over at the wrong time.** GGPO ports only exist after the match session has started, which is later than the "Enter" call that carries them in the plan.
+5. **Slice 1 cannot reach "back in the room" on SFV today.** SFV can only rematch in place; nothing in V leaves a battle for the main menu.
+
+Roots: **S** = `C:\Users\user\Desktop\sf4\sf4-current` (release, 0f4dc0a42); **V** = `C:\Users\user\Desktop\sf4\sfv-ember` (53da8f0). Paths are under `src/` unless they start with a root. Nothing was edited or built.
+
+## Confirmed
+- **V's overlay is committed.** `53da8f0` is HEAD and `src/overlay/` is tracked. `OverlayUi{applyScale, draw}` and `SetOverlayUi` are at V `overlay/Overlay.hxx:24-37`.
+- **Runtime counts.** It uses exactly 16 distinct `fSystem::` symbols. `UserApp::netplay` has 180 uses and `UserApp::server` 34. Besides those statics, the only `UserApp` calls are `EnterAuthorizedMatch`, `MatchEntry` and `StartIrohSession`.
+- **The runtime's line count is 6,297, not about 4,950** (`sf4e/sf4e__Netplay*` plus `RuntimeBridge`).
+- **The runtime bridge already works across threads.** `sf4e/sf4e__RuntimeBridge.hxx:2-5` and `sf4e__NetplayFacade.hxx:331-361` say the game thread publishes and any thread can read or submit. That suits SFV, where `Present` runs on a different thread.
+- **Input size and packet cap:**
+  - `GgpoInputBytes = 8` and `GgpoMaximumPacket` are at `session/MatchAuthority.hxx:11-16` and are used at `session/IrohMatchSession.cxx:86,160,230`.
+  - The helper checks `max_packet` with no game-specific limit (`rust/sf4-net/src/bridge.rs:102,120`, `service/games.rs:474`).
+  - V already computes the cap from the input size (V `core/MatchLink.hxx:43-46`).
+- **Same GGPO build.** The GGPO overlay port is identical in both repos (`vcpkg-overlays/ports/ggpo`, checked with `diff -rq`).
+- **Private rooms use the in-game server.** They are hosted by the in-game `SessionServer`, created in `AttachRoom` (`sf4e/sf4e__NetplayRuntime.cxx:179-191`) from `sidecarHash` and a `FixedPoint` round time.
+- **Identity literals** are where the plan says: `platform/HelperProcess.cxx:45`, `discord/BridgeServer.hxx:19`, `platform/JoinLinkMailbox.hxx:27-32`, `ui/ApplicationShell.cxx:712`.
+- **Build links.** `Session` links `Dimps` privately (`CMakeLists.txt:316-324`). `sf4e_session_server` links `sf4e_selection` (`:301-302`), and the package installer does too (`:403`).
+- **Verification** writes `rSystem RS_ISLEAVING` (`session/sf4e__SessionClient__Verification.cxx:163`) and reads `snapshotMap` at `:176` and `:240`.
+- **SFV picks** are fighter, costume and colour only (V `mod/VersusLaunch.hxx:35-39`). No V-Skill or V-Trigger appears anywhere in V's code; whether they are pre-match choices is still unverified.
+- **V has no spdlog.** Its warning flags are global (V `CMakeLists.txt:19`), and `sfve_shared` is lowered to `/W3` (`:28`).
+
+## Wrong (evidence, then correction)
+1. **"The runtime becomes neutral once two things happen."** False. The runtime also calls SF4 Ember's hook layer:
+
+   | Namespace or call | Uses | Where it comes from |
+   |---|---|---|
+   | `input::*` | about 70 | `sf4e__InputDevices`: `ReadDevices`, `AssignToSide`, `ReleaseFromSide`, `ReadAssignedInput`, `ScanKeyboard`, `RestoreController` |
+   | `Gamepads::*` | 18 | the SDL pad layer: `ReadFrame`, `ControlSetup`, `SetLayouts`, `BeginSetup`, `SaveSetup`, `BrandForDevice` (`NetplayRuntime__Input.cxx:20-295`) |
+   | `OverlayPrefs::*` | 24 | Save/Queue player preferences; `sf4e__OverlayPrefs.hxx:11-12` includes the fighter and stage catalogs |
+   | `GameEvents::*` | 11 | `VsBattle::nextRequest` (`NetplayRuntime.cxx:32`, `__Match.cxx:306`) and `MainMenu::RequestTraining` |
+   | others | — | `MenuMusic`, `AwayAlert`, `steam::*`, `custom::Installed`, `training::*`, `DirectInputFilter`, `Overlay::MenuPads()` (`__Input.cxx:67,150`), `SelfTest`, `sidecarHash`, `localRand`, `GetConfig()` |
+
+   `AttachRoom` will not join a room until `runtime->input.Ready()` (`NetplayRuntime.cxx:181`). **Correction:** list these in §1.0. `game::Input` also needs device enumeration and assignment, plus the pad-setup and layout pipeline, or a capability that turns them off.
+
+2. **"`RuntimeBridge.hxx` is already pure."** Only its own body is. It includes `NetplayFacade.hxx`, and that header includes:
+   - `Dimps__GameEvents.hxx` (`:42`)
+   - `FighterCatalog`, `StageCatalog` and `InstalledContent` (`:7-9`)
+   - `ReplayFiles` (`:31`)
+   - `ControllerView` (`:14`)
+   - `sf4e__NetplayConfig` (`:16`)
+
+   The snapshot and command types it carries are SF4 types: `ConfirmedCharaConditions` (`:121`), `selection::RandomPool` (`:124`), `gamepads::*` (`:166-172`), `std::array<Availability, FighterCount>` (`:186`) and `InstalledContentPtr` (`:188`). **Correction:** the *pattern* works; the boundary does not exist yet.
+
+3. **Step order: step 4 cannot drop the Dimps includes before steps 5–6.** `NetplayRuntime.hxx:152` and `NetplayFacade.hxx:121,374-375` hold the native pick type. **Correction:** make the pick type and catalog limits neutral before, or together with, step 4.
+
+4. **§1.1's "neutral" UI list pulls in SF4 files:**
+   - `OverlayLayers.hxx:3` and `ReplayPlaybackHud.cxx:5` include `TrainingPanel.hxx`.
+   - `RoomPanelTables.cxx:16` and `ReplaySummaryText.hxx:8` include `FighterSelector.hxx`, which pulls in `SelectionArt` and so D3D9. `ReplaySummaryText` is included by `ApplicationShell.cxx:24`.
+   - `CountryFlag.cxx:3` and `NameMarks.cxx:4` include `SelectionArt.hxx`.
+   - `ApplicationShell.hxx` includes `GameDisplayConfig` (`:8`) and `ControllerView` (`:40`), and holds a `selection::Pick` (`:184`) and a `ReplaysPanel` (`:46,404`). `ReplaysPanel` pulls in `ReplaySets`, `ReplayFiles` and `ReplaySender`.
+
+   Yet §1.2 says `GameDisplayConfig`, `ControllerView`, `GamepadBrand` and `ReplayFiles` stay in SF4, so the plan contradicts itself. `lab/UiLab.cxx` is a D3D9 harness (`:36`, `:339`), not neutral. `ApplicationShell.cxx`, `__Settings`, `__Training`, `__Updates`, `__ButtonLayout`, the `RoomPanel*`/`RoomActions`/`RoomControls` files, `ControllersScreen`, `PadSetupScreen`, `ButtonLayoutScreen` and `Recovery*` are in neither list.
+
+5. **`sf4e_ui` is a single target.** It builds `SelectionArt`, `FighterSelector`, `MatchHud`, the `Training*` files and `Speech.cxx`, and links `d3d9` (`CMakeLists.txt:96-119`). No step splits it before step 9. **Correction:** add that split as its own step.
+
+6. **"The shell itself never touches the game; it sends commands and reads the snapshot."** Fighter select is drawn by the host, not the shell:
+   - The shell calls a `DrawSelection` callback the host passes in (`ApplicationShell.cxx:738-752`, `.hxx:312`).
+   - The SF4 host draws `FighterSelector` (`sf4e/sf4e__Overlay.cxx:80,274,300`).
+   - The player's pick and the Training dummy live as statics in that host (`:107-125`), not in the runtime.
+   - About 250 lines of `selection::*` code build `ShellView` and send `Submit` (`:336-560`).
+
+   **Correction:** pull a neutral `ShellHost` out of `sf4e__Overlay.cxx`: snapshot to `ShellView`, `Submit` to `RuntimeCommand`, and `Background`. The selection screen becomes an adapter hook (`DrawSelection(Pick&)`), and the pick's storage moves into the runtime.
+
+7. **`MatchSetup` puts ports in `Enter`, which is too early.**
+   - Today `Enter` is `OnReady` / `TryStartPendingMatch` → `StartMatchFromLobby`, reading the room's lobby and match data (`UserApp.cxx:88-145,338-341,387-397`).
+   - Ports exist only once `IrohMatchSession` is `Started`. At that point the game pulls `GetRuntimeMatchEndpoints`, then calls `ReleaseRuntimePortToGgpo`, then starts GGPO (`NetplayRuntime__Match.cxx:284-297`; `UserApp.cxx:180-240`).
+   - The battle-loaded and synced handshake comes between them: `client.Battle_Loaded()` at `GameEvents.cxx:351-358`, and `OnBattleSynced` at `UserApp.cxx:343-345`.
+
+   **Correction:** split it into `Enter(picks, rules, seed)` and library calls the game makes at its GGPO start: `MatchEndpoints()`, `ReleasePort()`, `BattleLoaded()` and an "is synced" check.
+
+8. **`Battle::StartTransport` is in the wrong layer.** `StartIrohSession` only builds the `SessionClient` (`UserApp.cxx:402-408`), which is library work. What the game adds is its build id and the callbacks (`clientCallbacks`, `:351-356`).
+
+9. **"Nothing checks the wire bytes."** Partly false: `tests/room_private_golden_test.cxx` already compares SHA-256 hashes of the room snapshot and checkpoint JSON. What is missing is a byte check on `SessionProtocol` messages and `PlayerPreferences`. **Correction:** step 0a should extend this existing golden test.
+
+10. **The "pick checks" list is incomplete.** It also misses:
+    - `SessionClient.cxx:456,465`
+    - `SessionProtocol.cxx:37,39` (the rejected-match check)
+    - `SessionProtocol.hxx:529` (`ReadStage`)
+    - `SessionServer__Handlers.cxx:104` (`FighterAllowed` with the edition)
+    - `SessionPlainTypes.hxx:46`
+    - `room::Chara` and `Member` keep named `edition`/`costume`/`color`/`ultra`/`keptEdition` fields (`session/RoomTypes.hxx:198-222,306-310`).
+
+    Under decision (a), `PickDimension` also needs a JSON key and a "kept with the fighter" flag, because `edition` affects the rules. The Linux room host must know these too.
+
+11. **V's vcpkg.json still has imgui `win32-binding` and `version>=1.91.5` with no pin.** That goes against overlay plan §1e. Treat the change as still to do, not as already done.
+
+12. **Identity covers the window title but not the strings.** `locales/en.po` has 2,751 entries, and 73 of them use SF4, Ultra, edition or Steam wording, for example "SF4 Ember Netplay" and "Ultra Street Fighter IV could not be found." **Correction:** add per-game locale overlays.
+
+13. **Slice 1's "back in the room" cannot happen on V today.**
+    - `NetplayMode.cxx:69` always calls `Rematch`.
+    - `MatchEnd.hxx:11-14` says the decision is always a rematch.
+    - Neither `MatchEnd.cxx` nor `VersusLaunch` leaves a battle for the main menu. The only path is the failed-launch `kModeBackToMainMenu` (`VersusLaunch.cxx:139`).
+    - When a session fails, the battle "carries on offline" (`NetplayMode.cxx:44-48`).
+
+    This is an SFV game-side prerequisite, not "gap (b)".
+
+## Missing pieces
+- **Calls from the game back into the library.** The SF4 battle hooks call 22 distinct `NetplayFacade::` functions: `NotifyGgpoSyncPhase`, `NotifyMatchEnded`, `NotifyRuntimeMatchResult`, `NotifyRuntimeBattleClosedWithoutSession`, `NotifyRuntimeEventSystemReady`, `FinalizeControlPlaneLossAfterBattle`, `CancelDeferredGgpoClose`, `ClearBattleState`, `PushAlert`, `ReadRuntimeMatchInput`, `BindRuntimeInput`, `IsRuntimeMatchEndCommitted`, `TrainingRequestHolds`, `RematchInPlaceOffered`, `IsRuntimeSpectator`, `TickFrame` and others. These need a `RuntimeEvents` interface that the adapter calls.
+- **The outer tick.** Its order lives in `UserApp::Steam_PostUpdate` (`UserApp.cxx:410-500`):
+  1. `TickRuntime`
+  2. `PrepareForCallbacks`
+  3. `client.Step`
+  4. `server.Step`
+  5. `ObserveControlPlane`
+  6. `ReconcileTrainingCall`
+  7. `TickFrame`
+  8. `ggpo_idle`
+  9. `DrainPendingAbort`
+  10. `PollNativeMatchResult`
+  11. `PollSpectators`
+  12. `StepPacing`
+  13. the original engine call
+  14. `PublishPresentationFrame`
+
+  Steps 1–7 and 14 belong in a neutral `ember::Tick()`; the rest are `Battle` hooks. Slice 1's item 7 (only `TickRuntime` and Publish) leaves out stepping the session client and server. V can host the tick with `RunEachGameFrame` (V `mod/GameThread.hxx:18`).
+- **Helper start.** SF4 gets the helper from the launcher payload (`NetplayRuntime.cxx:373-388`). SFV starts it in-process (V `mod/HelperLink.cxx:81-89`), so the runtime should take a `HelperBootstrap` supplied by the adapter. V's `HelperLink` and `MatchLink` must be retired once V uses `IrohRoom`; the plan never says so.
+- **Capability flags still missing:** controllers, pad setup and button layout, the watched picture, Steam profile, the away alert, installed or custom content, and random pools.
+- **SFV roster versus `FighterCount = 44`** (`common/FighterCatalog.hxx:9`). From game knowledge (not checked in V's code), SFV CE has 45 playable fighters. So reusing today's fighter index fails at `RoomModel.cxx:109`, `RoomModelJson.cxx:398-400` and the fixed-size availability arrays. Fighter, costume and ultra limits must come from the catalog at run time before any SFV slice.
+- **Round count and time.** SFV's `MatchPicks` has no rounds or time. In Slice 1 the shell must lock or hide those rules, or it will offer rules SFV ignores.
+
+## Corrected smallest vertical slice for SFV
+Scope: a private room, two players, one game per Ready, an explicit end that returns to the room, and no result read (the game is recorded as Cancel).
+
+1. **V prerequisite.** A synchronized exit from the battle to the main menu, used both at match end (instead of `Rematch`) and when the session fails. Both copies must decide it at the same confirmed frame, the way `MatchEnd` already decides a rematch.
+2. **S, step 0a.** Extend `room_private_golden_test` to cover `MatchData`, `PreBattleSetChara`, `LobbyData` and `PlayerPreferences`.
+3. **S, step 1.** Overlay plan §1a, plus making `ReplaySummaryText`, `RoomPanelTables` and `OverlayLayers` stop including `FighterSelector` and `TrainingPanel`.
+4. **S, step 2.** Identity, with the window title and locale overlays.
+5. **S, step L (new, before the adapter step): limits only, not the generic pick model.**
+   - `FighterCount`, `CostumeLimit` and `UltraChoices`, the availability arrays and the stage checks become catalog values read at run time.
+   - The wire keeps today's field names.
+   - SFV uses `charaID` = its roster index, plus `costume` and `color`; `ultra` and `edition` are 0 or -1, with `editionSelect` off.
+   - SF4's bytes do not change, and decision §5.1 is deferred.
+6. **S, steps 3+4, reduced.**
+   - Pull `ember::Tick` and `ShellHost` out of `UserApp.cxx` and `sf4e__Overlay.cxx`.
+   - Put `fSystem`, `GameEvents` and `UserApp` behind `Battle`, with the split from Wrong #7 and the game-to-library calls.
+   - Training, replays, spectators, the pad wizard, `OverlayPrefs` paths, Steam and custom content go behind capabilities, all set true for SF4.
+7. **Library on V.** Add the library as source with C++17 code compiled under V's flags; check that build in a scratch configure first.
+8. **The SFV adapter:**
+   - `CanStart` means the main-menu scene.
+   - `Enter` calls `LaunchOnMainMenu` with picks taken from the SFV roster.
+   - In `NetplayMode::StartSession`, replace `link_->Ready()` with the library's endpoints query and port release.
+   - Report battle-loaded at `NewBattle`, and start `RollbackSession` only once synced.
+   - `Sample` reads `RollbackSession` stats and `ReadRift`.
+   - `ConfirmedFrame` and `HashAt` come from `RollbackSession.hxx`. The desync check compares one overall hash, with the per-character hashes left empty.
+   - `End` and `Leave` use the step-1 exit.
+9. **Selection on SFV.** A `DrawSelection` provided by the host, built from `GameMenu` rows over `ReadContentLists()` (the pick rows of the overlay plan's SfvPanel). Do not port `FighterSelector` for this slice.
+
+After that, in order: read a winner (results, sets, rankings), rounds and time in `MatchPicks`, the generic pick model (decision a) with V-Skill and V-Trigger if they turn out to be pre-match choices, public rooms through the room host's `game` key, and spectators.
