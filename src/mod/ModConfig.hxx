@@ -20,6 +20,8 @@
 //   -sfve_link=1         netplay through Ember's helper ("host" / "join <invitation>")
 //   -sfve_fighter=F      linked netplay: this copy's fighter, CODE[:costume[:colour]]
 //   -sfve_stage=S        linked netplay, host: the stage code
+//   -sfve_ownership=1    the match launch runs the game's ownership check
+//                        (off while developing; on in the public version)
 //   -sfve_dialogs=N      offline start-up dialogs hidden: 0 none, 1 download errors,
 //                        2 those and the offline notice (default)
 
@@ -50,6 +52,9 @@ struct ModConfig {
 	// Offline start-up dialogs kept from showing: 0 none, 1 the download
 	// failures, 2 those and the offline-mode notice.
 	int offlineDialogs = 2;
+	// The launch runs the game's ownership check. Off for development (the maintainer,
+	// 2026-11-04); the public version of Ember turns it on.
+	bool ownershipCheck = false;
 	std::string fighter; // linked netplay: this copy's pick (empty: the game's default)
 	std::string stage;   // linked netplay, host: the stage (empty: the game's default)
 };

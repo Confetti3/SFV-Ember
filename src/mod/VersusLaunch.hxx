@@ -47,7 +47,12 @@ struct MatchPicks {
 // Codes are 1 to 8 capital letters or digits. False for anything else.
 bool ParseSetup(const std::string& setup, FighterPick* fighter, std::wstring* stage);
 
-bool InstallVersusLaunch(uintptr_t imageBase);
+// `checkOwnership`: the jump runs the game's ownership check, as its menus
+// do. It judges both players by this copy's entitlements (replacing unowned
+// costumes, colours and stages, the stage by rand(); an unowned fighter ends
+// the jump), so linked copies owning different content can load different
+// battles. Off while developing; the public version turns it on.
+bool InstallVersusLaunch(uintptr_t imageBase, bool checkOwnership);
 
 // Starts the battle from the main menu; any thread (runs on the game thread).
 // Refused (logged) when the game is not on the main menu.

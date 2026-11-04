@@ -131,7 +131,7 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	if (!scene) dialogs = std::min(dialogs, OfflineDialogs::HideDownloadFails);
 	InstallOfflineDialogs(base, dialogs);
 	RegisterStatus("suppressedDialogs", [] { return std::to_string(SuppressedDialogs()); });
-	if (scene && InstallVersusLaunch(base)) RegisterVersusLaunchCommands();
+	if (scene && InstallVersusLaunch(base, Config().ownershipCheck)) RegisterVersusLaunchCommands();
 	static BattleDriver driver(MakeMode(Config()));
 	driver.RegisterControl();
 	InstallGameHooks(base, &driver);

@@ -186,8 +186,10 @@ state before a lockstep frame.
   main menu resets the flow, and that step reads the previous battle's);
   after its second step it writes the fighters, costumes, colours and stage
   into the new mode's data object through the object's own setters. The
-  game's ownership check then runs as in its menus, and the game loads and
-  enters the battle itself (about 4 s). `launch versus RYU:0:1 CNL -`.
+  game loads and enters the battle itself (about 4 s).
+  `launch versus RYU:0:1 CNL -`. The game's ownership check is skipped
+  while developing and turned on (`-sfve_ownership=1`) in the public
+  version (the maintainer, 2026-11-04).
 - **Linked start** (`MatchLink` setups, `HelperLink`). Each side brings a
   setup (`-sfve_fighter=CODE[:costume[:colour]]`, the host also
   `-sfve_stage=CODE`); the host's travels in the grant, the joiner's
@@ -262,7 +264,9 @@ loopback-only rule stays true in the finished design.
 - Any character, costume or entitlement unlock. Offline, SFV may treat
   characters as unavailable (the reference project bypasses the game's
   free-play check for every character); whether and how ownership is checked
-  offline is the maintainer's call, as it was for SF4's DLC gate.
+  offline is the maintainer's call, as it was for SF4's DLC gate. (The development
+  build skips the launch's ownership check by the maintainer's decision; the public
+  version keeps it, see open question 3.)
 - Anything that talks to Capcom, ranked, CFN or Fighting Chance/Fight Money.
 
 ## Open questions for the maintainer
@@ -270,14 +274,13 @@ loopback-only rule stays true in the finished design.
 1. Project name and repository: local folder `sfv-ember` only for now, no
    GitHub repository. Name it, and say whether it should be pushed.
 2. The firewall rule (layer 2) — commands are in the summary message.
-3. Character availability offline (see Not doing). The match launch runs
-   the game's own ownership check on each copy, judging both players by
-   that copy's entitlements, as the game's menus do. Two players who own
-   different fighters, costumes or stages can therefore load different
-   battles; an unowned fighter ends the launch. Options: (a) each player
-   may only pick what both own (the setups would carry ownership); (b) each
-   copy checks only its own player's pick and shows the opponent's as
-   picked, as online play does; (c) leave as is. Undecided.
+3. Character availability offline (see Not doing). Decided 2026-11-04:
+   development skips the game's ownership check in the launch; the public
+   version runs it (`-sfve_ownership=1`). The check judges both players by
+   each copy's own entitlements, so for the public version two players who
+   own different content still need a rule: (a) pick only what both own
+   (the setups would carry ownership), or (b) each copy checks only its own
+   player's pick and shows the opponent's as picked, as online play does.
 4. The optional privacy-policy consent in SFV's first-run prompts was
    declined; the Options screen only offers to revoke it. Nothing needs it
    offline.

@@ -39,6 +39,7 @@ using FreeFn = void (*)(void* block);
 
 uintptr_t s_base;
 bool s_installed; // both jump steps hooked: without them the jump crashes from the menu
+bool s_checkOwnership;
 JumpStepFn o_jumpCopyPlayers;
 JumpStepFn o_jumpSecondStep;
 
@@ -193,12 +194,7 @@ void Launch(const MatchPicks& picks)
 	Field<int32_t>(message, jump::kMessageMode) = (int32_t)picks.target;
 	Field<uint8_t>(message, jump::kMessageCopySetting) = 0;
 	Field<uint8_t>(message, jump::kMessageSwapSides) = 0;
-	// The game's own ownership check, as its menus run it: the mod unlocks
-	// nothing (SFV_PORT.md, "Not doing"). It judges both players by this
-	// copy's entitlements, so linked copies that own different content can
-	// load different battles (an unowned fighter ends the jump); how to
-	// handle that is open (SFV_PORT.md, open questions).
-	Field<uint8_t>(message, jump::kMessageCheckOwnership) = 1;
+	Field<uint8_t>(message, jump::kMessageCheckOwnership) = s_checkOwnership ? 1 : 0;
 	s_pending = Pending{message, false, picks};
 	Log("launch: battle jump, target %d", (int)picks.target);
 	ChangeScene(jumpClass, message);
@@ -251,9 +247,11 @@ bool ParseSetup(const std::string& setup, FighterPick* fighter, std::wstring* st
 	return !(in >> extra) && ParsePick(pick, fighter) && (stageCode.empty() || ParseCode(stageCode, stage));
 }
 
-bool InstallVersusLaunch(uintptr_t imageBase)
+bool InstallVersusLaunch(uintptr_t imageBase, bool checkOwnership)
 {
 	s_base = imageBase;
+	s_checkOwnership = checkOwnership;
+	Log("launch: the game's ownership check %s", checkOwnership ? "runs" : "is skipped (development)");
 	s_installed = HookCodeSite(imageBase, sfv::kJumpCopyPlayers, (void*)h_JumpCopyPlayers, (void**)&o_jumpCopyPlayers) &&
 		HookCodeSite(imageBase, sfv::kJumpSecondStep, (void*)h_JumpSecondStep, (void**)&o_jumpSecondStep);
 	return s_installed;

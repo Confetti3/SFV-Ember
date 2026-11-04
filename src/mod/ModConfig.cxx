@@ -77,6 +77,7 @@ void LoadConfigFromCommandLine(const wchar_t* line)
 	c.lagMs = (int)Number(line, L"sfve_lag", 0);
 	c.helperLink = Number(line, L"sfve_link", 0) != 0;
 	c.offlineDialogs = (int)Number(line, L"sfve_dialogs", 2);
+	c.ownershipCheck = Number(line, L"sfve_ownership", 0) != 0;
 	c.fighter = Text(line, L"sfve_fighter");
 	c.stage = Text(line, L"sfve_stage");
 	wchar_t pads[32];
