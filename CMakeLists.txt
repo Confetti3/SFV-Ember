@@ -49,7 +49,9 @@ add_executable(sfve_tests
     tests/SyncTestTests.cxx
     tests/RollbackSessionTests.cxx
     tests/NetPolicyTests.cxx
-    tests/MatchLinkTests.cxx)
+    tests/MatchLinkTests.cxx
+    tests/MatchResultTests.cxx
+    src/mod/MatchResult.cxx)
 target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 
 # The in-game mod. Loads inert: it blocks every non-loopback connection first,
@@ -58,6 +60,7 @@ add_library(sfv_ember SHARED
     src/mod/dllmain.cxx
     src/mod/Log.cxx
     src/mod/MatchEnd.cxx
+    src/mod/MatchResult.cxx
     src/mod/ModConfig.cxx
     src/mod/ControlPipe.cxx
     src/mod/VersusLaunch.cxx

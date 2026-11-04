@@ -38,6 +38,7 @@ void SfvAdapter::SeeBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 void SfvAdapter::Forget()
 {
 	bound_ = false;
+	battleData_ = nullptr;
 	layout_.Clear();
 	gameRegions_ = 0;
 	postRestore_.clear();
@@ -75,6 +76,7 @@ bool SfvAdapter::Bind()
 	gameRegions_ = layout_.Regions().size();
 	CollectPostRestore(manager);
 	AddStateOutsideTheGameSnapshot(ruleUnit, battleData, base);
+	battleData_ = battleData;
 	bound_ = true;
 	Log("adapter: bound: %zu game regions + %zu outside the game's snapshot, %zu bytes", gameRegions_,
 		layout_.Regions().size() - gameRegions_, layout_.TotalSize());

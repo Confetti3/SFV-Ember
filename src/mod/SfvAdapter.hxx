@@ -37,6 +37,8 @@ public:
 	bool Bind();
 	bool Bound() const { return bound_; }
 	uint8_t* BattleFrame() const { return battleFrame_; }
+	// The battle's match data (rounds, results); null until bound.
+	const uint8_t* BattleData() const { return battleData_; }
 
 	// From the input-record hook: remembers what the game computed for each
 	// pad this tick, then writes the injected inputs over it while Advance runs.
@@ -86,6 +88,7 @@ private:
 	void RunUpdate();
 
 	uint8_t* battleFrame_ = nullptr;
+	uint8_t* battleData_ = nullptr;
 	BattleFrameFn original_ = nullptr;
 	uint8_t* inputUnit_ = nullptr;
 	uint8_t* rollbackUnit_ = nullptr;

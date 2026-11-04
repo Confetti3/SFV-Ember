@@ -38,16 +38,27 @@ struct FighterPick {
 	int colour = -1;
 };
 
+// The match's rules, as the versus battle settings offer them; negative
+// keeps what the mode's data holds (the player's own settings).
+struct MatchRules {
+	std::wstring stage; // the game's stage code
+	int rounds = -1;    // best of 1, 3, 5 or 7
+	int timeFrames = -1; // the round clock in frames (99 s = 5940); kNoTimeLimit for none
+	static constexpr int kNoTimeLimit = -2; // the game's own value for no time limit
+};
+
 struct MatchPicks {
 	LaunchTarget target = LaunchTarget::Versus;
 	FighterPick players[2];
-	std::wstring stage; // the game's stage code
+	MatchRules rules;
 };
 
-// A player's setup as the match link carries it: "CODE[:costume[:colour]]",
-// then (the host's) a stage code, space separated; "-" keeps a default.
-// Codes are 1 to 8 capital letters or digits. False for anything else.
-bool ParseSetup(const std::string& setup, FighterPick* fighter, std::wstring* stage);
+// A player's setup as the match link carries it, space separated:
+// "CODE[:costume[:colour]]", then (the host's) "STAGE ROUNDS TIME": a stage
+// code, the rounds (1, 3, 5 or 7) and the round time in seconds (30 to 546)
+// or "inf". "-" keeps a default. Codes are 1 to 8 capital letters or digits.
+// False for anything else.
+bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rules);
 
 // `checkOwnership`: the jump runs the game's ownership check, as its menus
 // do. It judges both players by this copy's entitlements (replacing unowned

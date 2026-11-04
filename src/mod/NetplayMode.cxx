@@ -4,6 +4,7 @@
 #include "mod/GameInput.hxx"
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
+#include "mod/MatchResult.hxx"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,6 +78,10 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	// frame is saved and played, on both copies alike (MatchEnd).
 	if (link_) {
 		if (uint8_t* ended = TakeEndedVersusBattle()) {
+			// The game's judgement, the same on both copies (it is restored
+			// with the rest of the state on rollback).
+			lastResult_ = DescribeMatchResult(ReadMatchResult(adapter.BattleData()));
+			Log("netplay: match result %s", lastResult_.c_str());
 			if (GetMatchEndChoice() == MatchEndChoice::Rematch) {
 				Rematch(ended);
 			} else {
@@ -200,7 +205,7 @@ std::string NetplayMode::Describe() const
 		StepName(last_), (unsigned long long)s.framesAdvanced, (unsigned long long)s.rollbacks,
 		(unsigned long long)s.resimulatedFrames, s.longestRollback, (unsigned long long)s.predictionStalls,
 		(unsigned long long)lockstepHolds_);
-	return text + pacer_.Describe() + "}";
+	return text + pacer_.Describe() + ",\"lastResult\":" + lastResult_ + "}";
 }
 
 void NetplayMode::RegisterCommands()

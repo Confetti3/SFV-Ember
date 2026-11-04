@@ -68,6 +68,7 @@ private:
 	int lastFightFrame_ = -1; // the last session frame that started in the fight
 	bool wasLive_ = false;    // the session ran in this battle
 	bool leaving_ = false;    // the battle is going back to the main menu
+	std::string lastResult_ = "null"; // the last linked match's result (JSON)
 	int inputDelay_ = 1;
 	// GGPO_MAX_PREDICTION_FRAMES: how far a side can run on guessed inputs.
 	static constexpr int kMaxPredictionFrames = 8;

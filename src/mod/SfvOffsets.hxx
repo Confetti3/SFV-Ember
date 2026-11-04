@@ -406,6 +406,27 @@ constexpr uint32_t kResultsSize = 563060 - 6404;
 // fighters may act).
 constexpr uint32_t kFlowFlags = 566176;
 constexpr uint32_t kFlowFlagsSize = 4;
+
+// The match's result (MatchResult), all inside kResults..: the versus rule
+// unit's tick (rva 0x487CD0) commits each judged round (judge rva 0x485240)
+// into a record and, once a side has the wins needed (rounds / 2 + 1, rva
+// 0x2F9F20), marks the match decided with its winner (rva 0x2F7FA0).
+constexpr uint32_t kRoundsSetting = 8;     // int: rounds (best of N), from the match record's +8
+constexpr uint32_t kRoundCount = 6408;     // int: rounds judged (at most 7 kept)
+constexpr uint32_t kRounds = 6416;         // the round records
+constexpr uint32_t kRoundStride = 69576;
+constexpr int kMaxRounds = 7;
+constexpr uint32_t kDecided = 493448;      // int: 1 once the match is decided
+constexpr uint32_t kMatchWinner = 493452;  // int: side 0 or 1, -1 none (a draw)
+// A round record: +0 the cause (2 a KO of some kind, 1 time out by health,
+// 4 another time-out rule, 56/64/128/256 other rules), +4 the winning side
+// (-1: none; such a round counts for both sides), +12 how it ended:
+// 0 undecided, 1 KO, 2 double KO, 3 Critical Art, 4 EX, 5 chip, 6 perfect,
+// 7 time over (the order of the game's finish icons, rva 0x76B520).
+constexpr uint32_t kRoundCause = 0;
+constexpr uint32_t kRoundWinner = 4;
+constexpr uint32_t kRoundFinish = 12;
+constexpr int32_t kCauseKo = 2;
 } // namespace battledata
 
 // FlowUnit (rva 0x3C8860 builds it): the round flow's state machine. Its

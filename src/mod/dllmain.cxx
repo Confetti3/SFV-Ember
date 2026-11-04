@@ -44,6 +44,9 @@ bool s_started = false;
 // The stage a linked match is played on when the host names none: both
 // copies must load the same one, and their own defaults can differ.
 constexpr const char* kDefaultLinkedStage = "S25";
+// A linked match's rules when the host names none: the game's defaults.
+constexpr int kDefaultLinkedRounds = 3;
+constexpr int kDefaultLinkedTimeFrames = 99 * 60;
 
 // The netplay mode owns it for the process's life; the overlay reads it
 // from the render thread.
@@ -58,15 +61,19 @@ void LaunchLinkedMatch(const sfve::MatchLink::Endpoints& match)
 {
 	using namespace sfve::mod;
 	MatchPicks picks;
-	std::wstring hostStage, joinerStage;
-	if (!ParseSetup(match.setups[0], &picks.players[0], &hostStage) ||
-		!ParseSetup(match.setups[1], &picks.players[1], &joinerStage) || picks.players[0].fighter.empty() ||
-		picks.players[1].fighter.empty() || hostStage.empty()) {
+	MatchRules hostRules, joinerRules;
+	if (!ParseSetup(match.setups[0], &picks.players[0], &hostRules) ||
+		!ParseSetup(match.setups[1], &picks.players[1], &joinerRules) || picks.players[0].fighter.empty() ||
+		picks.players[1].fighter.empty() || hostRules.stage.empty()) {
 		s_link.load()->Abandon("the players' setups do not name both fighters and a stage (" + JsonString(match.setups[0]) +
 			" / " + JsonString(match.setups[1]) + ")");
 		return;
 	}
-	picks.stage = hostStage;
+	// The host's rules, always explicit: each copy's own battle settings
+	// could differ.
+	picks.rules = hostRules;
+	if (picks.rules.rounds < 0) picks.rules.rounds = kDefaultLinkedRounds;
+	if (picks.rules.timeFrames == -1) picks.rules.timeFrames = kDefaultLinkedTimeFrames;
 	Log("netplay: launching %s vs %s once on the main menu", JsonString(match.setups[0]).c_str(),
 		JsonString(match.setups[1]).c_str());
 	LaunchOnMainMenu(
@@ -74,16 +81,19 @@ void LaunchLinkedMatch(const sfve::MatchLink::Endpoints& match)
 		[](const std::string& why) { s_link.load()->Abandon("the battle could not be launched: " + why); });
 }
 
-// This copy's setup: its fighter and, for when it hosts, the stage.
+// This copy's setup: its fighter and, for when it hosts, the stage, rounds
+// and round time.
 std::string LocalSetup(const sfve::mod::ModConfig& config)
 {
 	using namespace sfve::mod;
-	const std::string setup = (config.fighter.empty() ? "-" : config.fighter) + " " +
-		(config.stage.empty() ? kDefaultLinkedStage : config.stage);
+	auto orDefault = [](const std::string& value, const char* fallback) { return value.empty() ? std::string(fallback) : value; };
+	const std::string setup = orDefault(config.fighter, "-") + " " + orDefault(config.stage, kDefaultLinkedStage) + " " +
+		orDefault(config.rounds, "-") + " " + orDefault(config.time, "-");
 	FighterPick fighter;
-	std::wstring stage;
-	if (config.fighter.empty() || !ParseSetup(setup, &fighter, &stage)) {
-		Log("netplay: -sfve_fighter / -sfve_stage do not name a fighter and a stage (%s); a linked match will not start",
+	MatchRules rules;
+	if (config.fighter.empty() || !ParseSetup(setup, &fighter, &rules)) {
+		Log("netplay: -sfve_fighter / -sfve_stage / -sfve_rounds / -sfve_time do not make a setup (%s); a linked match "
+			"will not start",
 			JsonString(setup).c_str());
 	}
 	return setup;

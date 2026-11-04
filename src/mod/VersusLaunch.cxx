@@ -172,7 +172,10 @@ void WriteStage(uint8_t* modeData, const MatchPicks& picks)
 	alignas(8) uint8_t spec[jump::kSpecPkgSize];
 	At<CopyFn>(sfv::kCopySpecPkg)(spec, current);
 	const std::string before = Narrow(spec + jump::kSpecStage);
-	if (!picks.stage.empty()) AssignString(spec + jump::kSpecStage, picks.stage);
+	const MatchRules& rules = picks.rules;
+	if (!rules.stage.empty()) AssignString(spec + jump::kSpecStage, rules.stage);
+	if (rules.rounds > 0) Field<int32_t>(spec, jump::kSpecRounds) = rules.rounds;
+	if (rules.timeFrames != -1) Field<int32_t>(spec, jump::kSpecTime) = rules.timeFrames;
 	Virtual<void>(modeData, jump::kDataSetSpec, (const uint8_t*)spec);
 	Log("launch: stage %s -> %s (time %d, rounds %d)", before.c_str(), Narrow(spec + jump::kSpecStage).c_str(),
 		Field<int32_t>(spec, jump::kSpecTime), Field<int32_t>(spec, jump::kSpecRounds));
@@ -250,7 +253,7 @@ std::string MissingContent(const MatchPicks& picks)
 			return who + "colour is not in the game";
 		}
 	}
-	if (!picks.stage.empty() && !StagePlayable(singleton, picks.stage)) return "the stage is not a playable stage";
+	if (!picks.rules.stage.empty() && !StagePlayable(singleton, picks.rules.stage)) return "the stage is not a playable stage";
 	return std::string();
 }
 
@@ -315,6 +318,30 @@ bool ParseVariant(const std::string& text, int* value)
 	return true;
 }
 
+// 1, 3, 5 or 7 (the game needs rounds / 2 + 1 wins and keeps seven round
+// records), or "-"/nothing for the default.
+bool ParseRounds(const std::string& text, int* rounds)
+{
+	if (text.empty() || text == "-") return *rounds = -1, true;
+	if (text != "1" && text != "3" && text != "5" && text != "7") return false;
+	*rounds = atoi(text.c_str());
+	return true;
+}
+
+// Seconds (the game's clock holds up to 32767 frames) or "inf"; "-"/nothing
+// for the default.
+bool ParseTime(const std::string& text, int* frames)
+{
+	constexpr int kMinSeconds = 30, kMaxSeconds = 32767 / 60, kFramesPerSecond = 60;
+	if (text.empty() || text == "-") return *frames = -1, true;
+	if (text == "inf") return *frames = MatchRules::kNoTimeLimit, true;
+	if (text.size() > 3 || text.find_first_not_of("0123456789") != std::string::npos) return false;
+	const int seconds = atoi(text.c_str());
+	if (seconds < kMinSeconds || seconds > kMaxSeconds) return false;
+	*frames = seconds * kFramesPerSecond;
+	return true;
+}
+
 // "CODE[:costume[:colour]]" or "-".
 bool ParsePick(const std::string& word, FighterPick* pick)
 {
@@ -331,13 +358,14 @@ bool ParsePick(const std::string& word, FighterPick* pick)
 
 } // namespace
 
-bool ParseSetup(const std::string& setup, FighterPick* fighter, std::wstring* stage)
+bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rules)
 {
 	std::istringstream in(setup);
-	std::string pick, stageCode, extra;
-	in >> pick >> stageCode;
-	stage->clear();
-	return !(in >> extra) && ParsePick(pick, fighter) && (stageCode.empty() || ParseCode(stageCode, stage));
+	std::string pick, stageCode, rounds, time, extra;
+	in >> pick >> stageCode >> rounds >> time;
+	*rules = MatchRules{};
+	return !(in >> extra) && ParsePick(pick, fighter) && (stageCode.empty() || ParseCode(stageCode, &rules->stage)) &&
+		ParseRounds(rounds, &rules->rounds) && ParseTime(time, &rules->timeFrames);
 }
 
 bool InstallVersusLaunch(uintptr_t imageBase, bool checkOwnership)
@@ -378,15 +406,19 @@ void RegisterVersusLaunchCommands()
 {
 	RegisterCommand("launch", [](const std::string& args) {
 		std::istringstream in(args);
-		std::string target, p1, p2, stage;
-		in >> target >> p1 >> p2 >> stage;
+		std::string target, p1, p2, stage, rounds, time;
+		in >> target >> p1 >> p2 >> stage >> rounds >> time;
 		MatchPicks picks;
 		if (target == "cpu") picks.target = LaunchTarget::VersusCpu;
 		else if (target == "training") picks.target = LaunchTarget::Training;
-		else if (!target.empty() && target != "versus") return std::string("error usage: launch [versus|cpu|training] [P1] [P2] [stage]");
+		else if (!target.empty() && target != "versus") {
+			return std::string("error usage: launch [versus|cpu|training] [P1] [P2] [stage] [rounds] [seconds|inf]");
+		}
 		if (!ParsePick(p1, &picks.players[0]) || !ParsePick(p2, &picks.players[1]) ||
-			(!stage.empty() && !ParseCode(stage, &picks.stage))) {
-			return std::string("error a player is CODE[:costume[:colour]] or -, a stage CODE or -");
+			(!stage.empty() && !ParseCode(stage, &picks.rules.stage)) || !ParseRounds(rounds, &picks.rules.rounds) ||
+			!ParseTime(time, &picks.rules.timeFrames)) {
+			return std::string("error a player is CODE[:costume[:colour]] or -, a stage CODE or -, rounds 1|3|5|7, "
+							   "time 30-546 s or inf");
 		}
 		QueueLaunch(picks);
 		return std::string("ok queued");
