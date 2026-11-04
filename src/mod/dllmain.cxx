@@ -67,6 +67,7 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 		return 0;
 	}
 
+	StartGuardedLagSim(Config().lagMs);
 	RegisterStatus("guardRefusals", [] { return std::to_string(NetGuardRefusals()); });
 	RegisterStatus("mode", [] { return JsonString(ModeName(Config().mode)); });
 	if (Config().backgroundPlay) InstallBackgroundPlay();

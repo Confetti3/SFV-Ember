@@ -16,6 +16,7 @@
 //   -sfve_background=1   keep playing and reading pads while unfocused
 //   -sfve_learn=1        synctest: keep going after a difference, tallying regions
 //   -sfve_perturb=1      synctest: play each rolled-back stretch with wrong inputs first
+//   -sfve_lag=MS         test: hold back outgoing UDP by MS milliseconds
 
 #include <stdint.h>
 
@@ -39,6 +40,7 @@ struct ModConfig {
 	bool backgroundPlay = false;
 	bool learn = false;
 	bool perturb = false;
+	int lagMs = 0;
 };
 
 const ModConfig& Config();

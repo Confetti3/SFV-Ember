@@ -62,7 +62,8 @@ add_library(sfv_ember SHARED
     src/mod/SyncTestMode.cxx
     src/mod/NetplayMode.cxx
     src/mod/GameInput.cxx
-    src/mod/WriteWatch.cxx)
+    src/mod/WriteWatch.cxx
+    src/mod/LagSim.cxx)
 target_link_libraries(sfv_ember PRIVATE sfve_core minhook::minhook)
 
 # Proxy the game loads by name from its own folder; it forwards the real

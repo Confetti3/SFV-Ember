@@ -124,6 +124,11 @@ void SfvAdapter::OnInputRecord(uint8_t* inputUnit)
 	}
 }
 
+bool SfvAdapter::Fighting() const
+{
+	return flowState_ == sfv::flow::kFight;
+}
+
 void SfvAdapter::RunUpdate()
 {
 	ticksThisUpdate_ = 0;
@@ -186,9 +191,10 @@ std::string SfvAdapter::Describe() const
 {
 	char text[256];
 	snprintf(text, sizeof(text),
-		"{\"bound\":%s,\"gameRegions\":%zu,\"regions\":%zu,\"bytes\":%zu,\"ticksLastUpdate\":%u,\"sampled\":[%u,%u]}",
+		"{\"bound\":%s,\"gameRegions\":%zu,\"regions\":%zu,\"bytes\":%zu,\"ticksLastUpdate\":%u,\"sampled\":[%u,%u],"
+		"\"flowState\":%d}",
 		bound_ ? "true" : "false", gameRegions_, layout_.Regions().size(), layout_.TotalSize(), ticksInLastUpdate_,
-		sampled_[0], sampled_[1]);
+		sampled_[0], sampled_[1], flowState_);
 	return text;
 }
 

@@ -159,3 +159,18 @@ TEST_CASE("peers keep matching per-region checkpoints for confirmed frames")
 	CHECK(ha.size() == pair.gameA.Layout().Regions().size());
 	CHECK(ha == hb);
 }
+
+TEST_CASE("a peer that only polls while it holds frames keeps receiving inputs")
+{
+	Pair pair(kBugNone, 1);
+	REQUIRE(pair.RunTo(60));
+	// b holds for a while, polling only; a cannot get far ahead but b learns
+	// a's inputs, so b's confirmed frame catches up with its own frame.
+	for (int i = 0; i < 200; i++) {
+		pair.a.Step(ScriptedInput(0, pair.a.Frame(), kSeed));
+		pair.b.Poll();
+		Sleep(1);
+	}
+	CHECK(pair.b.LastConfirmedFrame() >= pair.b.Frame() - 1);
+	CHECK(pair.b.Live());
+}

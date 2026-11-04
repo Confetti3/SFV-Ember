@@ -27,4 +27,7 @@ bool InstallNetGuard();
 
 uint64_t NetGuardRefusals();
 
+// Test only: holds back allowed outgoing datagrams (LagSim.hxx).
+void StartGuardedLagSim(int delayMs);
+
 } // namespace sfve::mod

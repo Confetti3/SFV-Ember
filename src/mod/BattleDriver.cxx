@@ -91,6 +91,52 @@ void BattleDriver::RegisterControl()
 		return std::string("error no region of that size");
 	});
 	RegisterCommand("watchhits", [](const std::string&) { return "ok " + WriteWatchHits(); });
+	// "scan <u32> [<u32>...]": every 4-byte-aligned field of the state holding
+	// one of the values, as "region+offset=value" (up to 64).
+	RegisterCommand("scan", [this](const std::string& args) {
+		std::vector<uint32_t> values;
+		for (const char* p = args.c_str(); *p;) {
+			char* end = nullptr;
+			const unsigned long v = strtoul(p, &end, 0);
+			if (end == p) break;
+			values.push_back((uint32_t)v);
+			p = end;
+		}
+		std::string out = "ok";
+		int found = 0;
+		for (const StateRegion& r : adapter_.Layout().Regions()) {
+			for (size_t at = 0; at + 4 <= r.size && found < 64; at += 4) {
+				const uint32_t v = *reinterpret_cast<const uint32_t*>(r.ptr + at);
+				if (std::find(values.begin(), values.end(), v) == values.end()) continue;
+				char item[96];
+				snprintf(item, sizeof(item), " %s+0x%zX=%u", r.name.c_str(), at, v);
+				out += item;
+				found++;
+			}
+		}
+		return out;
+	});
+	// "peek <region name or size> <offset> <length>": live bytes, as 32-bit words.
+	RegisterCommand("peek", [this](const std::string& args) {
+		char key[64] = {};
+		size_t offset = 0, length = 0;
+		if (sscanf_s(args.c_str(), "%63s %zi %zi", key, (unsigned)sizeof(key), &offset, &length) != 3) {
+			return std::string("error usage: peek <region name or size> <offset> <length>");
+		}
+		const bool byName = key[0] < '0' || key[0] > '9';
+		const size_t size = byName ? 0 : strtoull(key, nullptr, 10);
+		for (const StateRegion& r : adapter_.Layout().Regions()) {
+			if ((byName ? r.name != key : r.size != size) || offset >= r.size) continue;
+			std::string out = "ok";
+			char word[16];
+			for (size_t at = offset; at + 4 <= r.size && at < offset + length; at += 4) {
+				snprintf(word, sizeof(word), " %08x", *reinterpret_cast<const uint32_t*>(r.ptr + at));
+				out += word;
+			}
+			return out;
+		}
+		return std::string("error no such region");
+	});
 }
 
 } // namespace sfve::mod

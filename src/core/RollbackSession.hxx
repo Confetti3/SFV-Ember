@@ -76,6 +76,9 @@ public:
 	// One outer frame: pumps the network, then adds the local input and runs
 	// at most one deterministic frame (plus any rollback GGPO asks for).
 	StepResult Step(PackedInput localInput);
+	// Only pumps the network (a frame the host holds back still has to
+	// receive the other side's inputs and keep the connection alive).
+	void Poll();
 	void Close();
 
 	bool Live() const { return session_ != nullptr; }

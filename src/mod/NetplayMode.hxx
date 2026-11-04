@@ -8,8 +8,12 @@
 // The local player's input is what the game computed from this copy's pad 0
 // (whichever side it plays), so button layouts apply before the input is
 // shared; or, for automated tests, seeded random play (-sfve_mash=N), which
-// needs no window focus. Time sync holds back one frame in every kHoldEveryFrames while GGPO
-// says this side runs ahead.
+// needs no window focus.
+//
+// Rollback only while the players fight. Intros, round calls and KOs are
+// timed by the battle flow, outside the rollback snapshot, so there frames
+// run in lockstep: only once both inputs are confirmed. Time sync holds back
+// one frame in every kHoldEveryFrames while GGPO says this side runs ahead.
 //
 // Pipe commands (cross-copy desync checks): "hash <frame>", "checkpoint
 // [frame]" (latest confirmed per-region checkpoint), "dump <frame>" (that
@@ -35,6 +39,7 @@ public:
 	void RegisterCommands();
 
 private:
+	bool HoldForLockstep(const SfvAdapter& adapter);
 	bool HoldForTimeSync();
 	void DumpIfRequested();
 
@@ -48,6 +53,7 @@ private:
 	bool started_ = false;
 	uint64_t frames_ = 0;
 	uint64_t held_ = 0;
+	uint64_t lockstepHolds_ = 0;
 	uint64_t timesyncEventsSeen_ = 0;
 	int holdBudget_ = 0;
 	int dumpFrame_ = -1;   // "dump <frame>": write that frame's saved state to the log folder

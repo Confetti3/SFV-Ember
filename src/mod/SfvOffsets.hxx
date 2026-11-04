@@ -42,7 +42,16 @@ constexpr CodeSite kRollbackUnitPre{"RollbackUnitPre", 0x486C40,
 constexpr CodeSite kGetManager{"GetManager", 0x308070,
 	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x48, 0x8D, 0x54, 0x24, 0x20, 0xE8}};
 
-constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager};
+// bool ReceiveBattleFlowMessage(Receiver*, Message*): every battle-flow
+// message; a state change (type id kStateMessageType) carries the new state's
+// index at +12 into the state table (rva 0x39665E0, filled at rva 0x142840:
+// 0 none, 1 BattleStart, 2 MatchStart, 3 IntroDemo, 4 RoundStart, 5 Ready,
+// 6 Fight, 7 Finish, 8 RoundOver, ...; seen in game: 3, 5, 6 in that order).
+// The flow runs outside the battle's rollback snapshot.
+constexpr CodeSite kFlowMessage{"ReceiveBattleFlowMessage", 0x3D3ED0,
+	{0x48, 0x89, 0x5C, 0x24, 0x18, 0x55, 0x56, 0x57, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8D, 0x6C, 0x24}};
+
+constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage};
 
 inline const GameBuild* VerifiedBuild()
 {
@@ -59,6 +68,12 @@ constexpr uint32_t kVtable = 0x2C4F078;   // data: the generator class's vtable
 constexpr uint32_t kGlobal = 0x3966538;   // data: the global generator object
 constexpr uint32_t kState = 0x8;          // uint32 state after the vtable
 } // namespace rng
+
+namespace flow {
+constexpr uint32_t kStateMessageType = 0x3A651C0; // data: what a state-change message's type call returns
+constexpr uint32_t kStateIndex = 12;              // int in the message
+constexpr int kFight = 6;                          // players are fighting
+} // namespace flow
 
 namespace battleframe {
 constexpr uint32_t kState = 0x190;      // pause, frame counters, slow motion, extra ticks, tick counter, clock

@@ -144,6 +144,14 @@ RollbackSession::StepResult RollbackSession::Step(PackedInput localInput)
 	return StepResult::Advanced;
 }
 
+void RollbackSession::Poll()
+{
+	if (!session_) return;
+	ActiveScope active(this);
+	ggpo_idle(session_, 0);
+	DrainPendingAbort();
+}
+
 bool RollbackSession::HandleResult(int ggpoError, const char* call, StepResult* out)
 {
 	switch (sf4e::gate::ClassifyGgpoResult(ggpoError)) {

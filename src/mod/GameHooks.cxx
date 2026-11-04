@@ -12,12 +12,15 @@ namespace {
 using InputRecordFn = uint64_t (*)(uint8_t* inputUnit, uint32_t predictRemote);
 using UnitTickFn = void (*)(uint8_t* rollbackUnit);
 using GetManagerFn = uint8_t* (*)(uint8_t* context);
+using FlowMessageFn = uint64_t (*)(uint8_t* receiver, uint8_t* message);
 
 BattleListener* s_listener;
 BattleFrameFn o_battleFrame;
 InputRecordFn o_inputRecord;
 UnitTickFn o_unitTick;
 GetManagerFn s_getManager;
+FlowMessageFn o_flowMessage;
+uintptr_t s_stateMessageType;
 
 void h_BattleFrame(uint8_t* battleFrame)
 {
@@ -36,6 +39,17 @@ void h_UnitTick(uint8_t* rollbackUnit)
 	o_unitTick(rollbackUnit);
 }
 
+uint64_t h_FlowMessage(uint8_t* receiver, uint8_t* message)
+{
+	// The message's first virtual function names its type.
+	using TypeFn = uintptr_t (*)(uint8_t*);
+	const TypeFn type = **reinterpret_cast<TypeFn**>(message);
+	if (type(message) == s_stateMessageType) {
+		s_listener->OnFlowState(*reinterpret_cast<int*>(message + sfv::flow::kStateIndex));
+	}
+	return o_flowMessage(receiver, message);
+}
+
 bool Hook(uintptr_t base, const CodeSite& site, void* detour, void** original)
 {
 	void* target = reinterpret_cast<void*>(base + site.rva);
@@ -51,10 +65,12 @@ bool InstallGameHooks(uintptr_t base, BattleListener* listener)
 {
 	s_listener = listener;
 	s_getManager = reinterpret_cast<GetManagerFn>(base + sfv::kGetManager.rva);
+	s_stateMessageType = base + sfv::flow::kStateMessageType;
 	const bool ok = Hook(base, sfv::kInputRecord, (void*)h_InputRecord, (void**)&o_inputRecord) &&
 		Hook(base, sfv::kRollbackUnitPre, (void*)h_UnitTick, (void**)&o_unitTick) &&
-		Hook(base, sfv::kBattleFrameUpdate, (void*)h_BattleFrame, (void**)&o_battleFrame);
-	Log("hooks: %s", ok ? "battle frame, input record and rollback unit hooked" : "INCOMPLETE");
+		Hook(base, sfv::kBattleFrameUpdate, (void*)h_BattleFrame, (void**)&o_battleFrame) &&
+		Hook(base, sfv::kFlowMessage, (void*)h_FlowMessage, (void**)&o_flowMessage);
+	Log("hooks: %s", ok ? "battle frame, input record, rollback unit and battle flow hooked" : "INCOMPLETE");
 	return ok;
 }
 

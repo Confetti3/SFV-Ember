@@ -42,6 +42,12 @@ public:
 	// with ticks stopped): the last original update recorded at least one tick.
 	uint32_t TicksInLastUpdate() const { return ticksInLastUpdate_; }
 
+	// The battle flow's current state (outside the rollback snapshot): intros,
+	// round calls and KOs are timed by it, so they must not be rolled back.
+	void SeeFlowState(int state) { flowState_ = state; }
+	int FlowState() const { return flowState_; }
+	bool Fighting() const;
+
 	// The original update with no injection (outside any session).
 	void RunOriginal();
 
@@ -85,6 +91,7 @@ private:
 	PackedInput sampled_[kPlayers] = {};
 	uint32_t ticksInLastUpdate_ = 0;
 	uint32_t ticksThisUpdate_ = 0;
+	int flowState_ = -1;
 };
 
 } // namespace sfve::mod

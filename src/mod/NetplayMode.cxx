@@ -31,7 +31,7 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	std::lock_guard lock(mutex_);
 	session_ = std::make_unique<RollbackSession>(adapter);
 	started_ = false;
-	frames_ = held_ = timesyncEventsSeen_ = 0;
+	frames_ = held_ = lockstepHolds_ = timesyncEventsSeen_ = 0;
 	holdBudget_ = 0;
 }
 
@@ -45,7 +45,9 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		c.localPlayer = config_.player;
 		c.localPort = config_.port;
 		c.remotePort = config_.peerPort;
-		c.inputDelay = config_.delay;
+		// At least one frame: lockstep (below) waits for the other side's input
+		// for the next frame, which it has always sent by then.
+		c.inputDelay = config_.delay < 1 ? 1 : config_.delay;
 		// Both copies are at the battle's first frame: give the clock-seeded
 		// random generators the same seeds before anything is simulated.
 		Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(kSessionSeed));
@@ -58,8 +60,11 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		adapter.RunOriginal();
 		return;
 	}
-	if (freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_) return;
-	if (HoldForTimeSync()) return;
+	const bool frozen = freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_;
+	if (frozen || HoldForLockstep(adapter) || HoldForTimeSync()) {
+		session_->Poll(); // held frames still receive inputs
+		return;
+	}
 	const int frame = session_->Frame();
 	const PackedInput local = !config_.mashSeed ? adapter.Sampled(0)
 		: frame >= config_.mashFrom              ? input::Mash(config_.mashSeed, frame)
@@ -89,6 +94,21 @@ void NetplayMode::DumpIfRequested()
 	dumpFrame_ = -1;
 }
 
+// Outside the fight (intros, round calls, KOs) the battle flow, which the
+// rollback snapshot does not cover, times what happens; a frame played there
+// on a guess and then replayed would shift it. So there a frame only runs once
+// both players' inputs for it are confirmed: no guess, no rollback.
+bool NetplayMode::HoldForLockstep(const SfvAdapter& adapter)
+{
+	if (adapter.Fighting() || !session_->Running()) return false;
+	// Until the first inputs have crossed (only the delay's padding frames so
+	// far) there is nothing to wait for, and waiting would stop both sides.
+	const int confirmed = session_->LastConfirmedFrame();
+	if (confirmed < 0 || confirmed >= session_->Frame()) return false;
+	lockstepHolds_++;
+	return true;
+}
+
 bool NetplayMode::HoldForTimeSync()
 {
 	const RollbackSession::Stats& stats = session_->GetStats();
@@ -112,12 +132,12 @@ std::string NetplayMode::Describe() const
 	snprintf(text, sizeof(text),
 		"{\"live\":%s,\"running\":%s,\"failure\":%s,\"frame\":%d,\"confirmed\":%d,\"last\":\"%s\","
 		"\"advanced\":%llu,\"rollbacks\":%llu,\"resimulated\":%llu,\"longestRollback\":%d,\"stalls\":%llu,"
-		"\"held\":%llu,\"framesAhead\":%d}",
+		"\"held\":%llu,\"lockstepHolds\":%llu,\"framesAhead\":%d}",
 		session_->Live() ? "true" : "false", session_->Running() ? "true" : "false",
 		JsonString(session_->FailureReason()).c_str(), session_->Frame(), session_->LastConfirmedFrame(),
 		StepName(last_), (unsigned long long)s.framesAdvanced, (unsigned long long)s.rollbacks,
 		(unsigned long long)s.resimulatedFrames, s.longestRollback, (unsigned long long)s.predictionStalls,
-		(unsigned long long)held_, s.timesyncFramesAhead);
+		(unsigned long long)held_, (unsigned long long)lockstepHolds_, s.timesyncFramesAhead);
 	return text;
 }
 

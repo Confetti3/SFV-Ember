@@ -19,6 +19,8 @@ public:
 	virtual void OnInputRecord(uint8_t* inputUnit) = 0;
 	// A battle tick reached its snapshot task.
 	virtual void OnRollbackUnitTick(uint8_t* rollbackUnit) = 0;
+	// The battle flow (outside the rollback snapshot) entered a state.
+	virtual void OnFlowState(int state) = 0;
 };
 
 // Hooks the verified build's functions. The listener must outlive the game.
