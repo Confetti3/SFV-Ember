@@ -18,6 +18,8 @@
 // Entering or leaving a state may also start presentation (announcer, KO
 // banner) that a restore does not take back; the battle state is exact.
 
+#include "core/StateRegions.hxx"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -41,13 +43,29 @@ struct DelegateRecord {
 	bool Active() const { return invoke && destroy; }
 };
 
+struct SequencerRecord {
+	float wait;
+	float elapsed;
+	int32_t rate;
+	int32_t step;
+	int32_t enabled;
+};
+
+// Every field the record holds is written field by field, so no padding of
+// the game's (which holds heap leftovers) or of ours reaches the hash.
 struct FlowStateRecord {
 	int32_t arg;
 	int32_t phase;
 	DelegateRecord delegate;
-	uint8_t sequencer[32]; // flowstate::kSequencer .. kBaseSize
-	uint8_t own[48];       // the state class's fields, kBaseSize .. its size
+	SequencerRecord sequencer;
+	int32_t markedPhase;
+	int32_t markCount;
+	int32_t zero; // always 0: keeps `own` on an 8-byte word boundary
+	// The state class's fields (flowstate::kBaseSize .. its size). Restored but
+	// not hashed: until a state first runs, some hold whatever the heap left.
+	uint8_t own[40];
 };
+static_assert(sizeof(FlowStateRecord) == 128, "no padding in the record");
 
 constexpr size_t kMaxFlowStates = 32;
 
@@ -72,8 +90,8 @@ public:
 	bool Bind(uint8_t* flowUnit, uintptr_t imageBase);
 	void Forget();
 
-	// The record, for the layout.
-	FlowRecord& Record() { return record_; }
+	// Adds the record to the layout, its states' own fields masked from the hash.
+	void AddTo(StateLayout& layout);
 
 	void Announce(int state) { record_.announced = state; }
 	int Announced() const { return record_.announced; }
@@ -92,7 +110,7 @@ private:
 	struct State {
 		uint8_t* object;
 		uint8_t* control; // its shared_ptr control block in the flow's list
-		size_t size;
+		size_t kept; // bytes from the start the record keeps (flowstate::kBaseSize or the class size)
 	};
 
 	void SwitchCurrent(int index);

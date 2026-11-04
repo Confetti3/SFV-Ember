@@ -145,7 +145,7 @@ void SfvAdapter::AddStateOutsideTheGameSnapshot(uint8_t* ruleUnit, uintptr_t bas
 	uint8_t* battleData = GameGetBattleData(rollbackUnit_);
 	layout_.Add("battledata.results", battleData + sfv::battledata::kResults, sfv::battledata::kResultsSize);
 	layout_.Add("battledata.flowflags", battleData + sfv::battledata::kFlowFlags, sfv::battledata::kFlowFlagsSize);
-	layout_.Add("flow", &flow_.Record(), sizeof(FlowRecord));
+	flow_.AddTo(layout_);
 }
 
 void SfvAdapter::OnInputRecord(uint8_t* inputUnit)

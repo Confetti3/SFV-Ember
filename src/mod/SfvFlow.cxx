@@ -6,6 +6,7 @@
 
 #include <windows.h>
 
+#include <stddef.h>
 #include <string.h>
 
 namespace sfve::mod {
@@ -34,18 +35,20 @@ T& Field(uint8_t* object, uint32_t offset)
 	return *reinterpret_cast<T*>(object + offset);
 }
 
-size_t ClassSize(uintptr_t vtableRva)
+// How many bytes of a state the record keeps: the class's whole size, or
+// only the base when its own fields are unknown or hold pointers.
+size_t KeptSize(uintptr_t vtableRva)
 {
 	for (const sfv::flowstate::ClassSize& c : sfv::flowstate::kClassSizes) {
-		if (c.vtable == vtableRva) return c.size;
+		if (c.vtable == vtableRva) return c.keepOwn ? c.size : sfv::flowstate::kBaseSize;
 	}
 	return 0;
 }
 
 } // namespace
 
-static_assert(sfv::flowstate::kBaseSize - sfv::flowstate::kSequencer == sizeof(FlowStateRecord::sequencer));
 static_assert(sfv::flowstate::kMaxSize - sfv::flowstate::kBaseSize <= sizeof(FlowStateRecord::own));
+static_assert(offsetof(FlowStateRecord, own) % 8 == 0 && offsetof(FlowRecord, states) % 8 == 0);
 
 bool FlowRollback::Bind(uint8_t* flowUnit, uintptr_t imageBase)
 {
@@ -63,19 +66,28 @@ bool FlowRollback::Bind(uint8_t* flowUnit, uintptr_t imageBase)
 			return false;
 		}
 		const uintptr_t vtable = Field<uintptr_t>(s->object, 0) - imageBase;
-		size_t size = ClassSize(vtable);
-		if (!size) {
+		size_t kept = KeptSize(vtable);
+		if (!kept) {
 			Log("flow: state %zu has an unknown class (vtable rva 0x%llx); its own fields are not kept",
 				size_t(s - begin), (unsigned long long)vtable);
-			size = sfv::flowstate::kBaseSize;
+			kept = sfv::flowstate::kBaseSize;
 		}
-		states_.push_back({s->object, s->control, size});
+		states_.push_back({s->object, s->control, kept});
 	}
 	flow_ = flowUnit;
 	record_.stateCount = (int32_t)states_.size();
 	Capture();
 	Log("flow: bound %p with %zu states (current %d)", (void*)flow_, states_.size(), record_.current);
 	return true;
+}
+
+void FlowRollback::AddTo(StateLayout& layout)
+{
+	const size_t region = layout.Add("flow", &record_, sizeof(record_));
+	for (size_t i = 0; i < kMaxFlowStates; i++) {
+		const size_t own = offsetof(FlowRecord, states) + i * sizeof(FlowStateRecord) + offsetof(FlowStateRecord, own);
+		for (size_t at = 0; at < sizeof(FlowStateRecord::own); at += 8) layout.IgnoreWord(region, own + at);
+	}
 }
 
 void FlowRollback::Forget()
@@ -103,8 +115,14 @@ void FlowRollback::Capture()
 		r.delegate = {d.vtable, reinterpret_cast<const void*>(d.destroy), d.copy, d.invoke, {}};
 		// An inactive delegate's closure was freed; only an active one is read.
 		if (d.Active() && d.closure) r.delegate.closure = *static_cast<const PhaseClosure*>(d.closure);
-		memcpy(r.sequencer, object + sfv::flowstate::kSequencer, sizeof(r.sequencer));
-		memcpy(r.own, object + sfv::flowstate::kBaseSize, states_[i].size - sfv::flowstate::kBaseSize);
+		r.sequencer.wait = Field<float>(object, sfv::flowstate::kWait);
+		r.sequencer.elapsed = Field<float>(object, sfv::flowstate::kElapsed);
+		r.sequencer.rate = Field<int32_t>(object, sfv::flowstate::kRate);
+		r.sequencer.step = Field<int32_t>(object, sfv::flowstate::kStep);
+		r.sequencer.enabled = Field<int32_t>(object, sfv::flowstate::kEnabled);
+		r.markedPhase = Field<int32_t>(object, sfv::flowstate::kMarkedPhase);
+		r.markCount = Field<int32_t>(object, sfv::flowstate::kMarkCount);
+		memcpy(r.own, object + sfv::flowstate::kBaseSize, states_[i].kept - sfv::flowstate::kBaseSize);
 	}
 }
 
@@ -117,8 +135,14 @@ void FlowRollback::Apply()
 		Field<int32_t>(object, sfv::flowstate::kArg) = r.arg;
 		Field<int32_t>(object, sfv::flowstate::kPhase) = r.phase;
 		ApplyDelegate(object, r.delegate);
-		memcpy(object + sfv::flowstate::kSequencer, r.sequencer, sizeof(r.sequencer));
-		memcpy(object + sfv::flowstate::kBaseSize, r.own, states_[i].size - sfv::flowstate::kBaseSize);
+		Field<float>(object, sfv::flowstate::kWait) = r.sequencer.wait;
+		Field<float>(object, sfv::flowstate::kElapsed) = r.sequencer.elapsed;
+		Field<int32_t>(object, sfv::flowstate::kRate) = r.sequencer.rate;
+		Field<int32_t>(object, sfv::flowstate::kStep) = r.sequencer.step;
+		Field<int32_t>(object, sfv::flowstate::kEnabled) = r.sequencer.enabled;
+		Field<int32_t>(object, sfv::flowstate::kMarkedPhase) = r.markedPhase;
+		Field<int32_t>(object, sfv::flowstate::kMarkCount) = r.markCount;
+		memcpy(object + sfv::flowstate::kBaseSize, r.own, states_[i].kept - sfv::flowstate::kBaseSize);
 	}
 	SwitchCurrent(record_.current);
 	Field<int32_t>(flow_, sfv::flowunit::kCurrentIndex) = record_.current;

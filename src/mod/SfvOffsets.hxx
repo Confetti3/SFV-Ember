@@ -183,19 +183,34 @@ namespace flowstate {
 constexpr uint32_t kArg = 8;           // int
 constexpr uint32_t kPhase = 64;        // int
 constexpr uint32_t kDelegate = 72;     // {vtable, destroy, copy, closure, invoke}
-constexpr uint32_t kSequencer = 112;   // wait, elapsed, rate, step, enabled, phase bookkeeping
+// The sequencer that runs the delegate (rva 0x3E3680): the phase function
+// runs once `elapsed` reaches `wait`; `elapsed` grows by `rate` (16.16) a
+// tick while `enabled`. +132 is padding (it holds whatever the heap left).
+constexpr uint32_t kWait = 112;        // float
+constexpr uint32_t kElapsed = 116;     // float
+constexpr uint32_t kRate = 120;        // int, 16.16
+constexpr uint32_t kStep = 124;        // int, the last tick's step
+constexpr uint32_t kEnabled = 128;     // int
+// Setting a phase equal to +136 zeroes +140 (rva 0x414670).
+constexpr uint32_t kMarkedPhase = 136; // int
+constexpr uint32_t kMarkCount = 140;   // int
 constexpr uint32_t kBaseSize = 144;    // the base class; +144.. is the state's own
 struct ClassSize {
 	uint32_t vtable;
 	uint32_t size;
+	bool keepOwn = true; // false: its own fields hold pointers the record must not restore
 };
-// Allocation sizes of the versus flow's state classes (its builder, rva
-// 0x423DD0 and siblings); a state of another class keeps only the base.
+// Allocation sizes of the flow's state classes, read from the `mov ecx, size`
+// before each allocation in the flow builders (rva 0x4257F0, and 0x423DD0 for
+// 0x2C6A3F8); a class's size is the same in every builder. A state of a class
+// not listed keeps only the base: its own fields are never read or written.
 constexpr ClassSize kClassSizes[] = {
-	{0x2C6A390, 152}, {0x2C6A3F8, 152}, {0x2C6A4C8, 160}, {0x2C6A530, 152}, {0x2C6A598, 160},
+	{0x2C6A390, 152}, {0x2C6A3F8, 160}, {0x2C6A4C8, 152}, {0x2C6A530, 152}, {0x2C6A598, 160},
 	{0x2C6A600, 152}, {0x2C6A668, 168}, {0x2C6A6D0, 144}, {0x2C6A7A8, 144}, {0x2C6A810, 144},
-	{0x2C6A878, 184}, {0x2C6A8E0, 184}, {0x2C6A948, 144}, {0x2C6A460, 144}, {0x2C6A328, 160},
-	{0x2C6AA18, 184}};
+	{0x2C6A878, 184}, {0x2C6A8E0, 144}, {0x2C6A948, 144}, {0x2C6A460, 144}, {0x2C6A2C0, 152},
+	{0x2C6A328, 160}, {0x2C6AB00, 176}, {0x2C6A258, 160},
+	// The builder stores a heap closure and its callback in this one's fields.
+	{0x2C6AA18, 184, false}};
 constexpr uint32_t kMaxSize = 184;
 } // namespace flowstate
 
