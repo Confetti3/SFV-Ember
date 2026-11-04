@@ -175,11 +175,23 @@ constexpr CodeSite kShowResult{"ShowResult", 0x66A0D0,
 constexpr CodeSite kRestartBattle{"RestartBattle", 0x684760,
 	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x41}};
 
+// Content lists (GameContent): the singleton's spec data ("SpecDataAsset"),
+// and bool List(SpecData** spec, TArray<FString>* out, bool includeRandom)
+// for the selectable, installed fighters and the spec's stages (spec flags,
+// no ownership).
+constexpr CodeSite kSpecData{"SpecData", 0x68E7E0,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x33, 0xDB, 0x48, 0x8B, 0xF9, 0x33}};
+constexpr CodeSite kSelectableFighters{"SelectableFighters", 0x566FC0,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x83, 0x7A, 0x0C, 0x00, 0x48, 0x8B, 0x1A, 0x48, 0x89, 0x6C}};
+constexpr CodeSite kSpecStages{"SpecStages", 0x5672D0,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x83, 0x7A, 0x0C, 0x00, 0x48, 0x8B, 0x1A, 0x48, 0x89, 0x6C}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
-	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle};
+	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
+	kSpecStages};
 
 namespace versus {
 

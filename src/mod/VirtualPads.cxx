@@ -7,6 +7,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <deque>
 #include <mutex>
 #include <sstream>
@@ -98,11 +99,17 @@ constexpr int kModules = sizeof(kXInputModules) / sizeof(kXInputModules[0]);
 GetState_t o_getState[kModules];   // XInputGetState
 GetState_t o_getStateEx[kModules]; // ordinal 100, XInputGetStateEx (adds the guide button)
 
+std::atomic<PadFilter> s_padFilter;
+
 template <int M, bool Ex>
 DWORD WINAPI HookedGetState(DWORD user, void* state)
 {
-	if (FillVirtualXInput((int)user, state)) return ERROR_SUCCESS;
-	return (Ex ? o_getStateEx[M] : o_getState[M])(user, state);
+	const DWORD result = FillVirtualXInput((int)user, state) ? ERROR_SUCCESS
+		: (Ex ? o_getStateEx[M] : o_getState[M])(user, state);
+	if (result == ERROR_SUCCESS && state) {
+		if (const PadFilter filter = s_padFilter) filter(user, state);
+	}
+	return result;
 }
 
 template <int M>
@@ -129,6 +136,11 @@ bool HookModule()
 }
 
 } // namespace
+
+void SetPadFilter(PadFilter filter)
+{
+	s_padFilter = filter;
+}
 
 bool InstallVirtualPads()
 {

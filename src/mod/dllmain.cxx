@@ -18,6 +18,8 @@
 #include "mod/Log.hxx"
 #include "mod/ModConfig.hxx"
 #include "mod/MultiInstance.hxx"
+#include "mod/GameContent.hxx"
+#include "mod/GameThread.hxx"
 #include "mod/HelperLink.hxx"
 #include "mod/MatchEnd.hxx"
 #include "mod/NetplayMode.hxx"
@@ -26,10 +28,12 @@
 #include "mod/SfvOffsets.hxx"
 #include "mod/SyncTestMode.hxx"
 #include "mod/VersusLaunch.hxx"
+#include "overlay/Overlay.hxx"
 
 #include <windows.h>
 
 #include <algorithm>
+#include <atomic>
 
 namespace {
 
@@ -41,7 +45,9 @@ bool s_started = false;
 // copies must load the same one, and their own defaults can differ.
 constexpr const char* kDefaultLinkedStage = "S25";
 
-sfve::mod::HelperLink* s_link = nullptr; // the netplay mode owns it for the process's life
+// The netplay mode owns it for the process's life; the overlay reads it
+// from the render thread.
+std::atomic<sfve::mod::HelperLink*> s_link{nullptr};
 
 // The linked match's battle, from both players' setups: the host's fighter
 // as P1, the joiner's as P2, on the host's stage, launched from the main
@@ -56,7 +62,7 @@ void LaunchLinkedMatch(const sfve::MatchLink::Endpoints& match)
 	if (!ParseSetup(match.setups[0], &picks.players[0], &hostStage) ||
 		!ParseSetup(match.setups[1], &picks.players[1], &joinerStage) || picks.players[0].fighter.empty() ||
 		picks.players[1].fighter.empty() || hostStage.empty()) {
-		s_link->Abandon("the players' setups do not name both fighters and a stage (" + JsonString(match.setups[0]) +
+		s_link.load()->Abandon("the players' setups do not name both fighters and a stage (" + JsonString(match.setups[0]) +
 			" / " + JsonString(match.setups[1]) + ")");
 		return;
 	}
@@ -64,8 +70,8 @@ void LaunchLinkedMatch(const sfve::MatchLink::Endpoints& match)
 	Log("netplay: launching %s vs %s once on the main menu", JsonString(match.setups[0]).c_str(),
 		JsonString(match.setups[1]).c_str());
 	LaunchOnMainMenu(
-		picks, [] { return s_link->Ready().has_value() && !s_link->Failed(); },
-		[](const std::string& why) { s_link->Abandon("the battle could not be launched: " + why); });
+		picks, [] { return s_link.load()->Ready().has_value() && !s_link.load()->Failed(); },
+		[](const std::string& why) { s_link.load()->Abandon("the battle could not be launched: " + why); });
 }
 
 // This copy's setup: its fighter and, for when it hosts, the stage.
@@ -160,6 +166,20 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	RegisterStatus("suppressedDialogs", [] { return std::to_string(SuppressedDialogs()); });
 	if (scene && InstallVersusLaunch(base, Config().ownershipCheck)) RegisterVersusLaunchCommands();
 	InstallMatchEnd(base);
+	// The host for Ember's interface (plugged in once the shared Ember shell
+	// is in); the game's content lists for it, meanwhile on the pipe.
+	if (scene && sfve::overlay::InstallOverlay()) SetPadFilter(&sfve::overlay::FilterGamePad);
+	RegisterCommand("content", [](const std::string&) {
+		RunOnGameThread([] {
+			const ContentLists lists = ReadContentLists();
+			std::string fighters, stages;
+			for (const std::string& f : lists.fighters) fighters += " " + f;
+			for (const std::string& st : lists.stages) stages += " " + st;
+			Log("content: %zu fighters:%s", lists.fighters.size(), fighters.c_str());
+			Log("content: %zu stages:%s", lists.stages.size(), stages.c_str());
+		});
+		return std::string("ok queued (see the log)");
+	});
 	static BattleDriver driver(MakeMode(Config()));
 	driver.RegisterControl();
 	InstallGameHooks(base, &driver);

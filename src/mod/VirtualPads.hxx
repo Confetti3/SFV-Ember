@@ -26,6 +26,13 @@ struct PadStep {
 
 // Hooks XInput; until then virtual slots have no effect.
 bool InstallVirtualPads();
+
+// Sees every pad state the game reads (a slot's XINPUT_STATE, physical or
+// virtual) before the game does, and may change it (the overlay keeps a
+// pad's buttons from the game while it is open). On the thread polling the
+// pads; null removes it.
+using PadFilter = void (*)(unsigned long user, void* xinputState);
+void SetPadFilter(PadFilter filter);
 void SetVirtualPad(int slot, bool enabled);
 bool IsVirtualPad(int slot);
 // Appends steps; a step list is "A+START:100 -:200 DOWN:80" (names below,

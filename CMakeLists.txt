@@ -15,6 +15,7 @@ find_package(minhook CONFIG REQUIRED)
 find_package(xxHash CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(imgui CONFIG REQUIRED)
 
 add_compile_options(/W4 /permissive- /utf-8 /Zc:__cplusplus)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
@@ -78,8 +79,10 @@ add_library(sfv_ember SHARED
     src/mod/NetplayMode.cxx
     src/mod/GameInput.cxx
     src/mod/WriteWatch.cxx
-    src/mod/LagSim.cxx)
-target_link_libraries(sfv_ember PRIVATE sfve_core minhook::minhook)
+    src/mod/LagSim.cxx
+    src/mod/GameContent.cxx
+    src/overlay/Overlay.cxx)
+target_link_libraries(sfv_ember PRIVATE sfve_core minhook::minhook imgui::imgui d3d11 dxgi)
 
 # Proxy the game loads by name from its own folder; it forwards the real
 # exports and loads sfv_ember.dll. Which DLL to proxy is decided from the
