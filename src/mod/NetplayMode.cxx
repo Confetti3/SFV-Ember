@@ -159,6 +159,12 @@ void NetplayMode::RegisterCommands()
 		freezeFrame_ = args.empty() ? -1 : atoi(args.c_str());
 		return std::string("ok");
 	});
+	// "riftgain N": the pacer's rift gain as N/120 (tuning; FramePacer).
+	RegisterCommand("riftgain", [this](const std::string& args) {
+		std::lock_guard lock(mutex_);
+		pacer_.SetRiftGain(atof(args.c_str()) / 120.0);
+		return std::string("ok");
+	});
 	RegisterCommand("dump", [this](const std::string& args) {
 		std::lock_guard lock(mutex_);
 		dumpFrame_ = atoi(args.c_str());

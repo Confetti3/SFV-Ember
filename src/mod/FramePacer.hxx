@@ -28,6 +28,7 @@ class FramePacer {
 public:
 	FramePacer();
 	~FramePacer();
+	void SetRiftGain(double gain); // tuning (the "riftgain" command)
 	FramePacer(const FramePacer&) = delete;
 	FramePacer& operator=(const FramePacer&) = delete;
 

@@ -18,6 +18,7 @@ double NowMs()
 
 constexpr double kSpinMs = 0.5; // the end of a wait spins, as timer wake-ups jitter
 constexpr double kPeriodMs = 1000.0 / 60.0; // the battle's frame period
+constexpr double kRiftGain = 12.0 / 120.0;
 
 } // namespace
 
@@ -26,16 +27,24 @@ FramePacer::FramePacer()
 	controller_.InitDefaults();
 	controller_.continuous = true;
 	// Ember's gain assumes both sides repay half the rift each; here only the
-	// side ahead can act (it lengthens frames), so it repays the whole: at the
-	// default gain a 6 ms/s rate difference between two copies left a steady
-	// 1.5-frame rift.
-	controller_.riftGain = 4.0 / 120.0;
+	// side ahead can act (it lengthens frames; the engine's limiter keeps the
+	// other from running faster), so the controller is proportional with one
+	// actor and a steady rate difference leaves a steady rift of difference /
+	// gain. Two copies, 30 ms lag each way (2,400 frames each): at 4/120 the
+	// rift stayed at 2 frames and one side did every rollback; at 12/120 and
+	// 24/120 it settled within 0.25 frames, 24/120 with more prediction stalls.
+	controller_.riftGain = kRiftGain;
 	timer_ = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
 }
 
 FramePacer::~FramePacer()
 {
 	if (timer_) CloseHandle(timer_);
+}
+
+void FramePacer::SetRiftGain(double gain)
+{
+	controller_.riftGain = gain;
 }
 
 void FramePacer::Reset()
