@@ -51,6 +51,8 @@ public:
 	// The state the battle flow last announced (part of the rollback state).
 	void SeeFlowState(int state) { flow_.Announce(state); }
 	bool Fighting() const;
+	// Only the fight reads the players' inputs (GameAdapter::InputsMatter).
+	bool InputsMatter() const override { return Fighting(); }
 
 	// The original update with no injection (outside any session).
 	void RunOriginal();

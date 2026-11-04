@@ -52,7 +52,7 @@ constexpr uint32_t kStickUp = 1u << 16, kStickDown = 1u << 17, kStickLeft = 1u <
 constexpr SHORT kStickThreshold = 16000;
 std::atomic<DWORD> s_renderThread;
 std::atomic<HWND> s_window; // the game's window, once its swap chain presents
-WNDPROC s_gameWndProc;
+std::atomic<WNDPROC> s_gameWndProc;
 
 struct QueuedMessage {
 	UINT message;
@@ -79,6 +79,20 @@ void Release(T*& object)
 	if (object) object->Release();
 	object = nullptr;
 }
+
+// A shader stage's binding, held (with references) to put back.
+template <typename Shader>
+struct ShaderBinding {
+	static constexpr UINT kMaxInstances = 256;
+	Shader* shader = nullptr;
+	ID3D11ClassInstance* instances[kMaxInstances] = {};
+	UINT count = kMaxInstances;
+	~ShaderBinding()
+	{
+		Release(shader);
+		for (UINT i = 0; i < count && i < kMaxInstances; i++) Release(instances[i]);
+	}
+};
 
 void Toggle(const char* how)
 {
@@ -138,6 +152,9 @@ bool Attach(IDXGISwapChain* swap, HWND window)
 	s_r.ready = true;
 	s_window = window;
 	if (!s_gameWndProc) {
+		// Stored before the switch: the game thread may call OverlayWndProc
+		// as soon as it is in place.
+		s_gameWndProc = reinterpret_cast<WNDPROC>(GetWindowLongPtrW(window, GWLP_WNDPROC));
 		s_gameWndProc = reinterpret_cast<WNDPROC>(
 			SetWindowLongPtrW(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&OverlayWndProc)));
 	}
@@ -232,13 +249,23 @@ void Draw(IDXGISwapChain* swap)
 	if (!keepOpen) s_open = false;
 
 	// ImGui's backend restores the pipeline state it changes, except the
-	// render targets.
+	// render targets and the hull, domain and compute shaders it unbinds (the
+	// engine's state cache would otherwise think them still bound).
 	ID3D11RenderTargetView* targets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
 	ID3D11DepthStencilView* depth = nullptr;
+	ShaderBinding<ID3D11HullShader> hull;
+	ShaderBinding<ID3D11DomainShader> domain;
+	ShaderBinding<ID3D11ComputeShader> compute;
 	s_r.context->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, targets, &depth);
+	s_r.context->HSGetShader(&hull.shader, hull.instances, &hull.count);
+	s_r.context->DSGetShader(&domain.shader, domain.instances, &domain.count);
+	s_r.context->CSGetShader(&compute.shader, compute.instances, &compute.count);
 	s_r.context->OMSetRenderTargets(1, &s_r.target, nullptr);
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 	s_r.context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, targets, depth);
+	s_r.context->HSSetShader(hull.shader, hull.instances, hull.count);
+	s_r.context->DSSetShader(domain.shader, domain.instances, domain.count);
+	s_r.context->CSSetShader(compute.shader, compute.instances, compute.count);
 	for (ID3D11RenderTargetView*& t : targets) Release(t);
 	Release(depth);
 }
@@ -321,6 +348,7 @@ void FilterGamePad(unsigned long user, void* xinputState)
 	// ImGui's own pad reading (on the render thread) sees the real state.
 	if (GetCurrentThreadId() == s_renderThread.load() || user >= XUSER_MAX_COUNT) return;
 	static WORD previous[XUSER_MAX_COUNT];
+	static WORD heldAtClose[XUSER_MAX_COUNT]; // buttons down when the overlay closed: hidden until released
 	XINPUT_GAMEPAD& pad = static_cast<XINPUT_STATE*>(xinputState)->Gamepad;
 	s_pads[user] = pad.wButtons | (pad.sThumbLY > kStickThreshold ? kStickUp : 0) |
 		(pad.sThumbLY < -kStickThreshold ? kStickDown : 0) | (pad.sThumbLX < -kStickThreshold ? kStickLeft : 0) |
@@ -328,7 +356,14 @@ void FilterGamePad(unsigned long user, void* xinputState)
 	const bool backPressed = (pad.wButtons & XINPUT_GAMEPAD_BACK) && !(previous[user] & XINPUT_GAMEPAD_BACK);
 	previous[user] = pad.wButtons;
 	if (backPressed && s_window.load()) Toggle("View");
-	if (s_open || backPressed) pad = XINPUT_GAMEPAD{};
+	const bool open = s_open;
+	if (open || backPressed) {
+		heldAtClose[user] = pad.wButtons; // what is down now must not reach the game on closing
+		pad = XINPUT_GAMEPAD{};
+	} else {
+		heldAtClose[user] &= pad.wButtons;
+		pad.wButtons &= ~heldAtClose[user];
+	}
 }
 
 } // namespace sfve::overlay

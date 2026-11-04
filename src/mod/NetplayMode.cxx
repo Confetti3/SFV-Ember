@@ -33,9 +33,9 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	std::lock_guard lock(mutex_);
 	session_ = std::make_unique<RollbackSession>(adapter);
 	started_ = false;
-	frames_ = lockstepHolds_ = 0;
-	lastFightFrame_ = -1;
+	frames_ = 0;
 	wasLive_ = leaving_ = false;
+	ForgetEndedVersusBattle();
 	pacer_.Reset();
 }
 
@@ -44,39 +44,44 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	std::lock_guard lock(mutex_);
 	frames_++;
 	if (!started_ && !StartSession(adapter)) return; // the battle waits for the match
-	if (leaving_) return; // the battle stands still until the main menu replaces it
+	if (leaving_) {
+		// The battle stands still until the main menu replaces it; the
+		// session keeps answering meanwhile, so the other copy still gets the
+		// inputs it may be missing for the last frames.
+		if (session_->Live()) session_->Poll();
+		return;
+	}
 	if (!session_->Live()) {
-		if (link_ && wasLive_) {
-			// A linked match whose session broke has no other player left:
-			// back to the main menu, where the next match starts.
-			Log("netplay: the session ended (%s); back to the main menu", session_->FailureReason().c_str());
+		if (link_ && (wasLive_ || startFailed_)) {
+			// A linked match with no session (it broke, or never started)
+			// has no other player: back to the main menu, where the next
+			// match starts.
+			Log("netplay: no session (%s); back to the main menu", session_->FailureReason().c_str());
 			Leave();
 			return;
 		}
-		// No session (it never started): the battle carries on offline
+		// No session (none was asked for): the battle carries on offline
 		// rather than freezing.
 		adapter.RunOriginal();
 		return;
 	}
 	wasLive_ = true;
 	const bool frozen = freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_;
-	if (frozen || HoldForLockstep(adapter)) {
+	// A linked match that ended is decided only on a confirmed frame: nothing
+	// before the decision can be rolled back then, on either copy (MatchEnd).
+	const bool endPending = link_ && EndedVersusBattlePending();
+	if (frozen || (endPending && session_->LastConfirmedFrame() < session_->Frame())) {
 		session_->Poll(); // held frames still receive inputs
 		return;
 	}
 	if (session_->Running()) pacer_.Frame(*session_, last_ == RollbackSession::StepResult::PredictionStall);
 	const int frame = session_->Frame();
-	// Outside the fight a player has nothing to do, and their input is sent
-	// as neutral (see HoldForLockstep).
-	const bool fighting = adapter.Fighting();
-	if (fighting) lastFightFrame_ = frame;
-	const PackedInput local = !fighting         ? 0
-		: !config_.mashSeed                     ? adapter.Sampled(0)
-		: frame >= config_.mashFrom             ? input::Mash(config_.mashSeed, frame)
-												: 0;
-	// A linked match that ended in the last frame restarts here, before this
-	// frame is saved and played, on both copies alike (MatchEnd).
-	if (link_) {
+	// Sent as the player plays; frames whose inputs the game ignores (outside
+	// the fight) get neutral ones in RollbackSession, whatever was sent.
+	const PackedInput local = !config_.mashSeed ? adapter.Sampled(0)
+		: frame >= config_.mashFrom              ? input::Mash(config_.mashSeed, frame)
+												 : 0;
+	if (endPending) {
 		if (uint8_t* ended = TakeEndedVersusBattle()) {
 			// The game's judgement, the same on both copies (it is restored
 			// with the rest of the state on rollback).
@@ -85,8 +90,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 			if (GetMatchEndChoice() == MatchEndChoice::Rematch) {
 				Rematch(ended);
 			} else {
-				session_->Close(); // both copies close on this same frame
-				Leave();
+				Leave(); // both copies leave on this same confirmed frame
 				return;
 			}
 		}
@@ -128,15 +132,19 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 		c.remotePort = config_.peerPort;
 	}
 	started_ = true;
-	// At least one frame: lockstep (below) waits for the other side's input
-	// for the next frame, which it has always sent by then.
+	startFailed_ = false;
+	// At least one frame: a decision held for a confirmed frame (match end)
+	// waits for the other side's input for the next frame, which it has
+	// always sent by then.
 	c.inputDelay = delay < 1 ? 1 : delay;
-	inputDelay_ = c.inputDelay;
 	// Both copies are at the battle's first frame: give the clock-seeded
 	// random generators the same seeds before anything is simulated.
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
 	std::string error;
-	if (!session_->Start(c, &error)) Log("netplay: could not start: %s", error.c_str());
+	if (!session_->Start(c, &error)) {
+		Log("netplay: could not start: %s", error.c_str());
+		startFailed_ = true;
+	}
 	// The results menu would let each player leave the match their own way.
 	SetLinkedMatchEnd(link_ && session_->Live());
 	return true;
@@ -163,33 +171,6 @@ void NetplayMode::DumpIfRequested()
 	dumpFrame_ = -1;
 }
 
-// Outside the fight (intros, round calls, the KO and results) the battle flow
-// waits on presentation (announcer, banners) that a replay does not repeat
-// the same way, so no frame there may ever be rolled back. (The synctest
-// shows the flow record diverging on replays across intro and round-over
-// states, never in a fight.)
-//
-// Both sides send neutral input outside the fight, and GGPO predicts the
-// other side's input as its last one, so once only neutral inputs are left
-// in flight every guess there is right and frames run at full speed. Real
-// inputs can still be in flight just after a fight ends: the other side
-// sampled them while it still saw the fight going on, for frames up to its
-// input delay ahead, and it may have seen the fight going on for up to
-// GGPO's prediction window past the real end. For those frames each frame
-// runs only once both players' inputs for it are confirmed: no guess, no
-// rollback.
-bool NetplayMode::HoldForLockstep(const SfvAdapter& adapter)
-{
-	if (adapter.Fighting() || !session_->Running()) return false;
-	if (lastFightFrame_ < 0 || session_->Frame() > lastFightFrame_ + inputDelay_ + kMaxPredictionFrames + 1) return false;
-	// Until the first inputs have crossed (only the delay's padding frames so
-	// far) there is nothing to wait for, and waiting would stop both sides.
-	const int confirmed = session_->LastConfirmedFrame();
-	if (confirmed < 0 || confirmed >= session_->Frame()) return false;
-	lockstepHolds_++;
-	return true;
-}
-
 std::string NetplayMode::Describe() const
 {
 	std::lock_guard lock(mutex_);
@@ -199,12 +180,11 @@ std::string NetplayMode::Describe() const
 	snprintf(text, sizeof(text),
 		"{\"live\":%s,\"running\":%s,\"failure\":%s,\"frame\":%d,\"confirmed\":%d,\"last\":\"%s\","
 		"\"advanced\":%llu,\"rollbacks\":%llu,\"resimulated\":%llu,\"longestRollback\":%d,\"stalls\":%llu,"
-		"\"lockstepHolds\":%llu,\"pacing\":",
+		"\"pacing\":",
 		session_->Live() ? "true" : "false", session_->Running() ? "true" : "false",
 		JsonString(session_->FailureReason()).c_str(), session_->Frame(), session_->LastConfirmedFrame(),
 		StepName(last_), (unsigned long long)s.framesAdvanced, (unsigned long long)s.rollbacks,
-		(unsigned long long)s.resimulatedFrames, s.longestRollback, (unsigned long long)s.predictionStalls,
-		(unsigned long long)lockstepHolds_);
+		(unsigned long long)s.resimulatedFrames, s.longestRollback, (unsigned long long)s.predictionStalls);
 	return text + pacer_.Describe() + ",\"lastResult\":" + lastResult_ + "}";
 }
 

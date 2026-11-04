@@ -142,6 +142,7 @@ private:
 	bool Load(unsigned char* buffer);
 	void Free(void* buffer);
 	bool AdvanceFromRollback();
+	FrameInputs InputsForThisFrame(const FrameInputs& inputs);
 	void Event(const GGPOEvent& info);
 
 	// Aborts now, or latches until the GGPO call on the stack returns.

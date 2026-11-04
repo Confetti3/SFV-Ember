@@ -136,7 +136,7 @@ RollbackSession::StepResult RollbackSession::Step(PackedInput localInput)
 	err = ggpo_synchronize_input(session_, inputs.p, sizeof(inputs.p), &disconnectFlags);
 	if (!HandleResult(err, "synchronize_input", &result)) return result;
 
-	game_.Advance(inputs, false);
+	game_.Advance(InputsForThisFrame(inputs), false);
 	stats_.framesAdvanced++;
 	err = ggpo_advance_frame(session_);
 	if (DrainPendingAbort()) return StepResult::Failed;
@@ -377,6 +377,16 @@ void RollbackSession::Free(void* buffer)
 	if (slot) slot->used = false;
 }
 
+// The frame about to be advanced: when the game ignores its inputs, GGPO is
+// told (no misprediction on it) and the game gets neutral inputs, so what
+// the players' copies happened to send cannot change the simulation.
+FrameInputs RollbackSession::InputsForThisFrame(const FrameInputs& inputs)
+{
+	const bool matter = game_.InputsMatter();
+	ggpo_set_inputs_ignored(session_, !matter);
+	return matter ? inputs : FrameInputs{};
+}
+
 bool RollbackSession::AdvanceFromRollback()
 {
 	sf4e::gate::AbortLatch::Scope scope(latch_);
@@ -387,7 +397,7 @@ bool RollbackSession::AdvanceFromRollback()
 		Fail("synchronize_input failed during a rollback");
 		return false;
 	}
-	game_.Advance(inputs, true);
+	game_.Advance(InputsForThisFrame(inputs), true);
 	stats_.resimulatedFrames++;
 	ggpo_advance_frame(session_);
 	return true;

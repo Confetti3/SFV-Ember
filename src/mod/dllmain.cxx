@@ -61,9 +61,11 @@ void LaunchLinkedMatch(const sfve::MatchLink::Endpoints& match)
 {
 	using namespace sfve::mod;
 	MatchPicks picks;
-	MatchRules hostRules, joinerRules;
+	MatchRules hostRules, ignored;
+	// Only the host's rules count; of the joiner's setup only its fighter.
+	const std::string joinerFighter = match.setups[1].substr(0, match.setups[1].find(' '));
 	if (!ParseSetup(match.setups[0], &picks.players[0], &hostRules) ||
-		!ParseSetup(match.setups[1], &picks.players[1], &joinerRules) || picks.players[0].fighter.empty() ||
+		!ParseSetup(joinerFighter, &picks.players[1], &ignored) || picks.players[0].fighter.empty() ||
 		picks.players[1].fighter.empty() || hostRules.stage.empty()) {
 		s_link.load()->Abandon("the players' setups do not name both fighters and a stage (" + JsonString(match.setups[0]) +
 			" / " + JsonString(match.setups[1]) + ")");
@@ -74,6 +76,9 @@ void LaunchLinkedMatch(const sfve::MatchLink::Endpoints& match)
 	picks.rules = hostRules;
 	if (picks.rules.rounds < 0) picks.rules.rounds = kDefaultLinkedRounds;
 	if (picks.rules.timeFrames == -1) picks.rules.timeFrames = kDefaultLinkedTimeFrames;
+	// Set on both copies from the same setup, so both end the match alike.
+	SetMatchEndChoice(hostRules.afterMatch == MatchRules::AfterMatch::MainMenu ? MatchEndChoice::MainMenu
+																			  : MatchEndChoice::Rematch);
 	Log("netplay: launching %s vs %s once on the main menu", JsonString(match.setups[0]).c_str(),
 		JsonString(match.setups[1]).c_str());
 	LaunchOnMainMenu(
@@ -88,11 +93,11 @@ std::string LocalSetup(const sfve::mod::ModConfig& config)
 	using namespace sfve::mod;
 	auto orDefault = [](const std::string& value, const char* fallback) { return value.empty() ? std::string(fallback) : value; };
 	const std::string setup = orDefault(config.fighter, "-") + " " + orDefault(config.stage, kDefaultLinkedStage) + " " +
-		orDefault(config.rounds, "-") + " " + orDefault(config.time, "-");
+		orDefault(config.rounds, "-") + " " + orDefault(config.time, "-") + " " + orDefault(config.after, "-");
 	FighterPick fighter;
 	MatchRules rules;
 	if (config.fighter.empty() || !ParseSetup(setup, &fighter, &rules)) {
-		Log("netplay: -sfve_fighter / -sfve_stage / -sfve_rounds / -sfve_time do not make a setup (%s); a linked match "
+		Log("netplay: -sfve_fighter / -sfve_stage / -sfve_rounds / -sfve_time / -sfve_after do not make a setup (%s); a linked match "
 			"will not start",
 			JsonString(setup).c_str());
 	}

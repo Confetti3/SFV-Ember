@@ -21,12 +21,19 @@ namespace sfve::mod {
 bool InstallMatchEnd(uintptr_t imageBase);
 
 // While on, a versus battle's results menu does not open; the match end is
-// kept for EndedVersusBattle. Any thread.
+// kept for TakeEndedVersusBattle. Turning it off drops a pending one. Game
+// thread.
 void SetLinkedMatchEnd(bool on);
 
-// Game thread: the versus battle whose match ended (its results skipped)
-// and is waiting for a decision, or null. Taking it clears it.
+// Game thread: a match ended (its results skipped) and waits for a decision.
+bool EndedVersusBattlePending();
+
+// Game thread: the versus battle whose match ended, or null (also when that
+// battle is no longer the current scene). Taking it clears it.
 uint8_t* TakeEndedVersusBattle();
+
+// Game thread: drops a pending match end (a new battle, or the session gone).
+void ForgetEndedVersusBattle();
 
 // Game thread, between two session frames: restarts that battle with the
 // same fighters and stage.

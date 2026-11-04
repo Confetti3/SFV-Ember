@@ -7,6 +7,7 @@
 #include "mod/SfvOffsets.hxx"
 
 #include <atomic>
+#include <utility>
 
 namespace sfve::mod {
 
@@ -19,7 +20,7 @@ using RestartFn = void (*)(uint8_t* versusBattleState);
 
 uintptr_t s_base;
 ShowResultFn o_showResult;
-std::atomic<bool> s_linked;
+bool s_linked; // game thread only
 std::atomic<MatchEndChoice> s_choice{MatchEndChoice::Rematch};
 uint8_t* s_ended; // game thread only
 
@@ -47,13 +48,23 @@ bool InstallMatchEnd(uintptr_t imageBase)
 void SetLinkedMatchEnd(bool on)
 {
 	s_linked = on;
+	if (!on) s_ended = nullptr;
+}
+
+bool EndedVersusBattlePending()
+{
+	return s_ended != nullptr;
 }
 
 uint8_t* TakeEndedVersusBattle()
 {
-	uint8_t* ended = s_ended;
+	uint8_t* ended = std::exchange(s_ended, nullptr);
+	return ended && ended == CurrentSceneState() ? ended : nullptr;
+}
+
+void ForgetEndedVersusBattle()
+{
 	s_ended = nullptr;
-	return ended;
 }
 
 void Rematch(uint8_t* state)

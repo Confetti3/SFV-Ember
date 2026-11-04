@@ -82,6 +82,7 @@ void LoadConfigFromCommandLine(const wchar_t* line)
 	c.stage = Text(line, L"sfve_stage");
 	c.rounds = Text(line, L"sfve_rounds");
 	c.time = Text(line, L"sfve_time");
+	c.after = Text(line, L"sfve_after");
 	wchar_t pads[32];
 	if (Find(line, L"sfve_pads", pads, 32)) {
 		for (const wchar_t* p = pads; *p; p++) {

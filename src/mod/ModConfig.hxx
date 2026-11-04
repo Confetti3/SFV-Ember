@@ -22,6 +22,7 @@
 //   -sfve_stage=S        linked netplay, host: the stage code
 //   -sfve_rounds=N       linked netplay, host: rounds, 1|3|5|7 (default 3)
 //   -sfve_time=S         linked netplay, host: round seconds or inf (default 99)
+//   -sfve_after=A        linked netplay, host: rematch|menu at the match end (default rematch)
 //   -sfve_ownership=1    the match launch runs the game's ownership check
 //                        (off while developing; on in the public version)
 //   -sfve_dialogs=N      offline start-up dialogs hidden: 0 none, 1 download errors,
@@ -61,6 +62,7 @@ struct ModConfig {
 	std::string stage;   // linked netplay, host: the stage (empty: the game's default)
 	std::string rounds;  // linked netplay, host: 1, 3, 5 or 7 (empty: 3)
 	std::string time;    // linked netplay, host: round seconds or "inf" (empty: 99)
+	std::string after;   // linked netplay, host: "rematch" or "menu" at the match's end (empty: rematch)
 };
 
 const ModConfig& Config();

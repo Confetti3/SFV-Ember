@@ -10,12 +10,17 @@
 // shared; or, for automated tests, seeded random play (-sfve_mash=N), which
 // needs no window focus.
 //
-// Rollback only while the players fight. Outside the fight (intros, round
-// calls, the KO and results) the battle flow waits on presentation the
-// snapshot does not hold, so there frames run in lockstep: only once both
-// inputs are confirmed. The flow itself is part of the rollback state, so a
-// guessed KO that a rollback removes puts the fight back. Time sync stretches
-// frames by a few milliseconds while this side runs ahead (FramePacer).
+// Rollback starts only in the fight. Outside it (intros, round calls, the KO
+// and results) the battle flow waits on presentation the snapshot does not
+// hold, so a frame there must never be replayed from its own start. The
+// game ignores the players' inputs there (SfvAdapter::InputsMatter): such a
+// frame gets neutral inputs and GGPO takes no input on it for a
+// misprediction, so every rollback starts on a fight frame (replaying across
+// a fight's end, which the flow record handles). The flow itself is part of
+// the rollback state, so a guessed KO that a rollback removes puts the fight
+// back. A linked match's end is decided on a confirmed frame. Time sync
+// stretches frames by a few milliseconds while this side runs ahead
+// (FramePacer).
 //
 // Pipe commands (cross-copy desync checks): "hash <frame>", "checkpoint
 // [frame]" (latest confirmed per-region checkpoint), "dump <frame>" (that
@@ -49,7 +54,6 @@ public:
 	void RegisterCommands();
 
 private:
-	bool HoldForLockstep(const SfvAdapter& adapter);
 	void Leave(); // back to the main menu; the battle stands still meanwhile
 	// Starts the session once the match is known; false while it is not.
 	bool StartSession(SfvAdapter& adapter);
@@ -64,14 +68,10 @@ private:
 	std::unique_ptr<RollbackSession> session_;
 	bool started_ = false;
 	uint64_t frames_ = 0;
-	uint64_t lockstepHolds_ = 0;
-	int lastFightFrame_ = -1; // the last session frame that started in the fight
 	bool wasLive_ = false;    // the session ran in this battle
+	bool startFailed_ = false; // a session was asked for and could not start
 	bool leaving_ = false;    // the battle is going back to the main menu
 	std::string lastResult_ = "null"; // the last linked match's result (JSON)
-	int inputDelay_ = 1;
-	// GGPO_MAX_PREDICTION_FRAMES: how far a side can run on guessed inputs.
-	static constexpr int kMaxPredictionFrames = 8;
 	FramePacer pacer_;
 	int dumpFrame_ = -1;   // "dump <frame>": write that frame's saved state to the log folder
 	int freezeFrame_ = -1; // "freeze <frame>": stop advancing there (to compare screens)

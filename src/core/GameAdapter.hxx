@@ -44,6 +44,14 @@ public:
 	// should not start sounds or one-shot effects for them.
 	virtual void Advance(const FrameInputs& inputs, bool resimulating) = 0;
 
+	// Whether the next frame reads the players' inputs, from the state at its
+	// start (SFV: only the fight does; intros, KOs and round calls do not).
+	// A frame whose inputs do not matter is advanced with neutral inputs and
+	// its inputs are never taken for a misprediction, so no rollback starts
+	// on it: frames the game cannot replay faithfully are then never
+	// replayed from their own start.
+	virtual bool InputsMatter() const { return true; }
+
 	// Called right after the layout's memory was written back, for fix-ups a
 	// plain copy cannot do (the game's own post-restore callbacks, state the
 	// adapter keeps as a record). An adapter that keeps such a record keeps it

@@ -45,6 +45,8 @@ struct MatchRules {
 	int rounds = -1;    // best of 1, 3, 5 or 7
 	int timeFrames = -1; // the round clock in frames (99 s = 5940); kNoTimeLimit for none
 	static constexpr int kNoTimeLimit = -2; // the game's own value for no time limit
+	// What a linked match does at its end (MatchEnd); not part of the launch.
+	enum class AfterMatch { Default, Rematch, MainMenu } afterMatch = AfterMatch::Default;
 };
 
 struct MatchPicks {
@@ -54,10 +56,11 @@ struct MatchPicks {
 };
 
 // A player's setup as the match link carries it, space separated:
-// "CODE[:costume[:colour]]", then (the host's) "STAGE ROUNDS TIME": a stage
-// code, the rounds (1, 3, 5 or 7) and the round time in seconds (30 to 546)
-// or "inf". "-" keeps a default. Codes are 1 to 8 capital letters or digits.
-// False for anything else.
+// "CODE[:costume[:colour]]", then (the host's) "STAGE ROUNDS TIME AFTER": a
+// stage code, the rounds (1, 3, 5 or 7), the round time in seconds (30 to
+// 546) or "inf", and "rematch" or "menu" for the match's end. "-" keeps a
+// default. Codes are 1 to 8 capital letters or digits. False for anything
+// else.
 bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rules);
 
 // `checkOwnership`: the jump runs the game's ownership check, as its menus
