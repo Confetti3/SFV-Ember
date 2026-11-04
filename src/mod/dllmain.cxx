@@ -17,6 +17,7 @@
 #include "mod/Log.hxx"
 #include "mod/ModConfig.hxx"
 #include "mod/MultiInstance.hxx"
+#include "mod/HelperLink.hxx"
 #include "mod/NetplayMode.hxx"
 #include "mod/NetGuard.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -36,7 +37,13 @@ std::unique_ptr<sfve::mod::BattleMode> MakeMode(const sfve::mod::ModConfig& conf
 	switch (config.mode) {
 	case ModMode::SyncTest: return std::make_unique<SyncTestMode>(config.distance, config.learn, config.perturb);
 	case ModMode::Netplay: {
-		auto mode = std::make_unique<NetplayMode>(config);
+		std::unique_ptr<HelperLink> link;
+		if (config.helperLink) {
+			link = std::make_unique<HelperLink>(config.delay);
+			link->Start(); // a failure shows in the status; the battle then waits
+			link->RegisterCommands();
+		}
+		auto mode = std::make_unique<NetplayMode>(config, std::move(link));
 		mode->RegisterCommands();
 		return mode;
 	}

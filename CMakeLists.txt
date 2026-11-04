@@ -14,14 +14,19 @@ find_package(ggpo CONFIG REQUIRED)
 find_package(minhook CONFIG REQUIRED)
 find_package(xxHash CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 add_compile_options(/W4 /permissive- /utf-8 /Zc:__cplusplus)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
 
 # Modules copied verbatim from SF4 Ember (docs/SHARED_FROM_EMBER.md).
-add_library(sfve_shared STATIC src/shared/sf4e__GgpoGate.cxx)
+add_library(sfve_shared STATIC
+    src/shared/sf4e__GgpoGate.cxx
+    src/shared/platform/HelperProcess.cxx
+    src/shared/platform/HelperClient.cxx)
 target_include_directories(sfve_shared PUBLIC src/shared)
 target_compile_options(sfve_shared PRIVATE /W3)
+target_link_libraries(sfve_shared PUBLIC bcrypt)
 
 # Game-agnostic rollback core: state regions, hashing, the GGPO session and
 # the synctest harness. No game, no hooks; unit tested against MockFighter.
@@ -29,9 +34,10 @@ add_library(sfve_core STATIC
     src/core/StateRegions.cxx
     src/core/RollbackSession.cxx
     src/core/SyncTest.cxx
-    src/core/NetPolicy.cxx)
+    src/core/NetPolicy.cxx
+    src/core/MatchLink.cxx)
 target_include_directories(sfve_core PUBLIC src)
-target_link_libraries(sfve_core PUBLIC sfve_shared ggpo::GGPO xxHash::xxhash ws2_32 winmm)
+target_link_libraries(sfve_core PUBLIC sfve_shared ggpo::GGPO xxHash::xxhash nlohmann_json::nlohmann_json ws2_32 winmm)
 
 add_library(sfve_testbed STATIC src/testbed/MockFighter.cxx)
 target_link_libraries(sfve_testbed PUBLIC sfve_core)
@@ -41,7 +47,8 @@ add_executable(sfve_tests
     tests/StateRegionsTests.cxx
     tests/SyncTestTests.cxx
     tests/RollbackSessionTests.cxx
-    tests/NetPolicyTests.cxx)
+    tests/NetPolicyTests.cxx
+    tests/MatchLinkTests.cxx)
 target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 
 # The in-game mod. Loads inert: it blocks every non-loopback connection first,
@@ -59,6 +66,7 @@ add_library(sfv_ember SHARED
     src/mod/SfvAdapter.cxx
     src/mod/SfvFlow.cxx
     src/mod/FramePacer.cxx
+    src/mod/HelperLink.cxx
     src/mod/GameHooks.cxx
     src/mod/BattleDriver.cxx
     src/mod/SyncTestMode.cxx

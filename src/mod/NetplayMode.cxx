@@ -39,21 +39,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 {
 	std::lock_guard lock(mutex_);
 	frames_++;
-	if (!started_) {
-		started_ = true;
-		RollbackSession::Config c;
-		c.localPlayer = config_.player;
-		c.localPort = config_.port;
-		c.remotePort = config_.peerPort;
-		// At least one frame: lockstep (below) waits for the other side's input
-		// for the next frame, which it has always sent by then.
-		c.inputDelay = config_.delay < 1 ? 1 : config_.delay;
-		// Both copies are at the battle's first frame: give the clock-seeded
-		// random generators the same seeds before anything is simulated.
-		Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(kSessionSeed));
-		std::string error;
-		if (!session_->Start(c, &error)) Log("netplay: could not start: %s", error.c_str());
-	}
+	if (!started_ && !StartSession(adapter)) return; // the battle waits for the match
 	if (!session_->Live()) {
 		// No session (it failed or never started): the battle carries on
 		// offline rather than freezing.
@@ -72,6 +58,36 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 												 : 0;
 	last_ = session_->Step(local);
 	DumpIfRequested();
+}
+
+bool NetplayMode::StartSession(SfvAdapter& adapter)
+{
+	RollbackSession::Config c;
+	uint32_t seed = kSessionSeed;
+	int delay = config_.delay;
+	if (link_) {
+		const std::optional<MatchLink::Endpoints> match = link_->Ready();
+		if (!match) return false;
+		c.localPlayer = match->localPlayer;
+		c.localPort = match->localPort;
+		c.remotePort = match->remotePort;
+		seed = match->seed;
+		delay = match->inputDelay;
+	} else {
+		c.localPlayer = config_.player;
+		c.localPort = config_.port;
+		c.remotePort = config_.peerPort;
+	}
+	started_ = true;
+	// At least one frame: lockstep (below) waits for the other side's input
+	// for the next frame, which it has always sent by then.
+	c.inputDelay = delay < 1 ? 1 : delay;
+	// Both copies are at the battle's first frame: give the clock-seeded
+	// random generators the same seeds before anything is simulated.
+	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
+	std::string error;
+	if (!session_->Start(c, &error)) Log("netplay: could not start: %s", error.c_str());
+	return true;
 }
 
 // Layout: per region {uint64 size, uint64 address}, then its bytes.

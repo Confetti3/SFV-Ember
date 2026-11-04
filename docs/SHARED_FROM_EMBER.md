@@ -13,6 +13,10 @@ namespaces.
 | `src/shared/sf4e__PacingController.hxx` | `src/common/` |
 | `src/shared/GgpoDisconnectTolerance.hxx` | `src/common/` |
 | `vcpkg-overlays/ports/ggpo/` (port-version 18) | `vcpkg-overlays/ports/ggpo/` |
+| `src/shared/platform/HelperProcess.*`, `HelperClient.*`, `HelperFrame.hxx` | `src/platform/` (at `831c2078`) |
+| `src/shared/common/TickCount.hxx`, `WipeText.hxx` | `src/common/` (at `831c2078`) |
+| `src/shared/netplay/BoundedMailbox.hxx` | `src/netplay/` (at `831c2078`) |
+| `sf4-net.exe` (built by `scripts/build-helper.ps1`, not copied) | `rust/sf4-net` |
 
 Check for drift:
 

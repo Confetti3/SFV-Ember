@@ -25,6 +25,7 @@
 #include "core/RollbackSession.hxx"
 #include "mod/BattleMode.hxx"
 #include "mod/FramePacer.hxx"
+#include "mod/HelperLink.hxx"
 #include "mod/ModConfig.hxx"
 
 #include <memory>
@@ -34,7 +35,13 @@ namespace sfve::mod {
 
 class NetplayMode : public BattleMode {
 public:
-	explicit NetplayMode(const ModConfig& config) : config_(config) {}
+	// `link`: the match comes from Ember's helper (its ports, seed and delay)
+	// instead of the command line; the battle waits at its first frame until
+	// the link is ready.
+	NetplayMode(const ModConfig& config, std::unique_ptr<HelperLink> link)
+		: config_(config), link_(std::move(link))
+	{
+	}
 
 	void NewBattle(SfvAdapter& adapter) override;
 	void Frame(SfvAdapter& adapter) override;
@@ -43,12 +50,15 @@ public:
 
 private:
 	bool HoldForLockstep(const SfvAdapter& adapter);
+	// Starts the session once the match is known; false while it is not.
+	bool StartSession(SfvAdapter& adapter);
 	void DumpIfRequested();
 
-	// The same in every copy for now; a room will hand out one per match.
+	// Without a helper link: the same in every copy (the link hands out one per match).
 	static constexpr uint32_t kSessionSeed = 0x5F0E5EED;
 
 	const ModConfig& config_;
+	std::unique_ptr<HelperLink> link_; // null: ports from the command line
 	mutable std::mutex mutex_; // the game thread steps, the pipe thread reads
 	std::unique_ptr<RollbackSession> session_;
 	bool started_ = false;

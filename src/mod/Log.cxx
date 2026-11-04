@@ -15,6 +15,8 @@ namespace {
 std::mutex s_mutex;
 HANDLE s_file = INVALID_HANDLE_VALUE;
 
+} // namespace
+
 std::wstring ModuleFolder()
 {
 	wchar_t path[MAX_PATH] = {};
@@ -26,8 +28,6 @@ std::wstring ModuleFolder()
 	const size_t slash = folder.find_last_of(L"\\/");
 	return slash == std::wstring::npos ? L"." : folder.substr(0, slash);
 }
-
-} // namespace
 
 std::wstring LogFolder()
 {

@@ -63,6 +63,7 @@ void LoadConfigFromCommandLine(const wchar_t* line)
 	c.learn = Number(line, L"sfve_learn", 0) != 0;
 	c.perturb = Number(line, L"sfve_perturb", 0) != 0;
 	c.lagMs = (int)Number(line, L"sfve_lag", 0);
+	c.helperLink = Number(line, L"sfve_link", 0) != 0;
 	wchar_t pads[32];
 	if (Find(line, L"sfve_pads", pads, 32)) {
 		for (const wchar_t* p = pads; *p; p++) {

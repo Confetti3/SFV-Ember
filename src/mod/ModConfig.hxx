@@ -17,6 +17,7 @@
 //   -sfve_learn=1        synctest: keep going after a difference, tallying regions
 //   -sfve_perturb=1      synctest: play each rolled-back stretch with wrong inputs first
 //   -sfve_lag=MS         test: hold back outgoing UDP by MS milliseconds
+//   -sfve_link=1         netplay through Ember's helper ("host" / "join <invitation>")
 
 #include <stdint.h>
 
@@ -41,6 +42,7 @@ struct ModConfig {
 	bool learn = false;
 	bool perturb = false;
 	int lagMs = 0;
+	bool helperLink = false; // netplay endpoints, seed and delay come from a HelperLink
 };
 
 const ModConfig& Config();

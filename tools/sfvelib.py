@@ -29,7 +29,7 @@ GAME_DIR = Path(os.environ.get(
     r"G:\SteamLibrary\steamapps\common\StreetFighterV\StreetFighterV\Binaries\Win64"))
 BUILD_DIR = Path(os.environ.get("SFVE_BUILD_DIR", r"D:\sfv-ember-build"))
 GAME_EXE = GAME_DIR / "StreetFighterV.exe"
-MOD_FILES = ("xinput1_3.dll", "sfv_ember.dll")
+MOD_FILES = ("xinput1_3.dll", "sfv_ember.dll", "sf4-net.exe")  # sf4-net: scripts/build-helper.ps1
 GUARD_TIMEOUT_S = 20.0
 STEAM_APP_ID = "310950"
 

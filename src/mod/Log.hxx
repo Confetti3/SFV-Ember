@@ -12,6 +12,8 @@ void OpenLog(int instance);
 void Log(const char* fmt, ...);
 void LogLine(const char* line);
 // The folder the logs go to (for other diagnostic files).
+// The folder the mod was loaded from (the game's Win64 folder).
+std::wstring ModuleFolder();
 std::wstring LogFolder();
 
 } // namespace sfve::mod
