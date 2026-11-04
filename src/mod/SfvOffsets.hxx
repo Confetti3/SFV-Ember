@@ -186,12 +186,18 @@ constexpr CodeSite kSelectableFighters{"SelectableFighters", 0x566FC0,
 constexpr CodeSite kSpecStages{"SpecStages", 0x5672D0,
 	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x83, 0x7A, 0x0C, 0x00, 0x48, 0x8B, 0x1A, 0x48, 0x89, 0x6C}};
 
+// UClass* MainMenuState(package): the main menu's class (scene vtable
+// kMainMenuVtable); the results menu's "Exit" changes scene to it (rva
+// 0x66A690), as the game's own exits from a battle do (rva 0x591950).
+constexpr CodeSite kMainMenuClass{"MainMenuStateClass", 0xC20E70,
+	{0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05, 0xAD, 0x47, 0xE8, 0x02, 0x48, 0x85, 0xC0, 0x75, 0x21}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
-	kSpecStages};
+	kSpecStages, kMainMenuClass};
 
 namespace versus {
 

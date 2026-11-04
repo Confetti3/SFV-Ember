@@ -34,6 +34,7 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	started_ = false;
 	frames_ = lockstepHolds_ = 0;
 	lastFightFrame_ = -1;
+	wasLive_ = leaving_ = false;
 	pacer_.Reset();
 }
 
@@ -42,12 +43,21 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	std::lock_guard lock(mutex_);
 	frames_++;
 	if (!started_ && !StartSession(adapter)) return; // the battle waits for the match
+	if (leaving_) return; // the battle stands still until the main menu replaces it
 	if (!session_->Live()) {
-		// No session (it failed or never started): the battle carries on
-		// offline rather than freezing.
+		if (link_ && wasLive_) {
+			// A linked match whose session broke has no other player left:
+			// back to the main menu, where the next match starts.
+			Log("netplay: the session ended (%s); back to the main menu", session_->FailureReason().c_str());
+			Leave();
+			return;
+		}
+		// No session (it never started): the battle carries on offline
+		// rather than freezing.
 		adapter.RunOriginal();
 		return;
 	}
+	wasLive_ = true;
 	const bool frozen = freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_;
 	if (frozen || HoldForLockstep(adapter)) {
 		session_->Poll(); // held frames still receive inputs
@@ -66,10 +76,25 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	// A linked match that ended in the last frame restarts here, before this
 	// frame is saved and played, on both copies alike (MatchEnd).
 	if (link_) {
-		if (uint8_t* ended = TakeEndedVersusBattle()) Rematch(ended);
+		if (uint8_t* ended = TakeEndedVersusBattle()) {
+			if (GetMatchEndChoice() == MatchEndChoice::Rematch) {
+				Rematch(ended);
+			} else {
+				session_->Close(); // both copies close on this same frame
+				Leave();
+				return;
+			}
+		}
 	}
 	last_ = session_->Step(local);
 	DumpIfRequested();
+}
+
+void NetplayMode::Leave()
+{
+	leaving_ = true;
+	SetLinkedMatchEnd(false);
+	if (!LeaveBattle()) Log("netplay: could not leave the battle (no scene manager)");
 }
 
 bool NetplayMode::StartSession(SfvAdapter& adapter)
@@ -189,6 +214,13 @@ void NetplayMode::RegisterCommands()
 	RegisterCommand("riftgain", [this](const std::string& args) {
 		std::lock_guard lock(mutex_);
 		pacer_.SetRiftGain(atof(args.c_str()) / 120.0);
+		return std::string("ok");
+	});
+	// "matchend rematch|menu": what a linked match does at its end.
+	RegisterCommand("matchend", [](const std::string& args) {
+		if (args == "rematch") SetMatchEndChoice(MatchEndChoice::Rematch);
+		else if (args == "menu") SetMatchEndChoice(MatchEndChoice::MainMenu);
+		else return std::string("error usage: matchend rematch|menu");
 		return std::string("ok");
 	});
 	RegisterCommand("dump", [this](const std::string& args) {

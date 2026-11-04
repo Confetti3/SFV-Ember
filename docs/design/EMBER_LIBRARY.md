@@ -18,6 +18,7 @@ Roots: **S** = `C:\Users\user\Desktop\sf4\sf4-current` (branch `release`); **V**
 - Pick model: **game-defined dimensions** (5.1 (a)). The review's "limits first" step (6, step L) comes before it; the generic model follows.
 - The large mechanical move (steps 9-10) lands **right after a Stable release**, so the next merge into `nightly` carries it once.
 - Development skips the ownership check; the public version keeps it.
+- SFV Ember lives in its own repository (the maintainer, 2026-11-04): `sfv-ember` stays separate and consumes the shared library; it never moves into the Ember repo.
 
 ---
 

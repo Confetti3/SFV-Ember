@@ -20,6 +20,7 @@ using RestartFn = void (*)(uint8_t* versusBattleState);
 uintptr_t s_base;
 ShowResultFn o_showResult;
 std::atomic<bool> s_linked;
+std::atomic<MatchEndChoice> s_choice{MatchEndChoice::Rematch};
 uint8_t* s_ended; // game thread only
 
 // Called by the battle flow's MatchEnd event (code 14), inside a battle
@@ -63,6 +64,25 @@ void Rematch(uint8_t* state)
 	Field<int32_t>(state, versus::kResultPhase) = versus::kNoResult;
 	reinterpret_cast<RestartFn>(s_base + sfv::kRestartBattle.rva)(state);
 	Log("match end: rematch");
+}
+
+void SetMatchEndChoice(MatchEndChoice choice)
+{
+	s_choice = choice;
+}
+
+MatchEndChoice GetMatchEndChoice()
+{
+	return s_choice;
+}
+
+bool LeaveBattle()
+{
+	using GetClassFn = uint8_t* (*)(const wchar_t* package);
+	uint8_t* mainMenu = reinterpret_cast<GetClassFn>(s_base + sfv::kMainMenuClass.rva)(L"/Script/KiwiGame");
+	if (!mainMenu || !ChangeScene(mainMenu, nullptr)) return false;
+	Log("match end: back to the main menu");
+	return true;
 }
 
 } // namespace sfve::mod

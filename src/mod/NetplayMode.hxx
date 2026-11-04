@@ -50,6 +50,7 @@ public:
 
 private:
 	bool HoldForLockstep(const SfvAdapter& adapter);
+	void Leave(); // back to the main menu; the battle stands still meanwhile
 	// Starts the session once the match is known; false while it is not.
 	bool StartSession(SfvAdapter& adapter);
 	void DumpIfRequested();
@@ -65,6 +66,8 @@ private:
 	uint64_t frames_ = 0;
 	uint64_t lockstepHolds_ = 0;
 	int lastFightFrame_ = -1; // the last session frame that started in the fight
+	bool wasLive_ = false;    // the session ran in this battle
+	bool leaving_ = false;    // the battle is going back to the main menu
 	int inputDelay_ = 1;
 	// GGPO_MAX_PREDICTION_FRAMES: how far a side can run on guessed inputs.
 	static constexpr int kMaxPredictionFrames = 8;

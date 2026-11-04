@@ -9,9 +9,10 @@
 // run once both players' inputs are confirmed), so both copies reach it on
 // the same frame and nothing before it is ever rolled back.
 //
-// For now the decision is always a rematch: the game's own restart (what
-// "Continue" does), with the same fighters and stage, in the same battle
-// state.
+// The decision is the mod's (MatchEndChoice), the same on both copies:
+// a rematch (the game's own restart, what "Continue" does: same fighters
+// and stage, in the same battle state) or back to the main menu (what
+// "Exit" does), where the next match is launched from.
 
 #include <stdint.h>
 
@@ -30,5 +31,18 @@ uint8_t* TakeEndedVersusBattle();
 // Game thread, between two session frames: restarts that battle with the
 // same fighters and stage.
 void Rematch(uint8_t* versusBattleState);
+
+enum class MatchEndChoice {
+	Rematch,
+	MainMenu,
+};
+// What a linked match does at its end. Any thread.
+void SetMatchEndChoice(MatchEndChoice choice);
+MatchEndChoice GetMatchEndChoice();
+
+// Game thread: leaves the battle for the main menu, as the results menu's
+// "Exit" does (a scene change the manager carries out on its next tick).
+// False when the scene manager is not known yet.
+bool LeaveBattle();
 
 } // namespace sfve::mod
