@@ -1,0 +1,96 @@
+#include "mod/BattleDriver.hxx"
+
+#include "mod/ControlPipe.hxx"
+#include "mod/Log.hxx"
+#include "mod/WriteWatch.hxx"
+
+#include <windows.h>
+
+#include <stdio.h>
+
+#include <algorithm>
+#include <vector>
+
+namespace sfve::mod {
+
+namespace {
+
+constexpr uint32_t kStatusEveryFrames = 30;
+
+} // namespace
+
+void BattleDriver::OnBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
+{
+	adapter_.SeeBattleFrame(battleFrame, original);
+	gameThread_ = GetCurrentThreadId();
+	frames_++;
+	if (!adapter_.Bind()) {
+		adapter_.RunOriginal(); // the battle's objects are not all known yet
+	} else {
+		if (boundBattle_ != battleFrame) {
+			boundBattle_ = battleFrame;
+			LogInventory();
+			mode_->NewBattle(adapter_);
+		}
+		if (restart_.exchange(false)) mode_->Restart();
+		mode_->Frame(adapter_);
+	}
+	if (frames_ % kStatusEveryFrames == 0) PublishStatus();
+}
+
+void BattleDriver::LogInventory() const
+{
+	const StateLayout& layout = adapter_.Layout();
+	Log("inventory: %zu regions, %zu bytes", layout.Regions().size(), layout.TotalSize());
+	for (const StateRegion& r : layout.Regions()) Log("inventory:   %-28s %p %8zu bytes", r.name.c_str(), r.ptr, r.size);
+	// Each callback calls a closure {function, ...} it was given; log the
+	// distinct functions behind them.
+	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	std::vector<uintptr_t> seen;
+	for (const SfvAdapter::PostRestore& cb : adapter_.PostRestoreCallbacks()) {
+		const uintptr_t inner = *static_cast<const uintptr_t*>(cb.context) - base;
+		if (std::find(seen.begin(), seen.end(), inner) != seen.end()) continue;
+		seen.push_back(inner);
+		Log("inventory: post-restore target rva 0x%llX", (unsigned long long)inner);
+	}
+	Log("inventory: %zu post-restore callbacks", adapter_.PostRestoreCallbacks().size());
+}
+
+void BattleDriver::PublishStatus()
+{
+	std::string json = "{\"frames\":" + std::to_string(frames_) + ",\"adapter\":" + adapter_.Describe() +
+		",\"mode\":" + mode_->Describe() + "}";
+	std::lock_guard lock(statusMutex_);
+	status_ = std::move(json);
+}
+
+void BattleDriver::RegisterControl()
+{
+	RegisterStatus("battle", [this] {
+		std::lock_guard lock(statusMutex_);
+		return status_;
+	});
+	RegisterCommand("restart", [this](const std::string&) {
+		restart_ = true;
+		return std::string("ok");
+	});
+	RegisterCommand("watch", [this](const std::string& args) {
+		// The region by name ("game.541") or by size (the first of that size).
+		char key[64] = {};
+		size_t offset = 0;
+		if (sscanf_s(args.c_str(), "%63s %zi", key, (unsigned)sizeof(key), &offset) != 2) {
+			return std::string("error usage: watch <region name or size> <offset>");
+		}
+		const bool byName = key[0] < '0' || key[0] > '9';
+		const size_t size = byName ? 0 : strtoull(key, nullptr, 10);
+		for (const StateRegion& r : adapter_.Layout().Regions()) {
+			if ((byName ? r.name != key : r.size != size) || offset >= r.size) continue;
+			const bool ok = ArmWriteWatch(gameThread_, reinterpret_cast<uintptr_t>(r.ptr) + offset, 4);
+			return std::string(ok ? "ok armed on " : "error could not arm ") + r.name;
+		}
+		return std::string("error no region of that size");
+	});
+	RegisterCommand("watchhits", [](const std::string&) { return "ok " + WriteWatchHits(); });
+}
+
+} // namespace sfve::mod

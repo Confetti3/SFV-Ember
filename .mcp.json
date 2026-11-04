@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sfve": {
+      "command": "uv",
+      "args": ["run", "--with", "mcp", "python", "tools/sfve_mcp.py"]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "sfv-ember",
+  "version-string": "0.0.1",
+  "dependencies": [
+    {
+      "name": "ggpo",
+      "version>=": "1.0.0#5"
+    },
+    "minhook",
+    "xxhash",
+    "doctest"
+  ],
+  "builtin-baseline": "fafcc0e93bfba303e5e48790def745d27e6d449b"
+}

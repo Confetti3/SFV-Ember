@@ -1,0 +1,165 @@
+#include "mod/NetplayMode.hxx"
+
+#include "mod/ControlPipe.hxx"
+#include "mod/GameInput.hxx"
+#include "mod/Log.hxx"
+
+#include <stdio.h>
+#include <stdlib.h>
+
+namespace sfve::mod {
+
+namespace {
+
+const char* StepName(RollbackSession::StepResult r)
+{
+	switch (r) {
+	case RollbackSession::StepResult::NoSession: return "no session";
+	case RollbackSession::StepResult::Waiting: return "waiting";
+	case RollbackSession::StepResult::Advanced: return "advanced";
+	case RollbackSession::StepResult::PredictionStall: return "prediction stall";
+	case RollbackSession::StepResult::Skipped: return "skipped";
+	case RollbackSession::StepResult::Failed: return "failed";
+	}
+	return "?";
+}
+
+} // namespace
+
+void NetplayMode::NewBattle(SfvAdapter& adapter)
+{
+	std::lock_guard lock(mutex_);
+	session_ = std::make_unique<RollbackSession>(adapter);
+	started_ = false;
+	frames_ = held_ = timesyncEventsSeen_ = 0;
+	holdBudget_ = 0;
+}
+
+void NetplayMode::Frame(SfvAdapter& adapter)
+{
+	std::lock_guard lock(mutex_);
+	frames_++;
+	if (!started_) {
+		started_ = true;
+		RollbackSession::Config c;
+		c.localPlayer = config_.player;
+		c.localPort = config_.port;
+		c.remotePort = config_.peerPort;
+		c.inputDelay = config_.delay;
+		// Both copies are at the battle's first frame: give the clock-seeded
+		// random generators the same seeds before anything is simulated.
+		Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(kSessionSeed));
+		std::string error;
+		if (!session_->Start(c, &error)) Log("netplay: could not start: %s", error.c_str());
+	}
+	if (!session_->Live()) {
+		// No session (it failed or never started): the battle carries on
+		// offline rather than freezing.
+		adapter.RunOriginal();
+		return;
+	}
+	if (freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_) return;
+	if (HoldForTimeSync()) return;
+	const int frame = session_->Frame();
+	const PackedInput local = !config_.mashSeed ? adapter.Sampled(0)
+		: frame >= config_.mashFrom              ? input::Mash(config_.mashSeed, frame)
+												 : 0;
+	last_ = session_->Step(local);
+	DumpIfRequested();
+}
+
+// Layout: per region {uint64 size, uint64 address}, then its bytes.
+void NetplayMode::DumpIfRequested()
+{
+	if (dumpFrame_ < 0 || session_->Frame() != dumpFrame_) return;
+	const uint8_t* bytes = session_->SavedState(dumpFrame_);
+	if (!bytes) return;
+	const std::wstring path = LogFolder() + L"\\state-" + std::to_wstring(config_.instance) + L"-" +
+		std::to_wstring(dumpFrame_) + L".bin";
+	FILE* f = nullptr;
+	if (_wfopen_s(&f, path.c_str(), L"wb") != 0 || !f) return;
+	for (const StateRegion& r : session_->Layout().Regions()) {
+		const uint64_t header[2] = {r.size, reinterpret_cast<uint64_t>(r.ptr)};
+		fwrite(header, sizeof(header), 1, f);
+		fwrite(bytes, 1, r.size, f);
+		bytes += r.size;
+	}
+	fclose(f);
+	Log("netplay: dumped frame %d to %ls", dumpFrame_, path.c_str());
+	dumpFrame_ = -1;
+}
+
+bool NetplayMode::HoldForTimeSync()
+{
+	const RollbackSession::Stats& stats = session_->GetStats();
+	if (stats.timesyncEvents != timesyncEventsSeen_) {
+		// A fresh estimate of how far ahead we are replaces the old one.
+		timesyncEventsSeen_ = stats.timesyncEvents;
+		holdBudget_ = stats.timesyncFramesAhead > 0 ? stats.timesyncFramesAhead : 0;
+	}
+	if (holdBudget_ <= 0 || frames_ % kHoldEveryFrames != 0) return false;
+	holdBudget_--;
+	held_++;
+	return true;
+}
+
+std::string NetplayMode::Describe() const
+{
+	std::lock_guard lock(mutex_);
+	if (!session_) return "null";
+	const RollbackSession::Stats& s = session_->GetStats();
+	char text[512];
+	snprintf(text, sizeof(text),
+		"{\"live\":%s,\"running\":%s,\"failure\":%s,\"frame\":%d,\"confirmed\":%d,\"last\":\"%s\","
+		"\"advanced\":%llu,\"rollbacks\":%llu,\"resimulated\":%llu,\"longestRollback\":%d,\"stalls\":%llu,"
+		"\"held\":%llu,\"framesAhead\":%d}",
+		session_->Live() ? "true" : "false", session_->Running() ? "true" : "false",
+		JsonString(session_->FailureReason()).c_str(), session_->Frame(), session_->LastConfirmedFrame(),
+		StepName(last_), (unsigned long long)s.framesAdvanced, (unsigned long long)s.rollbacks,
+		(unsigned long long)s.resimulatedFrames, s.longestRollback, (unsigned long long)s.predictionStalls,
+		(unsigned long long)held_, s.timesyncFramesAhead);
+	return text;
+}
+
+void NetplayMode::RegisterCommands()
+{
+	RegisterCommand("freeze", [this](const std::string& args) {
+		std::lock_guard lock(mutex_);
+		freezeFrame_ = args.empty() ? -1 : atoi(args.c_str());
+		return std::string("ok");
+	});
+	RegisterCommand("dump", [this](const std::string& args) {
+		std::lock_guard lock(mutex_);
+		dumpFrame_ = atoi(args.c_str());
+		return std::string("ok");
+	});
+	RegisterCommand("hash", [this](const std::string& args) {
+		std::lock_guard lock(mutex_);
+		uint64_t hash = 0;
+		const int frame = atoi(args.c_str());
+		if (!session_ || !session_->HashAt(frame, &hash)) return std::string("error frame not kept");
+		char text[32];
+		snprintf(text, sizeof(text), "ok %016llx", (unsigned long long)hash);
+		return std::string(text);
+	});
+	RegisterCommand("checkpoint", [this](const std::string& args) {
+		std::lock_guard lock(mutex_);
+		if (!session_) return std::string("error no session");
+		const int atOrBefore = args.empty() ? session_->LastConfirmedFrame() : atoi(args.c_str());
+		const int frame = session_->LatestCheckpoint(atOrBefore);
+		std::vector<uint64_t> hashes;
+		if (frame < 0 || !session_->RegionHashesAt(frame, &hashes)) return std::string("error no checkpoint");
+		// size:hash per region, so unmatched regions can be grouped by size
+		// (each process lists them in its own order).
+		std::string out = "ok " + std::to_string(frame);
+		const auto& regions = session_->Layout().Regions();
+		char item[48];
+		for (size_t i = 0; i < hashes.size() && i < regions.size(); i++) {
+			snprintf(item, sizeof(item), " %zu:%016llx", regions[i].size, (unsigned long long)hashes[i]);
+			out += item;
+		}
+		return out;
+	});
+}
+
+} // namespace sfve::mod
