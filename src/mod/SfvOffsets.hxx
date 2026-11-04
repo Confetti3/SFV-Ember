@@ -150,10 +150,41 @@ constexpr CodeSite kAssignString{"AssignString", 0x190FF90,
 constexpr CodeSite kGameFree{"GameFree", 0x1130C40,
 	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0xD9, 0x48, 0x8B, 0x0D, 0xA8, 0x67, 0x99, 0x02}};
 
+// The game's content checks (no ownership involved), used to refuse a launch
+// with picks the game does not have rather than load them. All read the game
+// singleton (kGameData) themselves; the first argument of the spec checks is
+// unused.
+// bool FighterInstalled(CharaAsset*, const FString* code): its package exists.
+constexpr CodeSite kFighterInstalled{"FighterInstalled", 0x549180,
+	{0x40, 0x55, 0x56, 0x48, 0x83, 0xEC, 0x48, 0x33, 0xED, 0x89, 0x6C, 0x24, 0x70, 0xE8, 0x9E, 0x5E}};
+// bool CostumeValid(void*, const FString* code, int costume)
+constexpr CodeSite kCostumeValid{"CostumeValid", 0x56B190,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x41, 0x8B, 0xF8, 0x48, 0x8B, 0xDA}};
+// bool ColourValid(void*, const FString* code, int costume, int colour)
+constexpr CodeSite kColourValid{"ColourValid", 0x56B0E0,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x41}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
-	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree};
+	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
+	kFighterInstalled, kCostumeValid, kColourValid};
+
+// The game singleton's content tables (from the embedded DA_CharaEntry and
+// stage data; parsed at rva 0x56D050).
+namespace content {
+
+constexpr uint32_t kCharaAsset = 96;   // singleton: fighters (getter rva 0x2ACA980)
+constexpr uint32_t kStageAsset = 104;  // singleton: stages (getter rva 0x1210160)
+constexpr uint32_t kStageEntries = 40; // StageAsset: TArray data, then int count at +48
+constexpr uint32_t kStageCount = 48;
+constexpr uint32_t kStageStride = 80;  // entry: +0 FString code
+// Codes in the table that are not playable stages: random (rand()), no stage
+// data (BO3, BO4, SH1, SH5, S11, S12), and an empty entry.
+constexpr const wchar_t* kUnplayableStages[] = {L"RND", L"BO3", L"BO4", L"SH1", L"SH5", L"S11", L"S12"};
+constexpr const wchar_t* kRandomFighter = L"RND";
+
+} // namespace content
 
 namespace jump {
 

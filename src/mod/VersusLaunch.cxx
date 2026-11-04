@@ -9,6 +9,7 @@
 #include "mod/SfvOffsets.hxx"
 
 #include <stdlib.h>
+#include <wchar.h>
 
 #include <memory>
 #include <sstream>
@@ -31,6 +32,9 @@ using GetPlayerSetupFn = void (*)(uint8_t* playerRef, uint8_t* setup);
 using CopyFn = uint8_t* (*)(uint8_t* out, const uint8_t* from);
 using AssignStringFn = void (*)(uint8_t* to, const GameString* from, int extra);
 using FreeFn = void (*)(void* block);
+using FighterInstalledFn = bool (*)(uint8_t* charaAsset, const GameString* code);
+using CostumeValidFn = bool (*)(void* unused, const GameString* code, int costume);
+using ColourValidFn = bool (*)(void* unused, const GameString* code, int costume, int colour);
 
 // A launch that has not reached the jump's second step by then has failed
 // (the jump is normally there within a few frames).
@@ -200,6 +204,56 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	return next;
 }
 
+GameString View(const std::wstring& text)
+{
+	return GameString{text.c_str(), (int32_t)text.size() + 1, (int32_t)text.size() + 1};
+}
+
+bool StagePlayable(uint8_t* singleton, const std::wstring& code)
+{
+	for (const wchar_t* unplayable : sfv::content::kUnplayableStages) {
+		if (_wcsicmp(code.c_str(), unplayable) == 0) return false;
+	}
+	uint8_t* stages = Field<uint8_t*>(singleton, sfv::content::kStageAsset);
+	if (!stages) return false;
+	uint8_t* entries = Field<uint8_t*>(stages, sfv::content::kStageEntries);
+	const int count = Field<int32_t>(stages, sfv::content::kStageCount);
+	for (int i = 0; entries && i < count; i++) {
+		const GameString& entry = Field<GameString>(entries + sfv::content::kStageStride * i, 0);
+		if (entry.data && entry.count > 1 && _wcsicmp(entry.data, code.c_str()) == 0) return true;
+	}
+	return false;
+}
+
+// Empty when the game has every pick (no ownership involved: the game's
+// content tables and installed packages), else why not. A launch with
+// content the game does not have would load nothing sensible.
+std::string MissingContent(const MatchPicks& picks)
+{
+	uint8_t* singleton = At<GameDataFn>(sfv::kGameData)();
+	uint8_t* fighters = singleton ? Field<uint8_t*>(singleton, sfv::content::kCharaAsset) : nullptr;
+	if (!fighters) return "the game's content tables are not loaded";
+	for (int player = 0; player < jump::kPlayers; player++) {
+		const FighterPick& pick = picks.players[player];
+		if (pick.fighter.empty()) continue;
+		const GameString code = View(pick.fighter);
+		const std::string who = "player " + std::to_string(player + 1) + "'s ";
+		if (_wcsicmp(pick.fighter.c_str(), sfv::content::kRandomFighter) == 0 ||
+			!At<FighterInstalledFn>(sfv::kFighterInstalled)(fighters, &code)) {
+			return who + "fighter is not in the game";
+		}
+		const int costume = pick.costume < 0 ? 0 : pick.costume;
+		if (pick.costume >= 0 && !At<CostumeValidFn>(sfv::kCostumeValid)(nullptr, &code, costume)) {
+			return who + "costume is not in the game";
+		}
+		if (pick.colour >= 0 && !At<ColourValidFn>(sfv::kColourValid)(nullptr, &code, costume, pick.colour)) {
+			return who + "colour is not in the game";
+		}
+	}
+	if (!picks.stage.empty() && !StagePlayable(singleton, picks.stage)) return "the stage is not a playable stage";
+	return std::string();
+}
+
 // Game thread: from the main menu into the battle jump. Until the jump's
 // second step takes the picks, a watcher ends a launch the game did not
 // carry out (another scene came instead, or it never got that far).
@@ -214,6 +268,8 @@ void Launch(const MatchPicks& picks, LaunchFailed onFailed)
 	if (SceneStateKind(menu) != sfv::scene::kMainMenuVtable) return refuse("the game is not on the main menu");
 	if (s_pending.message) return refuse("a launch is already under way");
 	if (SceneChangePending()) return refuse("the main menu is already changing scene");
+	const std::string missing = MissingContent(picks);
+	if (!missing.empty()) return refuse(missing.c_str());
 	uint8_t* messageClass = At<GetClassFn>(sfv::kJumpMessageClass)(L"/Script/KiwiGame");
 	uint8_t* jumpClass = At<GetClassFn>(sfv::kJumpStateClass)(L"/Script/KiwiGame");
 	uint8_t* message = messageClass ? At<NewObjectFn>(sfv::kNewObject)(menu, messageClass) : nullptr;
