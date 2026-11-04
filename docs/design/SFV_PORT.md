@@ -125,16 +125,21 @@ corrects the guess, left the battle stopped. Now part of the layout:
   reason the Fight state polls) and the flags the Fight and Finish states set
   (`battledata.*`);
 - the round flow itself (`SfvFlow`): FlowUnit's current and requested state
-  and each state's phase, sequencer and own fields, kept as a record the
-  adapter captures before every save (`GameAdapter::Capture`) and writes back
-  after a load. Writing it back moves the current-state shared pointer (use
-  counts kept right) and rebuilds a state's phase delegate the way the game
-  binds one (a closure from the game's allocator, freed by the delegate).
+  and each state's phase, bound phase function (as an rva), sequencer and own
+  fields, kept as a record the adapter refreshes after every update and load
+  and writes back after a load. Writing it back moves the current-state
+  shared pointer (use counts kept right) and rebuilds a state's phase
+  delegate the way the game binds one (a closure from the game's allocator,
+  freed by the delegate). Bind checks the delegate shape, the state list and
+  the class sizes (read from the flow builders' allocations); classes whose
+  own fields hold pointers keep only their base. If a check fails later the
+  record stops touching the game and logs why.
 
 Outside the fight (intros, round calls, the KO and results) frames still run
 in lockstep: the flow there waits on presentation a replay does not repeat
-the same way. The synctest mirrors that (lockstep frames are never rolled
-back; entering lockstep checks the guessed frames before it).
+the same way. The synctest mirrors that: before a lockstep frame it checks
+the guessed frames since the last confirmed one, and no check restores a
+state before a lockstep frame.
 
 ### Tested (2026-11-04, this PC)
 
@@ -158,9 +163,14 @@ back; entering lockstep checks the guessed frames before it).
   two copies from the first frame even while play stays in sync (pooled
   effect objects listed in a different order, per-process leftovers). Desync
   detection between peers needs per-word masks learned from such runs; the
-  match data and the flow record already match.
+  match data and the flow record already match mid-fight.
+- **Save cost.** A save copies and hashes about 1 MB (0.7 ms on this PC,
+  logged on every checkpoint line); a 4-frame rollback saves 4 times. The
+  round results (557 KB) change only at a round's end and are the obvious
+  first saving.
 - Pacing (frame stretching instead of holding whole frames), two PCs through
   the Ember helper, rooms.
+
 ## Prior art
 
 [sfvrproject/sfv-rollback](https://github.com/sfvrproject/sfv-rollback)
