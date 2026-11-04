@@ -79,6 +79,9 @@ public:
 
 	const std::vector<StateRegion>& Regions() const { return regions_; }
 	const StateRegion* Find(const std::string& name) const;
+	// The region named `key`, or, when `key` is a number, the first region of
+	// that size (how the pipe's diagnostic commands name regions).
+	const StateRegion* FindByNameOrSize(const std::string& key) const;
 	size_t TotalSize() const { return totalSize_; }
 	bool Empty() const { return regions_.empty(); }
 

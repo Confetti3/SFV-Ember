@@ -82,14 +82,10 @@ void BattleDriver::RegisterControl()
 		if (sscanf_s(args.c_str(), "%63s %zi", key, (unsigned)sizeof(key), &offset) != 2) {
 			return std::string("error usage: watch <region name or size> <offset>");
 		}
-		const bool byName = key[0] < '0' || key[0] > '9';
-		const size_t size = byName ? 0 : strtoull(key, nullptr, 10);
-		for (const StateRegion& r : adapter_.Layout().Regions()) {
-			if ((byName ? r.name != key : r.size != size) || offset >= r.size) continue;
-			const bool ok = ArmWriteWatch(gameThread_, reinterpret_cast<uintptr_t>(r.ptr) + offset, 4);
-			return std::string(ok ? "ok armed on " : "error could not arm ") + r.name;
-		}
-		return std::string("error no region of that size");
+		const StateRegion* r = adapter_.Layout().FindByNameOrSize(key);
+		if (!r || offset >= r->size) return std::string("error no such region");
+		const bool ok = ArmWriteWatch(gameThread_, reinterpret_cast<uintptr_t>(r->ptr) + offset, 4);
+		return std::string(ok ? "ok armed on " : "error could not arm ") + r->name;
 	});
 	RegisterCommand("watchhits", [](const std::string&) { return "ok " + WriteWatchHits(); });
 	RegisterCommand("gamestack", [](const std::string&) {
@@ -128,19 +124,15 @@ void BattleDriver::RegisterControl()
 		if (sscanf_s(args.c_str(), "%63s %zi %zi", key, (unsigned)sizeof(key), &offset, &length) != 3) {
 			return std::string("error usage: peek <region name or size> <offset> <length>");
 		}
-		const bool byName = key[0] < '0' || key[0] > '9';
-		const size_t size = byName ? 0 : strtoull(key, nullptr, 10);
-		for (const StateRegion& r : adapter_.Layout().Regions()) {
-			if ((byName ? r.name != key : r.size != size) || offset >= r.size) continue;
-			std::string out = "ok";
-			char word[16];
-			for (size_t at = offset; at + 4 <= r.size && at < offset + length; at += 4) {
-				snprintf(word, sizeof(word), " %08x", *reinterpret_cast<const uint32_t*>(r.ptr + at));
-				out += word;
-			}
-			return out;
+		const StateRegion* r = adapter_.Layout().FindByNameOrSize(key);
+		if (!r || offset >= r->size) return std::string("error no such region");
+		std::string out = "ok";
+		char word[16];
+		for (size_t at = offset; at + 4 <= r->size && at < offset + length; at += 4) {
+			snprintf(word, sizeof(word), " %08x", *reinterpret_cast<const uint32_t*>(r->ptr + at));
+			out += word;
 		}
-		return std::string("error no such region");
+		return out;
 	});
 }
 

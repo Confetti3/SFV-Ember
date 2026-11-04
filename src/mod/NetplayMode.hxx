@@ -24,8 +24,11 @@
 //
 // Pipe commands (cross-copy desync checks): "hash <frame>", "checkpoint
 // [frame]" (latest confirmed per-region checkpoint), "dump <frame>" (that
-// frame's saved state to a file, once it is confirmed) and "freeze <frame>" (hold the battle at that
-// frame so both screens can be compared).
+// frame's saved state to a file, once it is confirmed) and "freeze <frame>"
+// (hold the battle at that frame so both screens can be compared). Test aid:
+// "perturb <frame> <region name or size> <offset> <add>" adds to a 32-bit
+// value of this copy's state once the session has played that frame: a real
+// desync, for checking that the peers' hashes then differ.
 
 #include "core/RollbackSession.hxx"
 #include "mod/BattleMode.hxx"
@@ -59,6 +62,7 @@ private:
 	// Starts the session once the match is known; false while it is not.
 	bool StartSession(SfvAdapter& adapter);
 	void DumpIfRequested();
+	void PerturbIfDue();
 
 	// Without a helper link: the same in every copy (the link hands out one per match).
 	static constexpr uint32_t kSessionSeed = 0x5F0E5EED;
@@ -77,6 +81,13 @@ private:
 	int dumpFrame_ = -1;   // "dump <frame>": write that frame's saved state to the log folder
 	std::vector<uint8_t> dumpBytes_; // its latest save, until it is confirmed
 	int freezeFrame_ = -1; // "freeze <frame>": stop advancing there (to compare screens)
+	struct Perturbation {
+		int frame = -1; // none pending
+		std::string region;
+		size_t offset = 0;
+		int32_t add = 0;
+	};
+	Perturbation perturb_;
 	RollbackSession::StepResult last_ = RollbackSession::StepResult::NoSession;
 };
 

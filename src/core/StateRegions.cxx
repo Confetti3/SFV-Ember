@@ -1,5 +1,6 @@
 #include "core/StateRegions.hxx"
 
+#include <stdlib.h>
 #include <string.h>
 
 #include <algorithm>
@@ -93,6 +94,16 @@ const StateRegion* StateLayout::Find(const std::string& name) const
 {
 	for (const StateRegion& r : regions_) {
 		if (r.name == name) return &r;
+	}
+	return nullptr;
+}
+
+const StateRegion* StateLayout::FindByNameOrSize(const std::string& key) const
+{
+	if (key.empty() || key[0] < '0' || key[0] > '9') return Find(key);
+	const size_t size = strtoull(key.c_str(), nullptr, 10);
+	for (const StateRegion& r : regions_) {
+		if (r.size == size) return &r;
 	}
 	return nullptr;
 }

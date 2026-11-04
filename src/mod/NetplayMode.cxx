@@ -98,6 +98,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	}
 	last_ = session_->Step(local);
 	DumpIfRequested();
+	PerturbIfDue();
 }
 
 void NetplayMode::Leave()
@@ -185,6 +186,23 @@ void NetplayMode::DumpIfRequested()
 	dumpBytes_.clear();
 }
 
+// The live state is the played frame's, already saved: a rollback to that
+// frame or earlier undoes the change, so it is meant for a frame no rollback
+// crosses (before the players' inputs start).
+void NetplayMode::PerturbIfDue()
+{
+	if (perturb_.frame < 0 || session_->Frame() < perturb_.frame) return;
+	const StateRegion* r = session_->Layout().FindByNameOrSize(perturb_.region);
+	if (r && perturb_.offset + 4 <= r->size) {
+		int32_t& value = *reinterpret_cast<int32_t*>(r->ptr + perturb_.offset);
+		value += perturb_.add;
+		Log("netplay: perturbed %s+0x%zX at frame %d (now %d)", r->name.c_str(), perturb_.offset, session_->Frame(), value);
+	} else {
+		Log("netplay: nothing to perturb at %s+0x%zX", perturb_.region.c_str(), perturb_.offset);
+	}
+	perturb_.frame = -1;
+}
+
 std::string NetplayMode::Describe() const
 {
 	std::lock_guard lock(mutex_);
@@ -226,6 +244,18 @@ void NetplayMode::RegisterCommands()
 		std::lock_guard lock(mutex_);
 		dumpFrame_ = atoi(args.c_str());
 		dumpBytes_.clear();
+		return std::string("ok");
+	});
+	RegisterCommand("perturb", [this](const std::string& args) {
+		char region[64] = {};
+		Perturbation p;
+		if (sscanf_s(args.c_str(), "%d %63s %zi %d", &p.frame, region, (unsigned)sizeof(region), &p.offset, &p.add) != 4 ||
+			p.frame < 0) {
+			return std::string("error usage: perturb <frame> <region name or size> <offset> <add>");
+		}
+		p.region = region;
+		std::lock_guard lock(mutex_);
+		perturb_ = p;
 		return std::string("ok");
 	});
 	RegisterCommand("hash", [this](const std::string& args) {
