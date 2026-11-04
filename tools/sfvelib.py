@@ -218,15 +218,15 @@ def scene(index: int) -> str:
     """The game's current scene state kind, or "" while unknown."""
     try:
         return json.loads(request(index, "status")[3:]).get("scene", "")
-    except (OSError, ValueError):
+    except (OSError, ValueError, SfveError):
         return ""
 
 
 def boot_to_menu(index: int, timeout: float = 90.0) -> None:
     """From a fresh launch to the main menu. The mod hides the offline start-up
     dialogs and leaves the title by itself, so this only waits."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         if scene(index) == MAIN_MENU_SCENE:
             time.sleep(1)  # the menu's own intro
             focus(status_pid(index))

@@ -1,11 +1,10 @@
 #include "mod/GameScene.hxx"
 
 #include "mod/ControlPipe.hxx"
+#include "mod/GameHooks.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
-
-#include <MinHook.h>
 
 #include <stdio.h>
 
@@ -16,17 +15,27 @@ namespace sfve::mod {
 
 namespace {
 
+using ManagerTickFn = void (*)(uint8_t* manager, float deltaSeconds);
 using ChangeSceneStateFn = void (*)(uint8_t* manager, uint8_t* stateClass, uint8_t* initMessage);
 
+ManagerTickFn o_managerTick;
 ChangeSceneStateFn o_changeSceneState;
-std::atomic<uint8_t*> s_manager;
-std::atomic<uintptr_t> s_kind; // the current state's kind, for other threads
+uint8_t* s_manager;             // game thread only
+std::atomic<uintptr_t> s_kind;  // the current state's kind, for other threads
 uintptr_t s_imageBase;
 
-void h_ChangeSceneState(uint8_t* manager, uint8_t* stateClass, uint8_t* initMessage)
+// Once a frame, before the manager ticks its state (and, when a state has
+// ended, puts the next one in its place): the queued game-thread work runs
+// between two frames of a state.
+void h_ManagerTick(uint8_t* manager, float deltaSeconds)
 {
-	if (s_manager.exchange(manager) != manager) Log("scene: manager %p", (void*)manager);
-	o_changeSceneState(manager, stateClass, initMessage);
+	if (s_manager != manager) {
+		Log("scene: manager %p", (void*)manager);
+		s_manager = manager;
+	}
+	PumpGameThread();
+	o_managerTick(manager, deltaSeconds);
+	s_kind = SceneStateKind(CurrentSceneState());
 }
 
 } // namespace
@@ -34,28 +43,20 @@ void h_ChangeSceneState(uint8_t* manager, uint8_t* stateClass, uint8_t* initMess
 bool InstallGameScene(uintptr_t imageBase)
 {
 	s_imageBase = imageBase;
-	// Other threads read the scene's kind, never the state itself (it can be
-	// freed by a scene change at any time).
-	RunEachGameFrame([] {
-		s_kind = SceneStateKind(CurrentSceneState());
-		return true;
-	});
+	// Other threads read the scene's kind, never the state itself (a scene
+	// change can free it at any time).
 	RegisterStatus("scene", [] {
 		char text[24];
 		snprintf(text, sizeof(text), "\"0x%llX\"", (unsigned long long)s_kind.load());
 		return std::string(text);
 	});
-	void* target = reinterpret_cast<void*>(imageBase + sfv::kChangeSceneState.rva);
-	MH_STATUS st = MH_CreateHook(target, (void*)h_ChangeSceneState, (void**)&o_changeSceneState);
-	if (st == MH_OK) st = MH_EnableHook(target);
-	if (st != MH_OK) Log("scene: hooking %s failed (%d)", sfv::kChangeSceneState.name, (int)st);
-	return st == MH_OK;
+	o_changeSceneState = reinterpret_cast<ChangeSceneStateFn>(imageBase + sfv::kChangeSceneState.rva);
+	return HookCodeSite(imageBase, sfv::kSceneManagerTick, (void*)h_ManagerTick, (void**)&o_managerTick);
 }
 
 uint8_t* CurrentSceneState()
 {
-	uint8_t* manager = s_manager;
-	return manager ? *reinterpret_cast<uint8_t**>(manager + sfv::scene::kManagerCurrentState) : nullptr;
+	return s_manager ? *reinterpret_cast<uint8_t**>(s_manager + sfv::scene::kManagerCurrentState) : nullptr;
 }
 
 uintptr_t SceneStateKind(const uint8_t* state)
@@ -65,9 +66,8 @@ uintptr_t SceneStateKind(const uint8_t* state)
 
 bool ChangeScene(uint8_t* stateClass, uint8_t* initMessage)
 {
-	uint8_t* manager = s_manager;
-	if (!manager || !o_changeSceneState) return false;
-	o_changeSceneState(manager, stateClass, initMessage);
+	if (!s_manager) return false;
+	o_changeSceneState(s_manager, stateClass, initMessage);
 	return true;
 }
 

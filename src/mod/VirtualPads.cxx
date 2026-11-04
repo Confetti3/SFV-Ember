@@ -1,5 +1,4 @@
 #include "mod/VirtualPads.hxx"
-#include "mod/GameThread.hxx"
 
 #include "mod/ControlPipe.hxx"
 #include "mod/Log.hxx"
@@ -102,7 +101,6 @@ GetState_t o_getStateEx[kModules]; // ordinal 100, XInputGetStateEx (adds the gu
 template <int M, bool Ex>
 DWORD WINAPI HookedGetState(DWORD user, void* state)
 {
-	if (user == 0) PumpGameThread(); // once per poll of the pads
 	if (FillVirtualXInput((int)user, state)) return ERROR_SUCCESS;
 	return (Ex ? o_getStateEx[M] : o_getState[M])(user, state);
 }

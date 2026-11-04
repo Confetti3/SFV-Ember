@@ -120,26 +120,51 @@ std::string WriteWatchHits()
 	return out;
 }
 
-std::string ThreadStack(uint32_t threadId)
+namespace {
+
+struct StackBounds {
+	DWORD64 low = 0;
+	DWORD64 high = 0;
+};
+
+// The thread's stack, from its TEB (NT_TIB: StackBase, then StackLimit).
+StackBounds ThreadStackBounds(HANDLE thread)
 {
-	constexpr int kMaxFrames = 64;
-	DWORD64 frames[kMaxFrames];
+	struct BasicInformation {
+		LONG exitStatus;
+		void* teb;
+		void* clientId[2];
+		ULONG_PTR affinity;
+		LONG priority;
+		LONG basePriority;
+	} info{};
+	using QueryFn = LONG(NTAPI*)(HANDLE, int, void*, ULONG, ULONG*);
+	static const auto query =
+		reinterpret_cast<QueryFn>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationThread"));
+	if (!query || query(thread, 0 /* ThreadBasicInformation */, &info, sizeof(info), nullptr) < 0 || !info.teb) return {};
+	const NT_TIB* tib = static_cast<const NT_TIB*>(info.teb);
+	return {reinterpret_cast<DWORD64>(tib->StackLimit), reinterpret_cast<DWORD64>(tib->StackBase)};
+}
+
+// Walks a suspended thread's frames. Nothing here may allocate or take a
+// lock the suspended thread could hold (the unwinder's function-table lookup
+// can still wait on ntdll's table lock if the thread was suspended while
+// registering code; diagnostics only). Reads outside the stack end the walk.
+int WalkFrames(CONTEXT context, StackBounds stack, DWORD64* frames, int maxFrames)
+{
 	int count = 0;
-	HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, threadId);
-	if (!thread) return "error cannot open the thread";
-	if (SuspendThread(thread) == (DWORD)-1) {
-		CloseHandle(thread);
-		return "error cannot suspend the thread";
-	}
-	// Nothing here may allocate or take a lock: the suspended thread may hold one.
-	CONTEXT context{};
-	context.ContextFlags = CONTEXT_FULL;
-	if (GetThreadContext(thread, &context)) {
-		while (count < kMaxFrames && context.Rip) {
+	__try {
+		while (count < maxFrames && context.Rip) {
 			frames[count++] = context.Rip;
+			// A return address points after its call; look up the call itself.
+			const DWORD64 lookup = count == 1 ? context.Rip : context.Rip - 1;
 			DWORD64 imageBase = 0;
-			PRUNTIME_FUNCTION entry = RtlLookupFunctionEntry(context.Rip, &imageBase, nullptr);
-			if (!entry) { // a leaf function: the return address is on top of the stack
+			PRUNTIME_FUNCTION entry = RtlLookupFunctionEntry(lookup, &imageBase, nullptr);
+			if (!entry) {
+				// Only the innermost frame can be a leaf function (return
+				// address on top of the stack); further out it means no
+				// unwind data, and the walk stops.
+				if (count != 1 || context.Rsp < stack.low || context.Rsp + 8 > stack.high) break;
 				context.Rip = *reinterpret_cast<DWORD64*>(context.Rsp);
 				context.Rsp += 8;
 				continue;
@@ -147,8 +172,35 @@ std::string ThreadStack(uint32_t threadId)
 			void* handlerData = nullptr;
 			DWORD64 establisher = 0;
 			RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, context.Rip, entry, &context, &handlerData, &establisher, nullptr);
+			if (context.Rsp < stack.low || context.Rsp >= stack.high) break;
 		}
+	} __except (EXCEPTION_EXECUTE_HANDLER) {
 	}
+	return count;
+}
+
+} // namespace
+
+std::string ThreadStack(uint32_t threadId)
+{
+	if (threadId == GetCurrentThreadId()) return "error a thread cannot walk its own stack this way";
+	constexpr int kMaxFrames = 64;
+	DWORD64 frames[kMaxFrames];
+	int count = 0;
+	HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, threadId);
+	if (!thread) return "error cannot open the thread";
+	const StackBounds stack = ThreadStackBounds(thread);
+	if (!stack.high) {
+		CloseHandle(thread);
+		return "error cannot find the thread's stack";
+	}
+	if (SuspendThread(thread) == (DWORD)-1) {
+		CloseHandle(thread);
+		return "error cannot suspend the thread";
+	}
+	CONTEXT context{};
+	context.ContextFlags = CONTEXT_FULL;
+	if (GetThreadContext(thread, &context)) count = WalkFrames(context, stack, frames, kMaxFrames);
 	ResumeThread(thread);
 	CloseHandle(thread);
 	std::string out;

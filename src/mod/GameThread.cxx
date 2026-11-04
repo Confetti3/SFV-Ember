@@ -15,6 +15,8 @@ std::mutex s_mutex;
 std::vector<std::function<void()>> s_queue;
 std::vector<std::function<bool()>> s_repeating; // game thread only, after they are added
 std::vector<std::function<bool()>> s_added;
+std::atomic<uint32_t> s_gameThreadId;
+bool s_pumping; // game thread only
 
 } // namespace
 
@@ -30,12 +32,17 @@ void RunEachGameFrame(std::function<bool()> work)
 	s_added.push_back(std::move(work));
 }
 
-std::atomic<uint32_t> s_gameThreadId;
-
-uint32_t GameThreadId() { return s_gameThreadId; }
+uint32_t GameThreadId()
+{
+	return s_gameThreadId;
+}
 
 void PumpGameThread()
 {
+	// Work that reaches a game function which pumps again would run inside
+	// itself and change the list being walked; it waits for the next frame.
+	if (s_pumping) return;
+	s_pumping = true;
 	s_gameThreadId = GetCurrentThreadId();
 	std::vector<std::function<void()>> work;
 	{
@@ -46,6 +53,7 @@ void PumpGameThread()
 	}
 	for (std::function<void()>& w : work) w();
 	std::erase_if(s_repeating, [](std::function<bool()>& w) { return !w(); });
+	s_pumping = false;
 }
 
 } // namespace sfve::mod

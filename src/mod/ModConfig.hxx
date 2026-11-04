@@ -18,6 +18,8 @@
 //   -sfve_perturb=1      synctest: play each rolled-back stretch with wrong inputs first
 //   -sfve_lag=MS         test: hold back outgoing UDP by MS milliseconds
 //   -sfve_link=1         netplay through Ember's helper ("host" / "join <invitation>")
+//   -sfve_dialogs=N      offline start-up dialogs hidden: 0 none, 1 download errors,
+//                        2 those and the offline notice (default)
 
 #include <stdint.h>
 

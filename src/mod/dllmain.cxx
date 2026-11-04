@@ -98,19 +98,22 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 		Log("inert: only the network guard is active");
 		return 1;
 	}
-	// The offline start-up's dialogs go in every mode the mod is active in.
-	InstallGameScene(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)));
-	InstallOfflineDialogs(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)),
-		static_cast<OfflineDialogs>(std::clamp(Config().offlineDialogs, 0, 2)));
-	RegisterStatus("suppressedDialogs", [] { return std::to_string(SuppressedDialogs()); });
-	if (InstallVersusLaunch(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)))) RegisterVersusLaunchCommands();
 	if (Config().mode == ModMode::Inert) {
-		Log("inert by request");
+		Log("inert by request: only the network guard and the pads are active");
 		return 1;
 	}
+	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	// The scene manager's tick runs the game-thread queue; without it the
+	// title cannot be moved on, so the offline notice must stay.
+	const bool scene = InstallGameScene(base);
+	OfflineDialogs dialogs = static_cast<OfflineDialogs>(std::clamp(Config().offlineDialogs, 0, 2));
+	if (!scene) dialogs = std::min(dialogs, OfflineDialogs::HideDownloadFails);
+	InstallOfflineDialogs(base, dialogs);
+	RegisterStatus("suppressedDialogs", [] { return std::to_string(SuppressedDialogs()); });
+	if (scene && InstallVersusLaunch(base)) RegisterVersusLaunchCommands();
 	static BattleDriver driver(MakeMode(Config()));
 	driver.RegisterControl();
-	InstallGameHooks(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)), &driver);
+	InstallGameHooks(base, &driver);
 	return 1;
 }
 

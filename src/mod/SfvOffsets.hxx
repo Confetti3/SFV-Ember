@@ -88,6 +88,13 @@ constexpr CodeSite kShowNamedDialog{"ShowNamedDialog", 0x763170,
 constexpr CodeSite kChangeSceneState{"ChangeSceneState", 0x584B70,
 	{0x48, 0x85, 0xD2, 0x0F, 0x84, 0x99, 0x01, 0x00, 0x00, 0x48, 0x89, 0x5C, 0x24, 0x20, 0x48, 0x89}};
 
+// void SceneManagerTick(SceneManager*, float deltaSeconds): once a frame on
+// the game thread, in every scene: ticks the current state (+904; a state
+// whose tick says it has ended is destroyed) and then promotes the next one
+// (+912).
+constexpr CodeSite kSceneManagerTick{"SceneManagerTick", 0x59F540,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x0F, 0x29, 0x74, 0x24, 0x20, 0x48, 0x8B, 0xD9, 0x0F, 0x28}};
+
 // The title state's step that leaves the title for the main menu: what its
 // boot window's "Login" command (handler rva 0x5EA630) selects.
 constexpr CodeSite kTitleLeaveStep{"TitleLeaveStep", 0x5E4D70,
@@ -144,7 +151,7 @@ constexpr CodeSite kGameFree{"GameFree", 0x1130C40,
 	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0xD9, 0x48, 0x8B, 0x0D, 0xA8, 0x67, 0x99, 0x02}};
 
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
-	kFindUnit, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kTitleLeaveStep,
+	kFindUnit, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree};
 
@@ -194,7 +201,7 @@ constexpr uint32_t kSpecStage = 16;
 
 namespace scene {
 
-constexpr uint32_t kManagerCurrentState = 904;
+constexpr uint32_t kManagerCurrentState = 904; // (unrelated to the title state's own +904)
 constexpr uint32_t kIdleStep = 0x12AF480; // an empty function: a state waiting on something else
 constexpr uintptr_t kMainMenuVtable = 0x2D98660; // MainMenuState (class getter rva 0xC20E70)
 
@@ -209,7 +216,7 @@ namespace title {
 
 constexpr uintptr_t kVtable = 0x2D8AC78;
 constexpr uint32_t kStep = 824;
-constexpr uint32_t kStepDelay = 904;       // frames before the step runs
+constexpr uint32_t kStepDelay = 904;       // frames before the step runs (a field of the title state)
 constexpr int kLoginDelayFrames = 60;      // what the "Login" command sets
 
 } // namespace title
@@ -235,7 +242,7 @@ constexpr const wchar_t* kOfflineNotice = L"Dialog_INFO_0011";
 
 } // namespace dialogs
 
-// The battle's random number generators:objects {vtable, uint32 state} whose
+// The battle's random number generators: objects {vtable, uint32 state} whose
 // generator is an LCG (1664525, 1013904223; rva 0x32B2B0) and whose
 // constructors seed the state from _time64 (rva 0x3C7DE0 and others), so two
 // processes start with different seeds. One of them is a global object.

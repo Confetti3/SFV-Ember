@@ -32,6 +32,7 @@ constexpr int kTitleWaitFrames = 60 * 30;
 ShowErrorFn o_showError;
 ShowNamedDialogFn o_showNamedDialog;
 std::atomic<uint32_t> s_suppressed;
+std::atomic<bool> s_bootNoticeHidden;
 uintptr_t s_imageBase;
 
 bool IsBlockedDownloadFailure(uint32_t code)
@@ -51,37 +52,51 @@ uint64_t h_ShowError(void* errorService, uint32_t code)
 		Log("dialogs: no error dialog for download failure %X (the mod keeps the game offline)", code);
 		return 0;
 	}
-	Log("dialogs: game error %X shown", code);
+	Log("dialogs: game error %X left to the game's dialogs", code);
 	return o_showError(errorService, code);
+}
+
+void ShowOfflineNotice()
+{
+	const size_t length = wcslen(sfv::dialogs::kOfflineNotice) + 1;
+	const GameString id{sfv::dialogs::kOfflineNotice, (int32_t)length, (int32_t)length};
+	const GameString noArgument{nullptr, 0, 0};
+	o_showNamedDialog(&id, &noArgument); // copies both
 }
 
 // The title leaves for the main menu when its boot window says "Login",
 // which offline it does only once the notice is closed. Without the notice,
-// the mod takes that step itself once the title is waiting on the window.
+// the mod takes that step itself once the title is waiting on the window:
+// the same two writes the window's "Login" command makes (rva 0x5EA630).
+// Should the title never wait that way, the notice is shown after all, so
+// the player can always go on.
 void LeaveTitleWhenItWaits()
 {
 	auto frames = std::make_shared<int>(0);
 	RunEachGameFrame([frames] {
 		uint8_t* state = CurrentSceneState();
-		const uintptr_t base = s_imageBase;
 		auto* step = state ? reinterpret_cast<uintptr_t*>(state + sfv::title::kStep) : nullptr;
-		if (SceneStateKind(state) == sfv::title::kVtable && *step == base + sfv::scene::kIdleStep) {
-			*step = base + sfv::kTitleLeaveStep.rva;
+		if (SceneStateKind(state) == sfv::title::kVtable && *step == s_imageBase + sfv::scene::kIdleStep) {
+			*step = s_imageBase + sfv::kTitleLeaveStep.rva;
 			*reinterpret_cast<int*>(state + sfv::title::kStepDelay) = sfv::title::kLoginDelayFrames;
 			Log("dialogs: the title goes on to the main menu");
 			return false;
 		}
 		if (++*frames < kTitleWaitFrames) return true;
-		Log("dialogs: the title never waited for its boot window; left alone");
+		Log("dialogs: the title never waited for its boot window; showing the offline notice after all");
+		ShowOfflineNotice();
 		return false;
 	});
 }
 
 // Callers ignore the result (the posted message's shared reference is
-// released inside); nothing waits on the dialog itself.
+// released inside); nothing waits on the dialog itself. Only the first
+// notice, the one boot posts, is hidden: a later one (a failed search)
+// shows, and the title is not touched again.
 void* h_ShowNamedDialog(const GameString* dialogId, const GameString* argument)
 {
-	if (dialogId && dialogId->data && wcscmp(dialogId->data, sfv::dialogs::kOfflineNotice) == 0) {
+	if (dialogId && dialogId->data && wcscmp(dialogId->data, sfv::dialogs::kOfflineNotice) == 0 &&
+		!s_bootNoticeHidden.exchange(true)) {
 		s_suppressed++;
 		Log("dialogs: no offline-mode notice");
 		LeaveTitleWhenItWaits();

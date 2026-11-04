@@ -1,9 +1,10 @@
 #pragma once
 
-// Work that must run on the game thread outside a battle (calling the game's
-// own functions from the menus). Other threads queue it; the game thread runs
-// it once a frame from the pad poll (UE4 polls XInput on the game thread,
-// VirtualPads hooks it), so the queue drains in menus and battles alike.
+// Work that must run on the game thread (calling the game's own functions,
+// reading its scene objects). Other threads queue it; the scene manager's
+// tick (GameScene) runs it once a frame, before it ticks the current scene
+// state, in menus and battles alike. So work runs between two frames of a
+// state, never inside one; it must still not end a battle it runs in.
 
 #include <stdint.h>
 
@@ -16,10 +17,11 @@ void RunOnGameThread(std::function<void()> work);
 // Runs work once a frame on the game thread until it returns false.
 void RunEachGameFrame(std::function<bool()> work);
 
-// Called by the pad poll hook, once per polled frame.
+// Called by the scene manager's tick, once a frame. A call from inside the
+// work it runs returns at once.
 void PumpGameThread();
 
-// The thread that last pumped the queue (0 before the first poll).
+// The game thread (0 before the first frame of the scene manager).
 uint32_t GameThreadId();
 
 } // namespace sfve::mod
