@@ -3,9 +3,8 @@
   python tools/compare.py [a] [b]
 
 * the last 60 confirmed frames' state hashes, side by side;
-* the latest common checkpoint's regions, as multisets of size:hash (each
-  process lists the game's regions in its own order), unmatched ones grouped
-  by size;
+* the latest common checkpoint's regions (the peers' hashes, size:hash in
+  canonical order), unmatched ones grouped by size;
 * the first checkpoint whose hash differs, from both mod logs (every
   checkpoint is logged; a replay logs it again, the last line wins).
 

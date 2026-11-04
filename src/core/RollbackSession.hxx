@@ -38,6 +38,8 @@ class RollbackSession {
 public:
 	// Every kCheckpointInterval frames the session also keeps one hash per
 	// region, so peers that disagree can find where. The latest few are kept.
+	// Frame and region hashes here are the peers' (HashScope::Peers): two
+	// processes playing the same match agree on them.
 	static constexpr int kCheckpointInterval = 60;
 
 	struct Config {
@@ -111,7 +113,8 @@ public:
 	// The saved bytes of `frame` while its save is still in the pool (the
 	// latest frames), laid out by StateLayout::SaveTo; null otherwise.
 	const uint8_t* SavedState(int frame) const;
-	bool RegionHashesAt(int frame, std::vector<uint64_t>* out) const;
+	// The peers' per-region hashes of checkpoint `frame`, in canonical order.
+	bool RegionHashesAt(int frame, std::vector<RegionHash>* out) const;
 	int LatestCheckpoint(int atOrBefore) const;
 	const Stats& GetStats() const { return stats_; }
 	const StateLayout& Layout() const { return game_.Layout(); }
@@ -121,7 +124,8 @@ private:
 		bool used = false;
 		bool hashed = false;
 		int frame = -1;
-		uint64_t hash = 0;
+		uint64_t hash = 0;      // the peers' hash
+		uint64_t localHash = 0; // verifyLoads: the full hash a restore must reproduce
 		std::vector<uint8_t> bytes;
 	};
 	struct HashRecord {
@@ -160,7 +164,7 @@ private:
 	sf4e::gate::AbortLatch latch_;
 	std::vector<Slot> pool_;
 	std::vector<HashRecord> history_;
-	std::map<int, std::vector<uint64_t>> checkpoints_;
+	std::map<int, std::vector<RegionHash>> checkpoints_;
 	int frame_ = 0;
 	bool failed_ = false;
 	std::string failure_;

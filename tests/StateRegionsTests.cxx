@@ -137,3 +137,100 @@ TEST_CASE("an address on a 4-byte boundary hashes as zero too")
 	memcpy(memory + 20, &marker, 8); // 4 bytes past an 8-byte boundary
 	CHECK(layout.HashLive() == h);
 }
+
+TEST_CASE("a dword masked for peers leaves the peers' hash only, and not its neighbours")
+{
+	alignas(8) uint8_t memory[64] = {};
+	StateLayout layout;
+	const size_t r = layout.Add("r", memory, sizeof(memory));
+	layout.IgnoreForPeers(r, 20); // bytes 20..23, the upper half of the word at 16
+	const uint64_t local = layout.HashLive();
+	const uint64_t peers = layout.HashLive(HashScope::Peers);
+
+	memory[21] = 0x55; // a per-process value: the synctest still sees it change
+	CHECK(layout.HashLive() != local);
+	CHECK(layout.HashLive(HashScope::Peers) == peers);
+
+	memory[16] = 1; // the live dword beside it still counts for peers
+	CHECK(layout.HashLive(HashScope::Peers) != peers);
+
+	std::vector<uint8_t> saved(layout.TotalSize());
+	layout.SaveTo(saved.data());
+	CHECK(layout.HashSaved(saved.data(), HashScope::Peers) == layout.HashLive(HashScope::Peers));
+}
+
+TEST_CASE("a dword mask applies across the chunk edges of a large region")
+{
+	std::vector<uint8_t> bytes(9000, 0);
+	StateLayout layout;
+	const size_t r = layout.Add("r", bytes.data(), bytes.size());
+	layout.IgnoreForPeers(r, 4096);
+	layout.IgnoreForPeers(r, 8999); // the region's last dword
+	const uint64_t peers = layout.HashLive(HashScope::Peers);
+	bytes[4096] = bytes[4099] = bytes[8996] = bytes[8999] = 9;
+	CHECK(layout.HashLive(HashScope::Peers) == peers);
+	bytes[4100] = 9;
+	CHECK(layout.HashLive(HashScope::Peers) != peers);
+}
+
+TEST_CASE("a region excluded from peers is still part of the local hash")
+{
+	std::vector<uint8_t> state(32, 1), presentation(16, 2);
+	StateLayout layout;
+	layout.Add("state", state.data(), state.size());
+	const size_t p = layout.Add("presentation", presentation.data(), presentation.size());
+	layout.ExcludeFromPeers(p);
+	const uint64_t local = layout.HashLive();
+	const uint64_t peers = layout.HashLive(HashScope::Peers);
+	presentation[3] = 9;
+	CHECK(layout.HashLive() != local);
+	CHECK(layout.HashLive(HashScope::Peers) == peers);
+	state[3] = 9;
+	CHECK(layout.HashLive(HashScope::Peers) != peers);
+
+	std::vector<uint8_t> saved(layout.TotalSize());
+	layout.SaveTo(saved.data());
+	std::vector<RegionHash> regions;
+	layout.PeerRegionHashesSaved(saved.data(), regions);
+	REQUIRE(regions.size() == 1);
+	CHECK(regions[0].size == state.size());
+}
+
+TEST_CASE("peers' region hashes come in the same order whatever order the regions are listed in")
+{
+	std::vector<uint8_t> a(40, 1), b(40, 2), c(8, 3);
+	StateLayout one, two;
+	one.Add("a", a.data(), a.size());
+	one.Add("b", b.data(), b.size());
+	one.Add("c", c.data(), c.size());
+	two.Add("c", c.data(), c.size());
+	two.Add("b", b.data(), b.size());
+	two.Add("a", a.data(), a.size());
+	std::vector<uint8_t> savedOne(one.TotalSize()), savedTwo(two.TotalSize());
+	one.SaveTo(savedOne.data());
+	two.SaveTo(savedTwo.data());
+	std::vector<RegionHash> hashesOne, hashesTwo;
+	one.PeerRegionHashesSaved(savedOne.data(), hashesOne);
+	two.PeerRegionHashesSaved(savedTwo.data(), hashesTwo);
+	CHECK(hashesOne == hashesTwo);
+	CHECK(hashesOne.front().size == 8);
+
+	b[0] = 7; // a real difference still shows in the list
+	two.SaveTo(savedTwo.data());
+	two.PeerRegionHashesSaved(savedTwo.data(), hashesTwo);
+	CHECK(hashesOne != hashesTwo);
+}
+
+TEST_CASE("the layout id changes with what peers compare")
+{
+	uint8_t x[64] = {};
+	StateLayout plain, masked, excluded;
+	plain.Add("x", x, 64);
+	masked.Add("x", x, 64);
+	excluded.Add("x", x, 64);
+	masked.IgnoreForPeers(0, 12);
+	excluded.ExcludeFromPeers(0);
+	CHECK(plain.LayoutId() != masked.LayoutId());
+	CHECK(plain.LayoutId() != excluded.LayoutId());
+	CHECK(masked.LayoutId() != excluded.LayoutId());
+}

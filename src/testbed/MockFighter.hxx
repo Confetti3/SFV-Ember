@@ -13,6 +13,9 @@
 //   input (a wall clock, a per-process counter).
 // * UnmaskedPointer: a heap address kept in the state and not masked, so two
 //   processes hash differently while playing identically.
+// * UnmaskedClock: a clock reading kept in the state (SFV's input unit keeps
+//   one) and not masked for peers: one process replays it exactly, so only
+//   peers see it differ.
 //
 // Like SFV, the mock has a round flow: it latches the KO two frames after the
 // battle records it. It is part of the rollback state, as the SFV adapter
@@ -32,6 +35,7 @@ enum MockBug : unsigned {
 	kBugReadsNonInput = 1u << 1,
 	kBugUnmaskedPointer = 1u << 2,
 	kBugFlowOutsideLayout = 1u << 3,
+	kBugUnmaskedClock = 1u << 4,
 };
 
 // Input bits the mock reads.
@@ -57,6 +61,9 @@ public:
 		ignoreFrom_ = from;
 		ignoreTo_ = to;
 	}
+	// From battle frame `frame` on, this copy's player 1 loses a point of
+	// health every frame: a real desync, which only peers can see.
+	void DesyncFrom(int frame) { desyncFrom_ = frame; }
 	// The frame each resimulation started from (each rollback's target).
 	const std::vector<int>& RollbackTargets() const { return rollbackTargets_; }
 
@@ -82,6 +89,7 @@ private:
 		void* owner; // a heap pointer: differs between processes
 		int32_t roundTimer;
 		int32_t koAt; // battle frame of the KO, -1 before
+		int32_t clock; // read once, at construction; differs between two games
 	};
 	struct Presentation {
 		float animationClock; // advances with ticks; restored, never hashed
@@ -99,6 +107,7 @@ private:
 	bool lastWasResimulation_ = false;
 	std::vector<int> rollbackTargets_;
 	int ignoreFrom_ = 0, ignoreTo_ = 0;
+	int desyncFrom_ = -1;
 	int32_t flowKoFrame_ = -1;   // the round flow (outside the layout with kBugFlowOutsideLayout)
 	std::unique_ptr<int> heapMarker_;
 	StateLayout layout_;

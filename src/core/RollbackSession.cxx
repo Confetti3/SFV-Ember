@@ -255,7 +255,7 @@ const uint8_t* RollbackSession::SavedState(int frame) const
 	return nullptr;
 }
 
-bool RollbackSession::RegionHashesAt(int frame, std::vector<uint64_t>* out) const
+bool RollbackSession::RegionHashesAt(int frame, std::vector<RegionHash>* out) const
 {
 	const auto it = checkpoints_.find(frame);
 	if (it == checkpoints_.end()) return false;
@@ -326,11 +326,12 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 	slot->frame = frame;
 	const bool checkpoint = frame % kCheckpointInterval == 0;
 	slot->hashed = checkpoint || config_.verifyLoads || frame % config_.hashEveryFrames == 0;
-	slot->hash = slot->hashed ? layout.HashSaved(slot->bytes.data()) : 0;
+	slot->hash = slot->hashed ? layout.HashSaved(slot->bytes.data(), HashScope::Peers) : 0;
+	slot->localHash = config_.verifyLoads ? layout.HashSaved(slot->bytes.data()) : 0;
 	QueryPerformanceCounter(&hashed);
 	if (slot->hashed) history_[frame % kHistory] = {frame, slot->hash};
 	if (checkpoint) {
-		layout.RegionHashesSaved(slot->bytes.data(), checkpoints_[frame]); // a replay overwrites it
+		layout.PeerRegionHashesSaved(slot->bytes.data(), checkpoints_[frame]); // a replay overwrites it
 		QueryPerformanceFrequency(&perSecond);
 		const auto us = [&](const LARGE_INTEGER& a, const LARGE_INTEGER& b) {
 			return (b.QuadPart - a.QuadPart) * 1000000 / perSecond.QuadPart;
@@ -364,7 +365,7 @@ bool RollbackSession::Load(unsigned char* buffer)
 	if (depth > stats_.longestRollback) stats_.longestRollback = depth;
 	frame_ = slot->frame;
 
-	if (config_.verifyLoads && layout.HashLive() != slot->hash) {
+	if (config_.verifyLoads && layout.HashLive() != slot->localHash) {
 		stats_.loadMismatches++;
 		CoreLog("session: frame %d restored with a different hash", slot->frame);
 	}

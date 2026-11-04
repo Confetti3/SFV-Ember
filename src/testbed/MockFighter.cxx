@@ -37,6 +37,9 @@ MockFighter::MockFighter(unsigned bugs)
 		f.facing = p == 0 ? 1 : -1;
 	}
 	world_.owner = heapMarker_.get();
+	// Like a clock read when the process starts: two games never share one.
+	static int32_t constructed = 0;
+	world_.clock = ++constructed;
 	Build();
 }
 
@@ -45,6 +48,7 @@ void MockFighter::Build()
 	layout_.Clear();
 	const size_t world = layout_.Add("world", &world_, sizeof(world_));
 	if (!(bugs_ & kBugUnmaskedPointer)) layout_.IgnoreWord(world, offsetof(World, owner));
+	if (!(bugs_ & kBugUnmaskedClock)) layout_.IgnoreForPeers(world, offsetof(World, clock));
 	layout_.Add("presentation", &presentation_, sizeof(presentation_), false);
 	if (!(bugs_ & kBugFlowOutsideLayout)) layout_.Add("flow", &flowKoFrame_, sizeof(flowKoFrame_));
 }
@@ -111,6 +115,7 @@ void MockFighter::Advance(const FrameInputs& inputs, bool resimulating)
 		}
 	}
 
+	if (desyncFrom_ >= 0 && world_.frame >= desyncFrom_ && world_.fighters[0].health > 0) world_.fighters[0].health--;
 	if (world_.roundTimer > 0) world_.roundTimer--;
 	world_.frame++;
 

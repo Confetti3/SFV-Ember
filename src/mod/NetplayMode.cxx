@@ -242,15 +242,13 @@ void NetplayMode::RegisterCommands()
 		if (!session_) return std::string("error no session");
 		const int atOrBefore = args.empty() ? session_->LastConfirmedFrame() : atoi(args.c_str());
 		const int frame = session_->LatestCheckpoint(atOrBefore);
-		std::vector<uint64_t> hashes;
+		std::vector<RegionHash> hashes;
 		if (frame < 0 || !session_->RegionHashesAt(frame, &hashes)) return std::string("error no checkpoint");
-		// size:hash per region, so unmatched regions can be grouped by size
-		// (each process lists them in its own order).
+		// size:hash per region, in the canonical order peers compare.
 		std::string out = "ok " + std::to_string(frame);
-		const auto& regions = session_->Layout().Regions();
 		char item[48];
-		for (size_t i = 0; i < hashes.size() && i < regions.size(); i++) {
-			snprintf(item, sizeof(item), " %zu:%016llx", regions[i].size, (unsigned long long)hashes[i]);
+		for (const RegionHash& h : hashes) {
+			snprintf(item, sizeof(item), " %llu:%016llx", (unsigned long long)h.size, (unsigned long long)h.hash);
 			out += item;
 		}
 		return out;

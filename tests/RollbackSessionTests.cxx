@@ -59,15 +59,16 @@ struct Pair {
 	}
 };
 
-// Hash of an offline reference run at each frame.
+// Peers' hash of an offline reference run at each frame (another game,
+// with its own clock: only the peers' hash can match it).
 std::vector<uint64_t> ReferenceHashes(int frames)
 {
 	MockFighter reference;
 	std::vector<uint64_t> hashes;
-	hashes.push_back(reference.Layout().HashLive());
+	hashes.push_back(reference.Layout().HashLive(HashScope::Peers));
 	for (int f = 0; f < frames; f++) {
 		reference.Advance(ScriptedFrame(f, kSeed), false);
-		hashes.push_back(reference.Layout().HashLive());
+		hashes.push_back(reference.Layout().HashLive(HashScope::Peers));
 	}
 	return hashes;
 }
@@ -125,10 +126,10 @@ TEST_CASE("frames whose inputs the game ignores are never a rollback's start")
 	reference.IgnoreInputsBetween(kFrom, kTo);
 	const int confirmed = std::min(pair.a.LastConfirmedFrame(), pair.b.LastConfirmedFrame());
 	REQUIRE(confirmed >= 500);
-	std::vector<uint64_t> hashes{reference.Layout().HashLive()};
+	std::vector<uint64_t> hashes{reference.Layout().HashLive(HashScope::Peers)};
 	for (int f = 0; f < confirmed; f++) {
 		reference.Advance(reference.InputsMatter() ? ScriptedFrame(f, kSeed) : FrameInputs{}, false);
-		hashes.push_back(reference.Layout().HashLive());
+		hashes.push_back(reference.Layout().HashLive(HashScope::Peers));
 	}
 	uint64_t ha = 0, hb = 0;
 	REQUIRE(pair.a.HashAt(confirmed, &ha));
@@ -163,6 +164,39 @@ TEST_CASE("an unmasked heap pointer makes identical play look like a desync")
 	CHECK(pair.gameA.Health(0) == pair.gameB.Health(0));
 }
 
+TEST_CASE("a per-process value not masked for peers makes identical play look like a desync")
+{
+	Pair pair(kBugUnmaskedClock, 0);
+	REQUIRE(pair.RunTo(120));
+	pair.RunTo(140);
+	const int confirmed = std::min(pair.a.LastConfirmedFrame(), pair.b.LastConfirmedFrame());
+	uint64_t ha = 0, hb = 0;
+	REQUIRE(pair.a.HashAt(confirmed, &ha));
+	REQUIRE(pair.b.HashAt(confirmed, &hb));
+	CHECK(ha != hb);
+	CHECK(pair.gameA.Health(0) == pair.gameB.Health(0));
+	CHECK(pair.a.GetStats().loadMismatches == 0); // one process still replays it exactly
+}
+
+TEST_CASE("a real desync on one peer shows in the first checkpoint after it, not before")
+{
+	constexpr int kDesyncFrom = 250;
+	Pair pair(kBugNone, 0);
+	pair.gameB.DesyncFrom(kDesyncFrom);
+	REQUIRE(pair.RunTo(400));
+	pair.RunTo(420);
+	const int confirmed = std::min(pair.a.LastConfirmedFrame(), pair.b.LastConfirmedFrame());
+	const int last = pair.a.LatestCheckpoint(confirmed);
+	REQUIRE(last >= 300);
+	std::vector<RegionHash> ha, hb;
+	for (int checkpoint = last; pair.a.RegionHashesAt(checkpoint, &ha); checkpoint -= RollbackSession::kCheckpointInterval) {
+		REQUIRE(pair.b.RegionHashesAt(checkpoint, &hb));
+		INFO("checkpoint " << checkpoint);
+		CHECK((ha == hb) == (checkpoint <= kDesyncFrom));
+	}
+	CHECK(pair.gameA.Health(0) != pair.gameB.Health(0));
+}
+
 TEST_CASE("a peer that goes away ends the other's session cleanly")
 {
 	Pair pair(kBugNone, 0);
@@ -187,10 +221,11 @@ TEST_CASE("peers keep matching per-region checkpoints for confirmed frames")
 	const int checkpoint = pair.a.LatestCheckpoint(confirmed);
 	REQUIRE(checkpoint >= 300);
 	CHECK(checkpoint % RollbackSession::kCheckpointInterval == 0);
-	std::vector<uint64_t> ha, hb;
+	std::vector<RegionHash> ha, hb;
 	REQUIRE(pair.a.RegionHashesAt(checkpoint, &ha));
 	REQUIRE(pair.b.RegionHashesAt(checkpoint, &hb));
-	CHECK(ha.size() == pair.gameA.Layout().Regions().size());
+	const auto& regions = pair.gameA.Layout().Regions();
+	CHECK(ha.size() == (size_t)std::count_if(regions.begin(), regions.end(), [](const StateRegion& r) { return r.checked; }));
 	CHECK(ha == hb);
 }
 
