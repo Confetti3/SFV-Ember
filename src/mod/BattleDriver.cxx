@@ -1,6 +1,7 @@
 #include "mod/BattleDriver.hxx"
 
 #include "mod/ControlPipe.hxx"
+#include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
 #include "mod/WriteWatch.hxx"
 
@@ -91,6 +92,10 @@ void BattleDriver::RegisterControl()
 		return std::string("error no region of that size");
 	});
 	RegisterCommand("watchhits", [](const std::string&) { return "ok " + WriteWatchHits(); });
+	RegisterCommand("gamestack", [](const std::string&) {
+		if (!GameThreadId()) return std::string("error the game thread is not known yet");
+		return "ok" + ThreadStack(GameThreadId());
+	});
 	// "scan <u32> [<u32>...]": every 4-byte-aligned field of the state holding
 	// one of the values, as "region+offset=value" (up to 64).
 	RegisterCommand("scan", [this](const std::string& args) {

@@ -93,13 +93,110 @@ constexpr CodeSite kChangeSceneState{"ChangeSceneState", 0x584B70,
 constexpr CodeSite kTitleLeaveStep{"TitleLeaveStep", 0x5E4D70,
 	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x50, 0x48}};
 
+// The battle jump (VersusLaunch).
+// UClass* getters by package (L"/Script/KiwiGame"): the jump's init message
+// and the jump state.
+constexpr CodeSite kJumpMessageClass{"BattleJumpSetupStateInitMessage", 0xC24FB0,
+	{0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05, 0xF5, 0x03, 0xE8, 0x02, 0x48, 0x85, 0xC0, 0x75, 0x21}};
+constexpr CodeSite kJumpStateClass{"BattleJumpSetupState", 0xC1F470,
+	{0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05, 0x3D, 0x5F, 0xE8, 0x02, 0x48, 0x85, 0xC0, 0x75, 0x21}};
+// UObject* NewObject(UObject* outer, UClass*).
+constexpr CodeSite kNewObject{"NewObject", 0x5DF2E0,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x40, 0x48, 0x8B, 0xFA, 0x48, 0x8D, 0x15}};
+// The jump state's step that copies the players from the flow's loader into
+// the battle setting (rva 0x7072A0), resets the flow and makes the next
+// loader (type by the message's mode: 0 -> 4, 2 -> 0, other -> 3).
+constexpr CodeSite kJumpCopyPlayers{"JumpCopyPlayers", 0x603120,
+	{0x40, 0x56, 0x48, 0x83, 0xEC, 0x50, 0x48, 0x8B, 0x81, 0x50, 0x03, 0x00, 0x00, 0x48, 0x8B, 0xF1}};
+// SharedRef* GetBattleFlow(SharedRef* out): the game's battle flow.
+constexpr CodeSite kGetBattleFlow{"GetBattleFlow", 0x70C790,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0xD9, 0xE8, 0xF2, 0x4E, 0xE1, 0xFF, 0x48, 0x85}};
+// void EnsureLoader(Flow*, int providerType): makes flow+16 a loader whose
+// provider (+16) is the flow's registered provider of that type.
+constexpr CodeSite kEnsureLoader{"EnsureLoader", 0x4AA510,
+	{0x48, 0x89, 0x74, 0x24, 0x20, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x40, 0x48, 0x8B, 0xF1, 0x48, 0x8B}};
+// The game data object whose players hold the battle setting's entries, and
+// its player reference by index (a virtual call).
+constexpr CodeSite kGameData{"GameData", 0x521690,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0x05, 0x2B, 0x62, 0x86, 0x03, 0x48, 0x8B, 0x98}};
+constexpr CodeSite kPlayerRef{"PlayerRef", 0x68D1E0,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0x01, 0x8B, 0xDA, 0xFF, 0x90, 0x38, 0x02, 0x00}};
+// void GetPlayerSetup(PlayerRef*, PlayerSetup* out): assigns the player's
+// setting entry to a 96-byte PlayerSetup (strings freed and replaced).
+constexpr CodeSite kGetPlayerSetup{"GetPlayerSetup", 0x7B5940,
+	{0x40, 0x53, 0x57, 0x48, 0x83, 0xEC, 0x38, 0x48, 0x83, 0x79, 0x28, 0x00, 0x48, 0x8B, 0xFA, 0x48}};
+
+// The jump state's second step (rva 0x602C80): after the first one made the
+// new mode's data object. For local versus it only moves on; the mod puts
+// the players and stage into the data object here, before the third step
+// (rva 0x600AF0) copies it into the battle setting.
+constexpr CodeSite kJumpSecondStep{"JumpSecondStep", 0x602C80,
+	{0x4C, 0x8B, 0xDC, 0x55, 0x41, 0x55, 0x49, 0x8D, 0x6B, 0xA1, 0x48, 0x81, 0xEC, 0xF8, 0x00, 0x00}};
+// Copy constructors of the mode data's fighter (CharPkg, 64 bytes) and match
+// (SpecPkg, 40 bytes) records; FString assignment; the game's free.
+constexpr CodeSite kCopyCharPkg{"CopyCharPkg", 0x581CD0,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x48}};
+constexpr CodeSite kCopySpecPkg{"CopySpecPkg", 0x581EC0,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x0F}};
+constexpr CodeSite kAssignString{"AssignString", 0x190FF90,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x48, 0x89, 0x7C, 0x24, 0x18, 0x41}};
+constexpr CodeSite kGameFree{"GameFree", 0x1130C40,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0xD9, 0x48, 0x8B, 0x0D, 0xA8, 0x67, 0x99, 0x02}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
-	kFindUnit, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kTitleLeaveStep};
+	kFindUnit, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kTitleLeaveStep,
+	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
+	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree};
+
+namespace jump {
+
+// The init message: +40 the target (0 vs CPU, 1 local versus, 2 training,
+// -1 back to the main menu; the last step goes to VersusBattleState for 0
+// and 1, TrainingBattleState for 2), +44 (training only) copy the setting's
+// fighters, +45 swap sides in that copy, +46 run the ownership check (rva
+// 0x5E2D10: replaces unowned costumes/colours/stages, the stage by rand()).
+constexpr uint32_t kMessageMode = 40;
+constexpr uint32_t kMessageCopySetting = 44;
+constexpr uint32_t kMessageSwapSides = 45;
+constexpr uint32_t kMessageCheckOwnership = 46;
+constexpr uint32_t kJumpStateMessage = 848; // the jump state's init message
+constexpr int kModeVersusCpu = 0;
+constexpr int kModeVersus = 1;
+constexpr int kModeTraining = 2;
+constexpr uint32_t kFlowLoader = 16;     // Flow: the loader
+constexpr uint32_t kLoaderProvider = 16; // Loader: the mode's provider
+constexpr int kProviderType = 14;        // a provider type registered by the flow reset (rva 0x71A790)
+constexpr uint32_t kProviderPlayers = 8; // Provider: PlayerSetup[]
+constexpr uint32_t kPlayerSetupSize = 96;
+constexpr int kPlayers = 2;
+constexpr int kVersusType = 3; // the mode data object's type for local versus
+
+// The mode data object's virtual functions (byte offsets in its vtable).
+constexpr uint32_t kDataType = 8;       // int ()
+constexpr uint32_t kDataSetChara = 56;  // void (int player, const CharPkg*): the fighter's setup
+constexpr uint32_t kDataSetCode = 40;   // void (int player, const CharPkg*): the selected fighter
+constexpr uint32_t kDataGetChara = 72;  // const CharPkg* (int player)
+constexpr uint32_t kDataSetSpec = 104;  // void (const SpecPkg*)
+constexpr uint32_t kDataGetSpec = 112;  // const SpecPkg* ()
+
+// CharPkg: +0 FString fighter code, +16 costume, +20 colour, +24 TArray of
+// 16-byte items, then ints and two bytes. SpecPkg: +0 byte, +4 time,
+// +8 rounds, +16 FString stage code, +32..+34 bytes.
+constexpr uint32_t kCharPkgSize = 64;
+constexpr uint32_t kCharCode = 0;
+constexpr uint32_t kCharCostume = 16;
+constexpr uint32_t kCharColour = 20;
+constexpr uint32_t kCharItems = 24;
+constexpr uint32_t kSpecPkgSize = 40;
+constexpr uint32_t kSpecStage = 16;
+
+} // namespace jump
 
 namespace scene {
 
 constexpr uint32_t kManagerCurrentState = 904;
 constexpr uint32_t kIdleStep = 0x12AF480; // an empty function: a state waiting on something else
+constexpr uintptr_t kMainMenuVtable = 0x2D98660; // MainMenuState (class getter rva 0xC20E70)
 
 } // namespace scene
 

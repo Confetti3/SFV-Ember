@@ -58,6 +58,7 @@ add_library(sfv_ember SHARED
     src/mod/Log.cxx
     src/mod/ModConfig.cxx
     src/mod/ControlPipe.cxx
+    src/mod/VersusLaunch.cxx
     src/mod/VirtualPads.cxx
     src/mod/NetGuard.cxx
     src/mod/OfflineDialogs.cxx

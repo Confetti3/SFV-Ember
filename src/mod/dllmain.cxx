@@ -24,6 +24,7 @@
 #include "mod/OfflineDialogs.hxx"
 #include "mod/SfvOffsets.hxx"
 #include "mod/SyncTestMode.hxx"
+#include "mod/VersusLaunch.hxx"
 
 #include <windows.h>
 
@@ -102,6 +103,7 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	InstallOfflineDialogs(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)),
 		static_cast<OfflineDialogs>(std::clamp(Config().offlineDialogs, 0, 2)));
 	RegisterStatus("suppressedDialogs", [] { return std::to_string(SuppressedDialogs()); });
+	if (InstallVersusLaunch(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)))) RegisterVersusLaunchCommands();
 	if (Config().mode == ModMode::Inert) {
 		Log("inert by request");
 		return 1;
