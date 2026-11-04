@@ -57,6 +57,8 @@ std::string MockFighter::BuildId() const
 void MockFighter::Advance(const FrameInputs& inputs, bool resimulating)
 {
 	if (resimulating) resimulated_++;
+	if (resimulating && !lastWasResimulation_) rollbackTargets_.push_back(world_.frame);
+	lastWasResimulation_ = resimulating;
 	callsSinceStart_++;
 
 	for (int p = 0; p < kPlayers; p++) {

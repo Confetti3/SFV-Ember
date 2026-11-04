@@ -103,6 +103,40 @@ TEST_CASE("two peers over loopback UDP roll back and agree with an offline run")
 	CHECK(compared > 100);
 }
 
+TEST_CASE("frames whose inputs the game ignores are never a rollback's start")
+{
+	// Frames 100-399 read no inputs (SFV outside the fight), while both peers
+	// keep sending changing ones: no rollback may start there, and the
+	// peers still agree with an offline run that plays neutral inputs there.
+	constexpr int kFrom = 100, kTo = 400;
+	Pair pair(kBugNone, 0);
+	pair.gameA.IgnoreInputsBetween(kFrom, kTo);
+	pair.gameB.IgnoreInputsBetween(kFrom, kTo);
+	REQUIRE(pair.RunTo(600));
+	pair.RunTo(620);
+	CHECK(pair.gameA.RollbackTargets().size() + pair.gameB.RollbackTargets().size() > 0);
+	for (const MockFighter* game : {&pair.gameA, &pair.gameB}) {
+		for (int target : game->RollbackTargets()) {
+			INFO("rollback to frame " << target);
+			CHECK((target < kFrom || target >= kTo));
+		}
+	}
+	MockFighter reference;
+	reference.IgnoreInputsBetween(kFrom, kTo);
+	const int confirmed = std::min(pair.a.LastConfirmedFrame(), pair.b.LastConfirmedFrame());
+	REQUIRE(confirmed >= 500);
+	std::vector<uint64_t> hashes{reference.Layout().HashLive()};
+	for (int f = 0; f < confirmed; f++) {
+		reference.Advance(reference.InputsMatter() ? ScriptedFrame(f, kSeed) : FrameInputs{}, false);
+		hashes.push_back(reference.Layout().HashLive());
+	}
+	uint64_t ha = 0, hb = 0;
+	REQUIRE(pair.a.HashAt(confirmed, &ha));
+	REQUIRE(pair.b.HashAt(confirmed, &hb));
+	CHECK(ha == hb);
+	CHECK(ha == hashes[confirmed]);
+}
+
 TEST_CASE("input delay keeps the peers in step")
 {
 	Pair pair(kBugNone, 2);

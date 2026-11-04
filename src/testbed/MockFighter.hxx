@@ -22,6 +22,7 @@
 #include "core/GameAdapter.hxx"
 
 #include <memory>
+#include <vector>
 
 namespace sfve::testbed {
 
@@ -48,6 +49,16 @@ public:
 	std::string BuildId() const override;
 	StateLayout& Layout() override { return layout_; }
 	void Advance(const FrameInputs& inputs, bool resimulating) override;
+	bool InputsMatter() const override { return world_.frame < ignoreFrom_ || world_.frame >= ignoreTo_; }
+
+	// Frames [from, to) read no inputs (as SFV's battle outside the fight).
+	void IgnoreInputsBetween(int from, int to)
+	{
+		ignoreFrom_ = from;
+		ignoreTo_ = to;
+	}
+	// The frame each resimulation started from (each rollback's target).
+	const std::vector<int>& RollbackTargets() const { return rollbackTargets_; }
 
 	int Frame() const { return world_.frame; }
 	int Health(int player) const { return world_.fighters[player].health; }
@@ -85,6 +96,9 @@ private:
 	int32_t comboCounter_ = 0;     // outside the layout (kBugStateOutsideLayout)
 	int32_t callsSinceStart_ = 0;  // never state (kBugReadsNonInput)
 	int resimulated_ = 0;
+	bool lastWasResimulation_ = false;
+	std::vector<int> rollbackTargets_;
+	int ignoreFrom_ = 0, ignoreTo_ = 0;
 	int32_t flowKoFrame_ = -1;   // the round flow (outside the layout with kBugFlowOutsideLayout)
 	std::unique_ptr<int> heapMarker_;
 	StateLayout layout_;
