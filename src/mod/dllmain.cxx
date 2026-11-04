@@ -19,6 +19,7 @@
 #include "mod/ModConfig.hxx"
 #include "mod/MultiInstance.hxx"
 #include "mod/HelperLink.hxx"
+#include "mod/MatchEnd.hxx"
 #include "mod/NetplayMode.hxx"
 #include "mod/NetGuard.hxx"
 #include "mod/OfflineDialogs.hxx"
@@ -158,6 +159,7 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	InstallOfflineDialogs(base, dialogs);
 	RegisterStatus("suppressedDialogs", [] { return std::to_string(SuppressedDialogs()); });
 	if (scene && InstallVersusLaunch(base, Config().ownershipCheck)) RegisterVersusLaunchCommands();
+	InstallMatchEnd(base);
 	static BattleDriver driver(MakeMode(Config()));
 	driver.RegisterControl();
 	InstallGameHooks(base, &driver);

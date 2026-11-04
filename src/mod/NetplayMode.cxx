@@ -3,6 +3,7 @@
 #include "mod/ControlPipe.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/Log.hxx"
+#include "mod/MatchEnd.hxx"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,6 +57,11 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	const PackedInput local = !config_.mashSeed ? adapter.Sampled(0)
 		: frame >= config_.mashFrom              ? input::Mash(config_.mashSeed, frame)
 												 : 0;
+	// A linked match that ended in the last frame restarts here, before this
+	// frame is saved and played, on both copies alike (MatchEnd).
+	if (link_) {
+		if (uint8_t* ended = TakeEndedVersusBattle()) Rematch(ended);
+	}
 	last_ = session_->Step(local);
 	DumpIfRequested();
 }
@@ -69,6 +75,7 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 		if (link_->Failed()) {
 			// No match will come: the battle runs offline instead of waiting.
 			Log("netplay: no match link (%s); the battle runs offline", link_->Failure().c_str());
+			SetLinkedMatchEnd(false);
 			started_ = true;
 			return true;
 		}
@@ -93,6 +100,8 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
 	std::string error;
 	if (!session_->Start(c, &error)) Log("netplay: could not start: %s", error.c_str());
+	// The results menu would let each player leave the match their own way.
+	SetLinkedMatchEnd(link_ && session_->Live());
 	return true;
 }
 

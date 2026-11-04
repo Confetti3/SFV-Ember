@@ -164,11 +164,31 @@ constexpr CodeSite kCostumeValid{"CostumeValid", 0x56B190,
 constexpr CodeSite kColourValid{"ColourValid", 0x56B0E0,
 	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x41}};
 
+// VersusBattleState (MatchEnd).
+// void ShowResult(VersusBattleState*): its MatchEnd handler (vtable +0x5F0,
+// called from the battle flow's event dispatch on code 14): marks the
+// results as up and opens the results menu.
+constexpr CodeSite kShowResult{"ShowResult", 0x66A0D0,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x80, 0xB9, 0x3C, 0x04, 0x00, 0x00}};
+// void RestartBattle(VersusBattleState*): the rematch "Continue" makes:
+// broadcasts BattleRestart (flow code 18) to the battle synchronously.
+constexpr CodeSite kRestartBattle{"RestartBattle", 0x684760,
+	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x41}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
-	kFighterInstalled, kCostumeValid, kColourValid};
+	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle};
+
+namespace versus {
+
+constexpr uint32_t kResultPhase = 0x438;   // int: 0 none, 1 replay, 2 results up
+constexpr uint32_t kVersionSelect = 0x43C; // byte: "Continue" opens a version select instead
+constexpr int32_t kNoResult = 0;
+constexpr int32_t kResultsUp = 2;
+
+} // namespace versus
 
 // The game singleton's content tables (from the embedded DA_CharaEntry and
 // stage data; parsed at rva 0x56D050).
@@ -244,6 +264,7 @@ constexpr uint32_t kManagerCurrentState = 904; // (unrelated to the title state'
 constexpr uint32_t kIdleStep = 0x12AF480; // an empty function: a state waiting on something else
 constexpr uint32_t kManagerNextState = 912;
 constexpr uintptr_t kMainMenuVtable = 0x2D98660; // MainMenuState (class getter rva 0xC20E70)
+constexpr uintptr_t kVersusBattleVtable = 0x2DA9918; // VersusBattleState (class getter rva 0xC222F0)
 constexpr uintptr_t kJumpStateVtable = 0x2D85920; // BattleJumpSetupState (its tick, rva 0x5F9FE0, at +0x580)
 
 } // namespace scene

@@ -207,8 +207,16 @@ state before a lockstep frame.
   logged on every checkpoint line); a 4-frame rollback saves 4 times. The
   round results (557 KB) change only at a round's end and are the obvious
   first saving.
-- After the match: the game's results menu waits for a player; linked copies
-  need the same choice (rematch or main menu) made for both.
+- After the match: a linked match rematches by itself (`MatchEnd`: the
+  results menu is skipped and the game's own restart runs on both copies
+  at the same session frame; tested: the second match stays in step).
+  Leaving or changing fighters needs a way to choose (overlay) and a
+  second match generation on the link.
+- Lockstep outside the fight costs speed at high ping: intros, KOs and
+  round calls wait for confirmed inputs, so with 1 frame of delay and an
+  80 ms round trip they run at about 12 fps. Raising the input delay while
+  outside the fight (GGPO allows changing it) would keep them at full
+  speed.
 - Picking: fighters and stage come from the command line or the pipe; an
   in-game way to host, join and pick (overlay) is next.
 - Two PCs over a real network (one PC so far), rooms.

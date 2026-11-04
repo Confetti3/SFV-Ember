@@ -56,6 +56,7 @@ target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 add_library(sfv_ember SHARED
     src/mod/dllmain.cxx
     src/mod/Log.cxx
+    src/mod/MatchEnd.cxx
     src/mod/ModConfig.cxx
     src/mod/ControlPipe.cxx
     src/mod/VersusLaunch.cxx
