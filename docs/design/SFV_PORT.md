@@ -207,7 +207,16 @@ state before a lockstep frame.
   logged on every checkpoint line); a 4-frame rollback saves 4 times. The
   round results (557 KB) change only at a round's end and are the obvious
   first saving.
-- After the match: a linked match rematches by itself (`MatchEnd`: the
+- Match end and results (done): the results menu is skipped for linked
+  matches; the mod decides for both copies at the same session frame,
+  rematch or back to the main menu (`matchend`), and reads the game's
+  judgement (`MatchResult`: winner, rounds won, each round's finish). A
+  broken linked session leaves for the main menu. The launch sets the
+  rounds and the round clock; linked matches use the host's.
+- Ember's interface: SFV will show Ember's own shell through a shared
+  Ember library (docs/design/EMBER_LIBRARY.md); the D3D11 overlay host
+  is ready for it (`src/overlay`).
+- After the match (older note): a linked match rematches by itself (`MatchEnd`: the
   results menu is skipped and the game's own restart runs on both copies
   at the same session frame; tested: the second match stays in step).
   Leaving or changing fighters needs a way to choose (overlay) and a
