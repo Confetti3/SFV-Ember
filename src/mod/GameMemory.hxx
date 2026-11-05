@@ -14,6 +14,20 @@ T& Field(uint8_t* object, uint32_t offset)
 	return *reinterpret_cast<T*>(object + offset);
 }
 
+// Reads a T at `at` if the memory is readable, for walking game structures
+// whose layout comes from analysis rather than from the game handing them
+// over (a wrong guess logs instead of crashing both test copies).
+template <typename T>
+bool TryRead(const void* at, T* out)
+{
+	__try {
+		*out = *static_cast<const T*>(at);
+		return true;
+	} __except (1 /* EXCEPTION_EXECUTE_HANDLER */) {
+		return false;
+	}
+}
+
 // MSVC std::shared_ptr, as the game stores it. The control block is
 // {vtable, long uses, long weaks}.
 struct GameSharedPtr {

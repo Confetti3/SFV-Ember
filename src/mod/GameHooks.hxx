@@ -43,7 +43,8 @@ uint8_t* GameGetBattleData(uint8_t* anyUnit);
 void* GameAlloc(size_t size);
 
 // The battle's unit of a type (sfv::unit::k*Type), found from any unit the
-// way units find each other; null when there is none.
-uint8_t* GameFindUnit(uint8_t* anyUnit, uint32_t typeRva);
+// way units find each other; `index` counts units of exactly that type in
+// the order the battle added them. Null when there is none.
+uint8_t* GameFindUnit(uint8_t* anyUnit, uint32_t typeRva, uint32_t index = 0);
 
 } // namespace sfve::mod

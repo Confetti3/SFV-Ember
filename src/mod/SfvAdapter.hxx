@@ -18,6 +18,7 @@
 #include "core/GameAdapter.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/SfvFlow.hxx"
+#include "mod/SfvRegionNames.hxx"
 
 #include <stdint.h>
 
@@ -99,6 +100,7 @@ private:
 	const char* waitingFor_ = nullptr; // what Bind last waited for (logged once)
 	StateLayout layout_;
 	size_t gameRegions_ = 0;
+	RegionNames regionNames_;
 	std::vector<PostRestore> postRestore_;
 
 	bool injecting_ = false;

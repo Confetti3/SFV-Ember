@@ -124,13 +124,13 @@ bool InstallGameHooks(uintptr_t base, BattleListener* listener)
 	return ok;
 }
 
-uint8_t* GameFindUnit(uint8_t* anyUnit, uint32_t typeRva)
+uint8_t* GameFindUnit(uint8_t* anyUnit, uint32_t typeRva, uint32_t index)
 {
 	uint8_t* owner = *reinterpret_cast<uint8_t**>(anyUnit + sfv::unit::kContext + sfv::unit::kContextOwner);
 	uint8_t* battle = owner ? *reinterpret_cast<uint8_t**>(owner + sfv::unit::kOwnerBattle) : nullptr;
 	if (!battle) return nullptr;
 	GameSharedPtr found{};
-	s_findUnit(battle, &found, reinterpret_cast<const void*>(s_imageBase + typeRva), 0);
+	s_findUnit(battle, &found, reinterpret_cast<const void*>(s_imageBase + typeRva), index);
 	// Hand back the reference: the battle keeps the unit alive.
 	if (found.control) ReleaseKeepingAlive(found.control);
 	return found.object;
