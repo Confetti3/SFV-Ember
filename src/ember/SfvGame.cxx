@@ -14,6 +14,7 @@
 #include "mod/SfvAdapter.hxx"
 #include "mod/VersusLaunch.hxx"
 
+#include "common/InstalledContent.hxx"
 #include "sf4e/sf4e__AbsentGameFeatures.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
 #include "sf4e/sf4e__RuntimeSession.hxx"

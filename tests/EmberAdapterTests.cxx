@@ -12,9 +12,10 @@
 #include "ember/SfvVerification.hxx"
 #include "mod/HelperLink.hxx"
 
-#include "common/FighterCatalog.hxx"
+#include "common/SelectionPick.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/ProductIdentity.hxx"
+#include "common/StageCatalog.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
 #include "ui/SelectionArt.hxx"
 #include "ui/SelectionLabels.hxx"
@@ -190,15 +191,47 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 TEST_CASE("every pick of an SFV fighter is available to the player, and the runtime's check takes it")
 {
 	FillTestCatalog();
+	const ember::GameCatalog& catalog = ember::Catalog();
 	const ember::game::GameState& state = ember::game::Game().state;
-	const sf4e::selection::Availability availability = state.FighterAvailability(1);
+	const sf4e::selection::Availability availability = state.FighterAvailability(4);
 	CHECK(availability.ready);
-	CHECK_FALSE(sf4e::selection::FighterLocked(40, state.FighterAvailability(40)));
-	// The runtime's Ready check (NetplayRuntime__Room's selection::Available).
-	CHECK(sf4e::selection::Available(PickOf(1, 2, 7), false, availability, nullptr));
+	// The runtime's Ready check (NetplayRuntime__Room) asks the catalog, so
+	// numbers past SF4's roster and colours pass.
+	CHECK_FALSE(catalog.fighterLocked(4, availability));
+	CHECK(catalog.availablePick(PickOf(4, 99, 99), false, availability, nullptr));
 	Pick noAction = PickOf(0);
 	noAction.personalAction = 255;
-	CHECK(sf4e::selection::Available(noAction, false, state.FighterAvailability(0), nullptr));
+	CHECK(catalog.availablePick(noAction, false, state.FighterAvailability(0), nullptr));
+	CHECK_FALSE(catalog.availablePick(PickOf(5), false, availability, nullptr));
+	CHECK_FALSE(catalog.availablePick(PickOf(4, 0, kVariantLimit), false, availability, nullptr));
+}
+
+TEST_CASE("a pick is fitted to SFV's rules, and a stage choice is a stage of the list")
+{
+	FillTestCatalog();
+	const ember::GameCatalog& catalog = ember::Catalog();
+	Pick pick = PickOf(5, kVariantLimit, 99);
+	pick.ultra = 2;
+	CHECK(catalog.normalizePick(pick, false, nullptr, nullptr));
+	CHECK(pick.fighter == 0);
+	CHECK(pick.costume == 0);
+	CHECK(pick.color == 99);
+	CHECK(pick.ultra == 0);
+	CHECK_FALSE(catalog.normalizePick(pick, false, nullptr, nullptr));
+	CHECK(catalog.randomStage == -1);
+	const sf4e::selection::RandomPool pool; // the facade carries SF4's pool type; SFV reads none
+	CHECK(catalog.resolveStage(2, 7, pool, nullptr) == 2);
+	CHECK(catalog.resolveStage(255, 7, pool, nullptr) == 0);
+}
+
+TEST_CASE("the shared screens name and list SFV's fighters by the game's codes, in its order")
+{
+	FillTestCatalog();
+	const ember::GameCatalog& catalog = ember::Catalog();
+	CHECK(std::string(catalog.fighterName(0)) == "RYU");
+	CHECK(std::string(catalog.fighterName(4)) == "BSN");
+	CHECK(catalog.costumeCount(4) == kVariantLimit);
+	for (int at = 0; at < catalog.fighterCount; at++) CHECK(catalog.rosterOrder[at] == at);
 }
 
 TEST_CASE("a room's launch goes ahead only while its entry is armed")

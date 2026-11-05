@@ -17,6 +17,8 @@ namespace {
 // Written once by FillCatalog, before the runtime's threads read the catalog.
 mod::ContentLists s_lists;
 std::string s_buildId = mod::kMatchBuild;
+// The roster in the order of the game's list, which is its ids' order.
+std::vector<int> s_rosterOrder;
 
 bool ValidPick(const sf4e::selection::Pick& pick, bool)
 {
@@ -29,9 +31,59 @@ bool ValidStage(std::int64_t id)
 	return id >= 0 && id < (std::int64_t)s_lists.stages.size();
 }
 
+// No reader of the player's SFV content yet (SfvGame's FighterAvailability
+// reports everything owned): no fighter is locked and every valid pick is
+// owned. The game's own ownership check judges the content as the battle
+// launches (VersusLaunch's checkOwnership).
+bool FighterLocked(int, const sf4e::selection::Availability&)
+{
+	return false;
+}
+
+bool AvailablePick(const sf4e::selection::Pick& pick, bool editionSelect, const sf4e::selection::Availability&,
+	const sf4e::selection::InstalledContent*)
+{
+	return ValidPick(pick, editionSelect);
+}
+
+// Each part SFV refuses becomes the first one: fighter 0, costume and colour
+// 0, no Ultra and no handicap.
+bool NormalizePick(sf4e::selection::Pick& pick, bool, const sf4e::selection::Availability*,
+	const sf4e::selection::InstalledContent*)
+{
+	const sf4e::selection::Pick before = pick;
+	if (!ember::ValidFighter(pick.fighter)) pick.fighter = 0;
+	if (pick.costume < 0 || pick.costume >= kVariantLimit) pick.costume = 0;
+	if (pick.color < 0 || pick.color >= kVariantLimit) pick.color = 0;
+	pick.ultra = 0;
+	pick.handicap = 0;
+	return pick.fighter != before.fighter || pick.costume != before.costume || pick.color != before.color ||
+		pick.ultra != before.ultra || pick.handicap != before.handicap;
+}
+
+// SFV has no Random stage: a choice is a stage of the list, else the first.
+int ResolveStage(int choice, std::uint32_t, const sf4e::selection::RandomPool&, const sf4e::selection::InstalledContent*)
+{
+	return ValidStage(choice) ? choice : 0;
+}
+
+// The game's code ("RYU") until SFV Ember has a table of fighters' names.
+const char* FighterName(int fighter)
+{
+	return s_lists.fighters[(size_t)fighter].c_str();
+}
+
+// Every costume number below the limit is the game's own: SFV has no custom
+// costumes.
+int CostumeCount(int)
+{
+	return kVariantLimit;
+}
+
 // Empty until FillCatalog. SFV offers no public rooms yet, so the showcase
 // faces are simply the first four fighters of the roster.
-constinit ember::GameCatalog s_catalog = {0, kVariantLimit, kVariantLimit, 1, &ValidPick, &ValidStage, {0, 1, 2, 3}};
+constinit ember::GameCatalog s_catalog = {0, kVariantLimit, kVariantLimit, 1, &ValidPick, &ValidStage, {0, 1, 2, 3},
+	-1, &FighterLocked, &AvailablePick, &NormalizePick, &ResolveStage, &FighterName, &CostumeCount, nullptr};
 
 std::string CodeAt(const std::vector<std::string>& codes, std::int64_t id)
 {
@@ -52,6 +104,8 @@ bool FillCatalog(const mod::ContentLists& lists)
 	if (lists.fighters.empty() || lists.stages.empty() || lists.fighters.size() > (size_t)ember::MaxFighters) return false;
 	s_lists = lists;
 	s_buildId = std::string(mod::kMatchBuild) + "/" + ContentFingerprint(lists);
+	for (int id = 0; id < (int)s_lists.fighters.size(); id++) s_rosterOrder.push_back(id);
+	s_catalog.rosterOrder = s_rosterOrder.data();
 	s_catalog.fighterCount = (int)s_lists.fighters.size();
 	return true;
 }

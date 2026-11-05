@@ -20,7 +20,7 @@
 #include "mod/GameContent.hxx"
 #include "mod/VersusLaunch.hxx"
 
-#include "common/FighterCatalog.hxx"
+#include "common/SelectionPick.hxx"
 
 #include <cstdint>
 #include <optional>

@@ -74,9 +74,8 @@ include("${SFVE_EMBER_SOURCE_ROOT}/cmake/sf4e_embed.cmake")
 sf4e_embed_brand_mark(sfve_ember "${SFVE_EMBER_SOURCE_ROOT}/src/ui/ember.rgba")
 target_link_libraries(sfve_ember PUBLIC sfve_core ember_runtime_x64)
 
-# The runtime under SFV's definitions. Until the library's catalog step (5),
-# the runtime still reaches SF4's roster and stage tables, so they link here
-# as they do in the library's own x64 test.
+# The runtime under SFV's definitions, with nothing of SF4's roster, stages
+# or custom content: SFV's catalog (SfvCatalog.cxx) answers every pick check.
 add_executable(sfve_ember_tests
     tests/main.cxx
     tests/EmberAdapterTests.cxx
@@ -90,10 +89,7 @@ add_executable(sfve_ember_tests
     src/mod/SfvAdapter.cxx
     src/mod/SfvFlow.cxx
     src/mod/SfvRegionNames.cxx
-    src/mod/VersusLaunch.cxx
-    "${SFVE_EMBER_SOURCE_ROOT}/src/common/FighterCatalog.cxx"
-    "${SFVE_EMBER_SOURCE_ROOT}/src/common/StageCatalog.cxx"
-    "${SFVE_EMBER_SOURCE_ROOT}/src/common/InstalledContent.cxx")
+    src/mod/VersusLaunch.cxx)
 target_link_libraries(sfve_ember_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest)
 
 # The in-game mod. Loads inert: it blocks every non-loopback connection first,
