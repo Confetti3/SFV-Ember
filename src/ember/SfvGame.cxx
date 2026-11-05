@@ -8,7 +8,6 @@
 #include "core/RollbackSession.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "mod/GameScene.hxx"
-#include "mod/HelperLink.hxx"
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
 #include "mod/MatchResult.hxx"
@@ -31,6 +30,7 @@ namespace {
 using namespace ember::game;
 
 BattleInPlay s_battle;
+LaunchArming s_launch;
 
 // The fight's way out for the runtime (Retire, Abort, Fail) is NetplayMode's
 // synchronized exit to the main menu, which the runtime cannot reach until
@@ -41,9 +41,10 @@ void ExitNotWired(const char* what, const char* reason)
 }
 
 // The game's own judgement of the match (MatchResult), as the room counts it.
+// One the game left undecided is no result (Abort), as is no match end.
 sf4e::room::MatchResult RoomResult(const mod::MatchResult& result)
 {
-	if (!result.decided) return sf4e::room::MatchResult::Cancel;
+	if (!result.decided) return sf4e::room::MatchResult::Abort;
 	return result.winner == 0 ? sf4e::room::MatchResult::P1Win
 		: result.winner == 1  ? sf4e::room::MatchResult::P2Win
 							  : sf4e::room::MatchResult::Draw;
@@ -51,22 +52,30 @@ sf4e::room::MatchResult RoomResult(const mod::MatchResult& result)
 
 class SfvGameState final : public GameState {
 public:
-	const std::string& BuildId() const override { return build_; }
+	const std::string& BuildId() const override { return MatchBuildId(); }
 	bool MainMenuInFront() const override { return mod::MainMenuInFront(); }
 	std::string ForegroundScreen() const override { return mod::CurrentSceneName(); }
 	// Empty until the game's language has a reader (a contract issue is queued).
 	std::string Language() const override { return {}; }
-	// No reader of the player's SFV content yet: nothing is reported locked.
-	sf4e::selection::Availability FighterAvailability(int) const override { return {}; }
+	// No reader of the player's SFV content yet: every fighter, costume,
+	// colour and personal action is reported owned, so availability refuses
+	// no pick. The game's own ownership check judges the content as the
+	// battle launches (VersusLaunch's checkOwnership).
+	sf4e::selection::Availability FighterAvailability(int) const override
+	{
+		sf4e::selection::Availability all;
+		all.ready = true;
+		all.costumes = ~0u;
+		all.colors.fill(~0u);
+		all.personalActions = 0xFFFF;
+		return all;
+	}
 	// No reader of the game's own random generator yet.
 	std::uint32_t Random() override { return 0; }
 	// No SFV sound module yet.
 	bool PlayChallengerCall(float) override { return false; }
 	// No SFV module closes the game; SFV Ember installs no updates.
 	void CloseGame() override {}
-
-private:
-	const std::string build_ = mod::kMatchBuild;
 };
 
 class SfvBattle final : public Battle {
@@ -91,16 +100,17 @@ public:
 		}
 		// A room's game ends back at the main menu, where its next match launches.
 		mod::SetMatchEndChoice(mod::MatchEndChoice::MainMenu);
+		const LaunchArming::Ticket ticket = s_launch.Arm();
 		mod::LaunchOnMainMenu(
-			*picks, [] { return ember::RuntimeSession::netplay != nullptr; },
+			*picks, [ticket] { return s_launch.Armed(ticket); },
 			// The room is not told yet; NetplayMode's match start reports it in the next step.
 			[](const std::string& why) { mod::Log("ember: the room's battle could not be launched: %s", why.c_str()); });
 		return Entry::Entered;
 	}
 	// NetplayMode starts its rollback session on its helper link's endpoints, not on the room's sync yet.
 	void OnSessionSynced() override {}
-	// Nothing is armed for the next battle: a launch waiting for the main menu stops with the room link.
-	void DropNextBattle() override {}
+	// A launch still waiting for the main menu does not go ahead.
+	void DropNextBattle() override { s_launch.Drop(); }
 
 	bool Live() const override { return s_battle.session && s_battle.session->Live(); }
 	void Retire(const char* label) override { ExitNotWired("retire", label); }
@@ -111,11 +121,12 @@ public:
 	bool ResultHeld() const override { return mod::EndedVersusBattlePending(); }
 	// MatchEnd keeps SFV's results menu closed in a linked match.
 	bool ResultScreenShown() const override { return false; }
+	// The result MatchEnd read as it took the match's end on a confirmed
+	// frame; Abort (no result) before that.
 	sf4e::room::MatchResult GameResult() const override
 	{
-		const mod::SfvAdapter* game = s_battle.game;
-		return game && game->BattleData() ? RoomResult(mod::ReadMatchResult(game->BattleData()))
-										  : sf4e::room::MatchResult::Cancel;
+		const std::optional<mod::MatchResult> decided = mod::DecidedMatchResult();
+		return decided ? RoomResult(*decided) : sf4e::room::MatchResult::Abort;
 	}
 	// Both copies take MatchEnd's one choice: both rematch, or neither does.
 	unsigned RematchChoices() const override

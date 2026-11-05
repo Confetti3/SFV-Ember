@@ -8,9 +8,10 @@
 // The catalog is filled at run time, once, on the game thread, before Ember's
 // runtime starts: the host calls FillCatalog(mod::ReadContentLists()) once the
 // game's content tables are loaded. Until then it has no fighters
-// (ember::Usable is false) and every pick and stage is refused. Two players
-// number the lists alike because a room only joins copies of the same game
-// build (mod::kMatchBuild).
+// (ember::Usable is false) and every pick and stage is refused. Fighter and
+// stage ids are positions in this PC's lists, so the build a room checks
+// (MatchBuildId) carries a fingerprint of them: copies whose installed
+// content differs fail that check instead of disagreeing on fighter N.
 //
 // What SFV has no use for: Ultras (one choice, 0), editions (a room's
 // edition rule is ignored), personal actions and win quotes (SF4's; the wire
@@ -32,10 +33,21 @@ namespace sfve::adapter {
 // own check as the battle launches (sfv::kCostumeValid, sfv::kColourValid).
 constexpr int kVariantLimit = 100;
 
-// Fills the catalog from the game's lists. False, and nothing changed, when
-// either list is empty, the roster is longer than ember::MaxFighters, or the
-// catalog already holds other lists; true again for the same lists.
+// Fills the catalog from the game's lists, and the build id from them. False,
+// and nothing changed, when either list is empty, the roster is longer than
+// ember::MaxFighters, or the catalog already holds other lists; true again
+// for the same lists.
 bool FillCatalog(const mod::ContentLists& lists);
+
+// The build a room's members must share (GameState::BuildId): the game's exe
+// build (mod::kMatchBuild), "/", and the ContentFingerprint of the filled
+// lists; kMatchBuild alone before FillCatalog.
+const std::string& MatchBuildId();
+
+// 16 hex digits of a hash of both lists, their codes in order: equal lists
+// give equal fingerprints, and any change of a code, its place or its list
+// another.
+std::string ContentFingerprint(const mod::ContentLists& lists);
 
 // The game's code of a fighter or a stage ("RYU", "S01"); empty for an id
 // outside the lists.
@@ -51,10 +63,10 @@ struct RoomMatch {
 };
 
 // The battle to launch for a room's match: both picks and the stage by their
-// codes, and the room's rounds and time, read by VersusLaunch's ParseSetup.
-// Empty when the catalog refuses a pick or the stage, or SFV cannot play the
-// rounds or the time (it plays best of 1, 3, 5 or 7, and 30 to 546 seconds).
-// The match's end is not part of it (MatchEnd's choice).
+// codes, and the room's rounds and time. Empty when the catalog refuses a
+// pick or the stage, or SFV cannot play the rounds or the time
+// (VersusLaunch's PlayableRounds and RoundClockFrames). The match's end is
+// not part of it (MatchEnd's choice).
 std::optional<mod::MatchPicks> LaunchPicks(const RoomMatch& match);
 
 } // namespace sfve::adapter

@@ -19,13 +19,12 @@ std::optional<CheckpointExchange::Mismatch> CheckpointExchange::Step(const Rollb
 	const Publish* publish, std::map<int, BattleHashV2>& remote)
 {
 	const int confirmed = session.LastConfirmedFrame();
-	if (confirmed < lastConfirmed_) Reset();
-	lastConfirmed_ = confirmed;
-	for (; sf4e::statehash::IsConfirmedCheckpoint(next_, confirmed); next_ += RollbackSession::kCheckpointInterval) {
-		std::uint64_t hash = 0;
-		// A checkpoint the session no longer keeps is skipped.
-		if (session.HashAt(next_, &hash)) local_[next_] = {next_, hash, false};
+	if (confirmed < lastConfirmed_) {
+		Reset();
+		remote.clear();
 	}
+	lastConfirmed_ = confirmed;
+	TakeCheckpoints(session, confirmed);
 	while (local_.size() > kKeptCheckpoints) local_.erase(local_.begin());
 
 	if (publish) {
@@ -55,7 +54,21 @@ std::optional<CheckpointExchange::Mismatch> CheckpointExchange::Step(const Rollb
 		});
 	// Remote hashes older than every kept checkpoint can no longer be compared.
 	if (!local_.empty()) remote.erase(remote.begin(), remote.lower_bound(local_.begin()->first));
+	if (!first || mismatchReported_) return std::nullopt;
+	mismatchReported_ = true;
 	return first;
+}
+
+void CheckpointExchange::TakeCheckpoints(const RollbackSession& session, int confirmed)
+{
+	for (; sf4e::statehash::IsConfirmedCheckpoint(next_, confirmed); next_ += RollbackSession::kCheckpointInterval) {
+		// Confirmed but not run and saved yet: taken on a later step.
+		if (next_ > session.Frame()) return;
+		std::uint64_t hash = 0;
+		// Saved, and every checkpoint is hashed, so a miss is one that fell
+		// out of the session's hash history: skipped.
+		if (session.HashAt(next_, &hash)) local_[next_] = {next_, hash, false};
+	}
 }
 
 void CheckpointExchange::Reset()
@@ -63,6 +76,7 @@ void CheckpointExchange::Reset()
 	local_.clear();
 	next_ = RollbackSession::kCheckpointInterval;
 	lastConfirmed_ = -1;
+	mismatchReported_ = false;
 }
 
 namespace {
@@ -83,8 +97,7 @@ public:
 			return client.Send(message, nullptr) == sf4e::session::SendResult::Queued;
 		};
 		const auto mismatch = exchange_.Step(*session, player ? &send : nullptr, remote);
-		if (!mismatch || desynced_) return;
-		desynced_ = true;
+		if (!mismatch) return;
 		mod::Log("desync: checkpoint %d is %016llx here and %016llx at the other player; %s", mismatch->frame,
 			(unsigned long long)mismatch->local, (unsigned long long)mismatch->remote,
 			player ? "the fight ends" : "this copy only watches");
@@ -92,15 +105,10 @@ public:
 		if (player) ember::game::Game().battle.Fail();
 	}
 
-	void Reset() override
-	{
-		exchange_.Reset();
-		desynced_ = false;
-	}
+	void Reset() override { exchange_.Reset(); }
 
 private:
 	CheckpointExchange exchange_;
-	bool desynced_ = false; // this battle's fight was ended for a mismatch already
 };
 
 } // namespace

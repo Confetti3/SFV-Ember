@@ -345,27 +345,24 @@ bool ParseVariant(const std::string& text, int* value)
 	return true;
 }
 
-// 1, 3, 5 or 7 (the game needs rounds / 2 + 1 wins and keeps seven round
-// records), or "-"/nothing for the default.
+// A digit of PlayableRounds, or "-"/nothing for the default.
 bool ParseRounds(const std::string& text, int* rounds)
 {
 	if (text.empty() || text == "-") return *rounds = -1, true;
-	if (text != "1" && text != "3" && text != "5" && text != "7") return false;
-	*rounds = atoi(text.c_str());
+	if (text.size() != 1 || !PlayableRounds(text[0] - '0')) return false;
+	*rounds = text[0] - '0';
 	return true;
 }
 
-// Seconds (the game's clock holds up to 32767 frames) or "inf"; "-"/nothing
-// for the default.
+// Seconds (RoundClockFrames) or "inf"; "-"/nothing for the default.
 bool ParseTime(const std::string& text, int* frames)
 {
-	constexpr int kMinSeconds = 30, kMaxSeconds = 32767 / 60, kFramesPerSecond = 60;
 	if (text.empty() || text == "-") return *frames = -1, true;
 	if (text == "inf") return *frames = MatchRules::kNoTimeLimit, true;
 	if (text.size() > 3 || text.find_first_not_of("0123456789") != std::string::npos) return false;
-	const int seconds = atoi(text.c_str());
-	if (seconds < kMinSeconds || seconds > kMaxSeconds) return false;
-	*frames = seconds * kFramesPerSecond;
+	const std::optional<int> clock = RoundClockFrames(atoi(text.c_str()));
+	if (!clock) return false;
+	*frames = *clock;
 	return true;
 }
 
@@ -384,6 +381,18 @@ bool ParsePick(const std::string& word, FighterPick* pick)
 }
 
 } // namespace
+
+bool PlayableRounds(int rounds)
+{
+	return rounds == 1 || rounds == 3 || rounds == 5 || rounds == 7;
+}
+
+std::optional<int> RoundClockFrames(int seconds)
+{
+	constexpr int kFramesPerSecond = 60, kMinSeconds = 30, kMaxSeconds = 32767 / kFramesPerSecond;
+	if (seconds < kMinSeconds || seconds > kMaxSeconds) return std::nullopt;
+	return seconds * kFramesPerSecond;
+}
 
 bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rules)
 {

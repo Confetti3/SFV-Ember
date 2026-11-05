@@ -20,6 +20,7 @@
 #include <stdint.h>
 
 #include <functional>
+#include <optional>
 #include <string>
 
 namespace sfve::mod {
@@ -62,6 +63,14 @@ struct MatchPicks {
 // default. Codes are 1 to 8 capital letters or digits. False for anything
 // else.
 bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rules);
+
+// The rounds and round time SFV plays, as ParseSetup checks them too: best of
+// 1, 3, 5 or 7 (the game needs rounds / 2 + 1 wins and keeps seven round
+// records), and 30 to 546 seconds (the game's clock holds up to 32767
+// frames). RoundClockFrames gives the clock in frames, or nothing for a time
+// SFV cannot play.
+bool PlayableRounds(int rounds);
+std::optional<int> RoundClockFrames(int seconds);
 
 // `checkOwnership`: the jump runs the game's ownership check, as its menus
 // do. It judges both players by this copy's entitlements (replacing unowned

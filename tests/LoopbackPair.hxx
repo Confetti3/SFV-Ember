@@ -50,14 +50,18 @@ struct LoopbackPair {
 		REQUIRE_MESSAGE(b.Start(cb, &error), error);
 	}
 
-	// Steps both peers until each has run `frames` frames, or the deadline.
+	// Steps both peers until each has run `frames` frames, or the deadline. A
+	// peer already there only polls, as a host holding its frame does, so
+	// the other can still finish synchronizing and catch up.
 	bool RunTo(int frames, DWORD deadlineMs = 30000)
 	{
 		const ULONGLONG start = GetTickCount64();
 		while (a.Frame() < frames || b.Frame() < frames) {
 			if (GetTickCount64() - start > deadlineMs) return false;
 			if (a.Frame() < frames) a.Step(ScriptedInput(0, a.Frame(), kLoopbackSeed));
+			else a.Poll();
 			if (b.Frame() < frames) b.Step(ScriptedInput(1, b.Frame(), kLoopbackSeed));
+			else b.Poll();
 			if (a.Failed() || b.Failed()) return false;
 			Sleep(0);
 		}

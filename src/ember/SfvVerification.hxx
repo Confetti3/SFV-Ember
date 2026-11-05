@@ -6,8 +6,8 @@
 // checkpoint of its rollback session: the peers' hash RollbackSession keeps
 // every kCheckpointInterval frames. Its flow, chara0 and chara1 are 0, and no
 // legacy (v1) snapshot is ever sent. Every client compares a remote hash once
-// its own checkpoint of that frame is confirmed; a mismatch ends the fight
-// (the adapter's Battle::Fail).
+// its own checkpoint of that frame is confirmed; the battle's first mismatch
+// ends the fight (the adapter's Battle::Fail).
 //
 // CheckpointExchange is the check itself, over one rollback session, apart
 // from the room client so it is tested against real peers.
@@ -35,13 +35,23 @@ public:
 	using Publish = std::function<bool(const sf4e::SessionProtocol::BattleHashV2&)>;
 
 	// One step of the room client: publishes, in frame order, the checkpoints
-	// confirmed since the last step (none when `publish` is null: a client
-	// that watches publishes nothing), and compares and erases the remote
-	// hashes whose checkpoint is confirmed here. Returns the earliest mismatch
-	// of this step. A session whose confirmed frame went back (a new battle)
-	// starts the check over.
+	// confirmed and saved since the last step (none when `publish` is null: a
+	// client that watches publishes nothing), and compares and erases the
+	// remote hashes whose checkpoint is confirmed here. Returns the battle's
+	// first mismatch, once: later steps of the same battle report none.
+	//
+	// GGPO can confirm a frame before the session has run and saved it (by up
+	// to the input delay), so a checkpoint is taken only once the session has
+	// saved it. One the session no longer keeps (older than its hash history)
+	// is skipped.
+	//
+	// A session whose confirmed frame went back (a new battle) starts the
+	// check over, as Reset does, and drops the remote hashes it holds: they
+	// belong to the battle before.
 	std::optional<Mismatch> Step(const RollbackSession& session, const Publish* publish,
 		std::map<int, sf4e::SessionProtocol::BattleHashV2>& remote);
+	// The battle is over: its checkpoints and its reported mismatch go. The
+	// room client clears the remote hashes it buffers itself.
 	void Reset();
 
 	// How many confirmed checkpoints are kept for remote hashes still to come.
@@ -53,9 +63,12 @@ private:
 		std::uint64_t overall;
 		bool sent;
 	};
+	void TakeCheckpoints(const RollbackSession& session, int confirmed);
+
 	std::map<int, Checkpoint> local_;
 	int next_ = RollbackSession::kCheckpointInterval; // the next checkpoint to take
 	int lastConfirmed_ = -1;
+	bool mismatchReported_ = false; // this battle's mismatch was returned already
 };
 
 } // namespace sfve::adapter

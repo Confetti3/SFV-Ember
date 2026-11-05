@@ -12,6 +12,7 @@
 #include "ember/SfvVerification.hxx"
 #include "mod/HelperLink.hxx"
 
+#include "common/FighterCatalog.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/ProductIdentity.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
@@ -158,6 +159,63 @@ TEST_CASE("a room's match launches its fighters, stage, rounds and time by the g
 	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 99))); // a room's endless rounds
 	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, 9999))); // longer than SFV's clock holds
 	CHECK(LaunchPicks(MatchOf(0, 0, 0, 7, 300)));
+	CHECK(LaunchPicks(MatchOf(0, 0, 0, 1, 30)));
+	CHECK(LaunchPicks(MatchOf(0, 0, 0, 3, 546)));
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 2)));       // an even round count
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, 29)));   // shorter than SFV's shortest round
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, -1)));   // no time SFV plays
+}
+
+TEST_CASE("the build a room checks carries a fingerprint of the game's content lists")
+{
+	const std::string fingerprint = ContentFingerprint(TestContent());
+	CHECK(fingerprint.size() == 16);
+	CHECK(ContentFingerprint(TestContent()) == fingerprint);
+	mod::ContentLists reordered = TestContent();
+	std::swap(reordered.fighters[0], reordered.fighters[1]);
+	CHECK(ContentFingerprint(reordered) != fingerprint);
+	mod::ContentLists extra = TestContent();
+	extra.stages.push_back("S26");
+	CHECK(ContentFingerprint(extra) != fingerprint);
+	// A code that moved from one list to the other.
+	CHECK(ContentFingerprint({{"RYU", "S01"}, {"S02"}}) != ContentFingerprint({{"RYU"}, {"S01", "S02"}}));
+	CHECK(ContentFingerprint({{"RY", "U"}, {"S01"}}) != ContentFingerprint({{"R", "YU"}, {"S01"}}));
+
+	FillTestCatalog();
+	CHECK(MatchBuildId() == std::string(mod::kMatchBuild) + "/" + fingerprint);
+	CHECK(ember::game::Game().state.BuildId() == MatchBuildId());
+	CHECK(MatchBuildId().size() <= 128); // the room's limit for a build
+}
+
+TEST_CASE("every pick of an SFV fighter is available to the player, and the runtime's check takes it")
+{
+	FillTestCatalog();
+	const ember::game::GameState& state = ember::game::Game().state;
+	const sf4e::selection::Availability availability = state.FighterAvailability(1);
+	CHECK(availability.ready);
+	CHECK_FALSE(sf4e::selection::FighterLocked(40, state.FighterAvailability(40)));
+	// The runtime's Ready check (NetplayRuntime__Room's selection::Available).
+	CHECK(sf4e::selection::Available(PickOf(1, 2, 7), false, availability, nullptr));
+	Pick noAction = PickOf(0);
+	noAction.personalAction = 255;
+	CHECK(sf4e::selection::Available(noAction, false, state.FighterAvailability(0), nullptr));
+}
+
+TEST_CASE("a room's launch goes ahead only while its entry is armed")
+{
+	LaunchArming arming;
+	CHECK_FALSE(arming.Armed(LaunchArming::Ticket::None));
+	const LaunchArming::Ticket first = arming.Arm();
+	CHECK(arming.Armed(first));
+	arming.Drop(); // the player left the room
+	CHECK_FALSE(arming.Armed(first));
+	const LaunchArming::Ticket second = arming.Arm();
+	CHECK((second != first));
+	CHECK(arming.Armed(second));
+	CHECK_FALSE(arming.Armed(first));
+	const LaunchArming::Ticket third = arming.Arm(); // a later entry
+	CHECK_FALSE(arming.Armed(second));
+	CHECK(arming.Armed(third));
 }
 
 TEST_CASE("the product is SFV Ember, with names of its own")
@@ -232,14 +290,14 @@ TEST_CASE("the game offers no optional feature and answers as no battle while no
 	CHECK_FALSE(game.caps.padSetup);
 	CHECK_FALSE(game.caps.steamProfile);
 	CHECK_FALSE(game.caps.customContent);
-	CHECK(game.state.BuildId() == mod::kMatchBuild);
 	CHECK(game.state.Language().empty());
 	CHECK_FALSE(game.state.MainMenuInFront()); // no scene manager seen
 	CHECK(game.state.ForegroundScreen().empty());
 	CHECK(game.battle.Enter() == ember::game::Battle::Entry::Deferred); // no room
 	CHECK_FALSE(game.battle.Live());
 	CHECK_FALSE(game.battle.ResultHeld());
-	CHECK(game.battle.GameResult() == sf4e::room::MatchResult::Cancel);
+	CHECK(game.battle.GameResult() == sf4e::room::MatchResult::Abort); // no match end taken
+	game.battle.DropNextBattle(); // nothing armed
 	CHECK(game.battle.RematchChoices() == 0u);
 	int frame = -1;
 	CHECK_FALSE(game.battle.FightRunning(frame));
@@ -278,11 +336,11 @@ struct Exchanges {
 		if (auto m = b.Step(pair.b, &fromB, toB); m && !mismatchB) mismatchB = m;
 	}
 
-	// Plays both peers to `frames`, stepping the checks as the room client does.
+	// Plays both peers to `frames`, stepping the checks after every frame, as
+	// the room client does.
 	void RunTo(LoopbackPair& pair, int frames)
 	{
-		for (int target = pair.a.Frame(); target < frames;) {
-			target = std::min(frames, target + 10);
+		for (int target = pair.a.Frame() + 1; target <= frames; target++) {
 			REQUIRE(pair.RunTo(target));
 			Step(pair);
 		}
@@ -296,7 +354,12 @@ struct Exchanges {
 
 TEST_CASE("players publish one hash per confirmed checkpoint and agree while their states do")
 {
-	LoopbackPair pair(kBugNone, 0);
+	// With an input delay GGPO confirms frames before they are run and saved;
+	// no checkpoint may be lost to that.
+	int delay = 0;
+	SUBCASE("no input delay") { delay = 0; }
+	SUBCASE("input delay 2") { delay = 2; }
+	LoopbackPair pair(kBugNone, delay);
 	Exchanges exchanges;
 	exchanges.RunTo(pair, 400);
 	CHECK_FALSE(exchanges.mismatchA);
@@ -349,8 +412,41 @@ TEST_CASE("a client that watches publishes nothing, and a watcher's hash never c
 	CHECK(remote.empty()); // compared, so erased
 }
 
+TEST_CASE("a check that starts late publishes from the oldest checkpoint the session still keeps")
+{
+	LoopbackPair pair(kBugNone, 0);
+	REQUIRE(pair.RunTo(400));
+	pair.RunTo(420);
+	CheckpointExchange exchange;
+	std::vector<int> published;
+	const CheckpointExchange::Publish send = [&published](const BattleHashV2& hash) {
+		published.push_back(hash.frameIdx);
+		return true;
+	};
+	std::map<int, BattleHashV2> remote;
+	exchange.Step(pair.a, &send, remote);
+	// The pair hashes every frame (verifyLoads) and the session keeps the
+	// last 256 of them, 165 to 420 here: 60 and 120 are gone.
+	REQUIRE(published.size() >= 4);
+	for (size_t i = 0; i < published.size(); i++) CHECK(published[i] == 180 + (int)i * 60);
+}
+
+namespace {
+
+BattleHashV2 PlayerHash(int frame, std::uint64_t overall)
+{
+	BattleHashV2 hash;
+	hash.frameIdx = frame;
+	hash.overall = overall;
+	hash.fromPlayer = true;
+	return hash;
+}
+
+} // namespace
+
 TEST_CASE("the check starts over when the session's confirmed frame goes back")
 {
+	constexpr std::uint64_t kWrong = 0xBAD;
 	CheckpointExchange exchange;
 	std::vector<int> published;
 	const CheckpointExchange::Publish send = [&published](const BattleHashV2& hash) {
@@ -362,7 +458,11 @@ TEST_CASE("the check starts over when the session's confirmed frame goes back")
 		LoopbackPair first(kBugNone, 0);
 		REQUIRE(first.RunTo(140));
 		first.RunTo(160);
-		exchange.Step(first.a, &send, remote);
+		remote[60] = PlayerHash(60, kWrong);
+		CHECK(exchange.Step(first.a, &send, remote));
+		// One mismatch a battle: the next is not reported again.
+		remote[120] = PlayerHash(120, kWrong);
+		CHECK_FALSE(exchange.Step(first.a, &send, remote));
 	}
 	REQUIRE(!published.empty());
 	CHECK(published.front() == 60);
@@ -370,7 +470,17 @@ TEST_CASE("the check starts over when the session's confirmed frame goes back")
 	LoopbackPair second(kBugNone, 0);
 	REQUIRE(second.RunTo(80));
 	second.RunTo(100);
-	exchange.Step(second.a, &send, remote);
+	// A hash of the battle before, still waiting, is dropped, not compared
+	// with this battle's checkpoint of the same frame.
+	remote[60] = PlayerHash(60, kWrong);
+	CHECK_FALSE(exchange.Step(second.a, &send, remote));
+	CHECK(remote.empty());
 	REQUIRE(!published.empty());
 	CHECK(published.front() == 60);
+	// The new battle's own mismatch is reported.
+	remote[60] = PlayerHash(60, kWrong);
+	const auto mismatch = exchange.Step(second.a, &send, remote);
+	REQUIRE(mismatch);
+	CHECK(mismatch->frame == 60);
+	CHECK(mismatch->remote == kWrong);
 }

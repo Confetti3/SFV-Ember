@@ -1,7 +1,12 @@
 #include "ember/SfvCatalog.hxx"
 
+#include "mod/HelperLink.hxx"
+
 #include "common/GameCatalog.hxx"
 
+#include <xxhash.h>
+
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -11,6 +16,7 @@ namespace {
 
 // Written once by FillCatalog, before the runtime's threads read the catalog.
 mod::ContentLists s_lists;
+std::string s_buildId = mod::kMatchBuild;
 
 bool ValidPick(const sf4e::selection::Pick& pick, bool)
 {
@@ -32,10 +38,10 @@ std::string CodeAt(const std::vector<std::string>& codes, std::int64_t id)
 	return id >= 0 && id < (std::int64_t)codes.size() ? codes[(size_t)id] : std::string();
 }
 
-// "CODE:costume:colour", a player's part of a setup.
-std::string PlayerSetup(const sf4e::selection::Pick& pick)
+// The game's codes are ASCII capitals and digits.
+std::wstring WideCode(const std::string& code)
 {
-	return FighterCode(pick.fighter) + ":" + std::to_string(pick.costume) + ":" + std::to_string(pick.color);
+	return std::wstring(code.begin(), code.end());
 }
 
 } // namespace
@@ -45,8 +51,28 @@ bool FillCatalog(const mod::ContentLists& lists)
 	if (s_catalog.fighterCount > 0) return lists.fighters == s_lists.fighters && lists.stages == s_lists.stages;
 	if (lists.fighters.empty() || lists.stages.empty() || lists.fighters.size() > (size_t)ember::MaxFighters) return false;
 	s_lists = lists;
+	s_buildId = std::string(mod::kMatchBuild) + "/" + ContentFingerprint(lists);
 	s_catalog.fighterCount = (int)s_lists.fighters.size();
 	return true;
+}
+
+const std::string& MatchBuildId()
+{
+	return s_buildId;
+}
+
+std::string ContentFingerprint(const mod::ContentLists& lists)
+{
+	// Each list by its length, each code by its length, so no two lists
+	// read alike.
+	std::string text;
+	for (const std::vector<std::string>* codes : {&lists.fighters, &lists.stages}) {
+		text += std::to_string(codes->size()) + ";";
+		for (const std::string& code : *codes) text += std::to_string(code.size()) + ":" + code;
+	}
+	char hex[17];
+	std::snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)XXH3_64bits(text.data(), text.size()));
+	return hex;
 }
 
 std::string FighterCode(std::int64_t fighter)
@@ -64,15 +90,16 @@ std::optional<mod::MatchPicks> LaunchPicks(const RoomMatch& match)
 	if (!ValidPick(match.picks[0], false) || !ValidPick(match.picks[1], false) || !ValidStage(match.stage)) {
 		return std::nullopt;
 	}
-	// P1's setup names the match's rules; of P2's only the fighter counts.
-	const std::string rules = " " + StageCode(match.stage) + " " + std::to_string(match.rounds) + " " +
-		std::to_string(match.roundSeconds);
+	const std::optional<int> clock = mod::RoundClockFrames(match.roundSeconds);
+	if (!mod::PlayableRounds(match.rounds) || !clock) return std::nullopt;
 	mod::MatchPicks picks;
-	mod::MatchRules ignored;
-	if (!mod::ParseSetup(PlayerSetup(match.picks[0]) + rules, &picks.players[0], &picks.rules) ||
-		!mod::ParseSetup(PlayerSetup(match.picks[1]), &picks.players[1], &ignored)) {
-		return std::nullopt;
+	for (int side = 0; side < 2; side++) {
+		const sf4e::selection::Pick& pick = match.picks[side];
+		picks.players[side] = {WideCode(FighterCode(pick.fighter)), pick.costume, pick.color};
 	}
+	picks.rules.stage = WideCode(StageCode(match.stage));
+	picks.rules.rounds = match.rounds;
+	picks.rules.timeFrames = *clock;
 	return picks;
 }
 

@@ -12,9 +12,14 @@
 // The decision is the mod's (MatchEndChoice), the same on both copies:
 // a rematch (the game's own restart, what "Continue" does: same fighters
 // and stage, in the same battle state) or back to the main menu (what
-// "Exit" does), where the next match is launched from.
+// "Exit" does), where the next match is launched from. The match's result
+// is read as the end is taken, on that confirmed frame, and kept.
+
+#include "mod/MatchResult.hxx"
 
 #include <stdint.h>
+
+#include <optional>
 
 namespace sfve::mod {
 
@@ -28,11 +33,18 @@ void SetLinkedMatchEnd(bool on);
 // Game thread: a match ended (its results skipped) and waits for a decision.
 bool EndedVersusBattlePending();
 
-// Game thread: the versus battle whose match ended, or null (also when that
-// battle is no longer the current scene). Taking it clears it.
-uint8_t* TakeEndedVersusBattle();
+// Game thread, on a confirmed frame: the versus battle whose match ended, or
+// null (also when that battle is no longer the current scene). Taking it
+// clears it and, when it returns the battle, reads the match's result from
+// `battleData` (SfvAdapter::BattleData) as DecidedMatchResult.
+uint8_t* TakeEndedVersusBattle(const uint8_t* battleData);
 
-// Game thread: drops a pending match end (a new battle, or the session gone).
+// Game thread: the result read when the last match end was taken; empty
+// before. It outlasts the battle (the room hears it after the battle has
+// left) until the next battle begins.
+std::optional<MatchResult> DecidedMatchResult();
+
+// Game thread: a new battle: drops a pending match end and the decided result.
 void ForgetEndedVersusBattle();
 
 // Game thread, between two session frames: restarts that battle with the

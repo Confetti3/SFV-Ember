@@ -83,10 +83,10 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		: frame >= config_.mashFrom              ? input::Mash(config_.mashSeed, frame)
 												 : 0;
 	if (endPending) {
-		if (uint8_t* ended = TakeEndedVersusBattle()) {
-			// The game's judgement, the same on both copies (it is restored
-			// with the rest of the state on rollback).
-			lastResult_ = DescribeMatchResult(ReadMatchResult(adapter.BattleData()));
+		// The game's judgement, the same on both copies (it is restored with
+		// the rest of the state on rollback).
+		if (uint8_t* ended = TakeEndedVersusBattle(adapter.BattleData())) {
+			lastResult_ = DescribeMatchResult(*DecidedMatchResult());
 			Log("netplay: match result %s", lastResult_.c_str());
 			if (GetMatchEndChoice() == MatchEndChoice::Rematch) {
 				Rematch(ended);

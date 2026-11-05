@@ -23,6 +23,7 @@ ShowResultFn o_showResult;
 bool s_linked; // game thread only
 std::atomic<MatchEndChoice> s_choice{MatchEndChoice::Rematch};
 uint8_t* s_ended; // game thread only
+std::optional<MatchResult> s_decided; // game thread only
 
 // Called by the battle flow's MatchEnd event (code 14), inside a battle
 // frame. The game's version marks the results as up (+0x438 = 2) and opens
@@ -56,15 +57,23 @@ bool EndedVersusBattlePending()
 	return s_ended != nullptr;
 }
 
-uint8_t* TakeEndedVersusBattle()
+uint8_t* TakeEndedVersusBattle(const uint8_t* battleData)
 {
 	uint8_t* ended = std::exchange(s_ended, nullptr);
-	return ended && ended == CurrentSceneState() ? ended : nullptr;
+	if (!ended || ended != CurrentSceneState()) return nullptr;
+	s_decided = ReadMatchResult(battleData);
+	return ended;
+}
+
+std::optional<MatchResult> DecidedMatchResult()
+{
+	return s_decided;
 }
 
 void ForgetEndedVersusBattle()
 {
 	s_ended = nullptr;
+	s_decided.reset();
 }
 
 void Rematch(uint8_t* state)

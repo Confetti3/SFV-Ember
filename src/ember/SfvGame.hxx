@@ -12,6 +12,8 @@
 // (the step after this one), no battle is in play and they answer as with
 // no battle.
 
+#include <cstdint>
+
 namespace sfve {
 class RollbackSession;
 }
@@ -30,5 +32,27 @@ struct BattleInPlay {
 // BattleInPlay) before that battle's objects go.
 void SetBattleInPlay(const BattleInPlay& battle);
 const BattleInPlay& CurrentBattle();
+
+// The launch a room's match armed (Battle::Enter) until the runtime drops it
+// (Battle::DropNextBattle). Each entry arms a new ticket, and the launch,
+// which waits for the main menu, goes ahead only while its ticket is still
+// the armed one: a player who left the room, or a later entry, stops it.
+// Game thread.
+class LaunchArming {
+public:
+	enum class Ticket : std::uint64_t { None = 0 };
+
+	Ticket Arm()
+	{
+		armed_ = Ticket{++armedCount_};
+		return armed_;
+	}
+	void Drop() { armed_ = Ticket::None; }
+	bool Armed(Ticket ticket) const { return ticket != Ticket::None && ticket == armed_; }
+
+private:
+	std::uint64_t armedCount_ = 0;
+	Ticket armed_ = Ticket::None;
+};
 
 } // namespace sfve::adapter

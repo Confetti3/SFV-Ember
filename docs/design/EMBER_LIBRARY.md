@@ -705,18 +705,18 @@ SFV's game definitions for the library are in `src/ember/` (static library `sfve
 
 | Definition | File | What it is |
 |---|---|---|
-| `ember::Catalog()` | `SfvCatalog.cxx` | Filled once at run time by `FillCatalog(mod::ReadContentLists())`, before the runtime starts, so ids are positions in the game's lists. Before that it has no fighters and `Usable` is false. Costume and colour limit: 100, the two digits `ParseSetup` takes; the game's own check runs at launch (`kCostumeValid`/`kColourValid`). The game data gives no tighter limit. Ultra choices: 1 (always 0). Pick rule: fighter in the roster, costume and colour under 100, Ultra 0, handicap 0; edition, personal action and win quote are ignored. Stage rule: a position in the stage list. There is no random stage. `LaunchPicks` turns a room's match into `MatchPicks` through `ParseSetup`, so the room's rounds and time must be ones SFV plays (1/3/5/7, 30-546 s) |
+| `ember::Catalog()` | `SfvCatalog.cxx` | Filled once at run time by `FillCatalog(mod::ReadContentLists())`, before the runtime starts, so ids are positions in the game's lists. Before that it has no fighters and `Usable` is false. Costume and colour limit: 100, the two digits `ParseSetup` takes; the game's own check runs at launch (`kCostumeValid`/`kColourValid`). The game data gives no tighter limit. Ultra choices: 1 (always 0). Pick rule: fighter in the roster, costume and colour under 100, Ultra 0, handicap 0; edition, personal action and win quote are ignored. Stage rule: a position in the stage list. There is no random stage. Because ids are positions in each PC's lists, `FillCatalog` also sets the build id (`MatchBuildId`): `kMatchBuild`, "/", and 16 hex digits of an XXH3 hash of both code lists (`ContentFingerprint`). Copies with different installed content fail the room's build check instead of disagreeing on fighter N. `LaunchPicks` builds `MatchPicks` from the typed pick and stage codes; the room's rounds and time must be ones SFV plays (`PlayableRounds`: 1/3/5/7; `RoundClockFrames`: 30-546 s), the same rules `ParseSetup` applies to text |
 | `ember::Product()` | `SfvProduct.cxx` | "SFV Ember" and "Street Fighter V". Folder and object stem `SFVEmber`; `sfv_ember.dll`, `StreetFighterV.exe` and `sfv_ember.log`; URL scheme `ember-sfv` (5.4 is still open). The mark and the backdrop are Ember's until SFV Ember has its own art. The accent is Ember's orange. No release repositories, launcher, updater or Discord bridge yet, so those names are empty. `sf4e_embed_brand_mark` (library) embeds the mark |
-| `MakeBattleVerifier()` | `SfvVerification.cxx` | `CheckpointExchange`: one overall hash per confirmed checkpoint (`RollbackSession::HashAt`, every 60 frames). `flow`, `chara0` and `chara1` are 0, and no v1 snapshot is sent. A watcher publishes nothing and its hashes never count. A mismatch logs, pushes the desync notice and calls `Battle::Fail` |
+| `MakeBattleVerifier()` | `SfvVerification.cxx` | `CheckpointExchange`: one overall hash per confirmed checkpoint (`RollbackSession::HashAt`, every 60 frames). A checkpoint is taken only once the session has saved it: GGPO confirms frames up to the input delay before they run. Only a checkpoint older than the session's hash history is skipped. `flow`, `chara0` and `chara1` are 0, and no v1 snapshot is sent. A watcher publishes nothing and its hashes never count. The battle's first mismatch logs, pushes the desync notice and calls `Battle::Fail`. When the confirmed frame goes back (a new battle), the check starts over and drops the remote hashes it holds |
 | Labels and pictures | `SfvSelection.cxx` | Stage by its code; "Costume N" and "color N" use the game's numbers; Ultra labels are empty. Every picture reports missing |
 | `ember::game::Game()` | `SfvGame.cxx` | Every capability is off. Training and replays are the library's `NoTraining`/`NoReplays` (`sf4e__AbsentGameFeatures.hxx`). `SetBattleInPlay` is the seam through which the adapter and the verifier read the mod's battle (its `RollbackSession` and `SfvAdapter`) |
 
-Mapped to existing modules: `BuildId` → `kMatchBuild` (HelperLink). `MainMenuInFront` and `ForegroundScreen` → `GameScene` (two new queries). `Enter` → `LaunchPicks` + `LaunchOnMainMenu`, with `MatchEndChoice::MainMenu`. `Live`, `FightRunning` and `Sample` (ping) → `RollbackSession`. `GameResult` → `ReadMatchResult`. `ResultHeld` and `RematchChoices` → `MatchEnd`. `ReadAssignedInput` → `SfvAdapter::Sampled(0)`.
+Mapped to existing modules: `BuildId` → `MatchBuildId` (SfvCatalog: `kMatchBuild` and the content fingerprint). `MainMenuInFront` and `ForegroundScreen` → `GameScene` (two new queries). `Enter` → `LaunchPicks` + `LaunchOnMainMenu`, with `MatchEndChoice::MainMenu`; it arms a `LaunchArming` ticket, and the launch waiting for the main menu goes ahead only while that ticket is armed. `DropNextBattle` drops it, so a player who left does not launch the old picks. `Live`, `FightRunning` and `Sample` (ping) → `RollbackSession`. `GameResult` → `MatchEnd::DecidedMatchResult`: the result `TakeEndedVersusBattle` reads on the confirmed frame it takes the match's end, kept until the next battle; `Abort` (no result) before that. `ResultHeld` and `RematchChoices` → `MatchEnd`. `ReadAssignedInput` → `SfvAdapter::Sampled(0)`. `FighterAvailability` reports everything owned (ready, every costume, colour and personal action), so the runtime's Ready check takes SFV picks; the game's own ownership check judges content at launch.
 
 **Stubbed (neutral value, one-line comment in the code)**
-- **GameState:** `Language` (contract issue queued), `FighterAvailability`, `Random`, `PlayChallengerCall`, `CloseGame`.
+- **GameState:** `Language` (contract issue queued), `Random`, `PlayChallengerCall`, `CloseGame`.
 - **Battle:**
-  - `OnSessionSynced`, `DropNextBattle`.
+  - `OnSessionSynced`.
   - `Retire`, `Abort` and `Fail` log "exit not wired": `NetplayMode::Leave` is private.
   - `GamesPlayedInPlace`, `DisconnectCountdownMs`, `RecentRollbackFrames`, `PingSummary`.
   - The connection warning, prediction stall and applied delay in `Sample`: `RollbackSession` does not expose them.
@@ -725,6 +725,11 @@ Mapped to existing modules: `BuildId` → `kMatchBuild` (HelperLink). `MainMenuI
 - **Preferences:** a save is taken and written nowhere.
 - **Services:** Steam, music, away sound, custom content, self-test.
 - A failed launch is only logged.
+
+**Left for the next step.** These three stay as they are until the runtime runs in the mod:
+- `Retire`, `Abort` and `Fail` only log. `NetplayMode::Leave` becomes their target (below).
+- The Input stub lists no devices, so `runtime->input.Ready()` stays false: `AttachRoom` returns early and a join or Ready is refused until SFV lists its pads and assigns one to its side.
+- The runtime start must check `ember::Usable(ember::Catalog())` after `FillCatalog`, and log instead of starting when the lists were empty or refused.
 
 **Where each RuntimeEvents call goes (the next step)**
 - `FillCatalog(ReadContentLists())`, then the runtime start, in `dllmain` once the lists are not empty. `ember::Tick` runs on `RunEachGameFrame`. `NotifyRuntimeEventSystemReady` goes in `GameScene`'s tick, the first time the main menu is in front.
@@ -738,9 +743,9 @@ Mapped to existing modules: `BuildId` → `kMatchBuild` (HelperLink). `MainMenuI
   - After the session starts, call `NoteRuntimeMatchStart`. On failure, call `PushAlert`.
 - `NetplayMode::Frame`:
   - `NotifyGgpoSyncPhase` as `Live`/`Running` change.
-  - At `TakeEndedVersusBattle`, call `NotifyRuntimeMatchResult(result, frame, LastConfirmedFrame, 0, rematch)`. Then `RematchInPlaceOffered` decides `Rematch` or `Leave`, in place of the fixed `MatchEndChoice`.
+  - At `TakeEndedVersusBattle`, call `NotifyRuntimeMatchResult` with `GameResult()` (MatchEnd's decided result), the frame, `LastConfirmedFrame`, 0 and the rematch choice. Then `RematchInPlaceOffered` decides `Rematch` or `Leave`, in place of the fixed `MatchEndChoice`.
   - In the no-session branch, call `NotifyRuntimeBattleClosedWithoutSession`.
 - `NetplayMode::Leave` becomes the target of `Retire`/`Abort`/`Fail` and calls `NotifyMatchEnded`. `FinalizeControlPlaneLossAfterBattle` runs once the main menu is back if `IsControlPlaneLost`. `ShutdownNetplay` runs at process detach.
 - `MatchLink`/`HelperLink` are retired: the room's grant, ports and picks replace them. `ReadRuntimeMatchInput`, `BindRuntimeInput`, `TrainingRequestHolds` and the spectator calls are not used while those capabilities are off.
 
-**Still SF4's in this link:** `sfve_ember_tests` compiles the library's `FighterCatalog.cxx`, `StageCatalog.cxx` and `InstalledContent.cxx` because the runtime still reaches SF4's roster and stage tables (step 5).
+**Still SF4's in this link:** `sfve_ember_tests` compiles the library's `FighterCatalog.cxx`, `StageCatalog.cxx` and `InstalledContent.cxx` because the runtime still reaches SF4's roster and stage tables (step 5). The Ready check is one of them: `selection::Available` runs SF4's `Valid` (44 fighters, 6 or 7 costumes, 12 or 22 colours, SF4's editions) after the availability, so an SFV pick outside those ranges is refused until step 5 checks picks with `Catalog().validPick`.
