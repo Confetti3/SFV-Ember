@@ -571,21 +571,28 @@ constexpr uint32_t kNodeFunction = 0x30;
 // and restored; these are left out of the hash, or have a word masked.
 //
 // Presentation, which drifts on replay without the fight diverging (learned
-// with the in-game synctest, -sfve_learn=1, 2026-11-04: during fighting only
-// these differed, in about 70% of 7-frame rollbacks, while the fighters'
-// regions never did): the camera (CameraUnit+0x100, 528 bytes), the fighters'
-// centre and player lists (CharaManagerUnit+0x1C0, 112), each fighter's
-// vectors rebuilt in the CharaManager tasks (CharaUnit+0x764 from byte 32:
-// its first 7 dwords and the next are control state, see the region map,
-// section 3, tier C, and stay hashed; the randomised synctest with both
-// players mashing, 2026-11-04: those 32 bytes never differed in 1,099
-// rollbacks while the vectors differed in nearly every one), and a
+// with the in-game synctest, -sfve_learn=1): the camera (CameraUnit+0x100,
+// 528 bytes: eye, target, field of view, read by nothing in the fight; the
+// screen edge comes from the fighters' centre below, not the camera), a
 // projectile's visual part (ProjectileVisualPart+0xC0 and +0xF0: its UE
 // actor, reconciled after a restore by rva 0x482D10, so a replay can differ
 // in the actor pointer and a frame counter), and a fighter's material part
-// (CharaMaterialPart+0xD8 and +0x3B0: shader and material instances, its
-// pointers recreated by its post-restore callback rva 0x3587D0; the synctest
-// with KEN vs RYU, schedule 41, saw them differ while no fight state did).
+// (CharaMaterialPart+0xD8 and +0x3B0: shader and material instances
+// recreated by its post-restore callback rva 0x3587D0).
+//
+// Bone positions inside fight state, masked: a fighter's bone 28 in world
+// space (CharaUnit+1984, read in Chara PreInput rva 0x37D250 from its visual
+// part, the UE pose) and the point the fighters' centre task derives from
+// it (CharaManagerUnit+464). After a restore the fighter's post-restore
+// callback (rva 0x37B670) sets a flag that skips the bone read until a
+// visual pass clears it, so replayed ticks keep the restored bone; only the
+// camera reads these. Everything around them is fight state and hashed: the
+// centre at CharaManagerUnit+448 (screen-edge pushback, push order, facing:
+// rva 0x34C680, 0x34BCD0, 0x323830) and a fighter's positions, offsets and
+// position relative to the centre in CharaUnit+0x764 (pushback, landing,
+// box transforms: rva 0x34C680, 0x388660, 0x3826D0). Both masks are whole
+// 8-byte words of their run: CharaUnit+0x764's [88, 112) also covers
+// +1980..+1983 and +2000..+2003 (traced in IDA, 2026-11-04).
 //
 // The battle statistics (StatsUnit+0xF8, 77804 bytes, registered at rva
 // 0x4B0570): its task (rva 0x4BA550, after the fighters' tasks) adds each
@@ -620,14 +627,14 @@ struct RunRule {
 constexpr uint32_t kToTheEnd = ~0u;
 constexpr RunRule kRunRules[] = {
 	{"CameraUnit", 0x100, ".presentation"},
-	{"CharaManagerUnit", 0x1C0, ".presentation"},
+	{"CharaManagerUnit", 0x1C0, "", 16, 32},
 	{"CharaMaterialPart", 0xD8, ".presentation"},
 	{"CharaMaterialPart", 0x3B0, ".presentation"},
 	{"ProjectileVisualPart", 0xC0, ".presentation"},
 	{"ProjectileVisualPart", 0xF0, ".presentation"},
 	{"StatsUnit", 0xF8, ".stats"},
 	{"ReplayUnit", 0xF8, ".replaycount"},
-	{"CharaUnit", 0x764, "", 32, kToTheEnd},
+	{"CharaUnit", 0x764, "", 88, 112},
 	{"CharaStatusPart", 0x238, "", 0x88, 0x90},
 };
 } // namespace manager
