@@ -97,9 +97,8 @@ uint8_t* SfvAdapter::FindUnit(uint32_t typeRva) const
 	return GameFindUnit(rollbackUnit_, typeRva);
 }
 
-// Every region of the game's rollback manager. The presentation regions, the
-// battle statistics and the replay unit's counters are restored but not
-// hashed.
+// Every region of the game's rollback manager, named by its owner; the runs
+// sfv::manager::kRunRules lists are restored but not hashed, or masked.
 bool SfvAdapter::AddGameRegions(uint8_t* manager)
 {
 	auto* begin = Field<RegionEntry*>(manager, sfv::manager::kRegionsBegin);
@@ -108,44 +107,31 @@ bool SfvAdapter::AddGameRegions(uint8_t* manager)
 		Log("adapter: the rollback manager has no regions (%p..%p)", (void*)begin, (void*)end);
 		return false;
 	}
-	uint8_t* replayUnit = FindUnit(sfv::unit::kReplayUnitType);
-	const uint8_t* replayCounters = replayUnit ? replayUnit + sfv::replayunit::kCounters : nullptr;
-	if (!replayUnit) Log("adapter: no replay unit; its tick counters stay in the hash");
 	regionNames_.Collect(rollbackUnit_, manager);
-	int unchecked[std::size(sfv::manager::kUncheckedSizes)] = {};
-	int masked[std::size(sfv::manager::kMaskedWords)] = {};
+	int applied[std::size(sfv::manager::kRunRules)] = {};
 	for (RegionEntry* r = begin; r < end; r++) {
 		if (!r->ptr || r->size == 0 || r->size > kMaxRegionSize) {
 			Log("adapter: region %zu looks wrong (%p, %llu bytes)", size_t(r - begin), (void*)r->ptr, r->size);
 			return false;
 		}
-		const char* kind = r->ptr == replayCounters && r->size == sfv::replayunit::kCountersSize ? ".replaycount" : "";
-		for (size_t k = 0; k < std::size(sfv::manager::kUncheckedSizes); k++) {
-			if (r->size != sfv::manager::kUncheckedSizes[k].size) continue;
-			kind = sfv::manager::kUncheckedSizes[k].kind;
-			unchecked[k]++;
+		const NamedRun run = regionNames_.Name(r->ptr, (size_t)r->size);
+		const sfv::manager::RunRule* rule = nullptr;
+		for (size_t k = 0; run.owner && k < std::size(sfv::manager::kRunRules); k++) {
+			const sfv::manager::RunRule& candidate = sfv::manager::kRunRules[k];
+			if (strcmp(candidate.owner, run.owner) != 0 || candidate.offset != run.offset) continue;
+			rule = &candidate;
+			applied[k]++;
 		}
-		std::string name = regionNames_.Name(r->ptr, (size_t)r->size);
-		if (name.empty()) name = "game." + std::to_string(r - begin);
+		const char* kind = rule ? rule->kind : "";
+		const std::string name = run.name.empty() ? "game." + std::to_string(r - begin) : run.name;
 		const size_t index = layout_.Add(name + kind, r->ptr, (size_t)r->size, !*kind);
-		for (size_t k = 0; k < std::size(sfv::manager::kMaskedWords); k++) {
-			if (r->size != sfv::manager::kMaskedWords[k].regionSize) continue;
-			layout_.IgnoreWord(index, sfv::manager::kMaskedWords[k].offset);
-			masked[k]++;
-		}
-	}
-	for (size_t k = 0; k < std::size(sfv::manager::kUncheckedSizes); k++) {
-		if (unchecked[k] != sfv::manager::kUncheckedSizes[k].count) {
-			Log("adapter: expected %d %s region(s) of %llu bytes, found %d; hashes may include them",
-				sfv::manager::kUncheckedSizes[k].count, sfv::manager::kUncheckedSizes[k].kind + 1,
-				(unsigned long long)sfv::manager::kUncheckedSizes[k].size, unchecked[k]);
-		}
+		if (rule && rule->maskedWord != sfv::manager::kNoMask) layout_.IgnoreWord(index, rule->maskedWord);
 	}
 	regionNames_.LogSummary();
-	for (size_t k = 0; k < std::size(sfv::manager::kMaskedWords); k++) {
-		if (masked[k] != sfv::manager::kMaskedWords[k].count) {
-			Log("adapter: expected %d region(s) of %llu bytes with a statistics word, found %d", sfv::manager::kMaskedWords[k].count,
-				(unsigned long long)sfv::manager::kMaskedWords[k].regionSize, masked[k]);
+	for (size_t k = 0; k < std::size(sfv::manager::kRunRules); k++) {
+		if (!applied[k]) {
+			Log("adapter: no %s run at +0x%X in this battle; its rule applied nowhere", sfv::manager::kRunRules[k].owner,
+				sfv::manager::kRunRules[k].offset);
 		}
 	}
 	return true;

@@ -26,15 +26,22 @@ namespace sfve::mod {
 
 struct OwnerSpec; // an owner type's registered runs (SfvRegionNames.cxx)
 
+// A table entry's owner: the registered run that starts at its address.
+struct NamedRun {
+	std::string name;           // "CharaUnit[1].CharaStatusPart+0x238"; empty when unowned
+	const char* owner = nullptr; // the owner's type, e.g. "CharaStatusPart"
+	uint32_t offset = 0;        // the run's start in its owner
+};
+
 class RegionNames {
 public:
 	// Finds the known objects from any unit of the battle and the rollback
 	// manager (the root unit is the manager's owner).
 	void Collect(uint8_t* anyUnit, uint8_t* manager);
 
-	// The owner's name for a table entry, or "" when no known run starts
-	// at `ptr`. Marks the run as seen.
-	std::string Name(const uint8_t* ptr, size_t size);
+	// The run a table entry starts with, or an empty name when no known run
+	// starts at `ptr`. Marks the run as seen.
+	NamedRun Name(const uint8_t* ptr, size_t size);
 
 	// Logs what matched, every entry without an owner, runs whose length
 	// differs from the map's, and expected runs the table did not list.
@@ -42,7 +49,7 @@ public:
 
 private:
 	struct Run {
-		std::string name;
+		NamedRun named;
 		size_t expectedSize = 0;
 		bool seen = false;
 	};

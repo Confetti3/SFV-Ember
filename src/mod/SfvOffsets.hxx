@@ -394,16 +394,8 @@ constexpr uint32_t kFlowUnitType = 0x3A65188; // data: FlowUnit's type id (the r
 // 0x2C70D98), which judges KOs and time-outs (task rva 0x487CD0).
 constexpr uint32_t kVersusRuleUnitType = 0x3A723E0;
 constexpr uint32_t kReplayUnitType = 0x3A69C48; // data: ReplayUnit's type id (vtable rva 0x2C6FF70)
+constexpr uint32_t kCharaUnitType = 0x3A647C0;  // data: CharaUnit's type id, a fighter
 } // namespace unit
-
-// The replay unit counts battle ticks (four copies, task rva 0x48DF30) while
-// the replay recorder records; the recorder (outside the snapshot) stops at a
-// round's end, so a replay across a round's end counts fewer. Saved and
-// restored with the game's snapshot, never hashed.
-namespace replayunit {
-constexpr uint32_t kCounters = 248;
-constexpr uint32_t kCountersSize = 16;
-} // namespace replayunit
 
 // The rule unit judges a round over in its task (rva 0x487CD0): state 2 is
 // "fighting", 3 "judged"; on a KO or time-out it stops the battle frame
@@ -453,7 +445,7 @@ constexpr uint32_t kRoundWinner = 4;
 constexpr uint32_t kRoundFinish = 12;
 constexpr int32_t kCauseKo = 2;
 // At a round's end the rule unit (rva 0x480120) copies the battle statistics
-// (StatsUnit+248, see manager::kUncheckedSizes) into the round record after
+// (StatsUnit+248, see manager::kRunRules) into the round record after
 // its first 64 bytes, filling it: restored, not hashed.
 constexpr uint32_t kRoundStats = 64;
 constexpr uint32_t kRoundStatsSize = kRoundStride - kRoundStats;
@@ -530,47 +522,59 @@ constexpr uint32_t kPostRestoreList = 0x38;  // std::list sentinel pointer
 constexpr uint32_t kNodeToken = 0x18;
 constexpr uint32_t kNodeContext = 0x28;
 constexpr uint32_t kNodeFunction = 0x30;
-// Regions of the game's snapshot that drift on replay without the fight
-// diverging: written from per-rendered-frame state (camera and presentation),
-// so they differ whenever a replay runs a different number of rendered
-// frames. Still saved and restored; left out of the hash. Learned with the
-// in-game synctest (-sfve_learn=1, 2026-11-04): during fighting only these
-// differed, in about 70% of 7-frame rollbacks, while the fighters' regions
-// never did. Identified by size, each unique in the table (one 112, two 300,
-// one 528 bytes); Bind checks the counts.
+// How registered runs of the game's snapshot are hashed, by owner type and
+// run offset (RegionNames; docs/design/SFV_REGION_MAP.md). Every run is saved
+// and restored; these are left out of the hash, or have a word masked.
 //
-// The battle statistics (StatsUnit, type id rva 0x3A665F0) are left out the
-// same way: its task (rva 0x4BA550, after the fighters' tasks) adds each
+// Presentation, which drifts on replay without the fight diverging (learned
+// with the in-game synctest, -sfve_learn=1, 2026-11-04: during fighting only
+// these differed, in about 70% of 7-frame rollbacks, while the fighters'
+// regions never did): the camera (CameraUnit+0x100, 528 bytes), the fighters'
+// centre and player lists (CharaManagerUnit+0x1C0, 112), each fighter's
+// vectors rebuilt in the CharaManager tasks (CharaUnit+0x764, 300; its first
+// 7 dwords are control state, see the region map, section 3, tier C), and a
+// projectile's visual part (ProjectileVisualPart+0xC0 and +0xF0: its UE
+// actor, reconciled after a restore by rva 0x482D10, so a replay can differ
+// in the actor pointer and a frame counter).
+//
+// The battle statistics (StatsUnit+0xF8, 77804 bytes, registered at rva
+// 0x4B0570): its task (rva 0x4BA550, after the fighters' tasks) adds each
 // frame's time to a per-player bucket chosen by fighter-state predicates,
 // and a frame replayed after a restore can land in a neighbouring bucket
 // (the synctest with both players mashing: two counters 1000 apart, their
 // sum equal; no fighter region differed). Only UI text and a mode score read
-// them (rva 0x3EDCE0, 0x494FE0, 0x6536A0); the fight does not. One region of
-// 77804 bytes (+248..+78052, registered at rva 0x4B0570).
-struct UncheckedSize {
-	uint64_t size;
-	int count;
-	const char* kind; // the region name's suffix
+// them (rva 0x3EDCE0, 0x494FE0, 0x6536A0); the fight does not.
+//
+// The replay unit's tick counters (ReplayUnit+0xF8, 16): it counts battle
+// ticks (four copies, task rva 0x48DF30) while the replay recorder records;
+// the recorder (outside the snapshot) stops at a round's end, so a replay
+// across a round's end counts fewer.
+//
+// A masked word: each fighter's CharaStatusPart registers part+0x238..+0x303
+// as one run (rva 0x354260); its 8 bytes at +0x88 are part+0x2C0, the
+// combo's copied move count, and +0x2C4, the opponent's move starts in the
+// current combo (incremented when the other fighter enters a state, rva
+// 0x356290, and reset by this fighter's own, rva 0x35DD20). When both
+// fighters start a move on the same frame the result depends on which writes
+// last, and the two copies (or a replay) can differ; only the Combo event's
+// statistics listener reads it (rva 0x4B27D0).
+struct RunRule {
+	const char* owner;   // RegionNames' owner type
+	uint32_t offset;     // the run's start in its owner
+	const char* kind;    // non-empty: not hashed; the region name's suffix
+	uint32_t maskedWord; // kNoMask, or the run-relative 8-byte word not hashed
 };
-constexpr UncheckedSize kUncheckedSizes[] = {
-	{112, 1, ".presentation"}, {300, 2, ".presentation"}, {528, 1, ".presentation"}, {77804, 1, ".stats"}};
-
-// Words inside checked regions that feed only the statistics: restored, not
-// hashed. Each fighter's CharaStatusPart (type id rva 0x3A64B08) registers
-// part+0x238..+0x303 as one 204-byte region (rva 0x354260); its 8 bytes at
-// +0x88 are part+0x2C0, the combo's copied move count, and +0x2C4, the
-// opponent's move starts in the current combo (incremented when the other
-// fighter enters a state, rva 0x356290, and reset by this fighter's own,
-// rva 0x35DD20). When both fighters start a move on the same frame the
-// result depends on which writes last, and the two copies (or a replay) can
-// differ; only the Combo event's statistics listener reads it (rva
-// 0x4B27D0). Found as a 204-byte region per player in both linked runs.
-struct MaskedWord {
-	uint64_t regionSize;
-	int count;
-	uint32_t offset; // the 8-byte word holding it
+constexpr uint32_t kNoMask = ~0u;
+constexpr RunRule kRunRules[] = {
+	{"CameraUnit", 0x100, ".presentation", kNoMask},
+	{"CharaManagerUnit", 0x1C0, ".presentation", kNoMask},
+	{"CharaUnit", 0x764, ".presentation", kNoMask},
+	{"ProjectileVisualPart", 0xC0, ".presentation", kNoMask},
+	{"ProjectileVisualPart", 0xF0, ".presentation", kNoMask},
+	{"StatsUnit", 0xF8, ".stats", kNoMask},
+	{"ReplayUnit", 0xF8, ".replaycount", kNoMask},
+	{"CharaStatusPart", 0x238, "", 0x88},
 };
-constexpr MaskedWord kMaskedWords[] = {{204, 2, 0x88}};
 } // namespace manager
 
 } // namespace sfve::mod::sfv

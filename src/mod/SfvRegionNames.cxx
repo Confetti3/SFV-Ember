@@ -41,7 +41,7 @@ namespace {
 // ActionUnit's runs (+248/40, +376/68) are inherited by CharaUnit and
 // ProjectileUnit; ActionPart's (+216/15808, +16048/4) by both action parts.
 const OwnerSpec kUnits[] = {
-	{"CharaUnit", 0x3A647C0,
+	{"CharaUnit", sfv::unit::kCharaUnitType,
 		{{248, 40}, {376, 68}, {1892, 300}, {2196, 208}, {2416, 28}, {2448, 28}, {2480, 652}, {3136, 24}, {3488, 48},
 			{3548, 24}, {3584, 12}, {3604, 16}},
 		{{0xC58, {16, 32}}}},
@@ -51,12 +51,12 @@ const OwnerSpec kUnits[] = {
 	{"CameraUnit", 0x3A648A0, {{256, 528}, {792, 20}, {832, 76}, {928, 36}, {976, 120}, {1104, 36}, {1152, 128}, {1360, 60}},
 		{}},
 	{"InputUnit", 0x3A64C90, {{376, 8192}}, {}},
-	{"VersusRuleUnit", 0x3A723E0, {{252, 64}, {69828, 120}}, {}},
+	{"VersusRuleUnit", sfv::unit::kVersusRuleUnitType, {{252, 64}, {69828, 120}}, {}},
 	{"ComboObserverUnit", 0x3A692C8, {{248, 32}}, {}},
 	{"StatusObserverUnit", 0x3A657A0, {{248, 240}}, {}},
 	{"StatsUnit", 0x3A665F0, {{248, 77804}}, {}},
 	{"VfxManagerUnit", 0x3A64BE8, {{248, 496}}, {}},
-	{"ReplayUnit", 0x3A69C48, {{248, 16}}, {}},
+	{"ReplayUnit", sfv::unit::kReplayUnitType, {{248, 16}}, {}},
 };
 
 const OwnerSpec kParts[] = {
@@ -132,13 +132,16 @@ void RegionNames::AddObject(const std::string& name, uint8_t* object, const Owne
 {
 	const uintptr_t base = reinterpret_cast<uintptr_t>(object);
 	objects_.emplace_back(base, name);
-	for (const RunSpec& r : spec.runs) runs_[base + r.offset] = {name + "+" + Hex(r.offset), r.size};
+	for (const RunSpec& r : spec.runs) runs_[base + r.offset] = {{name + "+" + Hex(r.offset), spec.name, r.offset}, r.size};
 	for (const SubObjectSpec& s : spec.subObjects) {
 		uint8_t* sub = nullptr;
 		if (!TryRead(object + s.pointerAt, &sub) || !sub) continue;
 		const std::string subName = name + "->" + Hex(s.pointerAt);
 		objects_.emplace_back(reinterpret_cast<uintptr_t>(sub), subName);
-		runs_[reinterpret_cast<uintptr_t>(sub) + s.run.offset] = {subName + "+" + Hex(s.run.offset), s.run.size};
+		// A sub-object's runs belong to their own object, not the owner's
+		// layout: they carry no owner type, so no owner rule applies.
+		runs_[reinterpret_cast<uintptr_t>(sub) + s.run.offset] = {{subName + "+" + Hex(s.run.offset), nullptr, s.run.offset},
+			s.run.size};
 	}
 }
 
@@ -186,21 +189,22 @@ void RegionNames::Collect(uint8_t* anyUnit, uint8_t* manager)
 	std::sort(objects_.begin(), objects_.end());
 }
 
-std::string RegionNames::Name(const uint8_t* ptr, size_t size)
+NamedRun RegionNames::Name(const uint8_t* ptr, size_t size)
 {
 	const uintptr_t at = reinterpret_cast<uintptr_t>(ptr);
 	const auto it = runs_.find(at);
 	if (it == runs_.end()) {
 		unowned_.push_back(Hex(at) + "/" + std::to_string(size) + " " + Nearest(at));
-		return std::string();
+		return NamedRun{};
 	}
 	Run& run = it->second;
 	run.seen = true;
 	named_++;
 	if (run.expectedSize != size) {
-		otherSize_.push_back(run.name + ": " + std::to_string(size) + " bytes, the map says " + std::to_string(run.expectedSize));
+		otherSize_.push_back(run.named.name + ": " + std::to_string(size) + " bytes, the map says " +
+			std::to_string(run.expectedSize));
 	}
-	return run.name;
+	return run.named;
 }
 
 std::string RegionNames::Nearest(uintptr_t ptr) const
@@ -222,7 +226,7 @@ void RegionNames::LogSummary()
 	for (const std::string& u : unowned_) Log("regions:   unowned %s", u.c_str());
 	for (const std::string& o : otherSize_) Log("regions:   size %s", o.c_str());
 	for (const auto& [at, run] : runs_) {
-		if (!run.seen) Log("regions:   not in the table: %s/%zu", run.name.c_str(), run.expectedSize);
+		if (!run.seen) Log("regions:   not in the table: %s/%zu", run.named.name.c_str(), run.expectedSize);
 	}
 	for (const std::string& p : unknownParts_) Log("regions:   unknown part %s", p.c_str());
 }
