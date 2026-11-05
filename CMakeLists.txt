@@ -59,6 +59,43 @@ add_executable(sfve_tests
     src/mod/MatchResult.cxx)
 target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 
+# SFV's game definitions for Ember's runtime (docs/design/EMBER_LIBRARY.md
+# section 10): the game adapter and Game(), the catalog, the product, the
+# desync check, the pick labels and pictures. The mod does not link it yet;
+# its test does, with the mod's modules the adapter calls.
+add_library(sfve_ember STATIC
+    src/ember/SfvCatalog.cxx
+    src/ember/SfvGame.cxx
+    src/ember/SfvProduct.cxx
+    src/ember/SfvSelection.cxx
+    src/ember/SfvVerification.cxx)
+# The header mark is Ember's own until SFV Ember has art of its own.
+include("${SFVE_EMBER_SOURCE_ROOT}/cmake/sf4e_embed.cmake")
+sf4e_embed_brand_mark(sfve_ember "${SFVE_EMBER_SOURCE_ROOT}/src/ui/ember.rgba")
+target_link_libraries(sfve_ember PUBLIC sfve_core ember_runtime_x64)
+
+# The runtime under SFV's definitions. Until the library's catalog step (5),
+# the runtime still reaches SF4's roster and stage tables, so they link here
+# as they do in the library's own x64 test.
+add_executable(sfve_ember_tests
+    tests/main.cxx
+    tests/EmberAdapterTests.cxx
+    src/mod/ControlPipe.cxx
+    src/mod/GameHooks.cxx
+    src/mod/GameScene.cxx
+    src/mod/GameThread.cxx
+    src/mod/Log.cxx
+    src/mod/MatchEnd.cxx
+    src/mod/MatchResult.cxx
+    src/mod/SfvAdapter.cxx
+    src/mod/SfvFlow.cxx
+    src/mod/SfvRegionNames.cxx
+    src/mod/VersusLaunch.cxx
+    "${SFVE_EMBER_SOURCE_ROOT}/src/common/FighterCatalog.cxx"
+    "${SFVE_EMBER_SOURCE_ROOT}/src/common/StageCatalog.cxx"
+    "${SFVE_EMBER_SOURCE_ROOT}/src/common/InstalledContent.cxx")
+target_link_libraries(sfve_ember_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest)
+
 # The in-game mod. Loads inert: it blocks every non-loopback connection first,
 # then does nothing else unless the exe is the exact build it was made for.
 add_library(sfv_ember SHARED
@@ -109,4 +146,6 @@ enable_testing()
 add_test(NAME sfve_tests COMMAND sfve_tests)
 # Ember's runtime under the library's test game, built with SFV Ember's packages.
 add_test(NAME ember_runtime COMMAND ember_runtime_x64_test)
+# SFV's game definitions, and the runtime linked under them.
+add_test(NAME sfve_ember_tests COMMAND sfve_ember_tests)
 add_test(NAME guard_probe COMMAND guard_probe WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

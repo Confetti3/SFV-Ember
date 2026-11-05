@@ -1,7 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "TestInputs.hxx"
-#include "core/RollbackSession.hxx"
+#include "LoopbackPair.hxx"
 
 #include <windows.h>
 
@@ -12,54 +11,6 @@ using namespace sfve::testbed;
 
 namespace {
 
-constexpr uint32_t kSeed = 7;
-
-uint16_t PortBase()
-{
-	static uint16_t next = (uint16_t)(20000 + (GetCurrentProcessId() % 5000) * 4);
-	const uint16_t port = next;
-	next += 2;
-	return port;
-}
-
-struct Pair {
-	MockFighter gameA, gameB;
-	RollbackSession a{gameA}, b{gameB};
-
-	Pair(unsigned bugs, int delay, bool keepAllHashes = false) : gameA(bugs), gameB(bugs)
-	{
-		const uint16_t base = PortBase();
-		RollbackSession::Config ca, cb;
-		ca.localPlayer = 0;
-		ca.localPort = base;
-		ca.remotePort = (uint16_t)(base + 1);
-		cb.localPlayer = 1;
-		cb.localPort = (uint16_t)(base + 1);
-		cb.remotePort = base;
-		ca.inputDelay = cb.inputDelay = delay;
-		ca.verifyLoads = cb.verifyLoads = true;
-		ca.keepAllHashes = cb.keepAllHashes = keepAllHashes;
-		ca.disconnectTimeoutMs = cb.disconnectTimeoutMs = 1000;
-		std::string error;
-		REQUIRE_MESSAGE(a.Start(ca, &error), error);
-		REQUIRE_MESSAGE(b.Start(cb, &error), error);
-	}
-
-	// Steps both peers until each has run `frames` frames, or the deadline.
-	bool RunTo(int frames, DWORD deadlineMs = 30000)
-	{
-		const ULONGLONG start = GetTickCount64();
-		while (a.Frame() < frames || b.Frame() < frames) {
-			if (GetTickCount64() - start > deadlineMs) return false;
-			if (a.Frame() < frames) a.Step(ScriptedInput(0, a.Frame(), kSeed));
-			if (b.Frame() < frames) b.Step(ScriptedInput(1, b.Frame(), kSeed));
-			if (a.Failed() || b.Failed()) return false;
-			Sleep(0);
-		}
-		return true;
-	}
-};
-
 // Peers' hash of an offline reference run at each frame (another game,
 // with its own clock: only the peers' hash can match it).
 std::vector<uint64_t> ReferenceHashes(int frames)
@@ -68,7 +19,7 @@ std::vector<uint64_t> ReferenceHashes(int frames)
 	std::vector<uint64_t> hashes;
 	hashes.push_back(reference.Layout().HashLive(HashScope::Peers));
 	for (int f = 0; f < frames; f++) {
-		reference.Advance(ScriptedFrame(f, kSeed), false);
+		reference.Advance(ScriptedFrame(f, kLoopbackSeed), false);
 		hashes.push_back(reference.Layout().HashLive(HashScope::Peers));
 	}
 	return hashes;
@@ -78,7 +29,7 @@ std::vector<uint64_t> ReferenceHashes(int frames)
 
 TEST_CASE("two peers over loopback UDP roll back and agree with an offline run")
 {
-	Pair pair(kBugNone, 0);
+	LoopbackPair pair(kBugNone, 0);
 	REQUIRE(pair.RunTo(600));
 	// Let confirmation catch up with the last frames.
 	pair.RunTo(620);
@@ -108,7 +59,7 @@ TEST_CASE("two peers over loopback UDP roll back and agree with an offline run")
 TEST_CASE("kept hashes reach back to the session's first frames")
 {
 	for (const bool keep : {false, true}) {
-		Pair pair(kBugNone, 0, keep);
+		LoopbackPair pair(kBugNone, 0, keep);
 		REQUIRE(pair.RunTo(600));
 		const std::vector<uint64_t> reference = ReferenceHashes(20);
 		uint64_t ha = 0, hb = 0;
@@ -128,7 +79,7 @@ TEST_CASE("frames whose inputs the game ignores are never a rollback's start")
 	// keep sending changing ones: no rollback may start there, and the
 	// peers still agree with an offline run that plays neutral inputs there.
 	constexpr int kFrom = 100, kTo = 400;
-	Pair pair(kBugNone, 0);
+	LoopbackPair pair(kBugNone, 0);
 	pair.gameA.IgnoreInputsBetween(kFrom, kTo);
 	pair.gameB.IgnoreInputsBetween(kFrom, kTo);
 	REQUIRE(pair.RunTo(600));
@@ -146,7 +97,7 @@ TEST_CASE("frames whose inputs the game ignores are never a rollback's start")
 	REQUIRE(confirmed >= 500);
 	std::vector<uint64_t> hashes{reference.Layout().HashLive(HashScope::Peers)};
 	for (int f = 0; f < confirmed; f++) {
-		reference.Advance(reference.InputsMatter() ? ScriptedFrame(f, kSeed) : FrameInputs{}, false);
+		reference.Advance(reference.InputsMatter() ? ScriptedFrame(f, kLoopbackSeed) : FrameInputs{}, false);
 		hashes.push_back(reference.Layout().HashLive(HashScope::Peers));
 	}
 	uint64_t ha = 0, hb = 0;
@@ -158,7 +109,7 @@ TEST_CASE("frames whose inputs the game ignores are never a rollback's start")
 
 TEST_CASE("input delay keeps the peers in step")
 {
-	Pair pair(kBugNone, 2);
+	LoopbackPair pair(kBugNone, 2);
 	REQUIRE(pair.RunTo(400));
 	pair.RunTo(420);
 	const int confirmed = std::min(pair.a.LastConfirmedFrame(), pair.b.LastConfirmedFrame());
@@ -171,7 +122,7 @@ TEST_CASE("input delay keeps the peers in step")
 
 TEST_CASE("an unmasked heap pointer makes identical play look like a desync")
 {
-	Pair pair(kBugUnmaskedPointer, 0);
+	LoopbackPair pair(kBugUnmaskedPointer, 0);
 	REQUIRE(pair.RunTo(120));
 	pair.RunTo(140);
 	const int confirmed = std::min(pair.a.LastConfirmedFrame(), pair.b.LastConfirmedFrame());
@@ -184,7 +135,7 @@ TEST_CASE("an unmasked heap pointer makes identical play look like a desync")
 
 TEST_CASE("a per-process value not masked for peers makes identical play look like a desync")
 {
-	Pair pair(kBugUnmaskedClock, 0);
+	LoopbackPair pair(kBugUnmaskedClock, 0);
 	REQUIRE(pair.RunTo(120));
 	pair.RunTo(140);
 	const int confirmed = std::min(pair.a.LastConfirmedFrame(), pair.b.LastConfirmedFrame());
@@ -199,7 +150,7 @@ TEST_CASE("a per-process value not masked for peers makes identical play look li
 TEST_CASE("a real desync on one peer shows in the first checkpoint after it, not before")
 {
 	constexpr int kDesyncFrom = 250;
-	Pair pair(kBugNone, 0);
+	LoopbackPair pair(kBugNone, 0);
 	pair.gameB.DesyncFrom(kDesyncFrom);
 	REQUIRE(pair.RunTo(400));
 	pair.RunTo(420);
@@ -217,12 +168,12 @@ TEST_CASE("a real desync on one peer shows in the first checkpoint after it, not
 
 TEST_CASE("a peer that goes away ends the other's session cleanly")
 {
-	Pair pair(kBugNone, 0);
+	LoopbackPair pair(kBugNone, 0);
 	REQUIRE(pair.RunTo(60));
 	pair.b.Close();
 	const ULONGLONG start = GetTickCount64();
 	while (!pair.a.Failed() && GetTickCount64() - start < 5000) {
-		pair.a.Step(ScriptedInput(0, pair.a.Frame(), kSeed));
+		pair.a.Step(ScriptedInput(0, pair.a.Frame(), kLoopbackSeed));
 		Sleep(1);
 	}
 	CHECK(pair.a.Failed());
@@ -232,7 +183,7 @@ TEST_CASE("a peer that goes away ends the other's session cleanly")
 
 TEST_CASE("peers keep matching per-region checkpoints for confirmed frames")
 {
-	Pair pair(kBugNone, 0);
+	LoopbackPair pair(kBugNone, 0);
 	REQUIRE(pair.RunTo(400));
 	pair.RunTo(420);
 	const int confirmed = std::min(pair.a.LastConfirmedFrame(), pair.b.LastConfirmedFrame());
@@ -249,12 +200,12 @@ TEST_CASE("peers keep matching per-region checkpoints for confirmed frames")
 
 TEST_CASE("a peer that only polls while it holds frames keeps receiving inputs")
 {
-	Pair pair(kBugNone, 1);
+	LoopbackPair pair(kBugNone, 1);
 	REQUIRE(pair.RunTo(60));
 	// b holds for a while, polling only; a cannot get far ahead but b learns
 	// a's inputs, so b's confirmed frame catches up with its own frame.
 	for (int i = 0; i < 200; i++) {
-		pair.a.Step(ScriptedInput(0, pair.a.Frame(), kSeed));
+		pair.a.Step(ScriptedInput(0, pair.a.Frame(), kLoopbackSeed));
 		pair.b.Poll();
 		Sleep(1);
 	}
@@ -265,14 +216,14 @@ TEST_CASE("a peer that only polls while it holds frames keeps receiving inputs")
 TEST_CASE("a round flow that is part of the rollback state latches the KO where an offline run does")
 {
 	MockFighter reference;
-	for (int f = 0; f < 1500 && reference.FlowKoFrame() < 0; f++) reference.Advance(ScriptedFrame(f, kSeed), false);
+	for (int f = 0; f < 1500 && reference.FlowKoFrame() < 0; f++) reference.Advance(ScriptedFrame(f, kLoopbackSeed), false);
 	REQUIRE(reference.FlowKoFrame() > 0);
 
-	Pair pair(kBugNone, 0);
+	LoopbackPair pair(kBugNone, 0);
 	const ULONGLONG start = GetTickCount64();
 	while ((pair.gameA.FlowKoFrame() < 0 || pair.gameB.FlowKoFrame() < 0) && GetTickCount64() - start < 30000) {
-		pair.a.Step(ScriptedInput(0, pair.a.Frame(), kSeed));
-		pair.b.Step(ScriptedInput(1, pair.b.Frame(), kSeed));
+		pair.a.Step(ScriptedInput(0, pair.a.Frame(), kLoopbackSeed));
+		pair.b.Step(ScriptedInput(1, pair.b.Frame(), kLoopbackSeed));
 		Sleep(0);
 	}
 	MESSAGE("KO at " << reference.FlowKoFrame() << "; rollbacks " << pair.a.GetStats().rollbacks << " / "

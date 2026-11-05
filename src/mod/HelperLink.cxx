@@ -16,8 +16,6 @@ namespace sfve::mod {
 
 namespace {
 
-// Bound into the room's invitations: a different build cannot join.
-constexpr const char* kBuild = "sfv-ember/13173604/0.1";
 constexpr unsigned kPumpWaitMs = 20;
 constexpr unsigned kConnectTimeoutMs = 10000;
 
@@ -66,7 +64,7 @@ HelperLink::HelperLink(int inputDelay, std::string setup, ReadyFn onReady)
 	: inputDelay_(inputDelay),
 	  setup_(std::move(setup)),
 	  onReady_(std::move(onReady)),
-	  link_(kBuild, GgpoMaximumPacket(sizeof(PackedInput)), MatchLink::Dependencies{Random, FreeLoopbackPort})
+	  link_(kMatchBuild, GgpoMaximumPacket(sizeof(PackedInput)), MatchLink::Dependencies{Random, FreeLoopbackPort})
 {
 }
 

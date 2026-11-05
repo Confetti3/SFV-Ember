@@ -10,6 +10,8 @@
 
 #include <stdint.h>
 
+#include <string>
+
 namespace sfve::mod {
 
 // Also publishes the current state's kind as the status "scene".
@@ -25,6 +27,15 @@ uintptr_t SceneStateKind(const uint8_t* state);
 // A scene change is already asked for (the manager has a next state).
 // Game thread only.
 bool SceneChangePending();
+
+// The main menu is the current scene, with no change asked for: a match can
+// be launched from it (VersusLaunch). Game thread only.
+bool MainMenuInFront();
+
+// The current scene's name for logs ("MainMenu"), or its kind in hex when it
+// has none here; empty before the manager's first tick and while a scene
+// change is pending. Game thread only.
+std::string CurrentSceneName();
 
 // Asks the manager to change to a state of `stateClass` (a UClass*), with an
 // optional init message the new state receives. Game thread only; false

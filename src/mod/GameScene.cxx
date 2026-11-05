@@ -69,6 +69,26 @@ bool SceneChangePending()
 	return s_manager && *reinterpret_cast<uint8_t**>(s_manager + sfv::scene::kManagerNextState);
 }
 
+bool MainMenuInFront()
+{
+	return SceneStateKind(CurrentSceneState()) == sfv::scene::kMainMenuVtable && !SceneChangePending();
+}
+
+std::string CurrentSceneName()
+{
+	const uint8_t* state = CurrentSceneState();
+	if (!state || SceneChangePending()) return {};
+	switch (SceneStateKind(state)) {
+	case sfv::title::kVtable: return "Title";
+	case sfv::scene::kMainMenuVtable: return "MainMenu";
+	case sfv::scene::kJumpStateVtable: return "BattleJumpSetup";
+	case sfv::scene::kVersusBattleVtable: return "VersusBattle";
+	}
+	char text[24];
+	snprintf(text, sizeof(text), "0x%llX", (unsigned long long)SceneStateKind(state));
+	return text;
+}
+
 bool ChangeScene(uint8_t* stateClass, uint8_t* initMessage)
 {
 	if (!s_manager) return false;
