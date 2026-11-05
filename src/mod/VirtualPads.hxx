@@ -42,6 +42,15 @@ void ClearPadSteps(int slot);
 size_t PendingPadSteps(int slot);
 
 
+// A slot as the game last read it through XInput (physical or virtual),
+// before any pad filter: whether a pad answered, and its XINPUT_GAMEPAD_*
+// buttons. Not connected until the game has read the slot. Any thread.
+struct PadSeen {
+	bool connected = false;
+	uint16_t buttons = 0;
+};
+PadSeen LastPadState(int slot);
+
 // Button names: A B X Y UP DOWN LEFT RIGHT START BACK LB RB LS RS LT RT.
 bool ParseButtons(const std::string& text, PadStep* out);
 

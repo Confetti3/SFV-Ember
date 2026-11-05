@@ -35,6 +35,9 @@ struct Slot {
 std::mutex s_mutex;
 Slot s_slots[kPadSlots];
 uint64_t s_reads[kPadSlots]; // XInput reads seen per slot, for the status report
+// Each slot's last read: bit 16 connected, bits 0-15 the buttons.
+std::atomic<uint32_t> s_seen[kPadSlots];
+constexpr uint32_t kSeenConnected = 0x10000;
 
 struct Name {
 	const char* text;
@@ -106,6 +109,9 @@ DWORD WINAPI HookedGetState(DWORD user, void* state)
 {
 	const DWORD result = FillVirtualXInput((int)user, state) ? ERROR_SUCCESS
 		: (Ex ? o_getStateEx[M] : o_getState[M])(user, state);
+	if (user < kPadSlots) {
+		s_seen[user] = result == ERROR_SUCCESS && state ? kSeenConnected | static_cast<const XState*>(state)->buttons : 0;
+	}
 	if (result == ERROR_SUCCESS && state) {
 		if (const PadFilter filter = s_padFilter) filter(user, state);
 	}
@@ -140,6 +146,13 @@ bool HookModule()
 void SetPadFilter(PadFilter filter)
 {
 	s_padFilter = filter;
+}
+
+PadSeen LastPadState(int slot)
+{
+	if (slot < 0 || slot >= kPadSlots) return {};
+	const uint32_t seen = s_seen[slot];
+	return {(seen & kSeenConnected) != 0, static_cast<uint16_t>(seen & 0xFFFF)};
 }
 
 bool InstallVirtualPads()
