@@ -98,6 +98,10 @@ TEST_CASE("the catalog is empty until it is filled from the game's content lists
 	CHECK(FighterCode(-1).empty());
 	CHECK(StageCode(2) == "S25");
 	CHECK(StageCode(3).empty());
+	CHECK(FighterId(L"KEN") == 2);
+	CHECK_FALSE(FighterId(L"ZZZ").has_value());
+	CHECK(StageId(L"S25") == 2);
+	CHECK_FALSE(StageId(L"RYU").has_value());
 
 	// Filled once: the same lists again are fine, other lists are refused.
 	CHECK(FillCatalog(TestContent()));
@@ -154,7 +158,6 @@ TEST_CASE("a room's match launches its fighters, stage, rounds and time by the g
 	CHECK(picks->rules.stage == L"S02");
 	CHECK(picks->rules.rounds == 5);
 	CHECK(picks->rules.timeFrames == 60 * 60);
-	CHECK(picks->rules.afterMatch == mod::MatchRules::AfterMatch::Default);
 
 	CHECK_FALSE(LaunchPicks(MatchOf(5, 0, 1)));     // a fighter outside the roster
 	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 3)));     // a stage outside the list

@@ -62,6 +62,10 @@ std::string ContentFingerprint(const mod::ContentLists& lists);
 // outside the lists.
 std::string FighterCode(std::int64_t fighter);
 std::string StageCode(std::int64_t stage);
+// The other way, from a code as a launch names it (L"RYU", VersusLaunch's
+// FighterPick): its id, empty for one not listed.
+std::optional<int> FighterId(const std::wstring& code);
+std::optional<int> StageId(const std::wstring& code);
 
 // A room's match, as SFV can launch it.
 struct RoomMatch {

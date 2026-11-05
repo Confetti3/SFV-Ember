@@ -101,6 +101,14 @@ std::wstring WideCode(const std::string& code)
 	return std::wstring(code.begin(), code.end());
 }
 
+std::optional<int> IdOf(const std::vector<std::string>& codes, const std::wstring& code)
+{
+	for (size_t id = 0; id < codes.size(); id++) {
+		if (WideCode(codes[id]) == code) return (int)id;
+	}
+	return std::nullopt;
+}
+
 } // namespace
 
 bool FillCatalog(const mod::ContentLists& lists)
@@ -152,6 +160,16 @@ std::string FighterCode(std::int64_t fighter)
 std::string StageCode(std::int64_t stage)
 {
 	return CodeAt(s_lists.stages, stage);
+}
+
+std::optional<int> FighterId(const std::wstring& code)
+{
+	return IdOf(s_lists.fighters, code);
+}
+
+std::optional<int> StageId(const std::wstring& code)
+{
+	return IdOf(s_lists.stages, code);
 }
 
 std::optional<mod::MatchPicks> LaunchPicks(const RoomMatch& match)
