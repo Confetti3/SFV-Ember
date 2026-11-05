@@ -5,7 +5,11 @@
 // Plays forward one frame per Step, saving every frame. Every `distance`
 // frames it restores the state from `distance` frames back and replays those
 // frames with the inputs they were first played with, comparing each replayed
-// frame's hash with the hash recorded the first time. Any difference means
+// frame's hash with the hash recorded the first time. With a schedule seed
+// the checks come as a network's rollbacks do instead: each a random 1 to
+// `distance` frames after the last, rolling back a random 1 to `distance`
+// frames, so rollbacks of every depth start on every kind of frame and
+// overlap (the same seed gives the same schedule). Any difference means
 // some state the simulation depends on is missing from the layout, or the
 // simulation reads something that is not its inputs. The report names the
 // regions that differ and the first differing byte in each.
@@ -64,7 +68,9 @@ public:
 	// inputs and restore again, as a session does after a misprediction.
 	// State that the wrong timeline leaves behind outside the layout then
 	// shows up as a difference.
-	SyncTester(GameAdapter& game, int distance, bool learn = false, bool perturb = false);
+	// `scheduleSeed`: 0 for a check every `distance` frames of `distance`
+	// frames, otherwise random spacing and depth (above).
+	SyncTester(GameAdapter& game, int distance, bool learn = false, bool perturb = false, uint32_t scheduleSeed = 0);
 
 	// One forward frame, then a rollback check when one is due. Returns false
 	// once a check has failed (never in learning mode).
@@ -81,9 +87,12 @@ private:
 
 	Saved& At(int frame) { return saved_[frame % saved_.size()]; }
 	void Save(int frame);
-	// The oldest state within the distance a rollback may start from, or
+	// The oldest state within `depth` frames a rollback may start from, or
 	// frame_ when there is none.
-	int OldestRestorable();
+	int OldestRestorable(int depth);
+	// When the check after this one comes, and how deep it goes.
+	void ScheduleNextCheck();
+	int Random(int from, int to); // inclusive
 	// The inputs a session gives the frame the game is about to play.
 	FrameInputs AsPlayed(const FrameInputs& inputs) const;
 	// Restores state `from`, replays to `now` and compares every frame.
@@ -96,6 +105,9 @@ private:
 	bool learn_;
 	bool perturb_;
 	int frame_ = 0;
+	uint32_t schedule_;  // xorshift32 state; 0: the fixed schedule
+	int nextCheck_ = 0;  // the frame the next check comes after
+	int nextDepth_ = 0;
 	std::vector<Saved> saved_;
 	SyncTestReport report_;
 };
@@ -103,6 +115,7 @@ private:
 struct SyncTestOptions {
 	int frames = 600;
 	int distance = 7;           // frames rolled back each check (GGPO allows up to 8)
+	uint32_t scheduleSeed = 0;  // nonzero: random spacing and depth up to `distance`
 	std::function<FrameInputs(int frame)> inputs;
 };
 

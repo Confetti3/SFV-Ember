@@ -16,6 +16,7 @@
 //   -sfve_background=1   keep playing and reading pads while unfocused
 //   -sfve_learn=1        synctest: keep going after a difference, tallying regions
 //   -sfve_perturb=1      synctest: play each rolled-back stretch with wrong inputs first
+//   -sfve_schedule=SEED  synctest: rollbacks of random depth and spacing (up to the distance)
 //   -sfve_lag=MS         test: hold back outgoing UDP by MS milliseconds
 //   -sfve_link=1         netplay through Ember's helper ("host" / "join <invitation>")
 //   -sfve_fighter=F      linked netplay: this copy's fighter, CODE[:costume[:colour]]
@@ -50,6 +51,7 @@ struct ModConfig {
 	bool backgroundPlay = false;
 	bool learn = false;
 	bool perturb = false;
+	uint32_t scheduleSeed = 0;
 	int lagMs = 0;
 	bool helperLink = false; // netplay endpoints, seed and delay come from a HelperLink
 	// Offline start-up dialogs kept from showing: 0 none, 1 the download

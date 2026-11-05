@@ -42,10 +42,31 @@ std::vector<RegionDiff> DiffSavedAgainstLive(const StateLayout& layout, const ui
 	return diffs;
 }
 
-SyncTester::SyncTester(GameAdapter& game, int distance, bool learn, bool perturb)
-	: game_(game), distance_(distance < 1 ? 1 : distance), learn_(learn), perturb_(perturb), saved_(distance_ + 1)
+SyncTester::SyncTester(GameAdapter& game, int distance, bool learn, bool perturb, uint32_t scheduleSeed)
+	: game_(game), distance_(distance < 1 ? 1 : distance), learn_(learn), perturb_(perturb), schedule_(scheduleSeed),
+	  saved_(distance_ + 1)
 {
 	for (Saved& s : saved_) s.bytes.resize(game.Layout().TotalSize());
+	ScheduleNextCheck();
+}
+
+void SyncTester::ScheduleNextCheck()
+{
+	if (!schedule_) {
+		nextCheck_ = frame_ + distance_;
+		nextDepth_ = distance_;
+		return;
+	}
+	nextCheck_ = frame_ + Random(1, distance_);
+	nextDepth_ = Random(1, distance_);
+}
+
+int SyncTester::Random(int from, int to)
+{
+	schedule_ ^= schedule_ << 13;
+	schedule_ ^= schedule_ >> 17;
+	schedule_ ^= schedule_ << 5;
+	return from + (int)(schedule_ % (uint32_t)(to - from + 1));
 }
 
 void SyncTester::Save(int frame)
@@ -81,12 +102,15 @@ bool SyncTester::Step(const FrameInputs& inputs)
 	s.restorable = game_.InputsMatter();
 	game_.Advance(AsPlayed(inputs), false);
 	report_.framesRun = ++frame_;
-	return frame_ % distance_ != 0 || CheckRollback(OldestRestorable(), frame_);
+	if (frame_ < nextCheck_) return true;
+	const int from = OldestRestorable(nextDepth_);
+	ScheduleNextCheck();
+	return CheckRollback(from, frame_);
 }
 
-int SyncTester::OldestRestorable()
+int SyncTester::OldestRestorable(int depth)
 {
-	for (int k = std::max(0, frame_ - distance_); k < frame_; k++) {
+	for (int k = std::max(0, frame_ - depth); k < frame_; k++) {
 		if (At(k).restorable) return k;
 	}
 	return frame_;
@@ -142,7 +166,7 @@ FrameInputs SyncTester::Perturbed(const FrameInputs& inputs, int frame)
 
 SyncTestReport RunSyncTest(GameAdapter& game, const SyncTestOptions& options)
 {
-	SyncTester tester(game, options.distance);
+	SyncTester tester(game, options.distance, false, false, options.scheduleSeed);
 	for (int frame = 0; frame < options.frames && tester.Step(options.inputs(frame)); frame++) {
 	}
 	return tester.Report();

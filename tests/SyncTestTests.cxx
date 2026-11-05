@@ -3,6 +3,8 @@
 #include "TestInputs.hxx"
 #include "core/SyncTest.hxx"
 
+#include <set>
+
 using namespace sfve;
 using namespace sfve::testbed;
 
@@ -158,4 +160,40 @@ TEST_CASE("a mock fight whose inputs are ignored for a while survives perturbed 
 		crossed |= target < 300 && target + 7 > 300;
 	}
 	CHECK(crossed); // some check replayed into the ignored stretch
+}
+
+TEST_CASE("a random schedule rolls back every depth, the same way for the same seed, and still finds leaks")
+{
+	auto run = [](uint32_t seed, std::set<int>* depths, std::set<int>* gaps) {
+		FrameCounter game(0, 0); // every frame reads inputs
+		SyncTester tester(game, 7, false, false, seed);
+		int lastCheck = 0;
+		for (int frame = 0; frame < 600; frame++) {
+			const int before = tester.Report().rollbacks;
+			REQUIRE(tester.Step(ScriptedFrame(frame, 42)));
+			if (tester.Report().rollbacks == before) continue;
+			if (depths) depths->insert(frame + 1 - game.loads.back());
+			if (gaps) gaps->insert(frame + 1 - lastCheck);
+			lastCheck = frame + 1;
+		}
+		return game.loads;
+	};
+	std::set<int> depths, gaps;
+	const std::vector<int> loads = run(12345, &depths, &gaps);
+	CHECK(depths == std::set<int>{1, 2, 3, 4, 5, 6, 7});
+	CHECK(gaps == std::set<int>{1, 2, 3, 4, 5, 6, 7});
+	CHECK(loads.size() > 600 / 7); // about every 4 frames on average
+	CHECK(run(12345, nullptr, nullptr) == loads);
+	CHECK(run(54321, nullptr, nullptr) != loads);
+
+	MockFighter correct;
+	SyncTester ok(correct, 8, false, true, 99);
+	for (int frame = 0; frame < 900; frame++) REQUIRE(ok.Step(ScriptedFrame(frame, 42)));
+	CHECK(ok.Report().ok);
+
+	MockFighter leaky(kBugStateOutsideLayout);
+	SyncTester found(leaky, 8, false, true, 99);
+	bool going = true;
+	for (int frame = 0; frame < 900 && going; frame++) going = found.Step(ScriptedFrame(frame, 42));
+	CHECK_FALSE(found.Report().ok);
 }

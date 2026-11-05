@@ -108,7 +108,7 @@ std::unique_ptr<sfve::mod::BattleMode> MakeMode(const sfve::mod::ModConfig& conf
 {
 	using namespace sfve::mod;
 	switch (config.mode) {
-	case ModMode::SyncTest: return std::make_unique<SyncTestMode>(config.distance, config.learn, config.perturb, config.mashSeed, config.mashFrom);
+	case ModMode::SyncTest: return std::make_unique<SyncTestMode>(config);
 	case ModMode::Netplay: {
 		std::unique_ptr<HelperLink> link;
 		if (config.helperLink) {

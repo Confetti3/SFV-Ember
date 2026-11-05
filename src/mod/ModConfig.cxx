@@ -74,6 +74,7 @@ void LoadConfigFromCommandLine(const wchar_t* line)
 	c.backgroundPlay = Number(line, L"sfve_background", 0) != 0;
 	c.learn = Number(line, L"sfve_learn", 0) != 0;
 	c.perturb = Number(line, L"sfve_perturb", 0) != 0;
+	c.scheduleSeed = (uint32_t)Number(line, L"sfve_schedule", 0);
 	c.lagMs = (int)Number(line, L"sfve_lag", 0);
 	c.helperLink = Number(line, L"sfve_link", 0) != 0;
 	c.offlineDialogs = (int)Number(line, L"sfve_dialogs", 2);

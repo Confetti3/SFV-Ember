@@ -13,12 +13,14 @@ namespace sfve::mod {
 
 void SyncTestMode::NewBattle(SfvAdapter& adapter)
 {
-	tester_ = std::make_unique<SyncTester>(adapter, distance_, learn_, perturb_);
+	tester_ = std::make_unique<SyncTester>(adapter, config_.distance, config_.learn, config_.perturb, config_.scheduleSeed);
 	failureLogged_ = false;
 	failuresLogged_ = 0;
 	learnedLogged_.clear();
-	Log("synctest: started, %zu bytes of state, rollback distance %d%s%s", adapter.Layout().TotalSize(), distance_,
-		learn_ ? ", learning" : "", perturb_ ? ", perturbed replays" : "");
+	char schedule[48] = "";
+	if (config_.scheduleSeed) snprintf(schedule, sizeof(schedule), ", random schedule %u", config_.scheduleSeed);
+	Log("synctest: started, %zu bytes of state, rollback distance %d%s%s%s", adapter.Layout().TotalSize(), config_.distance,
+		config_.learn ? ", learning" : "", config_.perturb ? ", perturbed replays" : "", schedule);
 }
 
 void SyncTestMode::Frame(SfvAdapter& adapter)
@@ -32,7 +34,7 @@ void SyncTestMode::Frame(SfvAdapter& adapter)
 		return;
 	}
 	const bool going = tester_->Step(Inputs(adapter));
-	if (learn_) {
+	if (config_.learn) {
 		LogNewRegions(adapter);
 	} else if (!going && !failureLogged_) {
 		failureLogged_ = true;
@@ -42,11 +44,11 @@ void SyncTestMode::Frame(SfvAdapter& adapter)
 
 FrameInputs SyncTestMode::Inputs(SfvAdapter& adapter) const
 {
-	if (!mashSeed_) return FrameInputs{{adapter.Sampled(0), adapter.Sampled(1)}};
+	if (!config_.mashSeed) return FrameInputs{{adapter.Sampled(0), adapter.Sampled(1)}};
 	const int frame = tester_->Report().framesRun;
-	if (frame < mashFrom_) return FrameInputs{};
+	if (frame < config_.mashFrom) return FrameInputs{};
 	// A second seed for P2 that no P1 seed shares by accident of small numbers.
-	return FrameInputs{{input::Mash(mashSeed_, frame), input::Mash(mashSeed_ * 2654435761u + 1, frame)}};
+	return FrameInputs{{input::Mash(config_.mashSeed, frame), input::Mash(config_.mashSeed * 2654435761u + 1, frame)}};
 }
 
 void SyncTestMode::LogFailure() const

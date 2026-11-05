@@ -9,6 +9,7 @@
 
 #include "core/SyncTest.hxx"
 #include "mod/BattleMode.hxx"
+#include "mod/ModConfig.hxx"
 
 #include <memory>
 #include <set>
@@ -17,10 +18,7 @@ namespace sfve::mod {
 
 class SyncTestMode : public BattleMode {
 public:
-	SyncTestMode(int distance, bool learn, bool perturb, uint32_t mashSeed, int mashFrom)
-		: distance_(distance), learn_(learn), perturb_(perturb), mashSeed_(mashSeed), mashFrom_(mashFrom)
-	{
-	}
+	explicit SyncTestMode(const ModConfig& config) : config_(config) {}
 
 	void NewBattle(SfvAdapter& adapter) override;
 	void Frame(SfvAdapter& adapter) override;
@@ -32,11 +30,7 @@ private:
 	void LogFailure() const;
 	void LogNewRegions(const SfvAdapter& adapter);
 
-	int distance_;
-	bool learn_;
-	bool perturb_;
-	uint32_t mashSeed_;
-	int mashFrom_;
+	const ModConfig config_;
 	bool restart_ = false;
 	bool failureLogged_ = false;
 	int failuresLogged_ = 0;
