@@ -748,4 +748,41 @@ Mapped to existing modules: `BuildId` → `MatchBuildId` (SfvCatalog: `kMatchBui
 - `NetplayMode::Leave` becomes the target of `Retire`/`Abort`/`Fail` and calls `NotifyMatchEnded`. `FinalizeControlPlaneLossAfterBattle` runs once the main menu is back if `IsControlPlaneLost`. `ShutdownNetplay` runs at process detach.
 - `MatchLink`/`HelperLink` are retired: the room's grant, ports and picks replace them. `ReadRuntimeMatchInput`, `BindRuntimeInput`, `TrainingRequestHolds` and the spectator calls are not used while those capabilities are off.
 
-**Still SF4's in this link:** `sfve_ember_tests` compiles the library's `FighterCatalog.cxx`, `StageCatalog.cxx` and `InstalledContent.cxx` because the runtime still reaches SF4's roster and stage tables (step 5). The Ready check is one of them: `selection::Available` runs SF4's `Valid` (44 fighters, 6 or 7 costumes, 12 or 22 colours, SF4's editions) after the availability, so an SFV pick outside those ranges is refused until step 5 checks picks with `Catalog().validPick`.
+**Still SF4's in this link (until step 5, section 11, which removed it):** `sfve_ember_tests` compiled the library's `FighterCatalog.cxx`, `StageCatalog.cxx` and `InstalledContent.cxx` because the runtime still reaches SF4's roster and stage tables (step 5). The Ready check is one of them: `selection::Available` runs SF4's `Valid` (44 fighters, 6 or 7 costumes, 12 or 22 colours, SF4's editions) after the availability, so an SFV pick outside those ranges is refused until step 5 checks picks with `Catalog().validPick`.
+
+## 11. Step 5 as built (2026-11-05)
+
+Step 5 routes every pick and stage decision, and every fighter fact the shared screens show, through `ember::Catalog()`. SF4's roster tables (`FighterCatalog`, `StageCatalog`, `InstalledContent`) are now reached only from SF4's catalog definition (`product/Sf4Catalog.cxx`), SF4's labels, art and package files, and SF4's adapter. SF4's behaviour and wire bytes do not change: each new SF4 entry is the function or table the shared code called before, and `game_catalog_test` pins them.
+
+**The seam: `GameCatalog` grew, no new mechanism.** It stays C++11 data with forward-declared types, so the Linux room host still builds it with g++ alone.
+
+| Field | What the shared code asks | SF4 | SFV |
+|---|---|---|---|
+| `randomStage` | Which stage choice stands for Random (-1: none) | `RandomStageId` (255) | -1 |
+| `fighterLocked`, `availablePick` | Whether the player owns the fighter, and the whole pick; the runtime's Ready check | `FighterLocked`, `Available` | never locked; `ValidPick` |
+| `normalizePick` | A pick made valid, and owned where availability is given; Random fighter's candidates and rolled look | `Normalize` | fields SFV refuses become 0 |
+| `resolveStage` | The stage P1 sends for a choice | `ResolveStage` over the installed custom stages | a listed stage, else 0 |
+| `fighterName` | A fighter's name on every shared screen | the roster table's name | the game's code ("RYU") until a names table exists |
+| `costumeCount` | How many costumes are the game's own (the replay's "look unknown") | `CostumeCount` | 100 |
+| `rosterOrder` | The order of the main-character list | `RosterDisplayOrder` | list order, filled by `FillCatalog` |
+
+`Usable()` now also requires every rule, fact and the roster order.
+
+**Types.** `Pick`, `Availability`, `InstalledContentPtr`, `FromNative` and `ToNative` moved to a neutral `common/SelectionPick.hxx`; `FighterCatalog.hxx` keeps only SF4's tables and functions and includes it. The shared code (session, room client and server, runtime, shell, adapter interface) includes `SelectionPick.hxx` or `GameCatalog.hxx`, not `FighterCatalog.hxx`. `Availability` keeps SF4's bit layout; only a game's own catalog rules and select screen read it.
+
+**Sites changed.** The runtime's Ready check and Random stage (`NetplayRuntime__Room.cxx`), the opponent-changed notice (`NetplayRuntime.cxx`), Random fighter (`common/RandomFighter.hxx`, now neutral), and the shell's names and lists: `ApplicationShell.cxx`, `__Settings.cxx` (main-character list in `rosterOrder`), `RoomControls.cxx`, `RoomPanelTables.cxx`, `ReplaysPanel.cxx`, `ReplaySummaryText.hxx` (one `ReplayFighterName`). The room model, its JSON, the preferences, the public rooms card and the session server were already on the catalog (step L).
+
+**The package inventory's selection files.** `PackageInstaller` pulled SF4's roster into every runtime link through `IsSelectionAssetPath`. It is now declared in `common/SelectionAssetPath.hxx` and defined once per game, like the labels: SF4's moved unchanged to `common/Sf4SelectionAssetPath.cxx` (in `sf4e_selection`); the fake game's and SFV's (`SfvSelection.cxx`) allow none.
+
+**Proof.**
+- `tests/fake_catalog.{hxx,cxx}`: a catalog with 60 fighters, 20 costumes, 100 colours, 1 Ultra, 40 stages and no Random stage. The fake game defines `Catalog()` from it (`fake_game.cxx`).
+- `RuntimeCapabilitiesTest` (x86) and `ember_runtime_x64_test` link it instead of SF4's catalog. Its new case drives the runtime's Ready check: fighter 59 in colour 99 passes the stage, fighter and pick checks (it stops only at the seat); fighter 60, costume 20, colour 100, stage 40 and stage 255 are each refused with that check's words.
+- `CatalogRosterTest` uses the same rules at 60 fighters and 100 colours: the room model, its JSON, the room host's status, the protocol's match check and the session server's pick decode take fighter 59 in colour 99 and refuse the values past each limit.
+- The x64 test no longer compiles `Sf4Catalog.cxx`, `FighterCatalog.cxx`, `StageCatalog.cxx` or `InstalledContent.cxx`, and nor does `sfve_ember_tests`. The room host's `selection` group gains `InstalledContent.cxx`, which SF4's `Available` calls.
+
+**Still SF4's, on purpose.**
+- The type of the Random stage pool (`RandomPool`, `StageCatalog.hxx`), carried by the runtime's room command and passed through to `resolveStage`. SFV ignores it. A neutral pool waits for a second game with a Random stage.
+- `InstalledContent`'s definition: the runtime builds an empty one when the game has no custom content, so it includes the header; nothing shared reads its fields.
+- `StageValue.hxx`'s `PreferenceStage`, which only SF4's saved preferences use.
+- SF4's select screen (`FighterSelector`), Training, art, labels, lobby music and custom-content files, which are SF4's adapter.
+- The product identity in the runtime's tests (step 2).
