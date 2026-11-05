@@ -72,6 +72,7 @@ add_library(sfv_ember SHARED
     src/mod/MultiInstance.cxx
     src/mod/SfvAdapter.cxx
     src/mod/SfvRegionNames.cxx
+    src/mod/ProjectileRelease.cxx
     src/mod/SfvFlow.cxx
     src/mod/FramePacer.cxx
     src/mod/HelperLink.cxx

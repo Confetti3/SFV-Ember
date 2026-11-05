@@ -12,22 +12,23 @@
 #include "mod/BattleDriver.hxx"
 #include "mod/BuildCheck.hxx"
 #include "mod/ControlPipe.hxx"
+#include "mod/GameContent.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameScene.hxx"
-#include "mod/VirtualPads.hxx"
-#include "mod/Log.hxx"
-#include "mod/ModConfig.hxx"
-#include "mod/MultiInstance.hxx"
-#include "mod/GameContent.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/HelperLink.hxx"
+#include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
-#include "mod/NetplayMode.hxx"
+#include "mod/ModConfig.hxx"
+#include "mod/MultiInstance.hxx"
 #include "mod/NetGuard.hxx"
+#include "mod/NetplayMode.hxx"
 #include "mod/OfflineDialogs.hxx"
+#include "mod/ProjectileRelease.hxx"
 #include "mod/SfvOffsets.hxx"
 #include "mod/SyncTestMode.hxx"
 #include "mod/VersusLaunch.hxx"
+#include "mod/VirtualPads.hxx"
 #include "overlay/Overlay.hxx"
 
 #include <windows.h>
@@ -198,6 +199,7 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	static BattleDriver driver(MakeMode(Config()));
 	driver.RegisterControl();
 	InstallGameHooks(base, &driver);
+	if (Config().mode == ModMode::SyncTest || Config().mode == ModMode::Netplay) InstallDeterministicProjectileRelease(base);
 	return 1;
 }
 

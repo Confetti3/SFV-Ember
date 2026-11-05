@@ -56,6 +56,19 @@ constexpr CodeSite kFlowMessage{"ReceiveBattleFlowMessage", 0x3D3ED0,
 constexpr CodeSite kFindUnit{"FindUnit", 0x4CE5D0,
 	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x48}};
 
+// SharedPtr* FindPart(Unit*, SharedPtr* out, const TypeId*, uint32 index):
+// the unit's part of a type (its parts at unit+192..+200, 16-byte shared
+// pointers), the way the game's own lookups do it (e.g. rva 0x457F50).
+constexpr CodeSite kFindPart{"FindPart", 0x4CE260,
+	{0x4C, 0x8B, 0xDC, 0x49, 0x89, 0x5B, 0x20, 0x55, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57}};
+
+// bool ProjectileReleasable(ProjectileUnit*): whether a dead projectile may go
+// back to its group's free pool (asked by the "Projectile PreMain" task, rva
+// 0x484C70, for each retired projectile). True when it has no visual part
+// or the visual's state (projectilevisual::kState) is 0.
+constexpr CodeSite kProjectileReleasable{"ProjectileReleasable", 0x457F50,
+	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x40, 0x48, 0x8D, 0x3D, 0x9F, 0xED, 0x60}};
+
 // BattleData* GetBattleData(void* unitContext): the battle's match data
 // (rounds, results, flow flags), called with unit + 0xE8 the way the flow
 // states call it. Mostly outside the game's snapshot (see battledata).
@@ -195,7 +208,7 @@ constexpr CodeSite kMainMenuClass{"MainMenuStateClass", 0xC20E70,
 	{0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05, 0xAD, 0x47, 0xE8, 0x02, 0x48, 0x85, 0xC0, 0x75, 0x21}};
 
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
-	kFindUnit, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
+	kFindUnit, kFindPart, kProjectileReleasable, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
@@ -405,6 +418,20 @@ constexpr uint32_t kCharaUnitType = 0x3A647C0;  // data: CharaUnit's type id, a 
 namespace ruleunit {
 constexpr uint32_t kJudgeState = 248;
 } // namespace ruleunit
+
+// A projectile's ProjectileVisualPart: its UE particle actor and the state
+// of that actor (+232): 1 to create it, 2 playing, 3 the projectile died
+// (set by the battle tick, rva 0x4576B0), 4 fading out, 0 gone. The visual
+// task (rva 0x485140) turns 4 into 0 only once the live actor (+376, not in
+// the snapshot) has cleared itself through a delegate (rva 0x48FD50) that
+// the actor's own Tick (rva 0x5335A0) fires on the engine's frame clock,
+// not the battle's.
+namespace projectilevisual {
+constexpr uint32_t kType = 0x3A66D00;
+constexpr uint32_t kState = 232;
+constexpr int32_t kStateDied = 3;
+constexpr int32_t kStateFading = 4;
+} // namespace projectilevisual
 
 // The battle's match data (GetBattleData). The game's snapshot holds only
 // +6176..+6404 of it; the round judge writes the rest when a round ends.
