@@ -33,14 +33,23 @@ namespace sfve::adapter {
 // own check as the battle launches (sfv::kCostumeValid, sfv::kColourValid).
 constexpr int kVariantLimit = 100;
 
+// The game build a room's matches are played on: the exe's build (BuildCheck's
+// verified one) and the mod's match version. MatchBuildId adds the content.
+constexpr const char* kMatchBuild = "sfv-ember/13173604/0.1";
+
 // Fills the catalog from the game's lists, and the build id from them. False,
 // and nothing changed, when either list is empty, the roster is longer than
 // ember::MaxFighters, or the catalog already holds other lists; true again
-// for the same lists.
+// for the same lists. Game thread, before Ember's runtime starts: once
+// SealCatalog has run, it logs and refuses, because the runtime's threads
+// read the catalog without a lock.
 bool FillCatalog(const mod::ContentLists& lists);
 
+// Called once as Ember's runtime starts: the catalog is final from here on.
+void SealCatalog();
+
 // The build a room's members must share (GameState::BuildId): the game's exe
-// build (mod::kMatchBuild), "/", and the ContentFingerprint of the filled
+// build (kMatchBuild), "/", and the ContentFingerprint of the filled
 // lists; kMatchBuild alone before FillCatalog.
 const std::string& MatchBuildId();
 

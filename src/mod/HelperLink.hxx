@@ -28,10 +28,6 @@
 
 namespace sfve::mod {
 
-// The build a match is played on, bound into the room's invitations: a
-// different build cannot join.
-constexpr const char* kMatchBuild = "sfv-ember/13173604/0.1";
-
 class HelperLink {
 public:
 	using ReadyFn = std::function<void(const MatchLink::Endpoints&)>;

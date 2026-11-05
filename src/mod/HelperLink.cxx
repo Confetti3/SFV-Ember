@@ -1,6 +1,7 @@
 #include "mod/HelperLink.hxx"
 
 #include "core/GameAdapter.hxx"
+#include "ember/SfvCatalog.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/Log.hxx"
 
@@ -64,7 +65,7 @@ HelperLink::HelperLink(int inputDelay, std::string setup, ReadyFn onReady)
 	: inputDelay_(inputDelay),
 	  setup_(std::move(setup)),
 	  onReady_(std::move(onReady)),
-	  link_(kMatchBuild, GgpoMaximumPacket(sizeof(PackedInput)), MatchLink::Dependencies{Random, FreeLoopbackPort})
+	  link_(adapter::kMatchBuild, GgpoMaximumPacket(sizeof(PackedInput)), MatchLink::Dependencies{Random, FreeLoopbackPort})
 {
 }
 

@@ -10,7 +10,6 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
 #include "ember/SfvVerification.hxx"
-#include "mod/HelperLink.hxx"
 
 #include "common/SelectionPick.hxx"
 #include "common/GameCatalog.hxx"
@@ -81,6 +80,8 @@ TEST_CASE("the catalog is empty until it is filled from the game's content lists
 {
 	CHECK_FALSE(ember::Usable(ember::Catalog()));
 	CHECK_FALSE(ember::ValidFighter(0));
+	// The shell names fighter 0 before the lists are filled.
+	CHECK(std::string(ember::Catalog().fighterName(0)) == "?");
 	CHECK_FALSE(FillCatalog({{}, {"S01"}}));
 	CHECK_FALSE(FillCatalog({{"RYU"}, {}}));
 
@@ -183,7 +184,7 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	CHECK(ContentFingerprint({{"RY", "U"}, {"S01"}}) != ContentFingerprint({{"R", "YU"}, {"S01"}}));
 
 	FillTestCatalog();
-	CHECK(MatchBuildId() == std::string(mod::kMatchBuild) + "/" + fingerprint);
+	CHECK(MatchBuildId() == std::string(kMatchBuild) + "/" + fingerprint);
 	CHECK(ember::game::Game().state.BuildId() == MatchBuildId());
 	CHECK(MatchBuildId().size() <= 128); // the room's limit for a build
 }
@@ -230,6 +231,8 @@ TEST_CASE("the shared screens name and list SFV's fighters by the game's codes, 
 	const ember::GameCatalog& catalog = ember::Catalog();
 	CHECK(std::string(catalog.fighterName(0)) == "RYU");
 	CHECK(std::string(catalog.fighterName(4)) == "BSN");
+	CHECK(std::string(catalog.fighterName(5)) == "?");
+	CHECK(std::string(catalog.fighterName(-1)) == "?");
 	CHECK(catalog.costumeCount(4) == kVariantLimit);
 	for (int at = 0; at < catalog.fighterCount; at++) CHECK(catalog.rosterOrder[at] == at);
 }
@@ -516,4 +519,16 @@ TEST_CASE("the check starts over when the session's confirmed frame goes back")
 	REQUIRE(mismatch);
 	CHECK(mismatch->frame == 60);
 	CHECK(mismatch->remote == kWrong);
+}
+
+
+// Declared last: sealing is for the rest of the process, and every case above
+// fills the catalog.
+TEST_CASE("once Ember's runtime starts, the catalog refuses every fill")
+{
+	FillTestCatalog();
+	SealCatalog();
+	CHECK_FALSE(FillCatalog(TestContent()));
+	CHECK_FALSE(FillCatalog({{"RYU"}, {"S01"}}));
+	CHECK(ember::Catalog().fighterCount == 5);
 }

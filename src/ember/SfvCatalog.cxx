@@ -1,6 +1,6 @@
 #include "ember/SfvCatalog.hxx"
 
-#include "mod/HelperLink.hxx"
+#include "mod/Log.hxx"
 
 #include "common/GameCatalog.hxx"
 
@@ -16,7 +16,9 @@ namespace {
 
 // Written once by FillCatalog, before the runtime's threads read the catalog.
 mod::ContentLists s_lists;
-std::string s_buildId = mod::kMatchBuild;
+std::string s_buildId = kMatchBuild;
+// The runtime has started (SealCatalog): nothing writes the catalog again.
+bool s_sealed = false;
 // The roster in the order of the game's list, which is its ids' order.
 std::vector<int> s_rosterOrder;
 
@@ -68,8 +70,11 @@ int ResolveStage(int choice, std::uint32_t, const sf4e::selection::RandomPool&, 
 }
 
 // The game's code ("RYU") until SFV Ember has a table of fighters' names.
+// The shell asks for fighter 0 even when the catalog is empty (its lists
+// were not filled or were refused), so an id outside the roster reads "?".
 const char* FighterName(int fighter)
 {
+	if (fighter < 0 || fighter >= (int)s_lists.fighters.size()) return "?";
 	return s_lists.fighters[(size_t)fighter].c_str();
 }
 
@@ -100,14 +105,24 @@ std::wstring WideCode(const std::string& code)
 
 bool FillCatalog(const mod::ContentLists& lists)
 {
+	if (s_sealed) {
+		mod::Log("catalog: refused a fill after Ember's runtime started (%zu fighters, %zu stages)", lists.fighters.size(),
+			lists.stages.size());
+		return false;
+	}
 	if (s_catalog.fighterCount > 0) return lists.fighters == s_lists.fighters && lists.stages == s_lists.stages;
 	if (lists.fighters.empty() || lists.stages.empty() || lists.fighters.size() > (size_t)ember::MaxFighters) return false;
 	s_lists = lists;
-	s_buildId = std::string(mod::kMatchBuild) + "/" + ContentFingerprint(lists);
+	s_buildId = std::string(kMatchBuild) + "/" + ContentFingerprint(lists);
 	for (int id = 0; id < (int)s_lists.fighters.size(); id++) s_rosterOrder.push_back(id);
 	s_catalog.rosterOrder = s_rosterOrder.data();
 	s_catalog.fighterCount = (int)s_lists.fighters.size();
 	return true;
+}
+
+void SealCatalog()
+{
+	s_sealed = true;
 }
 
 const std::string& MatchBuildId()
