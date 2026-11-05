@@ -69,6 +69,12 @@ constexpr CodeSite kFindPart{"FindPart", 0x4CE260,
 constexpr CodeSite kProjectileReleasable{"ProjectileReleasable", 0x457F50,
 	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x40, 0x48, 0x8D, 0x3D, 0x9F, 0xED, 0x60}};
 
+// UObject* KiwiGameInstance(): the game's instance object (a KiwiGame class,
+// checked), or null. The InputUnit mirrors its input frame into it
+// (inputunit::kInstanceInputFrame) every tick.
+constexpr CodeSite kGameInstance{"KiwiGameInstance", 0x521690,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0x05, 0x2B, 0x62, 0x86, 0x03, 0x48, 0x8B, 0x98}};
+
 // BattleData* GetBattleData(void* unitContext): the battle's match data
 // (rounds, results, flow flags), called with unit + 0xE8 the way the flow
 // states call it. Mostly outside the game's snapshot (see battledata).
@@ -208,7 +214,7 @@ constexpr CodeSite kMainMenuClass{"MainMenuStateClass", 0xC20E70,
 	{0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05, 0xAD, 0x47, 0xE8, 0x02, 0x48, 0x85, 0xC0, 0x75, 0x21}};
 
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
-	kFindUnit, kFindPart, kProjectileReleasable, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
+	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
@@ -387,6 +393,17 @@ constexpr uint32_t kRingStride = 0x800;
 // the game's snapshot (its netcode resets them after a restore).
 constexpr uint32_t kCounters = 0x2170;
 constexpr uint32_t kCountersSize = 0xA8;
+// In the counters: the frame tag (set to 7 at init) and the battle's input
+// frame I, which the per-tick task rva 0x43A840 increments after the
+// rollback unit's tasks; the battle reads the input recorded one tick
+// earlier (frame I = R - 1, rva 0x4440D0). A save between two updates holds
+// the state the game's own snapshot calls {tag, I - 1} (RollbackUnitPre
+// builds its frame id from these two, rva 0x486CB3, before I advances).
+constexpr uint32_t kTag = 0x217C;
+constexpr uint32_t kInputFrame = 0x2180;
+// The same rva 0x43A840 mirrors I into the game instance (kGameInstance) at
+// this offset; round-start thresholds read it (rva 0x402E10, 0x40BA40).
+constexpr uint32_t kInstanceInputFrame = 0x150;
 // QueryPerformanceCounter's low part when the unit starts its frame sync
 // (rva 0x423630); online play measures time from it (rva 0x420170).
 constexpr uint32_t kSyncClock = 0x2214;
@@ -565,7 +582,10 @@ constexpr uint32_t kNodeFunction = 0x30;
 // rollbacks while the vectors differed in nearly every one), and a
 // projectile's visual part (ProjectileVisualPart+0xC0 and +0xF0: its UE
 // actor, reconciled after a restore by rva 0x482D10, so a replay can differ
-// in the actor pointer and a frame counter).
+// in the actor pointer and a frame counter), and a fighter's material part
+// (CharaMaterialPart+0xD8 and +0x3B0: shader and material instances, its
+// pointers recreated by its post-restore callback rva 0x3587D0; the synctest
+// with KEN vs RYU, schedule 41, saw them differ while no fight state did).
 //
 // The battle statistics (StatsUnit+0xF8, 77804 bytes, registered at rva
 // 0x4B0570): its task (rva 0x4BA550, after the fighters' tasks) adds each
@@ -601,6 +621,8 @@ constexpr uint32_t kToTheEnd = ~0u;
 constexpr RunRule kRunRules[] = {
 	{"CameraUnit", 0x100, ".presentation"},
 	{"CharaManagerUnit", 0x1C0, ".presentation"},
+	{"CharaMaterialPart", 0xD8, ".presentation"},
+	{"CharaMaterialPart", 0x3B0, ".presentation"},
 	{"ProjectileVisualPart", 0xC0, ".presentation"},
 	{"ProjectileVisualPart", 0xF0, ".presentation"},
 	{"StatsUnit", 0xF8, ".stats"},

@@ -63,7 +63,8 @@ struct SyncTestReport {
 class SyncTester {
 public:
 	// `learn`: keep going after a difference, tallying the regions involved
-	// (to tell presentation state that drifts from a real desync).
+	// (to tell presentation state that drifts from a real desync); replayed
+	// frames are saved again, so the game stays on one timeline.
 	// `perturb`: before each replay, also play the same frames with wrong
 	// inputs and restore again, as a session does after a misprediction.
 	// State that the wrong timeline leaves behind outside the layout then

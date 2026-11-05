@@ -60,6 +60,7 @@ bool SfvAdapter::Bind()
 		return false;
 	}
 	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	gameInstance_ = reinterpret_cast<uint8_t* (*)()>(base + sfv::kGameInstance.rva);
 	if (!flow_.Bind(flowUnit, base)) {
 		WaitingToBind("a flow it can record");
 		return false;
@@ -245,10 +246,14 @@ int SfvAdapter::ReseedRandom(uint32_t seed)
 
 void SfvAdapter::AfterLoad()
 {
-	// The callbacks take a frame id but none of them reads it (they call a
-	// member function of the object they were registered for).
-	const int32_t frameId[2] = {0, 0};
+	// The callbacks take the restored state's frame id, as the game's own load
+	// passes it (rva 0x48A310); the sound callbacks drop what was played after
+	// it (rva 0x4D5820, 0x4B6230).
+	namespace iu = sfv::inputunit;
+	const int32_t inputFrame = Field<int32_t>(inputUnit_, iu::kInputFrame);
+	const int32_t frameId[2] = {Field<int32_t>(inputUnit_, iu::kTag), inputFrame - 1};
 	for (const PostRestore& cb : postRestore_) cb.fn(cb.context, frameId);
+	if (uint8_t* instance = gameInstance_()) Field<int32_t>(instance, iu::kInstanceInputFrame) = inputFrame;
 	flow_.Apply();
 	flow_.Capture(); // what the restore left in the game, so a load check sees it
 }

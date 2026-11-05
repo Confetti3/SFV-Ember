@@ -109,6 +109,7 @@ private:
 	FrameInputs pending_;
 	PackedInput sampled_[kPlayers] = {};
 	uint32_t ticksInLastUpdate_ = 0;
+	uint8_t* (*gameInstance_)() = nullptr; // sfv::kGameInstance
 	uint32_t ticksThisUpdate_ = 0;
 	FlowRollback flow_;
 };

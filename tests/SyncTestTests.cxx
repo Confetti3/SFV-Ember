@@ -224,3 +224,41 @@ TEST_CASE("the game sees only the input bits it declares, in replays with wrong 
 	CHECK(tester.Report().rollbacks > 0);
 	CHECK(game.outside == 0);
 }
+
+TEST_CASE("learning mode stays on one timeline after a difference, so it counts that difference once")
+{
+	// The first replayed frame changes a value for good (as a replay that
+	// differs only in presentation leaves it different); nothing else ever
+	// differs. Checks after it must restore and compare states of the
+	// timeline the game is now on, not a mix of the played and replayed one.
+	class OneGlitch : public GameAdapter {
+	public:
+		OneGlitch()
+		{
+			layout_.Add("frame", &frame_, sizeof(frame_));
+			layout_.Add("glitch", &glitch_, sizeof(glitch_));
+		}
+		std::string BuildId() const override { return "one glitch"; }
+		StateLayout& Layout() override { return layout_; }
+		void Advance(const FrameInputs&, bool resimulating) override
+		{
+			frame_++;
+			if (resimulating && !glitched_) {
+				glitch_ = 99;
+				glitched_ = true;
+			}
+		}
+
+	private:
+		int frame_ = 0;
+		int glitch_ = 0;
+		bool glitched_ = false; // outside the layout: it happens once
+		StateLayout layout_;
+	};
+	OneGlitch game;
+	SyncTester tester(game, 8, true, false, 3); // learning, random overlapping schedule
+	for (int frame = 0; frame < 600; frame++) REQUIRE(tester.Step(ScriptedFrame(frame, 42)));
+	CHECK(tester.Report().rollbacks > 100);
+	CHECK(tester.Report().failures == 1);
+	CHECK(tester.Report().regionFailures.at("glitch") == 1);
+}

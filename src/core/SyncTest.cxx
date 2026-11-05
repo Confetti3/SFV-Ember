@@ -146,12 +146,17 @@ bool SyncTester::CheckRollback(int from, int now)
 	bool diverged = false;
 	for (int k = from; k < now; k++) {
 		game_.Advance(AsPlayed(At(k).inputs), true);
-		if (diverged || layout.HashLive() == At(k + 1).hash) continue;
-		Fail(k + 1, "replayed frame differs");
-		if (!learn_) return false;
-		// Learning counts each rollback once and goes on from the replayed
-		// state, as a session would.
-		diverged = true;
+		if (!diverged && layout.HashLive() != At(k + 1).hash) {
+			Fail(k + 1, "replayed frame differs");
+			if (!learn_) return false;
+			diverged = true; // each rollback counts once
+		}
+		// Learning goes on from the replayed state, as a session does, and
+		// saves each replayed frame again, as a session does: later checks
+		// then restore and compare states of the one timeline the game is
+		// on, not a mix of the played and the replayed one (a difference that
+		// does not affect the fight could otherwise show up as one that does).
+		if (learn_) Save(k + 1);
 	}
 	return true;
 }
