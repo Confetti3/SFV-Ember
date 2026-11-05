@@ -199,7 +199,7 @@ with neutral inputs, and no check restores to one's start.
 
 - In game, two copies linked through Ember's helper (`sf4-net`, Iroh, the
   loopback bridge), from a cold start with no input at all
-  (`tools/runauto.ps1`): both boot past the offline dialogs to the main
+  (`tools/runauto.ps1`, since replaced by `tools/runroom.ps1`): both boot past the offline dialogs to the main
   menu (about 20 s), link (host's grant and setup, joiner's setup), launch
   the same battle from the main menu with the players' picks (host P1,
   joiner P2) and fight it with rollback: 3,000 frames with 30 ms lag, 336
@@ -230,11 +230,12 @@ with neutral inputs, and no check restores to one's start.
   `launch versus RYU:0:1 CNL -`. The game's ownership check is skipped
   while developing and turned on (`-sfve_ownership=1`) in the public
   version (the maintainer, 2026-11-04).
-- **Linked start** (`MatchLink` setups, `HelperLink`). Each side brings a
-  setup (`-sfve_fighter=CODE[:costume[:colour]]`, the host also
-  `-sfve_stage=CODE`); the host's travels in the grant, the joiner's
-  answers it. Once both are known and the link is ready, both copies launch
-  the same battle on the main menu.
+- **Room start** (Ember's runtime in the mod, `-sfve_room=1`;
+  docs/design/EMBER_LIBRARY.md section 12). The players' picks and the
+  room's rules come from Ember's private room; once the room grants a match
+  both copies launch it on the main menu, and every game ends back in the
+  room. `MatchLink` and `HelperLink`, the earlier one-match link, are
+  retired.
 
 ### Open work
 
@@ -274,7 +275,7 @@ with neutral inputs, and no check restores to one's start.
     inputs, and rollbacks come at random spacing and depth up to 8 frames
     from a seed (`-sfve_schedule`), the way a network's do; learning mode
     tallies every region that differs. Two linked copies are the acceptance
-    check (`tools/runauto.ps1`); `-sfve_hash_every=1` keeps every frame's
+    check (`tools/runroom.ps1`); `-sfve_hash_every=1` keeps every frame's
     hash so `tools/compare.py` names the first differing frame.
   - Every region of the game's snapshot is named by its owner
     (`RegionNames`, from docs/design/SFV_REGION_MAP.md: two IDA passes and an
@@ -329,15 +330,15 @@ with neutral inputs, and no check restores to one's start.
   first saving.
 - Match end and results (done): the results menu is skipped for linked
   matches; the mod decides for both copies at the same session frame,
-  rematch or back to the main menu (`matchend`), and reads the game's
+  back to the room through the main menu, and reads the game's
   judgement (`MatchResult`: winner, rounds won, each round's finish). A
   broken linked session leaves for the main menu. The launch sets the
-  rounds and the round clock; linked matches use the host's.
+  rounds and the round clock from the room's table.
 - Ember's interface: SFV will show Ember's own shell through a shared
   Ember library (docs/design/EMBER_LIBRARY.md); the D3D11 overlay host
   is ready for it (`src/overlay`).
-- Changing fighters between matches needs Ember's room (a second match
-  generation on the link), which comes with Ember's shell.
+- Changing fighters between matches: each game of a room is its own match
+  generation, with the picks of that Ready (EMBER_LIBRARY.md section 12).
 - Lockstep outside the fight used to cost speed at high ping (intros, KOs
   and round calls waited for confirmed inputs: about 12 fps at an 80 ms
   round trip). It is gone: inputs there are ignored (above), so nothing

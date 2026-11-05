@@ -53,15 +53,21 @@ try {
     WaitFor "both copies back in the room after game $game" 90 { (Count 0 'battle closed at its match') -gt $closes[0] -and (Count 1 'battle closed at its match') -gt $closes[1] -and (Status 0).room.room -eq 'joined' -and (Status 1).room.room -eq 'joined' }
     Start-Sleep 3
     Shot "game$game-room"
-    foreach ($i in 0, 1) { "copy ${i}: " + (Select-String -Path $logOf[$i] -Pattern 'netplay: match result' | Select-Object -Last 1).Line.Substring(24) }
+    foreach ($i in 0, 1) {
+      # The battle status as last published, in the game's last frames.
+      $mode = (Status $i).battle.mode
+      "copy ${i}: " + (Select-String -Path $logOf[$i] -Pattern 'netplay: match result' | Select-Object -Last 1).Line.Substring(24) + " rollbacks $($mode.rollbacks), longest $($mode.longestRollback)"
+    }
   }
 } catch {
   $failure = $_.Exception.Message
 }
 foreach ($i in 0, 1) {
-  "copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress)
+  try { "copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress) } catch { "copy $i is not answering" }
   Select-String -Path $logOf[$i] -Pattern 'desync|mismatch' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) }
 }
+# The copies close here, whatever happened above; the logs stay.
+if (!$keep) { python -I tools\sfve.py kill | Out-Null }
 # Each copy logs its checkpoint hashes (every 60 confirmed frames); a frame
 # number that falls back starts the next game.
 function Checkpoints([int]$i) {
@@ -78,5 +84,4 @@ $common = @($h0.Keys | Where-Object { $h1.ContainsKey($_) })
 $differing = @($common | Where-Object { $h0[$_] -ne $h1[$_] })
 "checkpoints: $($common.Count) compared, $($differing.Count) differing"
 $desyncs = (Count 0 'desync|mismatch') + (Count 1 'desync|mismatch') + $differing.Count
-if (!$keep) { python -I tools\sfve.py kill | Out-Null }
-if ($failure) { "FAIL: $failure" } elseif ($desyncs) { "FAIL: $desyncs desync line(s)" } else { "PASS: $games game(s), no desync" }
+if ($failure)  { "FAIL: $failure" } elseif ($desyncs) { "FAIL: $desyncs desync line(s)" } else { "PASS: $games game(s), no desync" }

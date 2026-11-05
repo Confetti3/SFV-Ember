@@ -726,7 +726,7 @@ Mapped to existing modules: `BuildId` → `MatchBuildId` (SfvCatalog: `kMatchBui
 - **Services:** Steam, music, away sound, custom content, self-test.
 - A failed launch is only logged.
 
-**Left for the next step.** These three stay as they are until the runtime runs in the mod:
+**Left for the next step** (done in section 12). These three stay as they are until the runtime runs in the mod:
 - `Retire`, `Abort` and `Fail` only log. `NetplayMode::Leave` becomes their target (below).
 - The Input stub lists no devices, so `runtime->input.Ready()` stays false: `AttachRoom` returns early and a join or Ready is refused until SFV lists its pads and assigns one to its side.
 - The runtime start must check `ember::Usable(ember::Catalog())` after `FillCatalog`, and log instead of starting when the lists were empty or refused.
@@ -786,3 +786,70 @@ Step 5 routes every pick and stage decision, and every fighter fact the shared s
 - `StageValue.hxx`'s `PreferenceStage`, which only SF4's saved preferences use.
 - SF4's select screen (`FighterSelector`), Training, art, labels, lobby music and custom-content files, which are SF4's adapter.
 - The product identity in the runtime's tests (step 2).
+
+
+## 12. Slice 1 in the mod (B1, 2026-11-05)
+
+Ember's runtime now runs inside the SFV mod, and a private Ember room plays matches between two SFV copies. There is no shell yet: test commands on the control pipe stand in for its buttons, and the evidence is the mod's logs and screenshots. This does the three "left for the next step" items of section 10.
+
+**How it is hosted** (`-sfve_mode=netplay -sfve_room=1`)
+- `src/ember/EmberHost.cxx` registers one `RunEachGameFrame` tick. The first frame the main menu is in front, it runs `FillCatalog(ReadContentLists())` and starts the runtime only if `Usable(Catalog())`. Empty lists make it wait; refused lists stop it, with the reason in the status field `ember`. After the fill, `SealCatalog` makes any later fill log and refuse. The runtime's threads read the catalog without a lock.
+- The host then starts the helper the way the runtime expects a launcher to: `HelperProcess::Start(sf4-net.exe)` in a kill-on-close job, then `ConfigureHelper(bootstrap)`. Next come `InitFromPayload`, with a display name of "SFV <instance + 1>" (a room's names must be unique) and editions off, then `StartHelper`, `NotifyRuntimeGameReady` and `NotifyRuntimeEventSystemReady`. The runtime's spdlog lines go to the mod's log as `ember <level>:`.
+- From then on, every game-thread frame runs `ember::Tick`, with `NetplayMode` as the `GameTick`.
+  - `PollBattle` closes a room battle once the main menu is back.
+  - `UpdateGame` is empty: SFV's scene manager ticks its state right after the game-thread pump, outside the tick. So on SFV, `PublishPresentationFrame` runs before that frame's game update, not after it as on SF4.
+- At process exit, a static guard runs `ShutdownNetplay(true)`. It is constructed after the battle mode, so it is destroyed first. There is no `StopHelper`: its waits would run under the loader lock (GGPO owns the DLL's `DllMain`), and the job ends the helper with the process. The guard is installed but not exercised: every test ended with `taskkill`, which never reaches DLL detach. A normal close of the game is untested, and it could hang if `Disconnect` waits on a thread that is already gone.
+- `HelperLink` and `MatchLink` are gone. The room's grant gives the ports, seed, delay and picks. `-sfve_link`, `-sfve_fighter/_stage/_rounds/_time/_after`, the `host`/`matchend` pipe commands and `MatchEndChoice` went with them. `tools/runroom.ps1` replaces `tools/runauto.ps1`.
+
+**The battle** (`NetplayMode`, through `RuntimeEvents`)
+- **`NewBattle`.** A battle is a room's when `-sfve_room=1` and `HasRuntimeRoomLink()` holds as it binds. Such a battle:
+  - calls `SetBattleInPlay` (session, battle and the exit hook) before the old session can go;
+  - calls `ClearBattleState`, `CancelDeferredGgpoClose`, `ResetGgpoBattleWatch` and `NotifyRuntimeBattleLoaded`.
+  - Any other battle while rooms are on plays offline.
+- **Session start.** The session starts on the first frame that has `SessionSynced()` (the room client's `OnSessionSynced`) and `GetRuntimeMatchEndpoints`:
+  - `localSlot` is the player and `remotePorts[1 - slot]` the peer;
+  - the seed is `_matchData.rngSeed` and the delay `_matchData.inputDelay[slot]`.
+  - The calls go `BindRuntimeInput`, `ReportGgpoTransport`, `ReleaseRuntimePortToGgpo`, `RollbackSession::Start`, then `NoteRuntimeMatchStart`; a failed start calls `PushAlert`.
+  - If `IsRuntimeMatchLive()` turns false while the battle waits, the battle leaves with no session.
+- **`Frame`.** It reports `NotifyGgpoSyncPhase` (Synchronizing, then Running).
+  - On the confirmed frame `TakeEndedVersusBattle` takes the match's end, it calls `NotifyRuntimeMatchResult(GameResult(), frame, confirmed, 0, false)`, then `Leave()`.
+  - `RematchInPlaceOffered` is read and logged, but SFV has no prompt over the WIN (`ResultScreenShown` is false), so every game goes back to the room. The test command's rooms set `instantRematch` off.
+- **Retire, Abort and Fail.** These call the exit hook, which only sets a flag, so no runtime call can re-enter the mode's lock. The next battle frame closes the session and calls `Leave()`. `Abort` also pushes its notice.
+- **Close (`PollBattle`, main menu back).** The session closes and `SetBattleInPlay({})` runs. Then the battle reports how it ended:
+  - `NotifyMatchEnded` if the match reached its end, otherwise `NotifyRuntimeBattleClosedWithoutSession`;
+  - then `FinalizeControlPlaneLossAfterBattle` if `IsControlPlaneLost()`.
+  - Only then is `Battle::Live()` false: the runtime's teardown and the next Ready wait for it.
+
+**Input.** `SfvInput::ReadDevices` lists the XInput slots as the game last read them (`VirtualPads::LastPadState`, recorded in the XInput hook, so the listing makes no XInput calls of its own) as "Controller N". The gameplay device is the game's pad 0: `SavedGameplayDevice` and `MenuDevice` name it, and `AssignToSide` accepts only it, for either side. `runtime->input.Ready()` therefore holds once the game reads pad 0, so `AttachRoom` joins and Ready is allowed. The log shows it: `Input: gameplay controller 'Controller 1' ... slot 0 by restore`, then `Input: P1 plays with xinput 0` as the session starts. `GameState::Random` uses the system's generator: the host's match seed is no longer always 0.
+
+**Test commands** (`src/ember/RoomCommands.cxx`, its own module)
+- Commands: `room [rounds] [seconds]`, `invite`, `join <invitation>`, `sit [table] [seat]`, `pick CODE[:costume[:colour]] [STAGE]`, `ready`, `delay N` and `leave`.
+- Each submits a `RuntimeCommand` tagged with the published session generation. `sit` is the room board's Queue action, fenced by the room and table revisions.
+- The status field `room` reports the room and match phase, the seat, the members, `canReady`, the pick and the latest notice.
+
+**Evidence** (`tools/runroom.ps1`, two copies, 1 round of 30 s, RYU vs CNL on S25, input delay 2, seeded mash)
+- **0 ms lag, 2 games.**
+  - Both copies boot to the main menu and fill a catalog of 46 fighters and 37 stages (build `.../d41890506b8a4a34` on both).
+  - The host's room is joined by its invitation. Both copies take P1 and P2 and Ready.
+  - The match launches through `VersusLaunch` on both, each session starts after "every member's battle has loaded", and both log `match result ... at frame 4586`.
+  - The room records the result (`Match result: report acknowledged`, `Room: match ended table=0 generation=1 result=1`). Both copies log "battle closed at its match's end; back in the room", and the second game runs the same way.
+  - 154 confirmed checkpoints were compared across the copies' logs, with 0 differing and no desync notice. Screenshots of each fight and of each copy back at the main menu were checked. Two from the 30 ms run are kept, `D:\sfv-re\shots\room\game2-fight-1.png` (the fight, 26 s left) and `game2-room-0.png` (the main menu after it); the others were deleted.
+- **30 ms lag (`-sfve_lag=30`), 2 games:** PASS twice.
+  - With 1 round of 30 s: 154 checkpoints compared, 0 differing; both copies decide at frame 4586.
+  - With 3 rounds of 60 s (`-rounds 3 -seconds 60`): both games decided at frame 10487 on both copies (2-0, time over), 350 checkpoints compared, 0 differing, no desync notice.
+  - Rollbacks per game, from the battle status as last published: P1 888 and 917, P2 0 and 1, longest 1 frame. The rollbacks fall almost all on P1. The pacing runs P2 behind and was not examined further; the earlier `runauto.ps1` figure (665) was a different flow and is not comparable.
+
+**Left for B1's follow-ups**
+- The result goes to the room, and the room accepts it (`profile record saved`). Sets, rotation and rankings were not exercised beyond one Unlimited table.
+- Rematch in place needs a WIN prompt. `MatchEnd::Rematch` is kept for it. A rematch would also need the session's restart without a second battle-loaded sync.
+- `GamesPlayedInPlace`, `RecentRollbackFrames`, `PingSummary`, the disconnect countdown, the connection warning and the prediction stall are still stubbed.
+- Settings are written nowhere. Copies on one PC share `%APPDATA%\SFVEmber` (settings and the session trace); no conflict was logged in these runs.
+- In every run, each helper logged "actor stuck in task:hosted/guest_control" for about 3 s while the room opened. The room then worked; this was not looked into.
+- `GameState::Language` is empty.
+
+**What blocks B2 (Ember's shell drawn on DX11)**
+1. **No neutral `ShellHost`** (section 6, Wrong #6). SF4's `sf4e__Overlay.cxx` turns the snapshot into a `ShellView`, keeps the player's pick and Training dummy, and draws the fighter selector. SFV needs that host, minus SF4's selector, plugged into `SetOverlayUi` (`src/overlay/Overlay.hxx`), plus a `DrawSelection` over `ReadContentLists()`. Today the pick lives in `RoomCommands`.
+2. **The shell's pad input.** `SfvInput::ReadController` and `MenuButtons` return nothing, and `MenuTakesPads` is false. The overlay's `FilterGamePad` already takes the pad from the game. The shell's navigation needs `ReadController` from `LastPadState` (XInput bits to Ember's `input::xinput` layout).
+3. **Textures.** The shell's `SelectionArt` needs a DX11 `TextureUploader` (overlay plan section 1d). SFV's pictures all report missing until there is art.
+4. **The shell in the mod's link.** `ApplicationShell` compiles in the x64 probe (section 7), but the mod has never linked it: fonts, locales and ImGui 1.91.9 (the pin, section 6 Wrong #11) are untested in the DLL.
+5. **Rules SFV cannot play.** The shell offers 15 and 99 rounds and 9999 s; SFV plays 1/3/5/7 rounds of 30-300 s. `Battle::Enter` rejects such a match (`Entry::Rejected`). The shell should offer only the catalog's playable rules: add rule lists to the catalog (section 2, `RoundCounts`/`RoundTimes`).
