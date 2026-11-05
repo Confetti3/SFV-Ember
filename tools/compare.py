@@ -54,6 +54,19 @@ def compare_regions(a: int, b: int, frame: int) -> None:
         print(f"  {size:>6} bytes: {sizes[size]} on copy {a}, {sizes_b[size]} on copy {b}")
 
 
+def first_differing_frame(a: int, b: int, checkpoint: int) -> None:
+    """With every frame hashed and kept (-sfve_hash_every=1), the first frame
+    before `checkpoint` whose hashes differ."""
+    for frame in range(max(0, checkpoint - 59), checkpoint + 1):
+        ha, hb = lib.request(a, f"hash {frame}"), lib.request(b, f"hash {frame}")
+        if not (ha.startswith("ok") and hb.startswith("ok")):
+            print("frames between checkpoints are not all kept (-sfve_hash_every=1 keeps them)")
+            return
+        if ha != hb:
+            print(f"first differing frame: {frame}")
+            return
+
+
 def main(a: int = 0, b: int = 1) -> int:
     sa, sb = netplay_status(a), netplay_status(b)
     for index, s in ((a, sa), (b, sb)):
@@ -82,6 +95,7 @@ def main(a: int = 0, b: int = 1) -> int:
         print(f"first divergent checkpoint: frame {divergent[0]} "
               f"({len(divergent)} of {len(common)} logged checkpoints differ)")
         compare_regions(a, b, divergent[0])
+        first_differing_frame(a, b, divergent[0])
     elif common:
         print(f"all {len(common)} logged checkpoints match (frames {common[0]}..{common[-1]})")
     return 1 if differ or divergent else 0

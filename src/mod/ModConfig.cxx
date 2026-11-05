@@ -76,6 +76,7 @@ void LoadConfigFromCommandLine(const wchar_t* line)
 	c.perturb = Number(line, L"sfve_perturb", 0) != 0;
 	c.scheduleSeed = (uint32_t)Number(line, L"sfve_schedule", 0);
 	c.lagMs = (int)Number(line, L"sfve_lag", 0);
+	c.hashEvery = (int)Number(line, L"sfve_hash_every", 0);
 	c.helperLink = Number(line, L"sfve_link", 0) != 0;
 	c.offlineDialogs = (int)Number(line, L"sfve_dialogs", 2);
 	c.ownershipCheck = Number(line, L"sfve_ownership", 0) != 0;

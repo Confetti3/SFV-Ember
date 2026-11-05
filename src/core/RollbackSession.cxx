@@ -65,6 +65,7 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	frame_ = 0;
 	latch_.Reset();
 	for (HashRecord& h : history_) h = {};
+	allHashes_.clear();
 	checkpoints_.clear();
 	pool_.assign(kPoolSlots, Slot{});
 	for (Slot& s : pool_) s.bytes.resize(game_.Layout().TotalSize());
@@ -243,7 +244,7 @@ bool RollbackSession::ReadRift(Rift* out) const
 bool RollbackSession::HashAt(int frame, uint64_t* out) const
 {
 	if (frame < 0) return false;
-	const HashRecord& r = history_[frame % kHistory];
+	const HashRecord& r = (size_t)frame < allHashes_.size() ? allHashes_[frame] : history_[frame % kHistory];
 	if (r.frame != frame) return false;
 	*out = r.hash;
 	return true;
@@ -331,7 +332,13 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 	slot->hash = slot->hashed ? layout.HashSaved(slot->bytes.data(), HashScope::Peers) : 0;
 	slot->localHash = config_.verifyLoads ? layout.HashSaved(slot->bytes.data()) : 0;
 	QueryPerformanceCounter(&hashed);
-	if (slot->hashed) history_[frame % kHistory] = {frame, slot->hash};
+	if (slot->hashed) {
+		history_[frame % kHistory] = {frame, slot->hash};
+		if (config_.keepAllHashes) {
+			if ((size_t)frame >= allHashes_.size()) allHashes_.resize((size_t)frame + 1);
+			allHashes_[frame] = {frame, slot->hash};
+		}
+	}
 	if (checkpoint) {
 		layout.PeerRegionHashesSaved(slot->bytes.data(), checkpoints_[frame]); // a replay overwrites it
 		QueryPerformanceFrequency(&perSecond);

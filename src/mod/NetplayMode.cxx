@@ -139,6 +139,10 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	// waits for the other side's input for the next frame, which it has
 	// always sent by then.
 	c.inputDelay = delay < 1 ? 1 : delay;
+	if (config_.hashEvery > 0) {
+		c.hashEveryFrames = config_.hashEvery;
+		c.keepAllHashes = true;
+	}
 	// Both copies are at the battle's first frame: give the clock-seeded
 	// random generators the same seeds before anything is simulated.
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));

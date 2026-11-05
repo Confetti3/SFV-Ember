@@ -56,6 +56,10 @@ public:
 		// several times what copying it does and GGPO never reads it, so by
 		// default only checkpoints are hashed; the loopback tests hash every frame.
 		int hashEveryFrames = kCheckpointInterval;
+		// Diagnostics: HashAt keeps every hashed frame of the session (8 bytes
+		// a frame) instead of the latest 256, so two copies' hashes can be
+		// compared frame by frame after a match, back to the first that differs.
+		bool keepAllHashes = false;
 	};
 
 	enum class StepResult {
@@ -108,8 +112,9 @@ public:
 	};
 	bool ReadRift(Rift* out) const;
 	// Hash of the state saved for `frame`, if it was hashed (see
-	// Config::hashEveryFrames) and is still in the history. After the frame is
-	// confirmed this is final, so peers can compare it.
+	// Config::hashEveryFrames) and is still in the history (or kept, see
+	// Config::keepAllHashes). After the frame is confirmed this is final, so
+	// peers can compare it.
 	bool HashAt(int frame, uint64_t* out) const;
 	// The saved bytes of `frame` while its save is still in the pool (the
 	// latest frames), laid out by StateLayout::SaveTo; null otherwise.
@@ -165,6 +170,7 @@ private:
 	sf4e::gate::AbortLatch latch_;
 	std::vector<Slot> pool_;
 	std::vector<HashRecord> history_;
+	std::vector<HashRecord> allHashes_; // Config::keepAllHashes, indexed by frame
 	std::map<int, std::vector<RegionHash>> checkpoints_;
 	int frame_ = 0;
 	bool failed_ = false;

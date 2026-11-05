@@ -18,6 +18,8 @@
 //   -sfve_perturb=1      synctest: play each rolled-back stretch with wrong inputs first
 //   -sfve_schedule=SEED  synctest: rollbacks of random depth and spacing (up to the distance)
 //   -sfve_lag=MS         test: hold back outgoing UDP by MS milliseconds
+//   -sfve_hash_every=N   netplay diagnostics: hash every Nth frame and keep every
+//                        hash for the match (pipe "hash F"; tools/compare.py)
 //   -sfve_link=1         netplay through Ember's helper ("host" / "join <invitation>")
 //   -sfve_fighter=F      linked netplay: this copy's fighter, CODE[:costume[:colour]]
 //   -sfve_stage=S        linked netplay, host: the stage code
@@ -53,6 +55,7 @@ struct ModConfig {
 	bool perturb = false;
 	uint32_t scheduleSeed = 0;
 	int lagMs = 0;
+	int hashEvery = 0; // 0: checkpoints only
 	bool helperLink = false; // netplay endpoints, seed and delay come from a HelperLink
 	// Offline start-up dialogs kept from showing: 0 none, 1 the download
 	// failures, 2 those and the offline-mode notice.

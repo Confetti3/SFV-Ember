@@ -26,7 +26,7 @@ struct Pair {
 	MockFighter gameA, gameB;
 	RollbackSession a{gameA}, b{gameB};
 
-	Pair(unsigned bugs, int delay) : gameA(bugs), gameB(bugs)
+	Pair(unsigned bugs, int delay, bool keepAllHashes = false) : gameA(bugs), gameB(bugs)
 	{
 		const uint16_t base = PortBase();
 		RollbackSession::Config ca, cb;
@@ -38,6 +38,7 @@ struct Pair {
 		cb.remotePort = base;
 		ca.inputDelay = cb.inputDelay = delay;
 		ca.verifyLoads = cb.verifyLoads = true;
+		ca.keepAllHashes = cb.keepAllHashes = keepAllHashes;
 		ca.disconnectTimeoutMs = cb.disconnectTimeoutMs = 1000;
 		std::string error;
 		REQUIRE_MESSAGE(a.Start(ca, &error), error);
@@ -102,6 +103,23 @@ TEST_CASE("two peers over loopback UDP roll back and agree with an offline run")
 		compared++;
 	}
 	CHECK(compared > 100);
+}
+
+TEST_CASE("kept hashes reach back to the session's first frames")
+{
+	for (const bool keep : {false, true}) {
+		Pair pair(kBugNone, 0, keep);
+		REQUIRE(pair.RunTo(600));
+		const std::vector<uint64_t> reference = ReferenceHashes(20);
+		uint64_t ha = 0, hb = 0;
+		const bool kept = pair.a.HashAt(10, &ha) && pair.b.HashAt(10, &hb);
+		INFO("keepAllHashes " << keep);
+		CHECK(kept == keep); // otherwise only the latest 256 frames
+		if (kept) {
+			CHECK(ha == hb);
+			CHECK(ha == reference[10]);
+		}
+	}
 }
 
 TEST_CASE("frames whose inputs the game ignores are never a rollback's start")
