@@ -7,6 +7,8 @@
 - `sfvrproject/sfv-rollback` has no licence: read it as a map only. Copy no
   code, offsets, signatures or data from it; derive every address from the
   installed exe yourself.
-- `src/shared` and `vcpkg-overlays/ports/ggpo` are verbatim copies from SF4
-  Ember (docs/SHARED_FROM_EMBER.md). Change them in Ember first.
+- Ember's code comes from the Ember library checkout the build names
+  (`scripts/build.ps1 -EmberRoot`, docs/design/EMBER_LIBRARY.md). Change it in
+  the library, never by copying it here. `vcpkg-overlays/ports/ggpo` is Ember's
+  GGPO port plus `ignored-inputs.patch`.
 - No entitlement or character unlocks.

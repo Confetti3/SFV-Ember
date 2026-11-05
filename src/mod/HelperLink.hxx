@@ -4,7 +4,7 @@
 // mod), started and spoken to the way the SF4 launcher and mod do: the
 // helper is a child of this process in a kill-on-close job, authenticated
 // over its named pipe by a nonce (Ember's HelperProcess/HelperClient,
-// src/shared/platform). The helper carries all internet traffic; the game
+// the library's platform/ folder). The helper carries all internet traffic; the game
 // process still only talks to loopback (NetGuard).
 //
 // A worker thread pumps helper events into a MatchLink and its commands back

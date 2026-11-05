@@ -32,15 +32,6 @@ if(NOT EXISTS "${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe/CMakeLists.txt")
 endif()
 add_subdirectory("${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe" "${CMAKE_BINARY_DIR}/ember")
 
-# Modules copied verbatim from SF4 Ember (docs/SHARED_FROM_EMBER.md).
-add_library(sfve_shared STATIC
-    src/shared/sf4e__GgpoGate.cxx
-    src/shared/platform/HelperProcess.cxx
-    src/shared/platform/HelperClient.cxx)
-target_include_directories(sfve_shared PUBLIC src/shared)
-target_compile_options(sfve_shared PRIVATE /W3)
-target_link_libraries(sfve_shared PUBLIC bcrypt)
-
 # Game-agnostic rollback core: state regions, hashing, the GGPO session and
 # the synctest harness. No game, no hooks; unit tested against MockFighter.
 add_library(sfve_core STATIC
@@ -49,8 +40,10 @@ add_library(sfve_core STATIC
     src/core/SyncTest.cxx
     src/core/NetPolicy.cxx
     src/core/MatchLink.cxx)
-target_include_directories(sfve_core PUBLIC src)
-target_link_libraries(sfve_core PUBLIC sfve_shared ggpo::GGPO xxHash::xxhash nlohmann_json::nlohmann_json ws2_32 winmm)
+# Ember's GGPO gate, pacing, state hash and helper client come from the
+# library: its common/ folder by file name, the rest by folder.
+target_include_directories(sfve_core PUBLIC src "${SFVE_EMBER_SOURCE_ROOT}/src/common" "${SFVE_EMBER_SOURCE_ROOT}/src")
+target_link_libraries(sfve_core PUBLIC ember_neutral_x64 bcrypt ggpo::GGPO xxHash::xxhash nlohmann_json::nlohmann_json ws2_32 winmm)
 
 add_library(sfve_testbed STATIC src/testbed/MockFighter.cxx)
 target_link_libraries(sfve_testbed PUBLIC sfve_core)

@@ -55,7 +55,7 @@ does for SF4.
 src/proxy/   xinput1_3.dll   forwards XInput; starts the mod from the exe entry point
 src/mod/     sfv_ember.dll   NetGuard, BuildCheck, SfvAdapter (game side)
 src/core/    static lib      StateLayout, RollbackSession (GGPO), SyncTest, NetPolicy
-src/shared/  static lib      modules copied verbatim from SF4 Ember
+(library)    ember_neutral_x64 / ember_runtime_x64   Ember's code, built from the library checkout
 src/testbed/ static lib      MockFighter: deterministic fighter with switchable bugs
 tests/       sfve_tests.exe  doctest
 tools/       sfve.py, sfve_mcp.py, compare.py, diffstate.py: launch, drive and compare copies
@@ -72,13 +72,13 @@ AfterLoad. `MockFighter` implements it for the tests, `SfvAdapter` over SFV.
 | From Ember | Here | Why |
 | --- | --- | --- |
 | GGPO fork `adanducci/ggpo@c88b667` + the 17-patch vcpkg port | `vcpkg-overlays/ports/ggpo` (unchanged) | same netcode, same hardening (spectators, input repair, bounded decoding) |
-| `GgpoGateModel` | `src/shared` (verbatim) | one explicit gate instead of a bool; warnings never block, fatal latches |
-| `AbortLatch` | `src/shared` (verbatim) | no callback ever closes the session |
-| `PacingController`, `GgpoDisconnectTolerance`, `StateHash` | `src/shared` (verbatim) | time sync pacing and semantic hashing, for the next milestones |
+| `GgpoGateModel` | the Ember library | one explicit gate instead of a bool; warnings never block, fatal latches |
+| `AbortLatch` | the Ember library | no callback ever closes the session |
+| `PacingController`, `GgpoDisconnectTolerance`, `StateHash` | the Ember library | time sync pacing and semantic hashing, for the next milestones |
 | Callback rules from `GGPO_LIFECYCLE.md` | `RollbackSession` | main-thread only, preallocated save pool (`*len = 1`), rollback replays one native tick per GGPO frame |
 
-Copied files stay byte-identical so later Ember fixes can be diffed across;
-see `docs/SHARED_FROM_EMBER.md` for the source commit.
+These came over as copies first (`src/shared`, 2026-11-04); since 2026-11-05
+SFV Ember builds them from the Ember library itself (EMBER_LIBRARY.md section 9).
 
 What does not carry over: SF4's memento-based `SaveState`. SFV's battle already
 keeps its own snapshot store (below), so save/load is a copy of known regions,

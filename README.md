@@ -8,15 +8,16 @@ The game never talks to Capcom: the mod blocks every connection but loopback
 and the session's own peers, starting before any game code runs.
 
 - Design and plan: [docs/design/SFV_PORT.md](docs/design/SFV_PORT.md)
-- Code shared with SF4 Ember: [docs/SHARED_FROM_EMBER.md](docs/SHARED_FROM_EMBER.md)
+- Built on the Ember library: [docs/design/EMBER_LIBRARY.md](docs/design/EMBER_LIBRARY.md)
 
 ## Build
 
-Needs Visual Studio 18 Build Tools (C++ x64) and the vcpkg checkout next to
-this folder (`..\vcpkg`).
+Needs Visual Studio 18 Build Tools (C++ x64), the vcpkg checkout next to
+this folder (`..\vcpkg`) and a checkout of the Ember library (SF4 Ember's
+`feat/ember-library` branch), named with `-EmberRoot` or `SFVE_EMBER_ROOT`.
 
 ```powershell
-.\scripts\build.ps1
+.\scripts\build.ps1 -EmberRoot D:\sf4-wt\ember-library
 ```
 
 Builds into `D:\sfv-ember-build` and runs the tests. Outputs:
