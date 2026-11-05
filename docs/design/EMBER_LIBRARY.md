@@ -671,13 +671,28 @@ It follows section 6 ("the wire keeps today's field names"), not the section 3 r
 
 ## 9. Library on V: the runtime under x64 (2026-11-05)
 
-The x64 library build (`cmake/ember-x64-probe`, `scripts/probe-x64.ps1`) now also compiles the runtime (`ember_runtime_x64`, x64 C++20 `/W4 /WX`). The runtime's source list is `cmake/sf4e_runtime_sources.cmake`, which SF4 Ember's build reads too. Every runtime source compiles. The runtime's test under the fake game (`RuntimeCapabilitiesTest`, `-LinkRuntime`) does not link yet: 27 symbols are still SF4's. They fall into four groups, each with its decision:
+The x64 library build (`cmake/ember-x64-probe`, `scripts/probe-x64.ps1`) compiles the runtime (`ember_runtime_x64`, x64 C++20 `/W4 /WX`), then links and runs the runtime's test under the fake game (`ember_runtime_x64_test`, the x64 build of `RuntimeCapabilitiesTest`). Every run of the script does this; the `-LinkRuntime` switch is gone. The runtime's source list is `cmake/sf4e_runtime_sources.cmake`, which SF4 Ember's build reads too.
 
-| Group | Symbols | Decision |
+The test links because the runtime no longer reaches SF4's side. The first version of this section counted 27 SF4 symbols, in four groups. When this work began, the test's link named 21 of them, because nothing it linked called the pick labels yet. All four groups were moved anyway. Each group was moved as follows (S `feat/ember-library`, commits 48660dc28 to 8fcc1f88d). SF4's behaviour is unchanged: the same labels, art files, replay archive and language detection.
+
+| Group | Was | Now |
 |---|---|---|
-| Game language | `SetGameDirectory`, `GameLanguage`, `ResolveUiLocale` (`platform/LocaleWindows.cxx`, which calls SF4's `DetectGameLanguage`), and `WindowsCountry` beside them | `LocaleWindows.cxx` is neutral apart from that one call. The game's language becomes the adapter's (`GameState`), and SF4's detection from its install stays in SF4's adapter. The Windows UI languages, Steam's language and the country stay neutral |
-| Pick labels | `CostumeLabel`, `ShortCostumeLabel`, `UltraLabel`, `ShortUltraLabel` (in `ui/FighterSelector.cxx`, SF4's) | Each game defines them once, as it defines `Catalog()`; SF4's move out of the selector unchanged |
-| Selection art | `SelectionArt::Portrait`, `Character`, `RankingEmblem`, `Flag`, `InputPrompt`, `MenuBackdrop`, `DeveloperMark` (`ui/SelectionArt.cxx`, SF4's) | `SelectionArt` keeps the cache, the uploader and Ember's own art (menu backdrop, input prompts, flags, developer mark). The game supplies the files for its fighters, stages, Ultras and emblems |
-| Replay archive | `platform::replays::*` (`FindFolders`, `WantListing`, `LatestListing`, `WantDetail`, `LatestDetail`, `MarkKept`, `MarkSent`, `MarkSetClosed`, `SetPackPath`, `ImportSetPack`, `StopListing`) | The runtime reaches the archive through `game::Replays`, as it reaches playback. SFV's is null, and its `caps.replays` is false |
+| Game language | `LocaleWindows.cxx` called SF4's `DetectGameLanguage` (`SetGameDirectory`) | `GameState::Language()` gives the game's language code, and the runtime records it as it starts (`platform::SetGameLanguage`). SF4's adapter detects the language from the game's folder, as before. The launcher detects it the same way for the folder it found. `LocaleWindows.cxx` is neutral: the Windows UI languages, Steam's language and the country |
+| Pick labels | Defined in `ui/FighterSelector.cxx` | `SelectionLabels.hxx` declares all six (`CostumeLabel`, `ShortCostumeLabel`, `ShortAppearanceLabel`, `UltraLabel`, `ShortUltraLabel`, `StageLabel`). Each game defines them once at link time, as it defines `Catalog()`. SF4's moved unchanged to `ui/Sf4SelectionLabels.cxx`. The fake game's (`tests/fake_selection.cxx`) are plain numbered names |
+| Selection art | `ui/SelectionArt.cxx` was SF4's | `SelectionArt.cxx` is neutral: the cache, the decoding worker, the uploader and Ember's own art (menu backdrop, input prompts, flags, developer mark). The game's pictures (`Portrait`, `Character`, `Appearance`, `Ultra`, `Stage`, `RankingEmblem`) are defined once per game. They name their files through the class's private `Request` and `PackagedFiles`. SF4's moved unchanged to `ui/Sf4SelectionArt.cxx`, with its patch-folder paths. The fake game's are "missing" pictures |
+| Replay archive | The runtime called `platform::replays::*` directly | `game::Replays` adds `ArchivePath`, `WantListing`, `LatestListing`, `WantDetail`, `LatestDetail`, `StopListing`, `MarkKept`, `MarkSent`, `MarkSetClosed`, `SetPackPath` and `ImportSetPack`. Listing and detail may be called from any thread, because the shell's host asks for them. SF4's methods call the same functions as before; the fake game's archive is empty. `ApplicationServices` is given the archive folder when it is constructed (the runtime passes `Game().replays.ArchivePath()`), so "Open folder" and "Show in folder" no longer call `FindFolders`. `ArchivePath()` is split out of `FindFolders`, so asking for the folder does not scan Steam's saves |
 
-`winmm` (`PlaySoundW`, Speech) is a link library. It is already added.
+**The art's seam is link-time, not an adapter interface.** Three reasons:
+- The shell calls the game's pictures (`GameMenu`, `NameMarks`, Settings), but only the game's own code constructs `SelectionArt`: SF4's overlay, the recovery window and the UI tests. An injected interface would have to pass through every constructor; link-time definitions need none.
+- It is one definition per binary, like `Catalog()`, the labels and `MakeBattleVerifier()`, and a binary without one fails to link.
+- SF4's members moved verbatim, so their cache keys, files, sizes and log lines are the same.
+
+**The image decoding is generic and stays neutral.** EMZ/EMB (a zlib stream with an entry table) and plain 32-bit DDS are recognised only by their magic bytes, and use no SF4 type or path. WIC decodes everything else. SFV's files never match those formats.
+
+**SF4's build.** `sf4e_ui` carries SF4's labels and pictures, so SF4's `RuntimeCapabilitiesTest` uses them, as it uses SF4's catalog. Only the x64 test links the fake game's.
+
+**The probe's lists.** `platform/LocaleWindows.cxx` and `ui/SelectionArt.cxx` left `EMBER_SF4_SIDE`. `ui/Sf4SelectionLabels.cxx` and `ui/Sf4SelectionArt.cxx` joined it, and `tests/fake_selection.cxx` joined the test's files. The neutral library publishes the generated locale ids (`generated/public`), as `sf4e_localization` does in SF4's build. `winmm`, `ole32` and `windowscodecs` are link libraries.
+
+**Still SF4's:**
+- The test's roster, stages and identity (step 5).
+- The archive's listing type (`ArchivedReplay`) lives in SF4's `platform/ReplayFiles.hxx` until step 9.
