@@ -389,12 +389,13 @@ void RollbackSession::Free(void* buffer)
 
 // The frame about to be advanced: when the game ignores its inputs, GGPO is
 // told (no misprediction on it) and the game gets neutral inputs, so what
-// the players' copies happened to send cannot change the simulation.
+// the players' copies happened to send cannot change the simulation; when it
+// reads them, only the bits a pad can produce reach it.
 FrameInputs RollbackSession::InputsForThisFrame(const FrameInputs& inputs)
 {
 	const bool matter = game_.InputsMatter();
 	ggpo_set_inputs_ignored(session_, !matter);
-	return matter ? inputs : FrameInputs{};
+	return matter ? Restricted(inputs, game_.InputBits()) : FrameInputs{};
 }
 
 bool RollbackSession::AdvanceFromRollback()

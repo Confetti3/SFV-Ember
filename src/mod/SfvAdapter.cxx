@@ -125,7 +125,9 @@ bool SfvAdapter::AddGameRegions(uint8_t* manager)
 		const char* kind = rule ? rule->kind : "";
 		const std::string name = run.name.empty() ? "game." + std::to_string(r - begin) : run.name;
 		const size_t index = layout_.Add(name + kind, r->ptr, (size_t)r->size, !*kind);
-		if (rule && rule->maskedWord != sfv::manager::kNoMask) layout_.IgnoreWord(index, rule->maskedWord);
+		if (rule) {
+			for (size_t at = rule->maskFrom; at < rule->maskTo && at < r->size; at += 8) layout_.IgnoreWord(index, at);
+		}
 	}
 	regionNames_.LogSummary();
 	for (size_t k = 0; k < std::size(sfv::manager::kRunRules); k++) {

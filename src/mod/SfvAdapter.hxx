@@ -17,6 +17,7 @@
 
 #include "core/GameAdapter.hxx"
 #include "mod/GameHooks.hxx"
+#include "mod/GameInput.hxx"
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvRegionNames.hxx"
 
@@ -54,6 +55,7 @@ public:
 	bool Fighting() const;
 	// Only the fight reads the players' inputs (GameAdapter::InputsMatter).
 	bool InputsMatter() const override { return Fighting(); }
+	PackedInput InputBits() const override { return input::kInputBits; }
 
 	// The original update with no injection (outside any session).
 	void RunOriginal();

@@ -27,6 +27,13 @@ struct FrameInputs {
 	bool operator==(const FrameInputs&) const = default;
 };
 
+// `inputs` with every bit outside `bits` cleared.
+inline FrameInputs Restricted(FrameInputs inputs, PackedInput bits)
+{
+	for (PackedInput& p : inputs.p) p &= bits;
+	return inputs;
+}
+
 class GameAdapter {
 public:
 	virtual ~GameAdapter() = default;
@@ -51,6 +58,11 @@ public:
 	// on it: frames the game cannot replay faithfully are then never
 	// replayed from their own start.
 	virtual bool InputsMatter() const { return true; }
+
+	// The bits a frame's input can carry (those a pad can produce); the rest
+	// are cleared before the game sees an input, so neither a peer nor a test
+	// can hand the battle a value its own input code never makes.
+	virtual PackedInput InputBits() const { return ~PackedInput{0}; }
 
 	// Called right after the layout's memory was written back, for fix-ups a
 	// plain copy cannot do (the game's own post-restore callbacks, state the

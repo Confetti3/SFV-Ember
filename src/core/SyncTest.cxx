@@ -121,7 +121,7 @@ int SyncTester::OldestRestorable(int depth)
 // back) changes which frames read inputs.
 FrameInputs SyncTester::AsPlayed(const FrameInputs& inputs) const
 {
-	return game_.InputsMatter() ? inputs : FrameInputs{};
+	return game_.InputsMatter() ? Restricted(inputs, game_.InputBits()) : FrameInputs{};
 }
 
 bool SyncTester::CheckRollback(int from, int now)

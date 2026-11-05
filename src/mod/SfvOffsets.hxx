@@ -558,8 +558,11 @@ constexpr uint32_t kNodeFunction = 0x30;
 // these differed, in about 70% of 7-frame rollbacks, while the fighters'
 // regions never did): the camera (CameraUnit+0x100, 528 bytes), the fighters'
 // centre and player lists (CharaManagerUnit+0x1C0, 112), each fighter's
-// vectors rebuilt in the CharaManager tasks (CharaUnit+0x764, 300; its first
-// 7 dwords are control state, see the region map, section 3, tier C), and a
+// vectors rebuilt in the CharaManager tasks (CharaUnit+0x764 from byte 32:
+// its first 7 dwords and the next are control state, see the region map,
+// section 3, tier C, and stay hashed; the randomised synctest with both
+// players mashing, 2026-11-04: those 32 bytes never differed in 1,099
+// rollbacks while the vectors differed in nearly every one), and a
 // projectile's visual part (ProjectileVisualPart+0xC0 and +0xF0: its UE
 // actor, reconciled after a restore by rva 0x482D10, so a replay can differ
 // in the actor pointer and a frame counter).
@@ -577,7 +580,7 @@ constexpr uint32_t kNodeFunction = 0x30;
 // the recorder (outside the snapshot) stops at a round's end, so a replay
 // across a round's end counts fewer.
 //
-// A masked word: each fighter's CharaStatusPart registers part+0x238..+0x303
+// A masked range: each fighter's CharaStatusPart registers part+0x238..+0x303
 // as one run (rva 0x354260); its 8 bytes at +0x88 are part+0x2C0, the
 // combo's copied move count, and +0x2C4, the opponent's move starts in the
 // current combo (incremented when the other fighter enters a state, rva
@@ -586,21 +589,24 @@ constexpr uint32_t kNodeFunction = 0x30;
 // last, and the two copies (or a replay) can differ; only the Combo event's
 // statistics listener reads it (rva 0x4B27D0).
 struct RunRule {
-	const char* owner;   // RegionNames' owner type
-	uint32_t offset;     // the run's start in its owner
-	const char* kind;    // non-empty: not hashed; the region name's suffix
-	uint32_t maskedWord; // kNoMask, or the run-relative 8-byte word not hashed
+	const char* owner; // RegionNames' owner type
+	uint32_t offset;   // the run's start in its owner
+	const char* kind;  // non-empty: not hashed at all; the region name's suffix
+	// Otherwise the run-relative bytes [maskFrom, maskTo) are not hashed
+	// (8-byte words; maskTo past the run's end means to its end).
+	uint32_t maskFrom = 0;
+	uint32_t maskTo = 0;
 };
-constexpr uint32_t kNoMask = ~0u;
+constexpr uint32_t kToTheEnd = ~0u;
 constexpr RunRule kRunRules[] = {
-	{"CameraUnit", 0x100, ".presentation", kNoMask},
-	{"CharaManagerUnit", 0x1C0, ".presentation", kNoMask},
-	{"CharaUnit", 0x764, ".presentation", kNoMask},
-	{"ProjectileVisualPart", 0xC0, ".presentation", kNoMask},
-	{"ProjectileVisualPart", 0xF0, ".presentation", kNoMask},
-	{"StatsUnit", 0xF8, ".stats", kNoMask},
-	{"ReplayUnit", 0xF8, ".replaycount", kNoMask},
-	{"CharaStatusPart", 0x238, "", 0x88},
+	{"CameraUnit", 0x100, ".presentation"},
+	{"CharaManagerUnit", 0x1C0, ".presentation"},
+	{"ProjectileVisualPart", 0xC0, ".presentation"},
+	{"ProjectileVisualPart", 0xF0, ".presentation"},
+	{"StatsUnit", 0xF8, ".stats"},
+	{"ReplayUnit", 0xF8, ".replaycount"},
+	{"CharaUnit", 0x764, "", 32, kToTheEnd},
+	{"CharaStatusPart", 0x238, "", 0x88, 0x90},
 };
 } // namespace manager
 

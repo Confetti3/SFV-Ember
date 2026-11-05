@@ -197,3 +197,30 @@ TEST_CASE("a random schedule rolls back every depth, the same way for the same s
 	for (int frame = 0; frame < 900 && going; frame++) going = found.Step(ScriptedFrame(frame, 42));
 	CHECK_FALSE(found.Report().ok);
 }
+
+TEST_CASE("the game sees only the input bits it declares, in replays with wrong inputs too")
+{
+	// Reads 8 input bits; remembers any frame given more.
+	class EightBits : public GameAdapter {
+	public:
+		EightBits() { layout_.Add("frame", &frame_, sizeof(frame_)); }
+		std::string BuildId() const override { return "eight bits"; }
+		StateLayout& Layout() override { return layout_; }
+		PackedInput InputBits() const override { return 0xFF; }
+		void Advance(const FrameInputs& inputs, bool) override
+		{
+			for (const PackedInput p : inputs.p) outside |= p & ~PackedInput{0xFF};
+			frame_++;
+		}
+		PackedInput outside = 0;
+
+	private:
+		int frame_ = 0;
+		StateLayout layout_;
+	};
+	EightBits game;
+	SyncTester tester(game, 8, false, true, 7);
+	for (int frame = 0; frame < 300; frame++) REQUIRE(tester.Step(FrameInputs{{0xFFFFFFFFu, 0x12345678u}}));
+	CHECK(tester.Report().rollbacks > 0);
+	CHECK(game.outside == 0);
+}

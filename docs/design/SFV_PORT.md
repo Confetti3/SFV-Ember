@@ -260,19 +260,56 @@ with neutral inputs, and no check restores to one's start.
   neighbouring bucket (two counters 1000 apart, the sum equal), and at a
   round's end the rule unit copies the statistics into the round record.
   Only UI text and a mode score read them, so the StatsUnit region and the
-  records' copies are restored but not hashed (`kUncheckedSizes`, the
-  records split into hashed 64-byte headers and unhashed statistics).
+  records' copies are restored but not hashed (the records split into
+  hashed 64-byte headers and unhashed statistics). A fighter's combo move
+  count (CharaStatusPart+0x2C0/+0x2C4: both fighters starting a move on one
+  frame race to write it) feeds only the statistics too and is masked.
   Restoring CharaActionPart's unregistered flags (+0xE0) was tried and
-  changed nothing. Now 75 of 76 checkpoints match; CMY vs CNL, seeds
-  777/90210: 74 of 76. **Open:** the checkpoints that still differ do so
-  for one checkpoint and then agree again: a fighter's 204-byte region,
-  dword +0x8C (probably fighter+0x2C0, written by the fighter reset at rva
-  0x35DD20 and around the flow's state switches), 1 in one timeline and 0 in
-  the other. The synctest with both players mashing (`-sfve_mash` drives
-  both there), distance 4, perturbed, finds the same dword, plus
-  projectile visuals reconciled against their UE actors (ProjectileVisualPart,
-  136 bytes: +0x80 is the actor pointer; a 44-byte region with a 16-bit
-  counter at +0x26 differs on the same frames).
+  changed nothing.
+
+  **How rollback correctness is checked now** (2026-11-04, after the runs
+  above kept finding one cause at a time):
+  - The in-game synctest is the main tool (`tools/synctest.ps1`): both
+    players mash, every rolled-back stretch is first played with wrong
+    inputs, and rollbacks come at random spacing and depth up to 8 frames
+    from a seed (`-sfve_schedule`), the way a network's do; learning mode
+    tallies every region that differs. Two linked copies are the acceptance
+    check (`tools/runauto.ps1`); `-sfve_hash_every=1` keeps every frame's
+    hash so `tools/compare.py` names the first differing frame.
+  - Every region of the game's snapshot is named by its owner
+    (`RegionNames`, from docs/design/SFV_REGION_MAP.md: two IDA passes and an
+    adversarial check of both): `CharaUnit[1].CharaStatusPart+0x238`, not a
+    table index; 268 regions in a versus battle. Hash rules are by owner and
+    run (`sfv::manager::kRunRules`), not by size.
+  - A projectile's group released a dead projectile back to its free pool
+    only once its UE particle actor had finished, on the engine's frame
+    clock: a replay (later in wall-clock time) released it earlier than the
+    played frames, and two PCs at different frame rates would release it on
+    different battle frames without any rollback; the pool is last in, first
+    out, so the next spawn then used a different projectile object. In the
+    modes that roll back the release now follows the battle tick's own
+    visual states (ProjectileRelease); a dead projectile's fade-out is cut
+    short.
+  - Result: randomised synctests (RYU vs KEN, KEN vs RYU, CMY vs CNL, four
+    seeds, about 4,300 rollbacks) show no difference; two linked copies at
+    60 ms with delay 1 match at all 76 checkpoints (RYU vs KEN, CMY vs CNL,
+    CMY vs RYU). **Open:** KEN vs RYU, mash 1234, schedule 41 (deterministic):
+    from frame 1664 a replay records its inputs two InputUnit slots off and
+    the fight runs two ticks behind the played frames (InputUnit counters
+    and the battle frame's update counters both 2 lower); every Advance ran
+    exactly one update and one tick. Being traced in IDA.
+  - Inputs reach the game restricted to the bits a pad can produce
+    (`GameAdapter::InputBits`, SFV 0xFFF), in sessions and in the synctest's
+    wrong-input passes.
+  - Still left out of the hash as presentation, after a fresh check: the
+    camera, the fighters' centre point and player lists, and each fighter's
+    vectors rebuilt every frame (CharaUnit+0x764 from byte 32; its first 32
+    bytes, control state, are hashed). They differ in nearly every replay
+    while no fighter region ever does. Open: the map's tier-C owners (camera
+    and centre point as possible screen-edge inputs) deserve a reader search
+    before a public release, and unowned regions (HUD element pools, the
+    per-character unique parts, an AttackDataPart on a unit not enumerated
+    yet) still use table indices.
   A boot crash seen after Steam restarted was
   Steam's (its registry named a dead client process; restarting Steam fixed
   it), not the mod's. `perturb` finds `scan`'s `game.N` names only while
