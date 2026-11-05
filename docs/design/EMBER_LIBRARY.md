@@ -658,3 +658,13 @@ The NEUTRAL set (section 1.1, plus the refactor-first files) was compiled with S
 - `ui/lab/UiLab.cxx` is the D3D9 harness (`imgui_impl_dx9`, `FighterSelector`, `TrainingPanel`): it goes to section 1.2, and SFV gets its own DX11 lab.
 
 **SFV's `vcpkg.json` needs:** `fmt`, `spdlog` (with wide file names) and `zlib`. The two GGPO overlay ports differ: SFV's carries `ignored-inputs.patch`. Reconcile them before the library shares `ggponet.h`. The simplest fix is to add the patch to Ember's port, since the call is opt-in.
+
+## 8. Step 6 as built (2026-11-05)
+
+Step 6 came before the SFV adapter, because SFV cannot compile the library's session code on x64 until the wire stops reaching SF4's engine headers.
+
+It follows section 6 ("the wire keeps today's field names"), not the section 3 row that says FixedPoint and the pick "live only in `Sf4MatchCodec`":
+- **One definition of the wire's match structs.** `common/MatchWireTypes.hxx` defines `sf4e::wire::FixedPoint` and `sf4e::wire::ConfirmedCharaConditions`, with their JSON codecs and `static_assert`s on their sizes (4 and 9 bytes). SF4's engine headers alias them (`Dimps::Math::FixedPoint`, `VsMode::ConfirmedCharaConditions`), so the 43 SF4 uses compile unchanged and there is no `#ifdef _WIN32` in the shared path. `SessionPlainTypes.hxx` is gone. `MatchData::rngSeed` is `std::uint32_t`, which encodes to the same JSON as `DWORD`. The wire goldens pass with no fixture changed.
+- **The desync check is the game's.** `session/BattleVerifier.hxx` is the interface: the remote legacy snapshot, a step per client step, and Reset. Each game defines `MakeBattleVerifier()` once, as it defines `Game()`. The room client keeps the neutral part: it decodes both messages, buffers the remote v2 hashes and owns the verifier. SF4's verifier is `sf4e/sf4e__Sf4Verification.cxx`: the old `SessionClient__Verification.cxx` moved, with its pending snapshots, the desync exit and the reports. The fake game's verifier compares nothing. For SFV, the verifier publishes one overall hash per confirmed checkpoint, with `flow`, `chara0` and `chara1` set to 0, and never sends v1 snapshots.
+- **The room client includes nothing of SF4's.** Its Dimps, battle-system and facade includes had no uses. `MatchAuthority.cxx` now includes `windows.h` before `bcrypt.h` itself; it used to get it from the engine headers.
+- **Left as it is:** `GgpoInputBytes = 8` (`MatchAuthority.hxx`) bounds the room's gameplay packets. SFV's `PackedInput` is 4 bytes, so the bound holds, and taking it from the game can wait for a game with wider inputs.
