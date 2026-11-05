@@ -37,7 +37,8 @@ namespace sfve {
 class RollbackSession {
 public:
 	// Every kCheckpointInterval frames the session also keeps one hash per
-	// region, so peers that disagree can find where. The latest few are kept.
+	// region, so peers that disagree can find where. The latest five minutes
+	// are kept.
 	// Frame and region hashes here are the peers' (HashScope::Peers): two
 	// processes playing the same match agree on them.
 	static constexpr int kCheckpointInterval = 60;

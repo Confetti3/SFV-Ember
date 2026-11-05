@@ -112,6 +112,7 @@ bool SfvAdapter::AddGameRegions(uint8_t* manager)
 	const uint8_t* replayCounters = replayUnit ? replayUnit + sfv::replayunit::kCounters : nullptr;
 	if (!replayUnit) Log("adapter: no replay unit; its tick counters stay in the hash");
 	int unchecked[std::size(sfv::manager::kUncheckedSizes)] = {};
+	int masked[std::size(sfv::manager::kMaskedWords)] = {};
 	for (RegionEntry* r = begin; r < end; r++) {
 		if (!r->ptr || r->size == 0 || r->size > kMaxRegionSize) {
 			Log("adapter: region %zu looks wrong (%p, %llu bytes)", size_t(r - begin), (void*)r->ptr, r->size);
@@ -125,13 +126,24 @@ bool SfvAdapter::AddGameRegions(uint8_t* manager)
 		}
 		char name[40];
 		snprintf(name, sizeof(name), "game.%zu%s", size_t(r - begin), kind);
-		layout_.Add(name, r->ptr, (size_t)r->size, !*kind);
+		const size_t index = layout_.Add(name, r->ptr, (size_t)r->size, !*kind);
+		for (size_t k = 0; k < std::size(sfv::manager::kMaskedWords); k++) {
+			if (r->size != sfv::manager::kMaskedWords[k].regionSize) continue;
+			layout_.IgnoreWord(index, sfv::manager::kMaskedWords[k].offset);
+			masked[k]++;
+		}
 	}
 	for (size_t k = 0; k < std::size(sfv::manager::kUncheckedSizes); k++) {
 		if (unchecked[k] != sfv::manager::kUncheckedSizes[k].count) {
 			Log("adapter: expected %d %s region(s) of %llu bytes, found %d; hashes may include them",
 				sfv::manager::kUncheckedSizes[k].count, sfv::manager::kUncheckedSizes[k].kind + 1,
 				(unsigned long long)sfv::manager::kUncheckedSizes[k].size, unchecked[k]);
+		}
+	}
+	for (size_t k = 0; k < std::size(sfv::manager::kMaskedWords); k++) {
+		if (masked[k] != sfv::manager::kMaskedWords[k].count) {
+			Log("adapter: expected %d region(s) of %llu bytes with a statistics word, found %d", sfv::manager::kMaskedWords[k].count,
+				(unsigned long long)sfv::manager::kMaskedWords[k].regionSize, masked[k]);
 		}
 	}
 	return true;

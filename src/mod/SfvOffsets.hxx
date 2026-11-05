@@ -554,6 +554,23 @@ struct UncheckedSize {
 };
 constexpr UncheckedSize kUncheckedSizes[] = {
 	{112, 1, ".presentation"}, {300, 2, ".presentation"}, {528, 1, ".presentation"}, {77804, 1, ".stats"}};
+
+// Words inside checked regions that feed only the statistics: restored, not
+// hashed. Each fighter's CharaStatusPart (type id rva 0x3A64B08) registers
+// part+0x238..+0x303 as one 204-byte region (rva 0x354260); its 8 bytes at
+// +0x88 are part+0x2C0, the combo's copied move count, and +0x2C4, the
+// opponent's move starts in the current combo (incremented when the other
+// fighter enters a state, rva 0x356290, and reset by this fighter's own,
+// rva 0x35DD20). When both fighters start a move on the same frame the
+// result depends on which writes last, and the two copies (or a replay) can
+// differ; only the Combo event's statistics listener reads it (rva
+// 0x4B27D0). Found as a 204-byte region per player in both linked runs.
+struct MaskedWord {
+	uint64_t regionSize;
+	int count;
+	uint32_t offset; // the 8-byte word holding it
+};
+constexpr MaskedWord kMaskedWords[] = {{204, 2, 0x88}};
 } // namespace manager
 
 } // namespace sfve::mod::sfv

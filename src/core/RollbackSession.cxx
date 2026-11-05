@@ -12,7 +12,9 @@ namespace {
 
 constexpr int kPoolSlots = GGPO_MAX_PREDICTION_FRAMES + 4;
 constexpr int kHistory = 256;
-constexpr size_t kCheckpointsKept = 8;
+// Five minutes of checkpoints (about 550 regions x 16 bytes each), so a
+// divergence that comes and goes is still found region by region after it.
+constexpr size_t kCheckpointsKept = 300;
 
 RollbackSession* s_active = nullptr;
 

@@ -6,7 +6,8 @@
 * the latest common checkpoint's regions (the peers' hashes, size:hash in
   canonical order), unmatched ones grouped by size;
 * the first checkpoint whose hash differs, from both mod logs (every
-  checkpoint is logged; a replay logs it again, the last line wins).
+  checkpoint is logged; a replay logs it again, the last line wins), and
+  its unmatched regions while the copies still keep it.
 
 Exit code 1 when the copies differ.
 """
@@ -38,6 +39,21 @@ def logged_checkpoints(index: int) -> dict[int, str]:
     return found
 
 
+def compare_regions(a: int, b: int, frame: int) -> None:
+    """The regions whose peers' hashes differ at a kept checkpoint, by size."""
+    ca = lib.request(a, f"checkpoint {frame}").split()
+    cb = lib.request(b, f"checkpoint {frame}").split()
+    if not (ca[0] == "ok" and cb[0] == "ok" and ca[1] == cb[1]):
+        print(f"checkpoint {frame}: not kept on both copies")
+        return
+    only_a, only_b = Counter(ca[2:]) - Counter(cb[2:]), Counter(cb[2:]) - Counter(ca[2:])
+    print(f"checkpoint {ca[1]}: {sum(only_a.values())} region(s) unmatched")
+    sizes = Counter(item.split(":")[0] for item in only_a.elements())
+    sizes_b = Counter(item.split(":")[0] for item in only_b.elements())
+    for size in sorted(set(sizes) | set(sizes_b), key=int):
+        print(f"  {size:>6} bytes: {sizes[size]} on copy {a}, {sizes_b[size]} on copy {b}")
+
+
 def main(a: int = 0, b: int = 1) -> int:
     sa, sb = netplay_status(a), netplay_status(b)
     for index, s in ((a, sa), (b, sb)):
@@ -57,15 +73,7 @@ def main(a: int = 0, b: int = 1) -> int:
             differ += ha != hb
     print(f"frames {first}..{confirmed}: {compared} compared, {differ} differ")
 
-    ca = lib.request(a, f"checkpoint {confirmed}").split()
-    cb = lib.request(b, f"checkpoint {confirmed}").split()
-    if ca[0] == "ok" and cb[0] == "ok" and ca[1] == cb[1]:
-        only_a, only_b = Counter(ca[2:]) - Counter(cb[2:]), Counter(cb[2:]) - Counter(ca[2:])
-        print(f"checkpoint {ca[1]}: {sum(only_a.values())} region(s) unmatched")
-        sizes = Counter(item.split(":")[0] for item in only_a.elements())
-        sizes_b = Counter(item.split(":")[0] for item in only_b.elements())
-        for size in sorted(set(sizes) | set(sizes_b), key=int):
-            print(f"  {size:>6} bytes: {sizes[size]} on copy {a}, {sizes_b[size]} on copy {b}")
+    compare_regions(a, b, confirmed)
 
     la, lb = logged_checkpoints(a), logged_checkpoints(b)
     common = sorted(set(la) & set(lb))
@@ -73,6 +81,7 @@ def main(a: int = 0, b: int = 1) -> int:
     if divergent:
         print(f"first divergent checkpoint: frame {divergent[0]} "
               f"({len(divergent)} of {len(common)} logged checkpoints differ)")
+        compare_regions(a, b, divergent[0])
     elif common:
         print(f"all {len(common)} logged checkpoints match (frames {common[0]}..{common[-1]})")
     return 1 if differ or divergent else 0
