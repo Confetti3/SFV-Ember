@@ -9,10 +9,10 @@
 // so a guessed end that a rollback takes back is never acted on, and both
 // copies act on the same frame.
 //
-// The decision is the mod's (MatchEndChoice), the same on both copies:
-// a rematch (the game's own restart, what "Continue" does: same fighters
-// and stage, in the same battle state) or back to the main menu (what
-// "Exit" does), where the next match is launched from. The match's result
+// The way out is the caller's, the same on both copies: a rematch (the
+// game's own restart, what "Continue" does: same fighters and stage, in the
+// same battle state) or back to the main menu (what "Exit" does), where the
+// next match is launched from. A room's battle always goes back (NetplayMode). The match's result
 // is read as the end is taken, on that confirmed frame, and kept.
 
 #include "mod/MatchResult.hxx"
@@ -50,14 +50,6 @@ void ForgetEndedVersusBattle();
 // Game thread, between two session frames: restarts that battle with the
 // same fighters and stage.
 void Rematch(uint8_t* versusBattleState);
-
-enum class MatchEndChoice {
-	Rematch,
-	MainMenu,
-};
-// What a linked match does at its end. Any thread.
-void SetMatchEndChoice(MatchEndChoice choice);
-MatchEndChoice GetMatchEndChoice();
 
 // Game thread: leaves the battle for the main menu, as the results menu's
 // "Exit" does (a scene change the manager carries out on its next tick).

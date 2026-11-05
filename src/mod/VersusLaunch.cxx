@@ -397,12 +397,9 @@ std::optional<int> RoundClockFrames(int seconds)
 bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rules)
 {
 	std::istringstream in(setup);
-	std::string pick, stageCode, rounds, time, after, extra;
-	in >> pick >> stageCode >> rounds >> time >> after;
+	std::string pick, stageCode, rounds, time, extra;
+	in >> pick >> stageCode >> rounds >> time;
 	*rules = MatchRules{};
-	if (after == "rematch") rules->afterMatch = MatchRules::AfterMatch::Rematch;
-	else if (after == "menu") rules->afterMatch = MatchRules::AfterMatch::MainMenu;
-	else if (!after.empty() && after != "-") return false;
 	return !(in >> extra) && ParsePick(pick, fighter) && (stageCode.empty() || ParseCode(stageCode, &rules->stage)) &&
 		ParseRounds(rounds, &rules->rounds) && ParseTime(time, &rules->timeFrames);
 }

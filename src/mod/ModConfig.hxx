@@ -20,12 +20,8 @@
 //   -sfve_lag=MS         test: hold back outgoing UDP by MS milliseconds
 //   -sfve_hash_every=N   netplay diagnostics: hash every Nth frame and keep every
 //                        hash for the match (pipe "hash F"; tools/compare.py)
-//   -sfve_link=1         netplay through Ember's helper ("host" / "join <invitation>")
-//   -sfve_fighter=F      linked netplay: this copy's fighter, CODE[:costume[:colour]]
-//   -sfve_stage=S        linked netplay, host: the stage code
-//   -sfve_rounds=N       linked netplay, host: rounds, 1|3|5|7 (default 3)
-//   -sfve_time=S         linked netplay, host: round seconds or inf (default 99)
-//   -sfve_after=A        linked netplay, host: rematch|menu at the match end (default rematch)
+//   -sfve_room=1         netplay: host Ember's runtime; battles are rooms' matches
+//                        (the pipe's room commands, RoomCommands.hxx)
 //   -sfve_ownership=1    the match launch runs the game's ownership check
 //                        (off while developing; on in the public version)
 //   -sfve_dialogs=N      offline start-up dialogs hidden: 0 none, 1 download errors,
@@ -33,7 +29,6 @@
 
 #include <stdint.h>
 
-#include <string>
 
 namespace sfve::mod {
 
@@ -56,18 +51,13 @@ struct ModConfig {
 	uint32_t scheduleSeed = 0;
 	int lagMs = 0;
 	int hashEvery = 0; // 0: checkpoints only
-	bool helperLink = false; // netplay endpoints, seed and delay come from a HelperLink
+	bool room = false; // netplay: Ember's runtime runs, and its rooms' matches give the endpoints, seed and delay
 	// Offline start-up dialogs kept from showing: 0 none, 1 the download
 	// failures, 2 those and the offline-mode notice.
 	int offlineDialogs = 2;
 	// The launch runs the game's ownership check. Off for development (the maintainer,
 	// 2026-11-04); the public version of Ember turns it on.
 	bool ownershipCheck = false;
-	std::string fighter; // linked netplay: this copy's pick (empty: the game's default)
-	std::string stage;   // linked netplay, host: the stage (empty: the game's default)
-	std::string rounds;  // linked netplay, host: 1, 3, 5 or 7 (empty: 3)
-	std::string time;    // linked netplay, host: round seconds or "inf" (empty: 99)
-	std::string after;   // linked netplay, host: "rematch" or "menu" at the match's end (empty: rematch)
 };
 
 const ModConfig& Config();

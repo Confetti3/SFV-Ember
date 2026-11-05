@@ -13,11 +13,17 @@
 #include "mod/MatchResult.hxx"
 #include "mod/SfvAdapter.hxx"
 #include "mod/VersusLaunch.hxx"
+#include "mod/VirtualPads.hxx"
 
 #include "common/InstalledContent.hxx"
+#include "common/Localization.hxx"
 #include "sf4e/sf4e__AbsentGameFeatures.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
+#include "sf4e/sf4e__RuntimeEvents.hxx"
 #include "sf4e/sf4e__RuntimeSession.hxx"
+
+#include <windows.h>
+#include <bcrypt.h>
 
 #include <memory>
 #include <optional>
@@ -31,14 +37,16 @@ namespace {
 using namespace ember::game;
 
 BattleInPlay s_battle;
+bool s_synced = false;
 LaunchArming s_launch;
 
-// The fight's way out for the runtime (Retire, Abort, Fail) is NetplayMode's
-// synchronized exit to the main menu, which the runtime cannot reach until
-// the mod's netplay mode runs under it.
-void ExitNotWired(const char* what, const char* reason)
+// The fight's way out for the runtime (Retire, Abort, Fail): NetplayMode
+// ends the session and leaves for the main menu. With no battle in play
+// there is nothing to end.
+void ExitBattle(const char* what, const char* reason)
 {
-	mod::Log("ember: %s (%s) asked for; the exit to the main menu is not wired to the runtime yet", what, reason);
+	mod::Log("ember: %s (%s)%s", what, reason ? reason : "", s_battle.exit ? "" : " with no battle in play");
+	if (s_battle.exit) s_battle.exit(what);
 }
 
 // The game's own judgement of the match (MatchResult), as the room counts it.
@@ -71,8 +79,14 @@ public:
 		all.personalActions = 0xFFFF;
 		return all;
 	}
-	// No reader of the game's own random generator yet.
-	std::uint32_t Random() override { return 0; }
+	// The host's match seed and its Random rolls. No reader of the game's own
+	// generator yet, so the system's serves.
+	std::uint32_t Random() override
+	{
+		std::uint32_t value = 0;
+		BCryptGenRandom(nullptr, reinterpret_cast<PUCHAR>(&value), sizeof(value), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+		return value;
+	}
 	// No SFV sound module yet.
 	bool PlayChallengerCall(float) override { return false; }
 	// No SFV module closes the game; SFV Ember installs no updates.
@@ -99,24 +113,35 @@ public:
 				room.picks[0].fighter, room.picks[1].fighter, (long long)room.stage, room.rounds, room.roundSeconds);
 			return Entry::Rejected;
 		}
-		// A room's game ends back at the main menu, where its next match launches.
-		mod::SetMatchEndChoice(mod::MatchEndChoice::MainMenu);
+		mod::Log("ember: entering the room's match: %s vs %s on %s, %d rounds of %d s", FighterCode(room.picks[0].fighter).c_str(),
+			FighterCode(room.picks[1].fighter).c_str(), StageCode(room.stage).c_str(), room.rounds, room.roundSeconds);
 		const LaunchArming::Ticket ticket = s_launch.Arm();
+		// A launch that fails leaves the game at the main menu with no battle:
+		// the player hears why, and the room's game ends when its setup times out.
 		mod::LaunchOnMainMenu(
 			*picks, [ticket] { return s_launch.Armed(ticket); },
-			// The room is not told yet; NetplayMode's match start reports it in the next step.
-			[](const std::string& why) { mod::Log("ember: the room's battle could not be launched: %s", why.c_str()); });
+			[](const std::string& why) {
+				mod::Log("ember: the room's battle could not be launched: %s", why.c_str());
+				sf4e::NetplayFacade::PushAlert(sf4e::loc::T("runtime.authorized_connection_unavailable"));
+			});
 		return Entry::Entered;
 	}
-	// NetplayMode starts its rollback session on its helper link's endpoints, not on the room's sync yet.
-	void OnSessionSynced() override {}
+	void OnSessionSynced() override
+	{
+		mod::Log("ember: every member's battle has loaded");
+		s_synced = true;
+	}
 	// A launch still waiting for the main menu does not go ahead.
 	void DropNextBattle() override { s_launch.Drop(); }
 
 	bool Live() const override { return s_battle.session && s_battle.session->Live(); }
-	void Retire(const char* label) override { ExitNotWired("retire", label); }
-	void Abort(const char* reason, sf4e::NoticeSeverity, bool) override { ExitNotWired("abort", reason); }
-	void Fail() override { ExitNotWired("failure", "the session cannot go on"); }
+	void Retire(const char* label) override { ExitBattle("retire", label); }
+	void Abort(const char* reason, sf4e::NoticeSeverity severity, bool) override
+	{
+		if (reason && *reason) sf4e::NetplayFacade::PushAlert(reason, severity);
+		ExitBattle("abort", reason);
+	}
+	void Fail() override { ExitBattle("failure", "the session cannot go on"); }
 
 	// The match ended and waits for MatchEnd's decision on a confirmed frame.
 	bool ResultHeld() const override { return mod::EndedVersusBattlePending(); }
@@ -129,11 +154,9 @@ public:
 		const std::optional<mod::MatchResult> decided = mod::DecidedMatchResult();
 		return decided ? RoomResult(*decided) : sf4e::room::MatchResult::Abort;
 	}
-	// Both copies take MatchEnd's one choice: both rematch, or neither does.
-	unsigned RematchChoices() const override
-	{
-		return mod::EndedVersusBattlePending() && mod::GetMatchEndChoice() == mod::MatchEndChoice::Rematch ? 3u : 0u;
-	}
+	// SFV has no prompt over the WIN yet, so no player chooses a rematch there:
+	// a room's game always goes back to the room (NetplayMode).
+	unsigned RematchChoices() const override { return 0; }
 	// No SFV module counts the games played in place yet.
 	unsigned GamesPlayedInPlace() const override { return 0; }
 
@@ -179,17 +202,52 @@ public:
 	}
 };
 
-// SFV's pads are XInput pads (VirtualPads hooks XInputGetState), and the
-// battle plays the input the game made from this copy's pad 0 (NetplayMode).
-// No SFV module lists the pads, assigns them to sides, or sets them up yet:
-// those answer as a game with no pads would.
+// The pad the battle plays: the game makes its input from this copy's pad 0,
+// whichever side it fights on (NetplayMode).
+constexpr int kGameplaySlot = 0;
+
+// SFV's pads are XInput pads (VirtualPads hooks XInputGetState). The devices
+// are the slots as the game last read them; the game's pad 0 is the gameplay
+// device and fights for either side. No SFV module sets pads up or lays out
+// their buttons yet: those answer as a game with no pad layer would.
 class SfvInput final : public Input {
 public:
-	std::vector<sf4e::input::Device> ReadDevices(bool) override { return {}; }
+	std::vector<sf4e::input::Device> ReadDevices(bool) override
+	{
+		std::vector<sf4e::input::Device> devices;
+		for (int slot = 0; slot < mod::kPadSlots; slot++) {
+			const mod::PadSeen seen = mod::LastPadState(slot);
+			if (!seen.connected) continue;
+			sf4e::input::Device device;
+			device.type = sf4e::input::PadXInput;
+			device.index = slot;
+			device.name = "Controller " + std::to_string(slot + 1); // what Same() and the shell's names expect
+			device.connected = true;
+			device.buttons = seen.buttons;
+			devices.push_back(device);
+		}
+		return devices;
+	}
+	// SFV Ember lists no keyboard device yet.
 	void ScanKeyboard(std::vector<sf4e::input::Device>&) override {}
-	sf4e::input::Device MenuDevice(const std::vector<sf4e::input::Device>&) override { return {}; }
-	void LogInventory(const std::vector<sf4e::input::Device>&) override {}
-	bool AssignToSide(const sf4e::input::Device&, int, bool) override { return false; }
+	sf4e::input::Device MenuDevice(const std::vector<sf4e::input::Device>& devices) override
+	{
+		for (const sf4e::input::Device& device : devices) {
+			if (device.index == kGameplaySlot) return device;
+		}
+		return {};
+	}
+	void LogInventory(const std::vector<sf4e::input::Device>& devices) override
+	{
+		if (devices.size() == loggedDevices_) return;
+		loggedDevices_ = devices.size();
+		mod::Log("ember: %zu pad(s) connected", devices.size());
+	}
+	// The game's pad 0 plays either side; another pad cannot (the battle reads pad 0).
+	bool AssignToSide(const sf4e::input::Device& device, int, bool) override
+	{
+		return device.connected && device.type == sf4e::input::PadXInput && device.index == kGameplaySlot;
+	}
 	void ReleaseFromSide(int) override {}
 	// The bound battle's input from this copy's pad, in GameInput's bits.
 	bool ReadAssignedInput(const sf4e::input::Device&, int, unsigned& mapped, unsigned& raw) override
@@ -217,13 +275,17 @@ public:
 	void BeginSetup(const sf4e::gamepads::Identity&, unsigned) override {}
 	void ControlSetup(sf4e::gamepads::SetupCommand, int) override {}
 	std::optional<std::string> SaveSetup() override { return std::nullopt; }
+
+private:
+	std::size_t loggedDevices_ = ~std::size_t{0};
 };
 
 // No SFV settings store yet: a save is taken and written nowhere, so the
-// player's settings last only while the game runs.
+// player's settings last only while the game runs. The gameplay device is
+// always the game's pad 0.
 class SfvPreferences final : public Preferences {
 public:
-	Device SavedGameplayDevice() override { return {0, 0, std::nullopt}; }
+	Device SavedGameplayDevice() override { return {sf4e::input::PadXInput, kGameplaySlot, std::nullopt}; }
 	std::optional<sf4e::gamepads::Identity> SavedDeviceIdentity() override { return std::nullopt; }
 	bool SaveGameplayDevice(int, int, const std::optional<sf4e::gamepads::Identity>&) override { return true; }
 	bool Save(const sf4e::netplay::PlayerPreferences&) override { return true; }
@@ -272,6 +334,12 @@ const Adapter s_game = {Capabilities{}, s_state, s_battleSide, s_input, s_prefer
 void SetBattleInPlay(const BattleInPlay& battle)
 {
 	s_battle = battle;
+	s_synced = false;
+}
+
+bool SessionSynced()
+{
+	return s_synced;
 }
 
 const BattleInPlay& CurrentBattle()

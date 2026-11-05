@@ -38,8 +38,7 @@ add_library(sfve_core STATIC
     src/core/StateRegions.cxx
     src/core/RollbackSession.cxx
     src/core/SyncTest.cxx
-    src/core/NetPolicy.cxx
-    src/core/MatchLink.cxx)
+    src/core/NetPolicy.cxx)
 # Ember's GGPO gate, pacing, state hash and helper client come from the
 # library: its common/ folder by file name, the rest by folder.
 target_include_directories(sfve_core PUBLIC src "${SFVE_EMBER_SOURCE_ROOT}/src/common" "${SFVE_EMBER_SOURCE_ROOT}/src")
@@ -54,16 +53,17 @@ add_executable(sfve_tests
     tests/SyncTestTests.cxx
     tests/RollbackSessionTests.cxx
     tests/NetPolicyTests.cxx
-    tests/MatchLinkTests.cxx
     tests/MatchResultTests.cxx
     src/mod/MatchResult.cxx)
 target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 
 # SFV's game definitions for Ember's runtime (docs/design/EMBER_LIBRARY.md
 # section 10): the game adapter and Game(), the catalog, the product, the
-# desync check, the pick labels and pictures. The mod does not link it yet;
-# its test does, with the mod's modules the adapter calls.
+# desync check, the pick labels and pictures, and the runtime's host in the
+# mod (EmberHost) with its test commands (RoomCommands).
 add_library(sfve_ember STATIC
+    src/ember/EmberHost.cxx
+    src/ember/RoomCommands.cxx
     src/ember/SfvCatalog.cxx
     src/ember/SfvGame.cxx
     src/ember/SfvProduct.cxx
@@ -89,7 +89,8 @@ add_executable(sfve_ember_tests
     src/mod/SfvAdapter.cxx
     src/mod/SfvFlow.cxx
     src/mod/SfvRegionNames.cxx
-    src/mod/VersusLaunch.cxx)
+    src/mod/VersusLaunch.cxx
+    src/mod/VirtualPads.cxx)
 target_link_libraries(sfve_ember_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest)
 
 # The in-game mod. Loads inert: it blocks every non-loopback connection first,
@@ -113,7 +114,6 @@ add_library(sfv_ember SHARED
     src/mod/ProjectileRelease.cxx
     src/mod/SfvFlow.cxx
     src/mod/FramePacer.cxx
-    src/mod/HelperLink.cxx
     src/mod/GameScene.cxx
     src/mod/GameThread.cxx
     src/mod/GameHooks.cxx
@@ -125,7 +125,7 @@ add_library(sfv_ember SHARED
     src/mod/LagSim.cxx
     src/mod/GameContent.cxx
     src/overlay/Overlay.cxx)
-target_link_libraries(sfv_ember PRIVATE sfve_core minhook::minhook imgui::imgui d3d11 dxgi)
+target_link_libraries(sfv_ember PRIVATE sfve_ember minhook::minhook imgui::imgui d3d11 dxgi)
 
 # Proxy the game loads by name from its own folder; it forwards the real
 # exports and loads sfv_ember.dll. Which DLL to proxy is decided from the

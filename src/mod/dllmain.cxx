@@ -8,6 +8,8 @@
 //   3. the build check; on anything but a verified build the mod stays inert.
 
 #include "core/CoreLog.hxx"
+#include "ember/EmberHost.hxx"
+#include "ember/RoomCommands.hxx"
 #include "mod/BackgroundPlay.hxx"
 #include "mod/BattleDriver.hxx"
 #include "mod/BuildCheck.hxx"
@@ -16,7 +18,6 @@
 #include "mod/GameHooks.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
-#include "mod/HelperLink.hxx"
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
 #include "mod/ModConfig.hxx"
@@ -34,7 +35,6 @@
 #include <windows.h>
 
 #include <algorithm>
-#include <atomic>
 
 namespace {
 
@@ -42,84 +42,17 @@ constexpr UINT kExitGuardFailed = 0x5F0E0001;
 
 bool s_started = false;
 
-// The stage a linked match is played on when the host names none: both
-// copies must load the same one, and their own defaults can differ.
-constexpr const char* kDefaultLinkedStage = "S25";
-// A linked match's rules when the host names none: the game's defaults.
-constexpr int kDefaultLinkedRounds = 3;
-constexpr int kDefaultLinkedTimeFrames = 99 * 60;
-
-// The netplay mode owns it for the process's life; the overlay reads it
-// from the render thread.
-std::atomic<sfve::mod::HelperLink*> s_link{nullptr};
-
-// The linked match's battle, from both players' setups: the host's fighter
-// as P1, the joiner's as P2, on the host's stage, launched from the main
-// menu on both copies (each copy decodes the same two setups). Anything
-// short of a fully named battle, or a launch that fails, abandons the match
-// so the battle the players start runs offline rather than out of step.
-void LaunchLinkedMatch(const sfve::MatchLink::Endpoints& match)
-{
-	using namespace sfve::mod;
-	MatchPicks picks;
-	MatchRules hostRules, ignored;
-	// Only the host's rules count; of the joiner's setup only its fighter.
-	const std::string joinerFighter = match.setups[1].substr(0, match.setups[1].find(' '));
-	if (!ParseSetup(match.setups[0], &picks.players[0], &hostRules) ||
-		!ParseSetup(joinerFighter, &picks.players[1], &ignored) || picks.players[0].fighter.empty() ||
-		picks.players[1].fighter.empty() || hostRules.stage.empty()) {
-		s_link.load()->Abandon("the players' setups do not name both fighters and a stage (" + JsonString(match.setups[0]) +
-			" / " + JsonString(match.setups[1]) + ")");
-		return;
-	}
-	// The host's rules, always explicit: each copy's own battle settings
-	// could differ.
-	picks.rules = hostRules;
-	if (picks.rules.rounds < 0) picks.rules.rounds = kDefaultLinkedRounds;
-	if (picks.rules.timeFrames == -1) picks.rules.timeFrames = kDefaultLinkedTimeFrames;
-	// Set on both copies from the same setup, so both end the match alike.
-	SetMatchEndChoice(hostRules.afterMatch == MatchRules::AfterMatch::MainMenu ? MatchEndChoice::MainMenu
-																			  : MatchEndChoice::Rematch);
-	Log("netplay: launching %s vs %s once on the main menu", JsonString(match.setups[0]).c_str(),
-		JsonString(match.setups[1]).c_str());
-	LaunchOnMainMenu(
-		picks, [] { return s_link.load()->Ready().has_value() && !s_link.load()->Failed(); },
-		[](const std::string& why) { s_link.load()->Abandon("the battle could not be launched: " + why); });
-}
-
-// This copy's setup: its fighter and, for when it hosts, the stage, rounds
-// and round time.
-std::string LocalSetup(const sfve::mod::ModConfig& config)
-{
-	using namespace sfve::mod;
-	auto orDefault = [](const std::string& value, const char* fallback) { return value.empty() ? std::string(fallback) : value; };
-	const std::string setup = orDefault(config.fighter, "-") + " " + orDefault(config.stage, kDefaultLinkedStage) + " " +
-		orDefault(config.rounds, "-") + " " + orDefault(config.time, "-") + " " + orDefault(config.after, "-");
-	FighterPick fighter;
-	MatchRules rules;
-	if (config.fighter.empty() || !ParseSetup(setup, &fighter, &rules)) {
-		Log("netplay: -sfve_fighter / -sfve_stage / -sfve_rounds / -sfve_time / -sfve_after do not make a setup (%s); a linked match "
-			"will not start",
-			JsonString(setup).c_str());
-	}
-	return setup;
-}
-
-std::unique_ptr<sfve::mod::BattleMode> MakeMode(const sfve::mod::ModConfig& config)
+// The process's battle mode; `netplay` is the netplay mode (Ember's tick
+// polls it), null for the other modes.
+std::unique_ptr<sfve::mod::BattleMode> MakeMode(const sfve::mod::ModConfig& config, sfve::mod::NetplayMode** netplay)
 {
 	using namespace sfve::mod;
 	switch (config.mode) {
 	case ModMode::SyncTest: return std::make_unique<SyncTestMode>(config);
 	case ModMode::Netplay: {
-		std::unique_ptr<HelperLink> link;
-		if (config.helperLink) {
-			link = std::make_unique<HelperLink>(config.delay, LocalSetup(config), LaunchLinkedMatch);
-			s_link = link.get();
-			link->Start(); // a failure shows in the status; the battle then waits
-			link->RegisterCommands();
-		}
-		auto mode = std::make_unique<NetplayMode>(config, std::move(link));
+		auto mode = std::make_unique<NetplayMode>(config);
 		mode->RegisterCommands();
+		*netplay = mode.get();
 		return mode;
 	}
 	default: return std::make_unique<PassThroughMode>();
@@ -196,8 +129,15 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 		});
 		return std::string("ok queued (see the log)");
 	});
-	static BattleDriver driver(MakeMode(Config()));
+	static NetplayMode* netplay = nullptr;
+	static BattleDriver driver(MakeMode(Config(), &netplay));
 	driver.RegisterControl();
+	// Ember's runtime, hosted once the driver and its mode exist (EmberHost
+	// ends the room link before they go).
+	if (netplay && Config().room) {
+		sfve::adapter::RegisterRoomCommands();
+		sfve::adapter::InstallEmberHost({Config().instance}, *netplay);
+	}
 	InstallGameHooks(base, &driver);
 	if (Config().mode == ModMode::SyncTest || Config().mode == ModMode::Netplay) InstallDeterministicProjectileRelease(base);
 	return 1;

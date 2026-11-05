@@ -6,7 +6,6 @@
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
 
-#include <atomic>
 #include <utility>
 
 namespace sfve::mod {
@@ -21,7 +20,6 @@ using RestartFn = void (*)(uint8_t* versusBattleState);
 uintptr_t s_base;
 ShowResultFn o_showResult;
 bool s_linked; // game thread only
-std::atomic<MatchEndChoice> s_choice{MatchEndChoice::Rematch};
 uint8_t* s_ended; // game thread only
 std::optional<MatchResult> s_decided; // game thread only
 
@@ -84,16 +82,6 @@ void Rematch(uint8_t* state)
 	Field<int32_t>(state, versus::kResultPhase) = versus::kNoResult;
 	reinterpret_cast<RestartFn>(s_base + sfv::kRestartBattle.rva)(state);
 	Log("match end: rematch");
-}
-
-void SetMatchEndChoice(MatchEndChoice choice)
-{
-	s_choice = choice;
-}
-
-MatchEndChoice GetMatchEndChoice()
-{
-	return s_choice;
 }
 
 bool LeaveBattle()

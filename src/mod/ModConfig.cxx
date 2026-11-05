@@ -28,18 +28,6 @@ const wchar_t* Find(const wchar_t* line, const wchar_t* name, wchar_t* out, size
 	return nullptr;
 }
 
-// A switch's value as ASCII (anything else dropped), or empty.
-std::string Text(const wchar_t* line, const wchar_t* name)
-{
-	wchar_t buf[64];
-	std::string out;
-	if (!Find(line, name, buf, 64)) return out;
-	for (const wchar_t* p = buf; *p; p++) {
-		if (*p > 0x20 && *p < 0x7F) out += (char)*p;
-	}
-	return out;
-}
-
 long Number(const wchar_t* line, const wchar_t* name, long fallback)
 {
 	wchar_t buf[32];
@@ -77,14 +65,9 @@ void LoadConfigFromCommandLine(const wchar_t* line)
 	c.scheduleSeed = (uint32_t)Number(line, L"sfve_schedule", 0);
 	c.lagMs = (int)Number(line, L"sfve_lag", 0);
 	c.hashEvery = (int)Number(line, L"sfve_hash_every", 0);
-	c.helperLink = Number(line, L"sfve_link", 0) != 0;
+	c.room = Number(line, L"sfve_room", 0) != 0;
 	c.offlineDialogs = (int)Number(line, L"sfve_dialogs", 2);
 	c.ownershipCheck = Number(line, L"sfve_ownership", 0) != 0;
-	c.fighter = Text(line, L"sfve_fighter");
-	c.stage = Text(line, L"sfve_stage");
-	c.rounds = Text(line, L"sfve_rounds");
-	c.time = Text(line, L"sfve_time");
-	c.after = Text(line, L"sfve_after");
 	wchar_t pads[32];
 	if (Find(line, L"sfve_pads", pads, 32)) {
 		for (const wchar_t* p = pads; *p; p++) {

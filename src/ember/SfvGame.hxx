@@ -7,12 +7,12 @@
 // and replays are the library's absent ones.
 //
 // The adapter's battle and the desync check (SfvVerification) read the
-// battle the mod is playing, which the mod's netplay mode hands over here:
-// its rollback session and the bound battle. Until NetplayMode does that
-// (the step after this one), no battle is in play and they answer as with
-// no battle.
+// battle the mod is playing, which the mod's netplay mode hands over here
+// for a room's battle: its rollback session, the bound battle and the
+// battle's way out. With none in play they answer as with no battle.
 
 #include <cstdint>
+#include <functional>
 
 namespace sfve {
 class RollbackSession;
@@ -26,12 +26,22 @@ namespace sfve::adapter {
 struct BattleInPlay {
 	const RollbackSession* session = nullptr; // the battle's rollback session, live or not
 	const mod::SfvAdapter* game = nullptr;    // the bound battle
+	// Ends the session and takes the battle back to the main menu, for the
+	// runtime's Retire, Abort and Fail (NetplayMode's exit). `why` is for the
+	// log. Game thread; it only asks, so it is safe from any runtime call.
+	std::function<void(const char* why)> exit;
 };
 
-// Game thread: the mod sets it as a battle binds and clears it (an empty
-// BattleInPlay) before that battle's objects go.
+// Game thread: the mod sets it as a room's battle binds and clears it (an
+// empty BattleInPlay) before that battle's session or objects go. Setting
+// it also forgets the room's sync of the battle before.
 void SetBattleInPlay(const BattleInPlay& battle);
 const BattleInPlay& CurrentBattle();
+
+// Every member's battle has loaded (the room client's Battle::OnSessionSynced
+// since the battle in play was set): its rollback session may start. Game
+// thread.
+bool SessionSynced();
 
 // The launch a room's match armed (Battle::Enter) until the runtime drops it
 // (Battle::DropNextBattle). Each entry arms a new ticket, and the launch,
