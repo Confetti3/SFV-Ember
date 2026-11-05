@@ -668,3 +668,16 @@ It follows section 6 ("the wire keeps today's field names"), not the section 3 r
 - **The desync check is the game's.** `session/BattleVerifier.hxx` is the interface: the remote legacy snapshot, a step per client step, and Reset. Each game defines `MakeBattleVerifier()` once, as it defines `Game()`. The room client keeps the neutral part: it decodes both messages, buffers the remote v2 hashes and owns the verifier. SF4's verifier is `sf4e/sf4e__Sf4Verification.cxx`: the old `SessionClient__Verification.cxx` moved, with its pending snapshots, the desync exit and the reports. The fake game's verifier compares nothing. For SFV, the verifier publishes one overall hash per confirmed checkpoint, with `flow`, `chara0` and `chara1` set to 0, and never sends v1 snapshots.
 - **The room client includes nothing of SF4's.** Its Dimps, battle-system and facade includes had no uses. `MatchAuthority.cxx` now includes `windows.h` before `bcrypt.h` itself; it used to get it from the engine headers.
 - **Left as it is:** `GgpoInputBytes = 8` (`MatchAuthority.hxx`) bounds the room's gameplay packets. SFV's `PackedInput` is 4 bytes, so the bound holds, and taking it from the game can wait for a game with wider inputs.
+
+## 9. Library on V: the runtime under x64 (2026-11-05)
+
+The x64 library build (`cmake/ember-x64-probe`, `scripts/probe-x64.ps1`) now also compiles the runtime (`ember_runtime_x64`, x64 C++20 `/W4 /WX`). The runtime's source list is `cmake/sf4e_runtime_sources.cmake`, which SF4 Ember's build reads too. Every runtime source compiles. The runtime's test under the fake game (`RuntimeCapabilitiesTest`, `-LinkRuntime`) does not link yet: 27 symbols are still SF4's. They fall into four groups, each with its decision:
+
+| Group | Symbols | Decision |
+|---|---|---|
+| Game language | `SetGameDirectory`, `GameLanguage`, `ResolveUiLocale` (`platform/LocaleWindows.cxx`, which calls SF4's `DetectGameLanguage`), and `WindowsCountry` beside them | `LocaleWindows.cxx` is neutral apart from that one call. The game's language becomes the adapter's (`GameState`), and SF4's detection from its install stays in SF4's adapter. The Windows UI languages, Steam's language and the country stay neutral |
+| Pick labels | `CostumeLabel`, `ShortCostumeLabel`, `UltraLabel`, `ShortUltraLabel` (in `ui/FighterSelector.cxx`, SF4's) | Each game defines them once, as it defines `Catalog()`; SF4's move out of the selector unchanged |
+| Selection art | `SelectionArt::Portrait`, `Character`, `RankingEmblem`, `Flag`, `InputPrompt`, `MenuBackdrop`, `DeveloperMark` (`ui/SelectionArt.cxx`, SF4's) | `SelectionArt` keeps the cache, the uploader and Ember's own art (menu backdrop, input prompts, flags, developer mark). The game supplies the files for its fighters, stages, Ultras and emblems |
+| Replay archive | `platform::replays::*` (`FindFolders`, `WantListing`, `LatestListing`, `WantDetail`, `LatestDetail`, `MarkKept`, `MarkSent`, `MarkSetClosed`, `SetPackPath`, `ImportSetPack`, `StopListing`) | The runtime reaches the archive through `game::Replays`, as it reaches playback. SFV's is null, and its `caps.replays` is false |
+
+`winmm` (`PlaySoundW`, Speech) is a link library. It is already added.
