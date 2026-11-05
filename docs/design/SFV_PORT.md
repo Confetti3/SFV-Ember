@@ -309,15 +309,16 @@ with neutral inputs, and no check restores to one's start.
   - Inputs reach the game restricted to the bits a pad can produce
     (`GameAdapter::InputBits`, SFV 0xFFF), in sessions and in the synctest's
     wrong-input passes.
-  - Still left out of the hash as presentation, after a fresh check: the
-    camera, the fighters' centre point and player lists, and each fighter's
-    vectors rebuilt every frame (CharaUnit+0x764 from byte 32; its first 32
-    bytes, control state, are hashed). They differ in nearly every replay
-    while no fighter region ever does. Open: the map's tier-C owners (camera
-    and centre point as possible screen-edge inputs) deserve a reader search
-    before a public release, and unowned regions (HUD element pools, the
-    per-character unique parts, an AttackDataPart on a unit not enumerated
-    yet) still use table indices.
+  - Left out of the hash, after tracing their readers in IDA: the camera
+    (nothing in the fight reads it), projectile visuals and fighters'
+    material instances (UE objects recreated on restore), the battle
+    statistics, and two bone positions from the UE pose (a fighter's bone 28
+    and the point derived from it), which replayed ticks keep from the
+    restore. The fighters' centre (screen-edge pushback, push order, facing)
+    and positions are fight state and hashed; learning synctests and two
+    linked pairs at 60 ms (RYU vs KEN, CMY vs CNL) agree with them hashed.
+    Unowned regions (HUD element pools, the per-character unique parts, an
+    AttackDataPart on a unit not enumerated yet) still use table indices.
   A boot crash seen after Steam restarted was
   Steam's (its registry named a dead client process; restarting Steam fixed
   it), not the mod's. `perturb` finds `scan`'s `game.N` names only while
