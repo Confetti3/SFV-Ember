@@ -17,7 +17,16 @@
     "minhook",
     "nlohmann-json",
     "xxhash",
-    "doctest"
+    "doctest",
+    "fmt",
+    {
+      "name": "spdlog",
+      "version>=": "1.11.0",
+      "features": [
+        "wchar"
+      ]
+    },
+    "zlib"
   ],
   "builtin-baseline": "fafcc0e93bfba303e5e48790def745d27e6d449b"
 }

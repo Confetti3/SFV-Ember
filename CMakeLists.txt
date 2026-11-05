@@ -20,6 +20,18 @@ find_package(imgui CONFIG REQUIRED)
 add_compile_options(/W4 /permissive- /utf-8 /Zc:__cplusplus)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
 
+# Ember, the library SFV Ember is built on (docs/design/EMBER_LIBRARY.md,
+# sections 4 and 9): its game-neutral code and its runtime, compiled from the
+# library's sources with its own x64 build, the one its probe checks. Until
+# the library has its own repository, the build names its checkout
+# (scripts/build.ps1 -EmberRoot).
+set(SFVE_EMBER_SOURCE_ROOT "" CACHE PATH "The Ember library checkout (the feat/ember-library tree)")
+if(NOT EXISTS "${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe/CMakeLists.txt")
+    message(FATAL_ERROR "SFVE_EMBER_SOURCE_ROOT must name the Ember library checkout "
+        "(docs/design/EMBER_LIBRARY.md section 4); got '${SFVE_EMBER_SOURCE_ROOT}'")
+endif()
+add_subdirectory("${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe" "${CMAKE_BINARY_DIR}/ember")
+
 # Modules copied verbatim from SF4 Ember (docs/SHARED_FROM_EMBER.md).
 add_library(sfve_shared STATIC
     src/shared/sf4e__GgpoGate.cxx
@@ -102,4 +114,6 @@ add_dependencies(guard_probe sfv_ember)
 
 enable_testing()
 add_test(NAME sfve_tests COMMAND sfve_tests)
+# Ember's runtime under the library's test game, built with SFV Ember's packages.
+add_test(NAME ember_runtime COMMAND ember_runtime_x64_test)
 add_test(NAME guard_probe COMMAND guard_probe WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
