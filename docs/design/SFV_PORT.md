@@ -293,11 +293,19 @@ with neutral inputs, and no check restores to one's start.
   - Result: randomised synctests (RYU vs KEN, KEN vs RYU, CMY vs CNL, four
     seeds, about 4,300 rollbacks) show no difference; two linked copies at
     60 ms with delay 1 match at all 76 checkpoints (RYU vs KEN, CMY vs CNL,
-    CMY vs RYU). **Open:** KEN vs RYU, mash 1234, schedule 41 (deterministic):
-    from frame 1664 a replay records its inputs two InputUnit slots off and
-    the fight runs two ticks behind the played frames (InputUnit counters
-    and the battle frame's update counters both 2 lower); every Advance ran
-    exactly one update and one tick. Being traced in IDA.
+    CMY vs RYU, KEN vs RYU). A run that looked like the fight falling two
+    ticks behind (KEN vs RYU, mash 1234, schedule 41) was the harness:
+    learning mode went on from a replayed state but kept the played
+    timeline's saves, so a presentation-only difference (a fighter's
+    material instances) turned into a mixed-timeline comparison. Learning
+    now re-saves replayed frames, as a session does. After that, five
+    learning synctests (KEN vs RYU, RYU vs KEN twice, CMY vs CNL, KEN vs CMY;
+    about 5,300 rollbacks) show no difference.
+  - Restores pass the game's post-restore callbacks the restored state's
+    frame id ({tag, input frame - 1}, as the game's own load does) and write
+    back the input frame the InputUnit mirrors into the game instance. Traced
+    in IDA: offline, nothing rewrites the InputUnit's counters or ring after
+    a restore; its QPC sync, delay and own rollback are online-only.
   - Inputs reach the game restricted to the bits a pad can produce
     (`GameAdapter::InputBits`, SFV 0xFFF), in sessions and in the synctest's
     wrong-input passes.
