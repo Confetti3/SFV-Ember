@@ -1,6 +1,7 @@
 #include "ember/EmberHost.hxx"
 
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvGame.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/GameExit.hxx"
@@ -17,6 +18,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <memory>
@@ -79,15 +81,17 @@ void BeginLeaveAtExit()
 }
 
 // Then, as SF4's fMain::Destroy does: the session ends, the helper stops
-// (StopHelper gives a room still open a bounded departure of its own). The
-// tick stops first: StopHelper deletes the runtime it reads.
+// (StopHelper gives a room still open a bounded departure of its own), and
+// the settings still queued are written. The tick stops first: StopHelper
+// deletes the runtime it reads.
 void StopAtExit()
 {
 	const bool left = RoomNow() == sf4e::netplay::RoomState::Idle;
 	s_state = HostState::Stopped;
 	facade::ShutdownNetplay(true);
 	facade::StopHelper();
-	mod::Log("ember: %s and stopped the helper for the game's exit",
+	StopPreferences();
+	mod::Log("ember: %s, stopped the helper and saved the settings for the game's exit",
 		left ? "left the room" : "the room was not left in time");
 }
 
@@ -103,6 +107,7 @@ bool Refuse(const std::string& why)
 // False once the runtime will not start.
 bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 {
+	const ULONGLONG readStarted = GetTickCount64();
 	const mod::ContentLists lists = mod::ReadContentLists();
 	if (lists.fighters.empty() || lists.stages.empty()) {
 		if (s_state != HostState::WaitingForContent) mod::Log("ember: waiting for the game's content lists");
@@ -114,8 +119,9 @@ bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 			std::to_string(lists.stages.size()) + " stages) do not make a usable catalog");
 	}
 	SealCatalog();
-	mod::Log("ember: catalog of %d fighters and %zu stages, build %s", ember::Catalog().fighterCount, lists.stages.size(),
-		MatchBuildId().c_str());
+	const size_t named = std::count_if(lists.stageNames.begin(), lists.stageNames.end(), [](const std::string& n) { return !n.empty(); });
+	mod::Log("ember: catalog of %d fighters and %zu stages (%zu named by the game; read in %llu ms), build %s",
+		ember::Catalog().fighterCount, lists.stages.size(), named, GetTickCount64() - readStarted, MatchBuildId().c_str());
 
 	RouteRuntimeLog();
 	// Kept for the process's life: its job ends the helper with the process.

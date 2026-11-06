@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.25)
-project(sfv_ember LANGUAGES CXX)
+project(sfv_ember VERSION 0.1.0 LANGUAGES CXX)
+
+# SFV Ember's own version: its log's first line, and the version Ember's
+# shell shows (the library's SF4E_APP_VERSION, EMBER_APP_VERSION below). A
+# pre-release until SFV Ember ships, so the shell calls it a Beta.
+set(SFVE_VERSION "${PROJECT_VERSION}-beta.1")
 
 # Street Fighter V is a 64-bit game: everything here builds for x64 only.
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -30,6 +35,7 @@ if(NOT EXISTS "${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe/CMakeLists.txt")
     message(FATAL_ERROR "SFVE_EMBER_SOURCE_ROOT must name the Ember library checkout "
         "(docs/design/EMBER_LIBRARY.md section 4); got '${SFVE_EMBER_SOURCE_ROOT}'")
 endif()
+set(EMBER_APP_VERSION "${SFVE_VERSION}")
 add_subdirectory("${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe" "${CMAKE_BINARY_DIR}/ember")
 
 # Game-agnostic rollback core: state regions, hashing, the GGPO session and
@@ -136,6 +142,7 @@ add_library(sfv_ember SHARED
     src/mod/GameContent.cxx
     src/mod/GameExit.cxx)
 target_link_libraries(sfv_ember PRIVATE sfve_ember)
+target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")
 # Ember's own pictures the shell draws beside the mod (overlay/Overlay.hxx):
 # the menu backdrop, the button prompts and the flags. SFV has no fighter or
 # stage pictures, so none of SF4's selection art comes along.

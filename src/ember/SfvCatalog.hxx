@@ -66,6 +66,9 @@ std::string ContentFingerprint(const mod::ContentLists& lists);
 // outside the lists.
 std::string FighterCode(std::int64_t fighter);
 std::string StageCode(std::int64_t stage);
+// A stage as the shell names it: the game's own name for it, or its code
+// where the game gave none (and empty for an id outside the list).
+std::string StageName(std::int64_t stage);
 // How many stages the catalog lists (0 before FillCatalog); ids run from 0.
 int StageCount();
 // The other way, from a code as a launch names it (L"RYU", VersusLaunch's

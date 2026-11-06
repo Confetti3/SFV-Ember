@@ -31,10 +31,11 @@ using sf4e::selection::Pick;
 
 namespace {
 
-// A content list as GameContent reads one: codes in the game's order.
+// A content list as GameContent reads one: codes in the game's order, and
+// the stages' names where the game gives one (none for the second).
 mod::ContentLists TestContent()
 {
-	return {{"RYU", "CNL", "KEN", "CMY", "BSN"}, {"S01", "S02", "S25"}};
+	return {{"RYU", "CNL", "KEN", "CMY", "BSN"}, {"S01", "S02", "S25"}, {"Stage One", "", "Stage Twenty-five"}};
 }
 
 void FillTestCatalog()
@@ -111,6 +112,11 @@ TEST_CASE("the catalog is empty until it is filled from the game's content lists
 	CHECK(FighterCode(-1).empty());
 	CHECK(StageCode(2) == "S25");
 	CHECK(StageCode(3).empty());
+	// The shell names a stage by the game's name, by its code where it has none.
+	CHECK(StageName(0) == "Stage One");
+	CHECK(StageName(1) == "S02");
+	CHECK(StageName(2) == "Stage Twenty-five");
+	CHECK(StageName(3).empty());
 	CHECK(FighterId(L"KEN") == 2);
 	CHECK_FALSE(FighterId(L"ZZZ").has_value());
 	CHECK(StageId(L"S25") == 2);
@@ -195,6 +201,10 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	mod::ContentLists extra = TestContent();
 	extra.stages.push_back("S26");
 	CHECK(ContentFingerprint(extra) != fingerprint);
+	// Stage names follow each copy's language: they never change the build.
+	mod::ContentLists translated = TestContent();
+	translated.stageNames = {"Etappe eins", "", ""};
+	CHECK(ContentFingerprint(translated) == fingerprint);
 	// A code that moved from one list to the other.
 	CHECK(ContentFingerprint({{"RYU", "S01"}, {"S02"}}) != ContentFingerprint({{"RYU"}, {"S01", "S02"}}));
 	CHECK(ContentFingerprint({{"RY", "U"}, {"S01"}}) != ContentFingerprint({{"R", "YU"}, {"S01"}}));
@@ -315,8 +325,9 @@ TEST_CASE("the pick labels are plain, from the catalog")
 {
 	FillTestCatalog();
 	using namespace sf4e::ui;
-	CHECK(StageLabel(0) == "S01");
-	CHECK(StageLabel(2) == "S25");
+	CHECK(StageLabel(0) == "Stage One");
+	CHECK(StageLabel(1) == "S02"); // the game gave no name
+	CHECK(StageLabel(2) == "Stage Twenty-five");
 	CHECK(StageLabel(9) == "9");
 	CHECK(CostumeLabel(PickOf(0, 3)) == "Costume 3");
 	CHECK(ShortCostumeLabel(PickOf(0, 3)) == "Costume 3");

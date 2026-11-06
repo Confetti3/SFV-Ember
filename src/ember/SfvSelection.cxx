@@ -1,9 +1,9 @@
 // SFV's pick labels (the library's ui/SelectionLabels.hxx) and pictures
 // (ui/SelectionArt.hxx), and the selection files its update packages may add
 // (common/SelectionAssetPath.hxx): none, as SFV Ember installs no updates yet.
-// The labels are plain: a stage by its game code from the catalog, a costume
-// and a colour by the game's own numbers (as the launch setup and the logs
-// give them). SFV has no Ultra, so its label is empty. No SFV picture exists
+// The labels are plain: a stage by the game's own name for it (its code where
+// the game has none; SfvCatalog's StageName), a costume and a colour by the
+// game's own numbers (as the launch setup and the logs give them). SFV has no Ultra, so its label is empty. No SFV picture exists
 // yet, so every picture of the game reports itself missing and screens say so
 // instead of waiting for one.
 
@@ -29,8 +29,8 @@ namespace sf4e::ui {
 
 std::string StageLabel(int stageId, const selection::InstalledContent*)
 {
-	const std::string code = sfve::adapter::StageCode(stageId);
-	return code.empty() ? std::to_string(stageId) : code;
+	const std::string name = sfve::adapter::StageName(stageId);
+	return name.empty() ? std::to_string(stageId) : name;
 }
 
 std::string CostumeLabel(const selection::Pick& pick, const selection::InstalledContent*)

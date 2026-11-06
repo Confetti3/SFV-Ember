@@ -74,9 +74,10 @@ int ResolveStage(int choice, std::uint32_t, const sf4e::selection::RandomPool&, 
 	return ValidStage(choice) ? choice : 0;
 }
 
-// The game's code ("RYU") until SFV Ember has a table of fighters' names.
-// The shell asks for fighter 0 even when the catalog is empty (its lists
-// were not filled or were refused), so an id outside the roster reads "?".
+// The game's code ("RYU"): the game's data offers no reader of fighters'
+// names (GameContent.hxx). The shell asks for fighter 0 even when the
+// catalog is empty (its lists were not filled or were refused), so an id
+// outside the roster reads "?".
 const char* FighterName(int fighter)
 {
 	if (fighter < 0 || fighter >= (int)s_lists.fighters.size()) return "?";
@@ -187,6 +188,12 @@ std::string FighterCode(std::int64_t fighter)
 std::string StageCode(std::int64_t stage)
 {
 	return CodeAt(s_lists.stages, stage);
+}
+
+std::string StageName(std::int64_t stage)
+{
+	const std::string name = CodeAt(s_lists.stageNames, stage);
+	return name.empty() ? StageCode(stage) : name;
 }
 
 std::optional<int> FighterId(const std::wstring& code)

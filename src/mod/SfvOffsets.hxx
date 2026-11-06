@@ -222,12 +222,23 @@ constexpr CodeSite kMainMenuClass{"MainMenuStateClass", 0xC20E70,
 constexpr CodeSite kRequestExit{"RequestExit", 0x11D0580,
 	{0x48, 0x83, 0xEC, 0x28, 0x84, 0xC9, 0x74, 0x54, 0x48, 0x89, 0x5C, 0x24, 0x20, 0xE8, 0x8E, 0x14}};
 
+// A stage's name as the game's menus show it (GameContent's StageName): the
+// native behind KWStageEntryDataAsset's GetStageName (rva 0xD18B70).
+// FString* StageName(StageAsset*, FString* out, const FString* code): finds
+// the entry by code (case-insensitive), finds or loads the stage's own data
+// asset (the entry's +32 path, rva 0x55E550) and copies its FText (+40) as
+// shown; empty for a code not in the table. The game's favourite-stage
+// screen calls it so (rva 0x812F70), with the stage asset (content::
+// kStageAsset) and the out string freed by kGameFree.
+constexpr CodeSite kStageName{"StageName", 0x564550,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0xDA, 0x49, 0x8B, 0xD0, 0xE8, 0xEF, 0x9F, 0xFF}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
-	kSpecStages, kMainMenuClass, kRequestExit};
+	kSpecStages, kMainMenuClass, kRequestExit, kStageName};
 
 namespace versus {
 

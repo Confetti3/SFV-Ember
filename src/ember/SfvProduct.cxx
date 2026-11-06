@@ -19,8 +19,8 @@
 namespace {
 
 // SFV Ember's own words where the shared catalog names SF4 Ember on the
-// screens SFV shows: the shell's header and Home, About, the room's build
-// checks and the shortcut hint. English replaces every translation of them
+// screens SFV shows: the shell's header and Home, About and the version line,
+// the room's build checks and the shortcut hint. English replaces every translation of them
 // too (Localization.cxx), until SFV Ember has translations of its own. The
 // launcher's, updater's, recovery's and Training's words are not shown here.
 const char kEnglish[] = R"po(
@@ -32,6 +32,9 @@ msgstr "SFV EMBER"
 
 msgid "screen.game"
 msgstr "SFV"
+
+msgid "about.version_line"
+msgstr "SFV Ember {0} · {1}"
 
 msgid "brand.subtitle"
 msgstr "SFV  /  PRIVATE ROOMS & ROLLBACK NETPLAY"
@@ -65,6 +68,9 @@ constexpr ember::ProductIdentity SfvEmber = {
 		L"brand/ember-menu-background.png",
 	},
 	L"SFVEmber",
+	// Settings beside the mod in the game's folder (SFVEmber\settings.json),
+	// as its logs are (mod/Log.cxx): SFV Ember has no installer of its own.
+	true,
 	L"SFVEmber",
 	L"Local\\SFVEmber.Launcher.",
 	L"Local\\sfve-video-",

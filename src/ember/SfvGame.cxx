@@ -19,6 +19,9 @@
 #include "common/InstalledContent.hxx"
 #include "common/Localization.hxx"
 #include "common/PadKind.hxx"
+#include "netplay/PlayerPreferencesJson.hxx"
+#include "netplay/SettingsStore.hxx"
+#include "netplay/SettingsWriter.hxx"
 #include "sf4e/sf4e__AbsentGameFeatures.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
 #include "sf4e/sf4e__RuntimeEvents.hxx"
@@ -295,22 +298,44 @@ private:
 	std::size_t loggedDevices_ = ~std::size_t{0};
 };
 
-// No SFV settings store yet: a save is taken and written nowhere, so the
-// player's settings last only while the game runs. The gameplay device is
-// always the game's pad 0.
+// The player's settings go to the library's settings store, in SFV Ember's
+// folder beside the mod (SFVEmber\settings.json: ProductIdentity's
+// settingsBesideModule), from which the runtime reads them back at start.
+// Copies on one PC share the file; its lock serialises them and the last
+// save wins. The writer's thread starts with the first save and stops at the
+// game's exit (StopPreferences), never at DLL detach, where its lock could be
+// held by a thread already gone. The gameplay device is always the game's
+// pad 0.
 class SfvPreferences final : public Preferences {
 public:
 	Device SavedGameplayDevice() override { return {sf4e::input::PadXInput, kGameplaySlot, std::nullopt}; }
 	std::optional<sf4e::gamepads::Identity> SavedDeviceIdentity() override { return std::nullopt; }
 	bool SaveGameplayDevice(int, int, const std::optional<sf4e::gamepads::Identity>&) override { return true; }
-	bool Save(const sf4e::netplay::PlayerPreferences&) override { return true; }
-	std::uint64_t Queue(const sf4e::netplay::PlayerPreferences&) override { return ++revision_; }
-	bool Saved(std::uint64_t revision) override { return revision <= revision_; }
-	bool Pending() override { return false; }
-	std::string Error() override { return {}; }
+	bool Save(const sf4e::netplay::PlayerPreferences& preferences) override { return Queue(preferences) != 0; }
+	std::uint64_t Queue(const sf4e::netplay::PlayerPreferences& preferences) override
+	{
+		if (stopped_ || !preferences.Valid()) return 0;
+		if (!writer_) writer_ = new sf4e::netplay::SettingsWriter(sf4e::netplay::SettingsStore::DefaultDirectory());
+		return writer_->QueueLauncher(sf4e::netplay::PlayerPreferencesJson(preferences));
+	}
+	bool Saved(std::uint64_t revision) override { return writer_ && revision && writer_->SavedLauncherRevision() >= revision; }
+	bool Pending() override { return writer_ && writer_->GetStatus().pending; }
+	std::string Error() override { return writer_ ? writer_->GetStatus().error : std::string(); }
+
+	// Writes what is still queued, then ends the writer's thread. Kept, not
+	// deleted: the process ends next.
+	void Stop()
+	{
+		stopped_ = true;
+		if (!writer_) return;
+		writer_->Stop();
+		const auto status = writer_->GetStatus();
+		if (status.pending) mod::Log("ember: the settings could not be saved before exit: %s", status.error.c_str());
+	}
 
 private:
-	std::uint64_t revision_ = 0;
+	sf4e::netplay::SettingsWriter* writer_ = nullptr; // game thread
+	bool stopped_ = false;
 };
 
 // No SFV module for Steam, the lobby music, the away sound, custom content,
@@ -360,6 +385,11 @@ bool SessionSynced()
 const BattleInPlay& CurrentBattle()
 {
 	return s_battle;
+}
+
+void StopPreferences()
+{
+	s_preferences.Stop();
 }
 
 } // namespace sfve::adapter

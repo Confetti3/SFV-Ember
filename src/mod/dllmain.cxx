@@ -65,7 +65,7 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	sfve::CoreLogSink() = &LogLine;
 	wchar_t exe[MAX_PATH] = {};
 	GetModuleFileNameW(nullptr, exe, MAX_PATH);
-	Log("sfv-ember 0.0.1 starting in %ls (%s), instance %d, mode %s", exe,
+	Log("sfv-ember %s starting in %ls (%s), instance %d, mode %s", SFVE_VERSION, exe,
 		beforeGameCode ? "before game code" : "LATE: the game was already running", Config().instance,
 		ModeName(Config().mode));
 	if (const char* ignored = IgnoredSetting()) Log("config: %s", ignored);

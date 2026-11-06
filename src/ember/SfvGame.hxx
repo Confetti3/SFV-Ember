@@ -38,6 +38,10 @@ struct BattleInPlay {
 void SetBattleInPlay(const BattleInPlay& battle);
 const BattleInPlay& CurrentBattle();
 
+// Game thread, as the game exits (EmberHost): the settings still queued are
+// written, and the preferences' writer stops.
+void StopPreferences();
+
 // Every member's battle has loaded (the room client's Battle::OnSessionSynced
 // since the battle in play was set): its rollback session may start. Game
 // thread.

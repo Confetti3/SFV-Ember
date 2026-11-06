@@ -76,13 +76,13 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 	std::vector<MenuChoice> fighters;
 	for (int id : Roster()) fighters.push_back({OptionId(id), catalog.fighterName(id), {}, editable});
 	std::vector<MenuChoice> stages;
-	for (int id : Stages()) stages.push_back({OptionId(id), StageCode(id), {}, editable && stageEditable});
+	for (int id : Stages()) stages.push_back({OptionId(id), StageName(id), {}, editable && stageEditable});
 	std::vector<MenuEntry> rows;
 	rows.push_back(StepRow(kFighter, "selection.fighter", catalog.fighterName(pick.pick.fighter),
 		editable ? "selection.select_saves" : "selection.locked_detail", editable, std::move(fighters), pick.pick.fighter));
 	rows.push_back(StepRow(kCostume, "selection.costume", std::to_string(pick.pick.costume), adjusts, editable));
 	rows.push_back(StepRow(kColour, "selection.color_row", std::to_string(pick.pick.color), adjusts, editable));
-	rows.push_back(StepRow(kStage, "selection.stage", StageCode(pick.stage),
+	rows.push_back(StepRow(kStage, "selection.stage", StageName(pick.stage),
 		!editable ? "selection.locked_detail" : stageEditable ? "selection.p1_stage" : "selection.only_p1_stage",
 		editable && stageEditable, std::move(stages), pick.stage));
 	rows.push_back(sf4e::ui::Row(kDone, loc::T("keyboard.done"), loc::T("selection.status_adjust")));
