@@ -213,12 +213,21 @@ constexpr CodeSite kSpecStages{"SpecStages", 0x5672D0,
 constexpr CodeSite kMainMenuClass{"MainMenuStateClass", 0xC20E70,
 	{0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05, 0xAD, 0x47, 0xE8, 0x02, 0x48, 0x85, 0xC0, 0x75, 0x21}};
 
+// The engine's exit (GameExit). void RequestExit(bool force): with force,
+// TerminateProcess; without, PostQuitMessage and the engine's "requesting
+// exit" flag, so the main loop ends after this frame. The game's EXIT and
+// QUIT console commands ("Closing by request", rva 0x1ACAB20), which a
+// window close reaches, call it without force on the game thread; so do
+// some 80 other callers.
+constexpr CodeSite kRequestExit{"RequestExit", 0x11D0580,
+	{0x48, 0x83, 0xEC, 0x28, 0x84, 0xC9, 0x74, 0x54, 0x48, 0x89, 0x5C, 0x24, 0x20, 0xE8, 0x8E, 0x14}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
-	kSpecStages, kMainMenuClass};
+	kSpecStages, kMainMenuClass, kRequestExit};
 
 namespace versus {
 

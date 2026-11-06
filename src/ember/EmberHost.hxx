@@ -13,6 +13,11 @@
 // the runtime, the room client and hosted server, the battle's poll (the
 // GameTick the caller gives, NetplayMode's) and the published frame.
 //
+// When the game asks to exit (mod/GameExit.hxx), on the game thread, the host
+// leaves the room as Leave room does, holding the engine's exit until the
+// room has acknowledged it; then it stops the helper and writes the settings
+// still queued, as SF4's fMain::Destroy does, and the tick stops.
+//
 // The runtime logs through spdlog; its lines go to the mod's log, marked
 // "ember:". The status field "ember" reports whether it runs, or why not.
 

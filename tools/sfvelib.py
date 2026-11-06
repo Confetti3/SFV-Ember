@@ -295,6 +295,7 @@ _user32.GetWindowDC.restype = wt.HDC
 _user32.GetWindowDC.argtypes = [wt.HWND]
 _user32.ReleaseDC.argtypes = [wt.HWND, wt.HDC]
 _user32.PrintWindow.argtypes = [wt.HWND, wt.HDC, wt.UINT]
+_user32.PostMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
 _gdi32.CreateCompatibleDC.restype = wt.HDC
 _gdi32.CreateCompatibleDC.argtypes = [wt.HDC]
 _gdi32.CreateCompatibleBitmap.restype = wt.HBITMAP
@@ -341,6 +342,14 @@ def focus(pid: int) -> None:
     _user32.ShowWindow(hwnd, SW_RESTORE)
     if not _user32.SetForegroundWindow(hwnd):
         raise SfveError(f"could not bring process {pid}'s window to the front")
+
+
+def close_window(pid: int) -> None:
+    """Asks a copy's window to close as its title bar's close button does
+    (WM_CLOSE, which Process.CloseMainWindow sends)."""
+    WM_CLOSE = 0x0010
+    if not _user32.PostMessageW(main_window(pid), WM_CLOSE, 0, 0):
+        raise SfveError(f"could not post WM_CLOSE to process {pid}'s window")
 
 
 def _png(width: int, height: int, rgb_rows: list[bytes]) -> bytes:

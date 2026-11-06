@@ -3,6 +3,7 @@
 #include "ember/SfvCatalog.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameContent.hxx"
+#include "mod/GameExit.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
@@ -27,7 +28,7 @@ namespace {
 
 namespace facade = sf4e::NetplayFacade;
 
-enum class HostState { WaitingForMenu, WaitingForContent, Running, Refused };
+enum class HostState { WaitingForMenu, WaitingForContent, Running, Refused, Stopped };
 
 std::atomic<HostState> s_state{HostState::WaitingForMenu};
 std::string s_refusal; // why the runtime did not start; written before Refused is published
@@ -39,6 +40,7 @@ const char* StateName(HostState state)
 	case HostState::WaitingForContent: return "waiting for the game's content lists";
 	case HostState::Running: return "running";
 	case HostState::Refused: return "refused";
+	case HostState::Stopped: return "stopped";
 	}
 	return "?";
 }
@@ -55,13 +57,39 @@ void RouteRuntimeLog()
 	spdlog::set_default_logger(std::move(logger));
 }
 
-// Ends the room link as the process goes, as SF4's Main::Destroy does,
-// without StopHelper's waits: they would run under the loader lock, and the
-// helper's job ends it with the process. Constructed once the runtime
-// starts, after the battle mode, so it goes first.
-struct RuntimeShutdown {
-	~RuntimeShutdown() { facade::ShutdownNetplay(true); }
-};
+sf4e::netplay::RoomState RoomNow()
+{
+	return facade::GetRuntimeSnapshotShared()->session.room;
+}
+
+// The game is exiting (GameExit, on the game thread, every thread still
+// running). First the player leaves the room as Leave room does: the room
+// hears the Leave and acknowledges it, so the other members see this copy
+// leave (a host's room goes on without it) rather than lose it and recover.
+// GameExit's steps tick the runtime until the room is left or its time is
+// up, then the engine's exit goes on.
+void BeginLeaveAtExit()
+{
+	if (RoomNow() == sf4e::netplay::RoomState::Idle) return;
+	facade::RuntimeCommand leave;
+	leave.command.kind = sf4e::netplay::CommandKind::LeaveRoom;
+	leave.command.generation = facade::GetRuntimeSnapshotShared()->session.generation;
+	const bool submitted = facade::SubmitRuntimeCommand(std::move(leave));
+	mod::Log("ember: leaving the room for the game's exit%s", submitted ? "" : " (the runtime took no command)");
+}
+
+// Then, as SF4's fMain::Destroy does: the session ends, the helper stops
+// (StopHelper gives a room still open a bounded departure of its own). The
+// tick stops first: StopHelper deletes the runtime it reads.
+void StopAtExit()
+{
+	const bool left = RoomNow() == sf4e::netplay::RoomState::Idle;
+	s_state = HostState::Stopped;
+	facade::ShutdownNetplay(true);
+	facade::StopHelper();
+	mod::Log("ember: %s and stopped the helper for the game's exit",
+		left ? "left the room" : "the room was not left in time");
+}
 
 bool Refuse(const std::string& why)
 {
@@ -73,7 +101,7 @@ bool Refuse(const std::string& why)
 
 // The first main-menu frames: the catalog, then the helper and the runtime.
 // False once the runtime will not start.
-bool TryStart(const HostSettings& settings)
+bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 {
 	const mod::ContentLists lists = mod::ReadContentLists();
 	if (lists.fighters.empty() || lists.stages.empty()) {
@@ -109,7 +137,14 @@ bool TryStart(const HostSettings& settings)
 	facade::NotifyRuntimeGameReady();
 	// The main menu is in front: the game's screens are up.
 	facade::NotifyRuntimeEventSystemReady();
-	static RuntimeShutdown shutdown;
+	// The game's frames stop once its window is closed, so the exit's steps
+	// tick the runtime themselves while the Leave goes out.
+	mod::OnGameExit({&BeginLeaveAtExit,
+		[&battle] {
+			ember::Tick(battle);
+			return RoomNow() == sf4e::netplay::RoomState::Idle;
+		},
+		&StopAtExit});
 	s_state = HostState::Running;
 	mod::Log("ember: the runtime runs as \"%s\"", name.c_str());
 	return true;
@@ -131,9 +166,10 @@ void InstallEmberHost(const HostSettings& settings, ember::GameTick& battle)
 		return json + "}";
 	});
 	mod::RunEachGameFrame([settings, &battle] {
+		if (s_state == HostState::Stopped) return false;
 		if (s_state != HostState::Running) {
 			if (!mod::MainMenuInFront()) return true;
-			if (!TryStart(settings)) return false;
+			if (!TryStart(settings, battle)) return false;
 			if (s_state != HostState::Running) return true;
 		}
 		ember::Tick(battle);

@@ -13,6 +13,7 @@
 #include "mod/BuildCheck.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameContent.hxx"
+#include "mod/GameExit.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
@@ -108,6 +109,9 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	RegisterStatus("suppressedDialogs", [] { return std::to_string(SuppressedDialogs()); });
 	if (scene && InstallVersusLaunch(base, Config().ownershipCheck)) RegisterVersusLaunchCommands();
 	InstallMatchEnd(base);
+	// The game's exit request: the point the netplay mode's runtime leaves
+	// its room from (EmberHost), before the engine stops.
+	InstallGameExit(base);
 	// The host for Ember's interface (its shell is plugged in below, with
 	// rooms on); the game's content lists, on the pipe.
 	if (scene && sfve::overlay::InstallOverlay()) SetPadFilter(&sfve::overlay::FilterGamePad);

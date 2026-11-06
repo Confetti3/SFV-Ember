@@ -89,6 +89,7 @@ add_executable(sfve_ember_tests
     tests/EmberAdapterTests.cxx
     src/mod/ControlPipe.cxx
     src/mod/GameContent.cxx
+    src/mod/GameExit.cxx
     src/mod/GameHooks.cxx
     src/mod/GameScene.cxx
     src/mod/GameThread.cxx
@@ -132,7 +133,8 @@ add_library(sfv_ember SHARED
     src/mod/GameInput.cxx
     src/mod/WriteWatch.cxx
     src/mod/LagSim.cxx
-    src/mod/GameContent.cxx)
+    src/mod/GameContent.cxx
+    src/mod/GameExit.cxx)
 target_link_libraries(sfv_ember PRIVATE sfve_ember)
 # Ember's own pictures the shell draws beside the mod (overlay/Overlay.hxx):
 # the menu backdrop, the button prompts and the flags. SFV has no fighter or
