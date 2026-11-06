@@ -853,3 +853,52 @@ Ember's runtime now runs inside the SFV mod, and a private Ember room plays matc
 3. **Textures.** The shell's `SelectionArt` needs a DX11 `TextureUploader` (overlay plan section 1d). SFV's pictures all report missing until there is art.
 4. **The shell in the mod's link.** `ApplicationShell` compiles in the x64 probe (section 7), but the mod has never linked it: fonts, locales and ImGui 1.91.9 (the pin, section 6 Wrong #11) are untested in the DLL.
 5. **Rules SFV cannot play.** The shell offers 15 and 99 rounds and 9999 s; SFV plays 1/3/5/7 rounds of 30-300 s. `Battle::Enter` rejects such a match (`Entry::Rejected`). The shell should offer only the catalog's playable rules: add rule lists to the catalog (section 2, `RoundCounts`/`RoundTimes`).
+
+## 13. B2: the shell in SFV (2026-11-05)
+
+Ember's shell (the library's `ApplicationShell`, through its neutral `ember::ShellHost`) now draws over SFV through the mod's Direct3D 11 overlay, branded SFV Ember. A pad opens it at the main menu, and from it a player creates a private room, copies its invitation, joins one from the clipboard, picks, and Readies. The room test commands (section 12) stay for `tools/runroom.ps1`.
+
+**The five blockers of section 12, as solved**
+1. **ShellHost.** `sf4e__ShellHost` was already neutral and already in the runtime's sources; what SFV lacked was its side. `src/ember/SfvShell.cxx` is SFV's `ShellGame` and frame driver: `FillView`, `StepSelection` (colour), `AddPick`, and `DrawSelection`. It uses the library's own `OverlayPresentation`, `MenuPads` and `ControllerNavigation`, as `sf4e__Overlay.cxx` does. The pick moved out of `RoomCommands` into `src/ember/SfvPick` (one store, any thread); the pipe's `pick`/`ready` and the shell both use it. `DrawSelection` is `SfvSelectionScreen`: GameMenu value rows (fighter and stage with all choices on Select, costume and colour stepped by Left and Right, Done), named by the game's codes. It follows `EmbeddedReturn` as `FighterSelector` does; FighterSelector is not ported.
+2. **Pad input.** `SfvInput::ReadController` reads `VirtualPads::LastPadState`, which is recorded before the overlay hides the pad from the game. The D-pad (and the left stick, now recorded in `PadSeen::stick`) gives the directions. The buttons go through the library's new `input::xinput::Physical` (common/PadKind.hxx), which the UI lab now uses too. `MenuTakesPads` reports `MenuPads::Takes`. Start on the gameplay pad opens Ember (`input::StartPress`, game thread); F10 toggles it. A virtual pad (`pad 0 ...`) drives the shell through exactly the path a physical pad takes.
+3. **Textures.** `src/overlay/TextureUploaderD3D11` makes immutable BGRA textures and hands their SRVs to ImGui. The overlay owns `SelectionArt` on the game's device. The build copies Ember's own `assets/brand`, `assets/input` and `assets/flags` next to the mod, and `sfve.py deploy` deploys them. SFV's fighter and stage pictures still report missing.
+4. **The shell in the DLL.** It links: ImGui 1.91.9 and the library's patched Win32 backend (input bridge, render size; the probe now builds it with `IMGUI_IMPL_WIN32_DISABLE_GAMEPAD`, as SF4 does), the embedded fonts and the locales. The overlay was reworked:
+   - An interface set means every Present is an ImGui frame. The shell does its hidden work too (`ShellHost::Background`), and returns whether it is shown.
+   - Window input goes through the library's `Win32InputBridge` and `HandleOverlayMessage` under `OverlayLifecycle`, in place of the mod's own queue.
+   - The View toggle and ImGui's own gamepad navigation are gone. View is the shell's Chat button.
+5. **Playable rules.** `GameCatalog` gained `roundCounts`/`roundTimes` (and `PlayableRoundCount/Time`), `editions` and `rematchInPlace`. SF4's catalog lists every rule, all true. SFV's lists are the room's rules that `PlayableRounds`/`RoundClockFrames` accept: 1/3/5/7 rounds of 30/60/99/300 s, no editions, no rematch in place. The shell offers only those. Edition and Instant rematch rows are hidden. A Practice room (9999 s) is offered only when the catalog plays that time. A room the shell opens has Instant rematch off.
+
+**Other library changes (SF4 unchanged; `game_catalog_test` pins SF4's lists):**
+- `ShellView::offersTraining/offersReplays` (from the adapter's capabilities) hide Home's Training and Replays rows and the room's Training row.
+- The table page has no Ultra row when the catalog offers one Ultra. It has no fighter options row when the game says its fighters have none (`ShellView::fighterOptions`).
+- A seat caption has no Ultra for such a game.
+
+**SFV Ember's words.** `SfvProduct` now has an English locale overlay for the shared strings that named SF4 Ember on the screens SFV shows: header subtitle, Home title, "Return to SFV", About, the shortcut hint and the build checks. English replaces each translation of those (Localization.cxx).
+
+**Native menu lock** (section 12 review item). While a room is joined or a game is on its way, the shell keeps the pads from SFV's main menu whether it is shown or not (`NativeMenuLockFor`), so the only way on is Ember's. In a room, Back on Home does not hide the shell (the library's rule).
+
+**Evidence** (`D:\sfv-re\shots\shell\`)
+- `1-menu.png`: Home over SFV.
+- `2-rules-rounds.png`: Create room, Rounds offering 1/3/5/7.
+- `3-room-invitation.png`: the room, "Invitation copied".
+- `4-pick.png`: the pick screen.
+- `5-back-in-room-game1*.png`: both copies back in the room after the match.
+- `tools/runshell.py` drives both copies with their virtual pads only; the pipe only reads status and presses buttons. Copy 0 opens Ember with Start, skips the first-run welcome, creates a room of 1 round of 30 s and copies its invitation. Copy 1 pastes it on Join. Both take a seat from the table card, pick (X), and Ready on their seat. The match launches as in B1, and the shell comes back over the room afterwards ("a match ended").
+- `tools/runroom.ps1` still PASSes (the room commands, shell present but hidden).
+
+**The open blocker: a frame-0 desync after pad presses at the main menu.**
+- Shell-driven two-copy runs passed 3 of 9 attempts (`runshell.py` and one by hand), the last on the final build failing. Every failure is the first checkpoint (frame 60, and frame 0 already differs).
+- The desync log now names the regions (`desync: checkpoint N region ...`, written only on a mismatch). Only `battleframe` differs, always with the same two hashes.
+- Peeks at session start show its last dword, +0x1BC (a float), as the only difference: 1.0 on one copy, 0.0 on the other. In passing runs it is 0.0 on both.
+- The battle frame's reset (rva 0x4D8830, decompiled) clears +0x190 to +0x1BB and not +0x1BC, so the field keeps what was written before the battle. Its writer is not found yet.
+- **The trigger is pad activity before the battle, not the shell.** The room commands with ten DOWN presses on each copy's virtual pad between `pick` and `ready` (the shell hidden, the presses held from the game by the room's lock) desynced in 2 of 3 runs, the same way. runroom without presses passes (3 of 3 this session, the last after the final build). The overlay hides the buttons from the game but not the packet number, and UE4 may still note the pad's activity.
+- Next: find the writer of battleframe +0x1BC in IDA. Then either clear it at the battle frame's bind (if the fight never reads it) or keep the pads' packet numbers still while Ember holds them.
+
+**Left**
+- `room.rules_summary` still says "Edition Select Off": it needs a new msgid without the edition, across the locales.
+- Settings are saved nowhere (section 10), so the first-run welcome shows on every launch; `runshell.py` skips it.
+- Only F10 and Start open the shell. Windows' DPI scale is not applied (the picture's height alone sets the scale).
+- At 960x540 the room page is cramped and its spatial navigation awkward.
+- Public rooms, Ember ID and rankings show but need the bridge, which SFV Ember does not have yet.
+- The clipboard join replaces what the Windows clipboard held.
+- SFV has no fighter or stage art, and no names table (codes are shown).
