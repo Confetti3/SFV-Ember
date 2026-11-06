@@ -1040,6 +1040,7 @@ On this PC the spec lists 46 selectable fighters (ELEVEN with one costume), 5 to
 - `tools/runshell.py --shots D:\sfv-re\shots\shell`: PASS.
   - `4-pick.png`: the pick screen with CHUN-LI's banner, her name, "DEFAULT" and "Color 02" with its swatch.
   - `5-room-seated.png`: the room's seats and members with the game's own faces, RYU for the unshared seat (fighter 0) and KEN.
+- **The swatch's channel order** (`10-pick-ryu-colour01.png`): RYU's DEFAULT colour 01 shows his gi's tan and his headband's red, which swapped channels would draw blue. The palette entries are 8-byte pairs of FColor (a dword 0xAARRGGBB), and rva 0x553C70 keeps the low 24 bits, 0xRRGGBB, as Ember reads them.
 - **Two copies fit out-of-range picks the same way.** Two games on a fresh pair, each copy's pick sent through the pipe (`pick CODE:costume:colour`, fitted by the pick store):
   - game 1: copy 0 asked for LUKE (5 costumes) at costume 40, colour 120; copy 1 for RYU's Halloween (colours 0-9) at colour 14;
   - game 2: the same picks swapped between the copies, so each copy fitted each kind.
@@ -1048,7 +1049,6 @@ On this PC the spec lists 46 selectable fighters (ELEVEN with one costume), 5 to
   - `9-fitted-game1-copy0.png` and `-copy1.png` show the same intro on both copies, LUKE in his default costume (the intro shows only him).
 
 **Left**
-- **The swatch's channel order is not confirmed by eye.** The palette entries are 8-byte pairs of FColor (a dword 0xAARRGGBB in memory order B, G, R, A), and rva 0x553C70 keeps the low 24 bits, so 0xRRGGBB. CHUN-LI's colour 02 shows pink and yellow. A shot of RYU's DEFAULT colour 01 (white gi, red headband) would settle it; the one attempt caught an unrelated notice.
 - **Costume and colour pictures**: the shop images (above) need the shop DataTable's row layout to map them to costumes. Until then a costume has its name and a colour its swatch.
 - **A new battle at the old battle's address is not seen as new.** `SfvAdapter::SeeBattleFrame` tells a new battle by the battle frame's address. In one run the second game's battle frame on one copy landed at the first's address: that copy logged "the flow's state list changed" and never "new battle frame". Its battle never bound to the room, and the peer waited ("load over 60 s"). This is independent of picks and predates section 15; a fresh pair played both games. A new battle should be recognised by its construction (rva 0x4C5C40) or its reset (0x4D8830), not by its address.
 - Ownership is still the game's own check at launch: Ember's `FighterAvailability` reports everything owned, so an unowned look is replaced by the game as the battle loads rather than refused at Ready.
