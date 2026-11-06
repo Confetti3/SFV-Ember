@@ -151,6 +151,22 @@ def pick(index: int, fighter_steps: int, shots: Path | None, name: str | None) -
     expect(index, "room")
 
 
+def room_shots(shots: Path | None) -> None:
+    """Copy 1, a guest seated as P2 with a pick, before Ready: its seat focused
+    (the room, its members, the hint bar and what Ready will say), then its
+    table page (Y: the table's rules as a guest reads them)."""
+    if not shots:
+        return
+    seek(1, "table-0", ["UP"], 20)
+    time.sleep(1)
+    shot(shots, "5-room-seated", 1)
+    press(1, "Y")
+    expect(1, "room-table")
+    shot(shots, "6-table-rules", 1)
+    press(1, "B")
+    expect(1, "room")
+
+
 def ready_both(game: int) -> None:
     """A on the player's own seat readies. A Ready carries its pick, and a seat
     whose fighter changes takes back the other seat's Ready (the room's rule),
@@ -189,6 +205,7 @@ def main(argv: list[str]) -> int:
         take_seat(1, 1)
         pick(0, 2, a.shots, "4-pick")
         pick(1, 3, None, None)
+        room_shots(a.shots)
         for game in range(1, a.games + 1):
             results = [lib.count_log(i, "netplay: match result") for i in (0, 1)]
             closes = [lib.count_log(i, "battle closed at its match") for i in (0, 1)]
@@ -205,8 +222,7 @@ def main(argv: list[str]) -> int:
                                  status(i)["room"]["room"] == "joined" and shell(i)["shown"] and
                                  shell(i)["screen"] == "room" for i in (0, 1)))
             time.sleep(2)
-            shot(a.shots, f"5-back-in-room-game{game}", 0)
-            shot(a.shots, f"5-back-in-room-game{game}-copy1", 1)
+            shot(a.shots, f"8-back-in-room-game{game}", 0)
     except lib.SfveError as e:
         failure = str(e)
     for i in (0, 1):
