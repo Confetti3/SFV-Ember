@@ -16,6 +16,7 @@
 // Rollbacks replay by calling Advance again, exactly like a forward frame.
 
 #include "core/GameAdapter.hxx"
+#include "mod/BattleIdentity.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/SfvFlow.hxx"
@@ -30,9 +31,15 @@ namespace sfve::mod {
 
 class SfvAdapter : public GameAdapter {
 public:
-	// The battle objects as the hooks see them; a new battle frame means a new
-	// battle, and the layout is rebuilt on the next Bind.
+	// The battle objects as the hooks see them. A battle is its frame's
+	// construction, not its address (BattleIdentity): the next battle's frame
+	// can lie where the last one's did. A new battle forgets the last one's
+	// layout, which is rebuilt on the next Bind.
+	void SeeBattleFrameConstructed(uint8_t* battleFrame) { identity_.Constructed(battleFrame); }
 	void SeeBattleFrame(uint8_t* battleFrame, BattleFrameFn original);
+	// The battle the frames belong to, numbered from 1 (0 before any): what
+	// tells one battle from the next.
+	uint64_t Battle() const { return identity_.Battle(); }
 	void SeeRollbackUnit(uint8_t* rollbackUnit) { rollbackUnit_ = rollbackUnit; }
 
 	// Builds the layout once this battle's objects are known.
@@ -93,6 +100,7 @@ private:
 	void AddStateOutsideTheGameSnapshot(uint8_t* ruleUnit, uint8_t* battleData, uintptr_t base);
 	void RunUpdate();
 
+	BattleIdentity identity_;
 	uint8_t* battleFrame_ = nullptr;
 	uint8_t* battleData_ = nullptr;
 	BattleFrameFn original_ = nullptr;

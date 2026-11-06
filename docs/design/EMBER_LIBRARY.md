@@ -912,7 +912,7 @@ Ember's shell (the library's `ApplicationShell`, through its neutral `ember::She
 - At 960x540 the room page is cramped and its spatial navigation awkward.
 - Public rooms, Ember ID and rankings show but need the bridge, which SFV Ember does not have yet.
 - The clipboard join replaces what the Windows clipboard held.
-- SFV has no fighter or stage art, and no names table (codes are shown). (Stages are named since section 14; fighters are not.)
+- SFV has no fighter or stage art, and no names table (codes are shown). (Stages are named since section 14; fighters, costumes and pictures since section 15.)
 
 ## 14. Fix pass (2026-11-06)
 
@@ -961,8 +961,102 @@ Evidence (library 3a8ad6735, helper built from it): before the fix, 2 of 5 runs 
 - Screenshots (`D:\sfv-re\shots\shell\`): `1-menu.png` (the version line), `2-rules-rounds.png`, `3-room-invitation.png`, `4-pick.png` (stage names), `5-room-seated.png` (hint labels; both members "Slot 1"), `6-table-rules.png` (Ready with KEN.; "Rounds 1, 30 s, own delay"), `8-back-in-room-game1.png`.
 
 **Left**
-- Fighter names (above), and the header's "EMBER" title on Home.
+- Fighter names (above; done, section 15), and the header's "EMBER" title on Home.
 - "Slot" in the members list (B4, above).
+
+## 15. Picks and pictures from the game's own data (2026-11-06)
+
+SFV Ember's catalog, its pick screen and its pictures now come from SFV's own tables and textures, read at run time from the player's install. Every address below is from our IDA database of build 13173604 and carries a signature that BuildCheck verifies (`SfvOffsets.hxx`). No library change was needed: the per-fighter and per-costume rules live in SFV's `GameCatalog` callbacks, the stepping in SFV's own pick screen, and the pictures in SFV's definitions of `SelectionArt`'s game members. SF4's behaviour and wire bytes are untouched.
+
+**The tables**
+- **Fighter table: `DA_CharaEntry`**, embedded in the exe as text and parsed at boot (rva 0x56D050) into the game singleton's `CharaAsset` (+96): 232-byte entries with +0 `CharaCode`, +16 `CharaProgID`, +20 `CharaUniqueID` (the spec's key), +24 the loaded `PersonalData` object (`KWCharaPersonalDataAsset`), +80 `CostumeDatas` (a TArray of package paths, indexed by costume number), +112 `CostumeColorPreviewDatas` (one name per costume number, e.g. "RYU01", "Z0006").
+- **Spec: `DA_Spec`** (`/Game/Spec/DA_Spec`, loaded at boot, rva 0x691790; the singleton's "SpecDataAsset"). At +328 a TMap keyed by `CharaUniqueID` (136-byte elements, value at +8). A fighter's value holds at +24 a TMap of costumes (120-byte elements, the costume's value at +8); a costume's value holds at +24 a TMap of colours (40-byte elements). Byte flags decide what is listed:
+  - fighter value +2: selectable (rva 0x566AF0); +4: needs no package check (rva 0x5591E0);
+  - costume value +0: enabled (rva 0x54F1F0); +3: needs no package check (rva 0x558DC0); +8: a UObject whose FText at +64 is the costume's name (rva 0x55C5B0);
+  - colour value +0: enabled (rva 0x54EE30); +1, or a number under 128: listed (rva 0x558920).
+- **The game's listers**, each `bool (SpecData** spec, ..., TArray<int>* out)`, walk those maps in their own order. GameContent calls them:
+
+| Lister | rva | What it lists | Install? |
+|---|---|---|---|
+| `kSpecFighters` | 0x566AF0 | the spec's selectable fighters' ids | no |
+| `kSelectableFighters` | 0x566FC0 | those whose package exists or need none, as codes, less Random | **per copy** (FighterInstalled, rva 0x549180) |
+| `kSpecCostumes` | 0x54F1F0 | a fighter's enabled costumes | no |
+| `kPlayableCostumes` | 0x54FAB0 | those this copy can load (flag +3, or the CostumeDatas package exists, rva 0x548E40) | **per copy** |
+| `kSpecColours` | 0x54F870 | a costume's colours | no |
+
+- **Colour count is per costume**, as the task guessed. Costume numbers have gaps (RYU: 0-3, 5, 6, 9-13), and colours run 0-99 and then 100 and up for EX colours (RYU's default costume: 0-14, 100, 108). The game's labels are "%02d" of the number plus one and "EX%02d" from 100 (rva 0x553B80).
+- **The game's own checks** at launch are membership in those lists: `kCostumeValid` (rva 0x56B190) asks `kPlayableCostumes`, `kColourValid` (0x56B0E0) asks `kSpecColours`; both let the Random fighter through (rva 0x56B6C0).
+- **Ownership** is a third, separate filter: the costume menu lists `kPlayableCostumes` less what the player's entitlements lack (rva 0x5545B0 with 0x55AEF0, whose +96 turns the check on). Ember leaves it to the game's own check at launch (VersusLaunch's `checkOwnership`).
+- **Names.**
+  - A fighter's: its PersonalData's FText at +80, through `FText::ToString` (rva 0x116E270), as the versus screen's "charaName" (rva 0x6DD620). The game gives them in capitals ("CHUN-LI", "M. BISON").
+  - A costume's: rva 0x557870, the spec's FText or "Costume<n>" ("DEFAULT", "Story", "Battle Outfit 1", "Mega Man").
+  - A stage's: section 14.
+
+On this PC the spec lists 46 selectable fighters (ELEVEN with one costume), 5 to 19 costumes each, and nothing the install lacks.
+
+**How the native screens choose and apply them.** The costume settings menu (rva 0x8CC6E0) builds its spin boxes from these lists: case 3 lists the fighter's costumes (rva 0x5545B0) and names each (0x557870); case 4 lists the costume's colours (0x5539D0) with each one's label (0x553B80) and two swatch colours (0x554750). The battle takes a fighter code, a costume number and a colour number in its CharPkg, which VersusLaunch writes through the mode data's setters (sections 10 and 12).
+
+**What Ember does with them** (`mod/GameContent`, `ember/SfvCatalog`)
+- **The pick space** (the same on every copy of the same game data): the spec's selectable fighters in the game's order, each fighter's spec costumes, each costume's spec colours. A pick carries the game's own costume and colour numbers.
+- **A fighter with no battle setup is left out:** one whose `DA_CharaEntry` record has no `SetupData` (entry +48). That is Random and ELEVEN. ELEVEN's record has only `PreviewSetupData`, with no setup and no BattleResourceList, because the select screen decides which fighter Eleven plays as (`bIsDecidedCharaEleven_Left/Right`). A launch with ELV hung at a black screen on both copies (the room logged "load over 60 s"). The rule reads the exe's own table, so every copy leaves out the same fighters: 45 remain on this PC.
+- **`ValidPick`** takes a costume of the fighter and a colour of that costume. **`NormalizePick`** fits a pick to the fighter's first costume, then to that costume's first colour (the game's first, not number 0). The pick store (`SfvPick`) fits every pick it keeps, so the shell and the pipe's `pick` fit alike.
+- **Per copy:** a fighter this copy has not installed is locked (`FighterLocked`), and a costume it cannot load is not available (`AvailablePick`). The pick screen does not step onto either.
+- **Limits:** `costumeLimit` and `colorLimit` are one past the highest number in the data. `costumeCount` is one past a fighter's highest costume: the shared contract says "numbered from 0", which SFV's numbers are not, and its one reader (a replay's "look unknown") only needs every spec costume to read as known.
+- **The fingerprint** in the build id now hashes the whole pick space (codes, costume numbers, colour numbers; not names or installs), and the match version is 0.2: copies whose spec differs fail the build check.
+- **The pick screen** steps through the fighters this copy can play, the fighter's installed costumes and the costume's colours, and names them as the game does. The pipe's setup takes colour numbers up to 255.
+
+**Pictures that exist** (format and size read from the game's own Direct3D textures, all fully resident with one mip)
+
+| Picture | Path | Size, format |
+|---|---|---|
+| Select-grid face | `/Game/Chara/<code>/Hud/CharaSelectIconLeft` (and `Right`) | 116x144, B8G8R8A8 |
+| Fighter banner | `/Game/Chara/<code>/Hud/CharaSelectIcon_l` | 380x258, B8G8R8A8 |
+| Fighter strip | `/Game/Chara/<code>/Hud/CharaSelectIcon_s` | 164x52, B8G8R8A8 |
+| HUD face | `/Game/Chara/<code>/Hud/FaceIconLeft` (and `Right`) | 256x256, B8G8R8A8; drawn as is it is a blue silhouette, the same shape for RYU, KEN and CHUN-LI, so Ember does not use it |
+| Stage picture | `/Game/Stage/<code>/UI/StageSelectBG` | 2048x512, BC1 |
+| Stage strip | `/Game/Stage/<code>/UI/StageSelectIcon` | 42x242, B8G8R8A8 |
+| Shop item | `/Game/WinSysAsset/Shop/ShopItemImage/Costume/shp_<code>_<nn>_<mm>` (264), `.../Color/...` (963) | 420x190, B8G8R8A8 |
+
+- Each fighter's `Hud` folder also holds the result, list, replay, story, arcade, team and command-list icons; the select-screen resource list builds those paths (rva 0x599860, 0x7654D0).
+- **The game has no picture of a fighter in a given costume or colour.** Its select screens show the live 3D model (`PreviewSetupData`, `PreviewCostumeDatas`). A colour is shown as two colours from the costume's `DA_<x>_CostumeColorPreview_<nn>` (rva 0x554750; its palette at +40, and +56 for EX colours, rva 0x553C70).
+- **The shop images are per shop item, not per costume.** They exist only for costumes and colours sold in the shop, and their numbers are not costume numbers: RYU has shop costume pictures numbered 01, 02, 03, 05, 06, 07, 12 and 16_01, while his spec costumes are 0-3, 5, 6 and 9-13 (Halloween, Mega Man and others have none). The item-to-costume link is in the spec's shop DataTable (spec+64; a row's +16 is its type, +104 its picture's name; rva 0x5636C0), whose row layout was not reversed. They are not shown.
+- (The paths come from the exe's strings and the paks' indexes. Only the index of each pak was read; no asset was read or extracted.)
+
+**How Ember loads and draws them** (`mod/GameArt`, `ember/SfvArt`)
+- **Loading.** On the game thread at the main menu only (never during a battle), a few a frame, a screen's request loads the texture: `StaticLoadObject` (rva 0x1242910) with UTexture2D's class (rva 0x1F3CF10). The game makes its render resource a frame or two later.
+- **Reading the texture.** The game's own Direct3D 11 texture is reached as UTexture+0x40 (its FTextureResource), then +0x30 (TextureRHI, after FRenderResource's 48 bytes; rva 0x155A4C0 initialises them), then +0x68, the ID3D11Texture2D. A material's texture parameter is set through the first two (rva 0x17397F0).
+  - The +0x68 slot was found at run time, not read from code. So every texture is checked before use:
+    - the resource's owner (+0x68) must be the texture;
+    - the pointer's vtable must be d3d11.dll's texture class (from a texture made on a device of Ember's own);
+    - its size must be the texture's platform data size (UTexture2D+0xC0, GetSizeX rva 0x1CB9410).
+  - That last check also proves the whole top mip is resident, not a streamed smaller one.
+  - Ember then takes its own reference to the Direct3D texture and never touches the UObject again, so the game's garbage collector cannot pull it from under ImGui.
+- **Drawing.** On the render thread, Ember makes its own view of the texture on the game's device, with the typeless format viewed as UNORM (the stored values, as the game's menus show them), and hands that view to ImGui. Block-compressed textures (BC1 stages) are drawn as they are; nothing is decoded and no pixel is copied. Views and references are kept for the session.
+- **Where they show.**
+  - `SelectionArt::Portrait` is the fighter's select-grid face, on every shared screen. The room's seats and members ask for `Character` first and fall back to it.
+  - `SelectionArt::Stage` is the stage's picture.
+  - `Character`, `Appearance`, `Ultra` and `RankingEmblem` report missing: the game has none.
+  - The pick screen's pane shows the fighter's banner, its name, the costume's name and the colour's label with its two swatch colours, and the stage's picture while the stage row has the focus.
+
+**Evidence** (sfv-ember `312fbba` and the portrait change on top of it; library `8a7314d7e`, unchanged)
+- `scripts/build.ps1`: 4 of 4 ctest suites pass. `sfve_ember_tests` covers the new rules: gaps in costume numbers, EX colours, a fighter's first costume and a costume's first colour that are not number 0, fitting in costume-then-colour order, installs per copy, and a fingerprint that moves with every costume or colour number but not with names or installs.
+- Both copies' logs: "catalog of 45 fighters and 37 stages", the same build id on both (`sfv-ember/13173604/0.2/8dafe602f7615d90`). The game's textures loaded as `CharaSelectIconLeft: 116x144, format 90` and `CharaSelectIcon_l: 380x258, format 90` (DXGI B8G8R8A8_TYPELESS).
+- `tools/runroom.ps1 -presses 10 -games 2 -lag 30`: PASS, 154 checkpoints compared, 0 differing.
+- `tools/runshell.py --shots D:\sfv-re\shots\shell`: PASS.
+  - `4-pick.png`: the pick screen with CHUN-LI's banner, her name, "DEFAULT" and "Color 02" with its swatch.
+  - `5-room-seated.png`: the room's seats and members with the game's own faces, RYU for the unshared seat (fighter 0) and KEN.
+- **The swatch's channel order** (`10-pick-ryu-colour01.png`): RYU's DEFAULT colour 01 shows his gi's tan and his headband's red, which swapped channels would draw blue. The palette entries are 8-byte pairs of FColor (a dword 0xAARRGGBB), and rva 0x553C70 keeps the low 24 bits, 0xRRGGBB, as Ember reads them.
+- **Two copies fit out-of-range picks the same way.** Two games on a fresh pair, each copy's pick sent through the pipe (`pick CODE:costume:colour`, fitted by the pick store):
+  - game 1: copy 0 asked for LUKE (5 costumes) at costume 40, colour 120; copy 1 for RYU's Halloween (colours 0-9) at colour 14;
+  - game 2: the same picks swapped between the copies, so each copy fitted each kind.
+  - Every reply read "(fitted)", with the same result on both copies: LUKE costume 0 colour 0, RYU costume 3 colour 0.
+  - Both copies logged the same launch, "player 1 ... -> Z42 costume 0 colour 0", "player 2 ... -> RYU costume 3 colour 0" (swapped in game 2), loaded the same battle and decided both matches at frame 4586 with the same result. No desync was logged.
+  - `9-fitted-game1-copy0.png` and `-copy1.png` show the same intro on both copies, LUKE in his default costume (the intro shows only him).
+
+**Left**
+- **Costume and colour pictures**: the shop images (above) need the shop DataTable's row layout to map them to costumes. Until then a costume has its name and a colour its swatch.
+- **A new battle at the old battle's address is not seen as new.** `SfvAdapter::SeeBattleFrame` tells a new battle by the battle frame's address. In one run the second game's battle frame on one copy landed at the first's address: that copy logged "the flow's state list changed" and never "new battle frame". Its battle never bound to the room, and the peer waited ("load over 60 s"). This is independent of picks and predates section 15; a fresh pair played both games. A new battle should be recognised by its construction (rva 0x4C5C40) or its reset (0x4D8830), not by its address.
+- Ownership is still the game's own check at launch: Ember's `FighterAvailability` reports everything owned, so an unowned look is replaced by the game as the battle loads rather than refused at Ready.
 
 ## 16. SFV Ember's look (2026-11-06)
 

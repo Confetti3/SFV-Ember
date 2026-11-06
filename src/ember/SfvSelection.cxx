@@ -4,10 +4,14 @@
 // The labels are the game's: a stage and a costume by the game's own names
 // for them (their code or number where the game has none; SfvCatalog's
 // StageName and CostumeName), a colour as the game's costume menu labels it
-// ("01", "EX01"; ColourName). SFV has no Ultra, so its label is empty. No SFV
-// picture exists yet, so every picture of the game reports itself missing and
-// screens say so instead of waiting for one.
+// ("01", "EX01"; ColourName). SFV has no Ultra, so its label is empty.
+//
+// The pictures are the game's own (SfvArt): a fighter's portrait is its
+// select grid's face and a stage's its stage-select picture. The game has no
+// picture of a fighter in a costume or colour (its select screens show the
+// 3D model), no Ultra and no ranking emblems, so those report missing.
 
+#include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 
 #include "common/Localization.hxx"
@@ -62,12 +66,12 @@ SelectionImage Missing()
 }
 } // namespace
 
-SelectionImage SelectionArt::Portrait(int, bool) { return Missing(); }
+SelectionImage SelectionArt::Portrait(int fighter, bool) { return sfve::adapter::FighterImage(fighter, sfve::adapter::FighterPicture::Face); }
 SelectionImage SelectionArt::Character(int, int, int, bool) { return Missing(); }
 SelectionImage SelectionArt::Appearance(int, int, int) { return Missing(); }
 SelectionImage SelectionArt::Ultra(int, int) { return Missing(); }
 SelectionImage SelectionArt::UltraIcon(int) { return Missing(); }
-SelectionImage SelectionArt::Stage(int) { return Missing(); }
+SelectionImage SelectionArt::Stage(int stage) { return sfve::adapter::StageImage(stage); }
 SelectionImage SelectionArt::RankingEmblem(const std::string&) { return Missing(); }
 
 } // namespace sf4e::ui

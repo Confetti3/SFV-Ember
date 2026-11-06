@@ -73,6 +73,7 @@ add_library(sfve_ember STATIC
     src/ember/EmberHost.cxx
     src/ember/RoomBattle.cxx
     src/ember/RoomCommands.cxx
+    src/ember/SfvArt.cxx
     src/ember/SfvCatalog.cxx
     src/ember/SfvGame.cxx
     src/ember/SfvPick.cxx
@@ -93,7 +94,9 @@ target_link_libraries(sfve_ember PUBLIC sfve_core ember_runtime_x64 minhook::min
 add_executable(sfve_ember_tests
     tests/main.cxx
     tests/EmberAdapterTests.cxx
+    tests/BattleIdentityTests.cxx
     src/mod/ControlPipe.cxx
+    src/mod/GameArt.cxx
     src/mod/GameContent.cxx
     src/mod/GameExit.cxx
     src/mod/GameHooks.cxx
@@ -139,14 +142,16 @@ add_library(sfv_ember SHARED
     src/mod/GameInput.cxx
     src/mod/WriteWatch.cxx
     src/mod/LagSim.cxx
+    src/mod/GameArt.cxx
     src/mod/GameContent.cxx
     src/mod/GameExit.cxx)
 target_link_libraries(sfv_ember PRIVATE sfve_ember)
 target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")
 # Ember's own pictures the shell draws beside the mod (overlay/Overlay.hxx):
 # the button prompts and the flags, and SFV Ember's own menu backdrop
-# (assets/brand) in place of Ember's. SFV has no fighter or stage pictures,
-# so none of SF4's selection art comes along.
+# (assets/brand) in place of Ember's. SFV's fighter and stage pictures are the
+# game's own, drawn from its textures at run time (src/ember/SfvArt), so no
+# selection art comes along.
 foreach(_folder input flags)
     add_custom_command(TARGET sfv_ember POST_BUILD COMMAND "${CMAKE_COMMAND}" -E copy_directory
         "${SFVE_EMBER_SOURCE_ROOT}/assets/${_folder}" "${CMAKE_BINARY_DIR}/assets/${_folder}")

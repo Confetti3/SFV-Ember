@@ -21,7 +21,8 @@
 //
 // Ember's pictures (ui/SelectionArt.hxx) load through a Direct3D 11 uploader
 // on the game's device, from the mod's folder: assets/brand, assets/input and
-// assets/flags, Ember's own art. SFV's fighters and stages have none.
+// assets/flags, Ember's own art. SFV's fighters and stages are drawn from
+// the game's own textures instead (ember/SfvArt), with nothing packaged.
 
 #include <functional>
 

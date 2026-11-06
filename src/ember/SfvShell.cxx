@@ -1,6 +1,7 @@
 #include "ember/SfvShell.hxx"
 
 #include "ember/EmberHost.hxx"
+#include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvPick.hxx"
 #include "ember/SfvSelectionScreen.hxx"
@@ -260,6 +261,7 @@ bool ShellTakesPads()
 
 void InstallEmberShell()
 {
+	InstallSfvArt();
 	mod::RegisterStatus("shell", StatusJson);
 	overlay::OverlayUi ui;
 	ui.applyScale = ApplyScale;
