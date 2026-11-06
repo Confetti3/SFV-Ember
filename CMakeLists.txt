@@ -84,9 +84,9 @@ add_library(sfve_ember STATIC
     src/ember/SfvVerification.cxx
     src/overlay/Overlay.cxx
     src/overlay/TextureUploaderD3D11.cxx)
-# The header mark is Ember's own until SFV Ember has art of its own.
+# SFV Ember's own header mark (art/brand, scripts/build-sfv-brand.py).
 include("${SFVE_EMBER_SOURCE_ROOT}/cmake/sf4e_embed.cmake")
-sf4e_embed_brand_mark(sfve_ember "${SFVE_EMBER_SOURCE_ROOT}/src/ui/ember.rgba")
+sf4e_embed_brand_mark(sfve_ember "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
 target_link_libraries(sfve_ember PUBLIC sfve_core ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
 
 # The runtime under SFV's definitions, with nothing of SF4's roster, stages
@@ -148,13 +148,16 @@ add_library(sfv_ember SHARED
 target_link_libraries(sfv_ember PRIVATE sfve_ember)
 target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")
 # Ember's own pictures the shell draws beside the mod (overlay/Overlay.hxx):
-# the menu backdrop, the button prompts and the flags. SFV's fighter and stage
-# pictures are the game's own, drawn from its textures at run time
-# (src/ember/SfvArt), so no selection art comes along.
-foreach(_folder brand input flags)
+# the button prompts and the flags, and SFV Ember's own menu backdrop
+# (assets/brand) in place of Ember's. SFV's fighter and stage pictures are the
+# game's own, drawn from its textures at run time (src/ember/SfvArt), so no
+# selection art comes along.
+foreach(_folder input flags)
     add_custom_command(TARGET sfv_ember POST_BUILD COMMAND "${CMAKE_COMMAND}" -E copy_directory
         "${SFVE_EMBER_SOURCE_ROOT}/assets/${_folder}" "${CMAKE_BINARY_DIR}/assets/${_folder}")
 endforeach()
+add_custom_command(TARGET sfv_ember POST_BUILD COMMAND "${CMAKE_COMMAND}" -E copy_directory
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/brand" "${CMAKE_BINARY_DIR}/assets/brand")
 
 # Proxy the game loads by name from its own folder; it forwards the real
 # exports and loads sfv_ember.dll. Which DLL to proxy is decided from the
