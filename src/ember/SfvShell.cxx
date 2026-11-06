@@ -84,8 +84,9 @@ public:
 		view.stageName = sf4e::ui::StageLabel(pick.stage);
 		view.colorSteps = ember::Catalog().colorLimit > 1;
 		// SFV's fighters have no Ultra (the catalog's one choice) and no fighter
-		// options (SF4's personal action and win quote): ultraName and
-		// fighterOptionsName stay empty, and the table page shows neither row.
+		// options (SF4's personal action and win quote): the table page shows
+		// neither row.
+		view.fighterOptions = false;
 		if (snapshot.atMainMenu && !available) view.selectionError = loc::T("runtime.selection_unavailable");
 	}
 
