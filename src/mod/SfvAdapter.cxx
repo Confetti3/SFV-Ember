@@ -247,6 +247,16 @@ int SfvAdapter::ReseedRandom(uint32_t seed)
 	return reseeded + 1;
 }
 
+uint32_t SfvAdapter::StartTime() const
+{
+	return battleData_ ? Field<uint32_t>(battleData_, sfv::battledata::kStartTime) : 0;
+}
+
+void SfvAdapter::SetStartTime(uint32_t value)
+{
+	if (battleData_) Field<uint32_t>(battleData_, sfv::battledata::kStartTime) = value;
+}
+
 void SfvAdapter::AfterLoad()
 {
 	// The callbacks take the restored state's frame id, as the game's own load

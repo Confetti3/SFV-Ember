@@ -6,6 +6,7 @@
 #include "ember/SfvGame.hxx"
 
 #include "core/RollbackSession.hxx"
+#include "ember/RoomBattle.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvShell.hxx"
 #include "mod/GameScene.hxx"
@@ -52,16 +53,6 @@ void ExitBattle(const char* what, const char* reason)
 {
 	mod::Log("ember: %s (%s)%s", what, reason ? reason : "", s_battle.exit ? "" : " with no battle in play");
 	if (s_battle.exit) s_battle.exit(what);
-}
-
-// The game's own judgement of the match (MatchResult), as the room counts it.
-// One the game left undecided is no result (Abort), as is no match end.
-sf4e::room::MatchResult RoomResult(const mod::MatchResult& result)
-{
-	if (!result.decided) return sf4e::room::MatchResult::Abort;
-	return result.winner == 0 ? sf4e::room::MatchResult::P1Win
-		: result.winner == 1  ? sf4e::room::MatchResult::P2Win
-							  : sf4e::room::MatchResult::Draw;
 }
 
 class SfvGameState final : public GameState {
@@ -152,22 +143,17 @@ public:
 	}
 	void Fail() override { ExitBattle("failure", "the session cannot go on"); }
 
-	// The match ended and waits for MatchEnd's decision on a confirmed frame.
-	bool ResultHeld() const override { return mod::EndedVersusBattlePending(); }
-	// MatchEnd keeps SFV's results menu closed in a linked match.
-	bool ResultScreenShown() const override { return false; }
-	// The result MatchEnd read as it took the match's end on a confirmed
-	// frame; Abort (no result) before that.
-	sf4e::room::MatchResult GameResult() const override
-	{
-		const std::optional<mod::MatchResult> decided = mod::DecidedMatchResult();
-		return decided ? RoomResult(*decided) : sf4e::room::MatchResult::Abort;
-	}
-	// SFV has no prompt over the WIN yet, so no player chooses a rematch there:
-	// a room's game always goes back to the room (NetplayMode).
-	unsigned RematchChoices() const override { return 0; }
-	// No SFV module counts the games played in place yet.
-	unsigned GamesPlayedInPlace() const override { return 0; }
+	// SFV's results menu stays closed in a room's battle (MatchEnd); its WIN
+	// is the mod's held frames (RoomBattle, EMBER_LIBRARY.md section 19): the
+	// result held there for the post-match prompt, and the WIN itself.
+	bool ResultHeld() const override { return s_battle.room && s_battle.room->ResultHeld(); }
+	bool ResultScreenShown() const override { return s_battle.room && s_battle.room->ResultScreenShown(); }
+	// The result taken on the match end's confirmed frame; Abort before that
+	// and once a rematch went on from it.
+	sf4e::room::MatchResult GameResult() const override { return RoomGameResult(); }
+	// Each side's Rematch as the held frames' confirmed inputs carry it.
+	unsigned RematchChoices() const override { return s_battle.room ? s_battle.room->RematchChoices() : 0; }
+	unsigned GamesPlayedInPlace() const override { return s_battle.room ? s_battle.room->GamesInPlace() : 0; }
 
 	LinkSample Sample() const override
 	{

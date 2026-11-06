@@ -142,7 +142,7 @@ TEST_CASE("the catalog is empty until it is filled from the game's content lists
 	CHECK(catalog.ultraChoices == 1);
 	// The table rules the shell offers: the room's that SFV plays.
 	CHECK_FALSE(catalog.editions);
-	CHECK_FALSE(catalog.rematchInPlace); // no prompt over SFV's WIN yet
+	CHECK(catalog.rematchInPlace); // the post-match prompt over the held WIN (RoomBattle)
 	REQUIRE(catalog.roundCountChoices == 4);
 	REQUIRE(catalog.roundTimeChoices == 4);
 	const int rounds[] = {1, 3, 5, 7}, times[] = {30, 60, 99, 300};

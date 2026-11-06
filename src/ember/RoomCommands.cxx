@@ -9,7 +9,9 @@
 
 #include "common/GameCatalog.hxx"
 #include "common/NativeMenuLock.hxx"
+#include "ember/RoomBattle.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
+#include "session/RoomQueries.hxx"
 
 #include <nlohmann/json.hpp>
 
@@ -44,9 +46,14 @@ std::string Submit(facade::RuntimeCommand command)
 
 std::string Host(const std::string& args)
 {
-	int rounds = 3, seconds = 99;
+	int rounds = 3, seconds = 99, rematch = 0, firstTo = 0;
 	std::istringstream in(args);
-	if (!args.empty() && !(in >> rounds >> seconds)) return "error usage: room [rounds] [seconds]";
+	const char* usage = "error usage: room [rounds] [seconds] [instant rematch 0|1] [first to N, 0 unlimited]";
+	if (!args.empty() && !(in >> rounds >> seconds)) return usage;
+	if (!in.eof() && !(in >> rematch)) return usage;
+	if (!in.eof() && !(in >> firstTo)) return usage;
+	if (rematch < 0 || rematch > 1) return usage;
+	if (!sf4e::room::ValidSetFormat(firstTo)) return "error the set is first to 1-10 games, or 0 for unlimited";
 	// A table rule Ember offers and SFV plays (the catalog's).
 	if (!ember::PlayableRoundCount(rounds)) return "error SFV plays 1, 3, 5 or 7 rounds";
 	if (!ember::PlayableRoundTime(seconds)) return "error SFV rooms play rounds of 30, 60, 99 or 300 s";
@@ -56,8 +63,10 @@ std::string Host(const std::string& args)
 	rules.roundCount = (std::uint8_t)rounds;
 	rules.roundTime = (std::uint16_t)seconds;
 	rules.editionSelect = false; // SFV has no editions
-	// SFV shows no prompt over the WIN yet, so its games always go back to the room.
-	rules.instantRematch = false;
+	// A game goes on in place over its WIN only with Instant rematch on
+	// (RoomBattle; off by default here, so a test asks for it).
+	rules.instantRematch = rematch != 0;
+	rules.format = static_cast<sf4e::room::SetFormat>(firstTo);
 	command.preferences.lobby.roundCount = rounds;
 	command.preferences.lobby.roundTime = seconds;
 	command.preferences.lobby.editionSelect = false;
@@ -131,6 +140,20 @@ std::string Ready()
 	return Submit(std::move(command));
 }
 
+// The post-match prompt's answers over the WIN (RoomBattle): "yes" is its
+// Rematch, the room's own Ready, which the runtime parks as the choice the
+// held frames carry; "no" is its Back to room.
+std::string Rematch(const std::string& args)
+{
+	if (args == "no") {
+		return DeclineRematch() ? "ok declined" : "error no WIN is waiting for an answer";
+	}
+	if (args != "yes") return "error usage: rematch yes|no";
+	facade::RuntimeCommand command = CommandFor(CommandKind::Rematch);
+	AddPickTo(command);
+	return Submit(std::move(command));
+}
+
 std::string Delay(const std::string& args)
 {
 	char* end = nullptr;
@@ -161,6 +184,16 @@ std::string Status()
 		{"readyFailure", snapshot->readyFailure},
 	};
 	status["pick"] = EmberRuntimeRunning() ? PickText(CurrentPick()) : std::string();
+	// The seat's table as the room keeps it: the set's score, its match and
+	// the rule a game on it goes on in place by.
+	const sf4e::room::Snapshot& room = snapshot->Room();
+	const auto place = sf4e::room::PlaceOf(room, room.localMember);
+	if (place.table >= 0 && place.table < (int)room.tables.size()) {
+		const sf4e::room::Table& table = room.tables[(size_t)place.table];
+		status["table"] = {{"score", {table.score[0], table.score[1]}}, {"generation", table.matchGeneration},
+			{"phase", (int)table.phase}, {"instantRematch", table.rules.instantRematch},
+			{"format", (int)table.rules.format}};
+	}
 	return status.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
@@ -177,6 +210,7 @@ void RegisterRoomCommands()
 	mod::RegisterCommand("sit", Sit);
 	mod::RegisterCommand("pick", Pick);
 	mod::RegisterCommand("ready", [](const std::string&) { return Ready(); });
+	mod::RegisterCommand("rematch", Rematch);
 	mod::RegisterCommand("delay", Delay);
 	mod::RegisterCommand("leave", [](const std::string&) { return Submit(CommandFor(CommandKind::LeaveRoom)); });
 	mod::RegisterStatus("room", Status);

@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [switch]$keep)
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$keep)
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -8,6 +8,16 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # frame-0 desync followed such presses). -shots names a folder
 # for a screenshot of each copy in each fight and back in the room. Prints the
 # copies' match results, any desync, and PASS or FAIL.
+#
+# -rematches N (EMBER_LIBRARY.md section 19): the room's table has Instant
+# rematch on (and a first-to-N set with -firstTo), and one battle plays N + 1
+# games: over each of the first N WINs both copies answer the post-match
+# prompt Rematch ("rematch yes"), and the game restarts in place on both;
+# over the last, copy 0 answers Rematch and copy 1 Back to room ("rematch
+# no"), and both go back to the room. The table's score must count each game.
+# -games is then ignored. -shots also takes the prompt over each WIN.
+# -padAnswers answers on the prompt itself with each copy's virtual pad (A
+# Rematch, B Back to room), as a player does, instead of the pipe.
 $ErrorActionPreference = 'Stop'
 Set-Location C:\Users\user\Desktop\sf4\sfv-ember
 $logs = 'G:\SteamLibrary\steamapps\common\StreetFighterV\StreetFighterV\Binaries\Win64\SFVEmber\logs'
@@ -18,6 +28,11 @@ function WaitFor([string]$what, [int]$timeout, [scriptblock]$done) {
   $deadline = (Get-Date).AddSeconds($timeout)
   while ((Get-Date) -lt $deadline) { if (& $done) { return }; Start-Sleep 1 }
   throw "timed out waiting for $what"
+}
+function Answer([int]$i, [string]$say) {
+  if (!$padAnswers) { Ctl $i "rematch $say" | Out-Null; return }
+  $button = if ($say -eq 'yes') { 'A' } else { 'B' }
+  Ctl $i "pad 0 ${button}:120 -:250" | Out-Null
 }
 function Count([int]$i, [string]$pattern) { @(Select-String -Path $logOf[$i] -Pattern $pattern).Count }
 function Shot([string]$name) {
@@ -33,7 +48,8 @@ foreach ($i in 0, 1) {
 $failure = ''
 try {
   WaitFor 'the runtime on both copies' 120 { (Status 0).ember.host -eq 'running' -and (Status 1).ember.host -eq 'running' }
-  WaitFor 'room commands to be taken' 30 { (Ctl 0 "room $rounds $seconds") -like 'ok*' }
+  $instant = if ($rematches -ge 0) { 1 } else { 0 }
+  WaitFor 'room commands to be taken' 30 { (Ctl 0 "room $rounds $seconds $instant $firstTo") -like 'ok*' }
   $inv = ''
   WaitFor 'the invitation' 60 { $script:inv = Ctl 0 invite; $script:inv -like 'ok *' }
   $inv = $inv.Substring(3)
@@ -48,7 +64,70 @@ try {
     foreach ($i in 0, 1) { Ctl $i 'pad 0 DOWN:120 -:250' | Out-Null }
     Start-Sleep -Milliseconds 600
   }
-  for ($game = 1; $game -le $games; $game++) {
+  if ($rematches -ge 0) {
+    $starts = @((Count 0 'netplay: room match as P'), (Count 1 'netplay: room match as P'))
+    WaitFor "the battle's sessions" 180 {
+      foreach ($i in 0, 1) { if ((Status $i).room.canReady) { Ctl $i ready | Out-Null } }
+      (Count 0 'netplay: room match as P') -gt $starts[0] -and (Count 1 'netplay: room match as P') -gt $starts[1]
+    }
+    $generation = (Status 0).room.table.generation
+    for ($game = 1; $game -le $rematches + 1; $game++) {
+      $last = $game -eq $rematches + 1
+      $results = @((Count 0 'netplay: match result'), (Count 1 'netplay: match result'))
+      $answers = @((Count 0 "the WIN's answers"), (Count 1 "the WIN's answers"))
+      Start-Sleep 20
+      Shot "game$game-fight"
+      WaitFor "game $game's result on both copies" $gameSeconds { (Count 0 'netplay: match result') -gt $results[0] -and (Count 1 'netplay: match result') -gt $results[1] }
+      WaitFor "the WIN's prompt on both copies after game $game" 30 {
+        $r0 = (Status 0).battle.mode.rematch; $r1 = (Status 1).battle.mode.rematch
+        $r0.prompt -and $r1.prompt -and $r0.offered -and $r1.offered
+      }
+      Start-Sleep -Milliseconds 1500 # the prompt opens over the WIN
+      Shot "game$game-prompt"
+      # Rematch ("yes") is parked by the runtime as the choice the held frames
+      # carry; asked again until this copy's input shows it.
+      $say = if ($last) { @('yes', 'no') } else { @('yes', 'yes') }
+      Answer 0 $say[0]
+      if ($shots) {
+        Start-Sleep -Milliseconds 700
+        Shot "game$game-prompt-one-chose"
+      }
+      Answer 1 $say[1]
+      WaitFor "both copies' decision over game $game's WIN" 30 {
+        foreach ($i in 0, 1) {
+          $r = (Status $i).battle.mode.rematch
+          if ($r.prompt -and $say[$i] -eq 'yes' -and -not ($r.choices -band (1 -shl $i))) { Answer $i 'yes' }
+        }
+        (Count 0 "the WIN's answers") -gt $answers[0] -and (Count 1 "the WIN's answers") -gt $answers[1]
+      }
+      $decisions = foreach ($i in 0, 1) { (Select-String -Path $logOf[$i] -Pattern "the WIN's answers" | Select-Object -Last 1).Line.Substring(24) }
+      foreach ($i in 0, 1) { "copy ${i}: " + $decisions[$i] }
+      $frames = foreach ($d in $decisions) { if ($d -match 'frame (\d+):') { $Matches[1] } }
+      if ($frames[0] -ne $frames[1]) { throw "the copies decided on different frames ($($frames -join ' / '))" }
+      $want = if ($last) { 'back to the room' } else { 'rematch in place' }
+      foreach ($d in $decisions) { if ($d -notlike "*$want") { throw "game ${game}: expected '$want', got: $d" } }
+      if ($last) {
+        WaitFor 'both copies back in the room' 90 { (Count 0 'battle closed at its match') -gt 0 -and (Count 1 'battle closed at its match') -gt 0 -and (Status 0).room.room -eq 'joined' -and (Status 1).room.room -eq 'joined' }
+        Start-Sleep 3
+        Shot "game$game-room"
+      }
+      # The room counts every game of the match: the same generation, one more on the score.
+      if (-not $last) {
+        WaitFor "the room's score after game $game" 30 {
+          $t = (Status 0).room.table; $t1 = (Status 1).room.table
+          ($t.score[0] + $t.score[1]) -eq $game -and ($t1.score[0] + $t1.score[1]) -eq $game
+        }
+      }
+      $t = (Status 0).room.table
+      if ($t) { "game ${game}: room score $($t.score -join '-'), generation $($t.generation) (battle's $generation)" } else { "game ${game}: the match ended; copy 0 has no seat now" }
+      if (-not $last -and $t.generation -ne $generation) { throw "the room started a new match ($($t.generation)) instead of going on" }
+      foreach ($i in 0, 1) {
+        $mode = (Status $i).battle.mode
+        "copy ${i}: rollbacks $($mode.rollbacks), longest $($mode.longestRollback), held frames $($mode.heldFrames), held replays $($mode.heldReplays), games in place $($mode.rematch.games)"
+      }
+    }
+  }
+  for ($game = 1; $rematches -lt 0 -and $game -le $games; $game++) {
     $starts = @((Count 0 'netplay: room match as P'), (Count 1 'netplay: room match as P'))
     $results = @((Count 0 'netplay: match result'), (Count 1 'netplay: match result'))
     $closes = @((Count 0 'battle closed at its match'), (Count 1 'battle closed at its match'))
@@ -96,4 +175,5 @@ $common = @($h0.Keys | Where-Object { $h1.ContainsKey($_) })
 $differing = @($common | Where-Object { $h0[$_] -ne $h1[$_] })
 "checkpoints: $($common.Count) compared, $($differing.Count) differing"
 $desyncs = (Count 0 'desync|mismatch') + (Count 1 'desync|mismatch') + $differing.Count
-if ($failure)  { "FAIL: $failure" } elseif ($desyncs) { "FAIL: $desyncs desync line(s)" } else { "PASS: $games game(s), no desync" }
+$played = if ($rematches -ge 0) { $rematches + 1 } else { $games }
+if ($failure)  { "FAIL: $failure" } elseif ($desyncs) { "FAIL: $desyncs desync line(s)" } else { "PASS: $played game(s), no desync" }

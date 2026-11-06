@@ -28,6 +28,7 @@
 #include <ggponet.h>
 #include <stdint.h>
 
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -80,6 +81,8 @@ public:
 		uint64_t loadMismatches = 0;       // verifyLoads only
 		int timesyncFramesAhead = 0;       // last recommendation; the host paces
 		uint64_t timesyncEvents = 0;
+		uint64_t heldFrames = 0;           // StepHeld's frames
+		uint64_t heldReplays = 0;          // held frames a rollback replayed (never expected)
 	};
 
 	explicit RollbackSession(GameAdapter& game);
@@ -91,6 +94,17 @@ public:
 	// One outer frame: pumps the network, then adds the local input and runs
 	// at most one deterministic frame (plus any rollback GGPO asks for).
 	StepResult Step(PackedInput localInput);
+	// One held frame: the game stands still (no Advance) while the session
+	// goes on, so the players' inputs keep travelling. Steps only once the
+	// frame's inputs are confirmed (Waiting until then), so `onInputs` sees
+	// both players' final inputs, every bit of them, and runs before the next
+	// frame is saved: a change it makes to the game is that frame's, on every
+	// peer alike. Held frames take no input for a misprediction, and a
+	// rollback that replays one does not advance the game either. The next
+	// Step ends the hold.
+	StepResult StepHeld(PackedInput localInput, const std::function<void(const FrameInputs&)>& onInputs);
+	// The frames StepHeld played since the hold began (0 when not holding).
+	int HeldFrames() const { return holding_ ? frame_ - heldFrom_ : 0; }
 	// Only pumps the network (a frame the host holds back still has to
 	// receive the other side's inputs and keep the connection alive).
 	void Poll();
@@ -173,6 +187,11 @@ private:
 	std::vector<HashRecord> allHashes_; // Config::keepAllHashes, indexed by frame
 	std::map<int, std::vector<RegionHash>> checkpoints_;
 	int frame_ = 0;
+	// Held frames (StepHeld): from heldFrom_ up to heldTo_ (exclusive; the
+	// current frame while holding_).
+	bool holding_ = false;
+	int heldFrom_ = -1, heldTo_ = -1;
+	bool Held(int frame) const { return frame >= heldFrom_ && (holding_ || frame < heldTo_); }
 	bool failed_ = false;
 	std::string failure_;
 	Stats stats_;

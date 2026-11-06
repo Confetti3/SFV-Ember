@@ -90,6 +90,8 @@ private:
 	std::unique_ptr<RollbackSession> session_;
 	adapter::RoomBattle room_; // what the room hears of its battle
 	bool started_ = false;
+	uint32_t seed_ = kSessionSeed; // the session's: a rematch in place reseeds from it
+	uint32_t startTime_ = 0;       // the match's start time, kept the session's (Frame)
 	bool leaveWanted_ = false; // the battle goes back to the main menu
 	bool leaving_ = false;     // ...and the scene manager took the leave
 	// The runtime asked the battle to end (Retire, Abort, Fail); the next

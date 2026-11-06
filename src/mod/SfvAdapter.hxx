@@ -83,6 +83,13 @@ public:
 	// starts reseed the fighters' generators from) to `seed`. The game takes
 	// both from the clock. Returns how many generators were reseeded.
 	int ReseedRandom(uint32_t seed);
+	// The match's start time (sfv::battledata::kStartTime), which lies outside
+	// the rollback state: a match data reset takes it from the clock again.
+	uint32_t StartTime() const;
+	void SetStartTime(uint32_t value);
+	// The game changed outside an update (the rematch's restart): the flow
+	// record mirrors it again, so the next save holds what the game holds.
+	void Recapture() { flow_.Capture(); }
 
 	// The game's post-restore callbacks, run by its own Restore (logged at bind).
 	struct PostRestore {

@@ -62,6 +62,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	if (exitAsked_.exchange(false)) {
 		// The runtime retired or aborted the match: no session goes on, and
 		// the battle goes back to the main menu.
+		room_.FlushHeld("the runtime ended the battle");
 		if (session_->Live()) session_->Close();
 		started_ = true;
 		Leave();
@@ -80,6 +81,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 			// A room battle with no session (it broke, or never started) has
 			// no other player: back to the main menu and the room.
 			Log("netplay: no session (%s); back to the main menu", session_->FailureReason().c_str());
+			room_.FlushHeld("the session ended");
 			Leave();
 			return;
 		}
@@ -90,6 +92,25 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	}
 	room_.NoteSyncPhase(*session_);
 	const bool frozen = freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_;
+	if (room_.Prompting() && !frozen) {
+		// Over the WIN the battle stands still; held frames carry both
+		// fighters' answers, each stepped once its inputs are confirmed, and
+		// both copies decide on the same one (RoomBattle, EMBER_LIBRARY.md 19).
+		const PackedInput answer = room_.AnswerBits();
+		adapter::RoomBattle::Answer decided = adapter::RoomBattle::Answer::Wait;
+		last_ = session_->StepHeld(answer, [&](const FrameInputs& inputs) {
+			decided = room_.HeldFrame(inputs, session_->HeldFrames(), adapter, seed_);
+		});
+		if (last_ != RollbackSession::StepResult::Advanced) return;
+		room_.Decided(decided, *session_);
+		DumpIfRequested();
+		if (decided == adapter::RoomBattle::Answer::Rematch) {
+			startTime_ = adapter.StartTime();
+		} else if (decided == adapter::RoomBattle::Answer::Leave) {
+			Leave(); // both copies leave on this same confirmed frame
+		}
+		return;
+	}
 	// A room match that ended is decided only on a confirmed frame: nothing
 	// before the decision can be rolled back then, on either copy (MatchEnd).
 	const bool endPending = room_.EndPending();
@@ -106,11 +127,17 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		: frame >= config_.mashFrom              ? input::Mash(config_.mashSeed, frame)
 												 : 0;
 	// The game's judgement, the same on both copies (it is restored with the
-	// rest of the state on rollback): both copies leave on this same
-	// confirmed frame.
-	if (endPending && room_.TakeEnd(adapter, *session_)) {
-		Leave();
-		return;
+	// rest of the state on rollback): both copies hold the battle for the
+	// WIN's answers from this same confirmed frame.
+	if (endPending && room_.TakeEnd(adapter, *session_)) return;
+	// The match's start time lies outside the rollback state, and a match
+	// data reset takes it from the clock; the fighters' generators are
+	// reseeded from it at each round's start. It stays the session's.
+	room_.NoteFightFrame();
+	if (room_.Active() && adapter.StartTime() != startTime_) {
+		Log("netplay: the match's start time became %u at frame %d; set back to %u", adapter.StartTime(), frame,
+			startTime_);
+		adapter.SetStartTime(startTime_);
 	}
 	last_ = session_->Step(local);
 	DumpIfRequested();
@@ -166,6 +193,8 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	// Both copies are at the battle's first frame: give the clock-seeded
 	// random generators the same seeds before anything is simulated.
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
+	seed_ = seed;
+	startTime_ = adapter.StartTime();
 	std::string error;
 	const bool started = session_->Start(c, &error);
 	if (!started) Log("netplay: could not start: %s", error.c_str());
@@ -240,7 +269,8 @@ std::string NetplayMode::Describe() const
 		JsonString(session_->FailureReason()).c_str(), session_->Frame(), session_->LastConfirmedFrame(),
 		StepName(last_), (unsigned long long)s.framesAdvanced, (unsigned long long)s.rollbacks,
 		(unsigned long long)s.resimulatedFrames, s.longestRollback, (unsigned long long)s.predictionStalls);
-	return text + pacer_.Describe() + ",\"lastResult\":" + room_.LastResult() + "}";
+	return text + pacer_.Describe() + ",\"lastResult\":" + room_.LastResult() + ",\"rematch\":" + room_.DescribeRematch() +
+		",\"heldFrames\":" + std::to_string(s.heldFrames) + ",\"heldReplays\":" + std::to_string(s.heldReplays) + "}";
 }
 
 void NetplayMode::RegisterCommands()

@@ -26,8 +26,9 @@
 // carries SF4's values for them). A handicap is refused: SFV's launch has none.
 // The table rules it offers are the room's that SFV plays: 1, 3, 5 or 7
 // rounds of 30, 60, 99 or 300 seconds (VersusLaunch's PlayableRounds and
-// RoundClockFrames), filled with the lists. It has no rematch in place: SFV
-// shows no prompt over its WIN yet, so every game goes back to the room.
+// RoundClockFrames), filled with the lists. A table's Instant rematch plays:
+// Ember's post-match prompt over the WIN, answered by both fighters in the
+// session's held frames (RoomBattle, EMBER_LIBRARY.md section 19).
 
 #include "mod/GameContent.hxx"
 #include "mod/VersusLaunch.hxx"

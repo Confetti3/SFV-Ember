@@ -63,6 +63,8 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	failure_.clear();
 	stats_ = {};
 	frame_ = 0;
+	holding_ = false;
+	heldFrom_ = heldTo_ = -1;
 	latch_.Reset();
 	for (HashRecord& h : history_) h = {};
 	allHashes_.clear();
@@ -127,6 +129,11 @@ RollbackSession::StepResult RollbackSession::Step(PackedInput localInput)
 	ggpo_idle(session_, 0);
 	if (DrainPendingAbort()) return StepResult::Failed;
 	if (!gate_.CanAdvanceDeterministicFrame()) return StepResult::Waiting;
+	if (holding_) {
+		holding_ = false;
+		heldTo_ = frame_;
+		CoreLog("session: hold ended at frame %d (%d held frame(s))", frame_, frame_ - heldFrom_);
+	}
 
 	StepResult result = StepResult::Advanced;
 	GGPOErrorCode err = ggpo_add_local_input(session_, localHandle_, &localInput, sizeof(localInput));
@@ -141,6 +148,43 @@ RollbackSession::StepResult RollbackSession::Step(PackedInput localInput)
 
 	game_.Advance(InputsForThisFrame(inputs), false);
 	stats_.framesAdvanced++;
+	err = ggpo_advance_frame(session_);
+	if (DrainPendingAbort()) return StepResult::Failed;
+	if (!HandleResult(err, "advance_frame", &result)) return result;
+	return StepResult::Advanced;
+}
+
+RollbackSession::StepResult RollbackSession::StepHeld(PackedInput localInput,
+	const std::function<void(const FrameInputs&)>& onInputs)
+{
+	if (!session_) return failed_ ? StepResult::Failed : StepResult::NoSession;
+	ActiveScope active(this);
+
+	ggpo_idle(session_, 0);
+	if (DrainPendingAbort()) return StepResult::Failed;
+	if (!gate_.CanAdvanceDeterministicFrame()) return StepResult::Waiting;
+	// The frame's inputs are final only once confirmed: a held frame takes no
+	// input for a misprediction, so a guess would never be corrected.
+	if (LastConfirmedFrame() < frame_) return StepResult::Waiting;
+	if (!holding_) {
+		holding_ = true;
+		heldFrom_ = frame_;
+		CoreLog("session: holding the game from frame %d", frame_);
+	}
+
+	StepResult result = StepResult::Advanced;
+	GGPOErrorCode err = ggpo_add_local_input(session_, localHandle_, &localInput, sizeof(localInput));
+	if (DrainPendingAbort()) return StepResult::Failed;
+	if (!HandleResult(err, "add_local_input", &result)) return result;
+	gate_.OnFrameAccepted();
+
+	FrameInputs inputs;
+	int disconnectFlags = 0;
+	err = ggpo_synchronize_input(session_, inputs.p, sizeof(inputs.p), &disconnectFlags);
+	if (!HandleResult(err, "synchronize_input", &result)) return result;
+	ggpo_set_inputs_ignored(session_, true);
+	if (onInputs) onInputs(inputs);
+	stats_.heldFrames++;
 	err = ggpo_advance_frame(session_);
 	if (DrainPendingAbort()) return StepResult::Failed;
 	if (!HandleResult(err, "advance_frame", &result)) return result;
@@ -407,6 +451,14 @@ bool RollbackSession::AdvanceFromRollback()
 	if (ggpo_synchronize_input(session_, inputs.p, sizeof(inputs.p), &disconnectFlags) != GGPO_OK) {
 		Fail("synchronize_input failed during a rollback");
 		return false;
+	}
+	if (Held(frame_)) {
+		// Held frames are stepped confirmed, so none should ever be replayed;
+		// if one is, the game still stands still on it.
+		ggpo_set_inputs_ignored(session_, true);
+		if (stats_.heldReplays++ == 0) CoreLog("session: a rollback replayed held frame %d", frame_);
+		ggpo_advance_frame(session_);
+		return true;
 	}
 	game_.Advance(InputsForThisFrame(inputs), true);
 	stats_.resimulatedFrames++;

@@ -1,6 +1,7 @@
 #include "ember/SfvShell.hxx"
 
 #include "ember/EmberHost.hxx"
+#include "ember/RoomBattle.hxx"
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvPick.hxx"
@@ -130,7 +131,7 @@ struct Shell {
 	// The frame being drawn: the runtime's latest presentation, read once.
 	std::shared_ptr<const facade::PresentationSnapshot> frame;
 	sf4e::ui::MenuPads::Taken openRequest;
-	bool started = false, wasShown = false;
+	bool started = false, wasShown = false, matchResultShown = false;
 };
 
 Shell& TheShell()
@@ -170,6 +171,11 @@ void BeginFrame()
 		presentation.Close("Start or F10 opens Ember");
 	}
 	presentation.Update(snapshot.menuContext, snapshot.session.match, snapshot.offlineRequested, focused);
+	// The WIN of a room game this PC fought: the post-match prompt opens over
+	// it, once per game, as SF4's overlay opens it (RoomBattle holds the WIN).
+	const bool matchResult = snapshot.menuContext == input::MenuContext::MatchResult;
+	if (matchResult && !shell.matchResultShown) presentation.Open("the match result");
+	shell.matchResultShown = matchResult;
 	shell.openRequest = s_menuPads.Take();
 	if (shell.openRequest.kind == sf4e::ui::MenuPads::Kind::Controls) {
 		switch (input::AnswerStart(presentation.Visible(), snapshot.menuContext, shell.host.Shell().TextEntryOpen())) {
@@ -215,6 +221,8 @@ overlay::OverlayUi::Shown Draw()
 		shell.host.Background(snapshot);
 	}
 	s_menuPads.Publish(presentation.Visible(), shell.openRequest);
+	// Back to room or Character select on the prompt: the held WIN's decline.
+	NoteShellLeftPrompt(shell.host.Shell().PostMatchLeft());
 	if (presentation.Visible() != shell.wasShown) {
 		shell.wasShown = presentation.Visible();
 		mod::Log("shell: %s (%s), room %s, match %s", shell.wasShown ? "shown" : "hidden", presentation.Why(),

@@ -133,7 +133,7 @@ int CostumeCount(int fighter)
 // faces are simply the first four fighters of the roster.
 constinit ember::GameCatalog s_catalog = {0, 0, 0, 1, &ValidPick, &ValidStage, {0, 1, 2, 3}, -1, &FighterLocked,
 	&AvailablePick, &NormalizePick, &ResolveStage, &FighterName, &CostumeCount, nullptr, nullptr, 0, nullptr, 0, false,
-	false};
+	true};
 
 // The room's round counts and times SFV plays, so a table offers no other.
 void FillRules()

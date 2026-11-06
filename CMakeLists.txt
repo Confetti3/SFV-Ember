@@ -60,6 +60,7 @@ add_executable(sfve_tests
     tests/RollbackSessionTests.cxx
     tests/NetPolicyTests.cxx
     tests/MatchResultTests.cxx
+    tests/RematchDecisionTests.cxx
     src/mod/MatchResult.cxx)
 target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 

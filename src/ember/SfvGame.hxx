@@ -23,9 +23,12 @@ class SfvAdapter;
 
 namespace sfve::adapter {
 
+class RoomBattle;
+
 struct BattleInPlay {
 	const RollbackSession* session = nullptr; // the battle's rollback session, live or not
 	const mod::SfvAdapter* game = nullptr;    // the bound battle
+	const RoomBattle* room = nullptr;         // what the room hears of it, and its WIN
 	// Ends the session and takes the battle back to the main menu, for the
 	// runtime's Retire, Abort and Fail (NetplayMode's exit). `why` is for the
 	// log. Game thread; it only asks, so it is safe from any runtime call.
