@@ -7,11 +7,11 @@
 // The names come from what SFV Ember already calls itself: "SFV Ember" (the
 // proxy's messages), the SFVEmber folder and sfv_ember.log (mod/Log.cxx),
 // sfv_ember.dll and StreetFighterV.exe (proxy/xinput_proxy.cxx), and "sfve"
-// for its named objects (ControlPipe, MultiInstance). The header mark and the
-// menu backdrop are Ember's own until SFV Ember has art of its own; the
-// accent is Ember's orange, which SFV's branding keeps (EMBER_LIBRARY.md 2.1).
-// Where the shared words name SF4 Ember, SFV Ember's own replace them
-// (LocaleOverlays).
+// for its named objects (ControlPipe, MultiInstance). Its look is Ember's,
+// set in Street Fighter V's own terms (EMBER_LIBRARY.md section 16): the
+// Band theme and its gold below, Ember's own mark in those colours
+// (art/brand, embedded by the build) and a flat ground (assets/brand). Where the shared words name SF4
+// Ember, SFV Ember's own replace them (LocaleOverlays).
 
 #include "common/ProductIdentity.hxx"
 #include "EmbeddedBrand.hxx"
@@ -57,15 +57,37 @@ msgstr "The host is on a different SFV Ember build or has other fighters and sta
 
 const ember::LocaleOverlay LocaleOverlays[] = {{"en", kEnglish}, {nullptr, nullptr}};
 
+// Gold, SFV Ember's accent: SFV's own menu gold (OKLCH 0.80 0.115 88).
+constexpr unsigned kGold = 0xDDB961;
+
+// Band: SFV's charcoal menu bands as Ember's grounds. One ramp at OKLCH hue
+// 95 with chroma under 0.01 for the neutrals, the gold accent at hue 88, and
+// danger, Ready and Pending moved to the accent's lightness (0.82) and a
+// chroma near the gold's; LIVE stays a deeper red (0.66). As SFV marks a chosen tile,
+// cards at rest are a step lighter than the panel and the focused one goes
+// darkest, marked by a gold bar and a gold hairline at its foot. Square
+// corners, no cut, upright titles in capitals, gold hairlines closing the
+// header and opening the hint bar, and secondary buttons edged in the border
+// tone. Every text pair is at least as far from its ground as SF4 Ember's
+// lowest (section 16).
+constexpr ember::ShellTheme Band = {
+	0x100F0D, 0x282824, 0x191816, 0x2F2E2A, 0x060604, 0x373530, 0x41403C, 0xF2DD9D, 0xEDECE0, 0xC0BEB4, 0xEE5A50, 0xEEB4AB, 0xA2D3A2,
+	0x31302C, 0x0D0B07, 0x050402, 0x57554F, 0x73726B, 0xE8CF8C, 0xDFC398,
+	0x080706, 0x1E1D1A, 0x34332F, 0xEDECE0, 0x999892,
+	0.f, 0.f, 0.f,
+	0x7B6633, true, true, true,
+};
+
 constexpr ember::ProductIdentity SfvEmber = {
 	{
 		"SFV Ember",
 		"SFV Ember",
 		"Street Fighter V",
-		0xFF8738,
+		kGold,
 		sf4e::ui::brand::Pixels,
 		sf4e::ui::brand::Size,
-		L"brand/ember-menu-background.png",
+		L"brand/sfv-ember-menu-background.png",
+		&Band,
 	},
 	L"SFVEmber",
 	// Settings beside the mod in the game's folder (SFVEmber\settings.json),

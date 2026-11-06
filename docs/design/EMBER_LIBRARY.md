@@ -342,6 +342,11 @@ Theme keeps Ember's palette; only the accent, the mark, the backdrop and the
 names come from the product. The SFV mark and backdrop are new art (the maintainer's
 call on the design).
 
+**Superseded (the maintainer, 2026-11-06):** SFV Ember gets its own colours, mark,
+backdrop and shapes, similar to Ember's but reading as Street Fighter V's; the
+whole theme is now the product's (`Branding::theme`, an `ember::ShellTheme`).
+See section 16.
+
 ---
 
 ## 3. Extraction plan
@@ -958,3 +963,74 @@ Evidence (library 3a8ad6735, helper built from it): before the fix, 2 of 5 runs 
 **Left**
 - Fighter names (above), and the header's "EMBER" title on Home.
 - "Slot" in the members list (B4, above).
+
+## 16. SFV Ember's look (2026-11-06)
+
+The maintainer: make SFV Ember's look similar to Ember's but distinct, so it reads as Street Fighter V's, with its own colours and mark. It stays Ember: the same name, layout, screens and structure.
+
+A first pass (graphite grounds, an electric cyan accent, a perspective grid backdrop with diagonal slashes, cut corners and leaning titles) was rejected: it lacked cohesion and read as generic. That pass took a few stock ideas and stacked them. This one starts from SFV's own screens and from one tonal ramp.
+
+**What SFV's menus do (sampled from the game, CE 07.010).** Colours from the captures, in OKLCH:
+- The title and ticker bands are neutral charcoal, `#171717` to `#1A1A1A` (L 0.21, chroma 0), edged with black and a thin gold hairline (`#DAB55D`, L 0.79, C 0.115, hue 87).
+- The ground is a pale ivory map, `#E9EBDB` (L 0.93, C 0.02, hue 112). Its tiles are a warm light grey, `#D1D1C8` (L 0.86, C 0.012, hue 107), with labels in dark grey `#454545`.
+- The chosen tile goes the other way: near-black `#0B0B08` (L 0.15), with its label in gold (`#FFE38C`, L 0.92, C 0.11, hue 92), a gold hairline under it and a gold disc for its icon.
+- Type is a heavy sans in capitals, set plainly: no italics in the menus, no tracking tricks, labels left-aligned after their icon.
+- Tiles are square-cornered, close together with even gaps. Nothing glows; there are no gradients on the controls; one accent, gold, and the rest neutral.
+
+So SFV's palette is one family: neutrals with almost no chroma, leaning to hue 90-110, and a single gold near hue 88-92. Selection is shown by value (a light tile turning black) and the gold, never by a coloured outline.
+
+**Direction: Band.** Ember's grounds become SFV's charcoal bands, and Ember's orange becomes SFV's gold. Selection works as SFV's does.
+- One ramp, OKLCH hue 95, neutral chroma under 0.01. Ink L 0.17, panel 0.21, frame (a card at rest) 0.275, button 0.30, hover 0.33, border 0.37, muted text 0.80, text 0.94. The text is SFV's ivory.
+- The accent is gold: L 0.80, C 0.115, hue 88, with a light step at L 0.90.
+- Danger, Ready and Pending move to the accent's lightness (0.82) at a chroma at or under the gold's, so none looks pasted in; Pending is a sand on the ramp rather than an orange. LIVE stays a deeper red (0.66), as a live mark should.
+- Cards at rest are a step lighter than their panel. The focused card or row goes darkest (L 0.12), marked by a gold bar on its left and a gold hairline along its foot. There is no box outline around it, and secondary buttons are edged in the border tone, not the accent's.
+- Screen titles are in capitals. Corners are square. Gold hairlines close the header and open the hint bar, as on SFV's bands.
+- There is no backdrop picture: the menu's ground is flat ink.
+
+| Role | SF4 Ember | SFV Ember (Band) | OKLCH (L C h) |
+|---|---|---|---|
+| ink (background) | `#141312` | `#100F0D` | 0.17 0.004 95 |
+| panel | `#211E1B` | `#191816` | 0.21 0.005 95 |
+| frame (card at rest) | `#191715` | `#282824` | 0.275 0.006 95 |
+| button | `#382D24` | `#2F2E2A` | 0.30 0.007 95 |
+| hover | `#59402B` | `#373530` | 0.33 0.009 95 |
+| header (focused fill) | `#3A2A1F` | `#060604` | 0.12 0.006 95 |
+| border | `#443A31` | `#41403C` | 0.37 0.007 95 |
+| rule (header, hint bar) | border | `#7B6633` | 0.52 0.075 88 |
+| accent | `#FF8738` | `#DDB961` | 0.80 0.115 88 |
+| accent light | `#FFB16F` | `#F2DD9D` | 0.90 0.085 92 |
+| text | `#F3EBDD` | `#EDECE0` | 0.94 0.016 102 |
+| muted | `#B5A99B` | `#C0BEB4` | 0.80 0.014 100 |
+| danger | `#FFAAA0` | `#EEB4AB` | 0.82 0.07 28 |
+| ready | `#A4CEA0` | `#A2D3A2` | 0.82 0.085 145 |
+| pending | `#F1C477` | `#DFC398` | 0.83 0.065 78 |
+| live | `#FF5C50` | `#EE5A50` | 0.66 0.185 27 |
+
+**Contrast (WCAG ratio).** Every pair that carries words or a focus mark is at least SF4 Ember's lowest; most are higher.
+- Text on panel 14.9 (Ember 14.0), on the focused fill 17.1 (11.6), on hover 10.3 (8.1), on a button 11.4 (11.3), on a card 12.5 (Ember's darker card: 15).
+- Muted on panel 9.5 (7.2), on a card 7.9 (7.8), on a button 7.3 (5.8). Disabled words 5.1 (4.9).
+- The gold bar on the focused fill 10.8 (Ember's orange edge 5.7); ink on the primary button 10.2 (7.8).
+- The focused fill against a card at rest is 1.4: focus is carried by the gold bar and hairline, as in SFV, not by the fill alone.
+
+**The mark.** It is Ember's own mark, its shapes untouched: the fire character 火 in its open brush circle, with the tail. Only its colours are Band's. Ember's ivory becomes the theme's text, its orange (the left dot and the tail) the gold, and the tail's light orange the gold's light step. Two other tries were turned down: a re-cut octagon around a cut character, and a set of other surrounds (thin circle, gold disc, black tile, none). The maintainer's call was Ember's mark in gold. `scripts/build-sfv-brand.py` writes `art/brand/sfv-ember-mark.svg` (Ember's SVG with its three fills swapped) and recolours Ember's export, `src/ui/ember.png`, pixel by pixel into the 1024 px PNG and the 128 x 128 RGBA the build embeds (`sf4e_embed_brand_mark`, from sfv-ember's CMake).
+
+**Type.** It is still Inter, with no font added. Screen titles are in capitals (`ShellTheme::upperTitles`); rows keep Ember's mixed case. The theme stays dark. A light variant (SFV's menus are light), capitals in rows and a condensed title face were offered and left out (the maintainer, 2026-11-06).
+
+**Working on it.** The look was designed in the UI lab, not in the game. With `-DSF4E_LAB_PRODUCT_SOURCE=<sfv-ember>/src/ember/SfvProduct.cxx -DSF4E_LAB_PRODUCT_MARK=<sfv-ember>/art/brand/sfv-ember-mark.rgba`, the library builds `UiLabProduct`, the same lab linked with SFV Ember's identity, so the real shell draws in SFV Ember's theme with no game and no network (`UiLabProduct --room --shot room.bmp`). Without the two options nothing changes.
+**What stays Ember.** The name (EMBER on Home, SFV Ember in the version line and About), every screen and its layout, the hint bar and its button prompts, the flags, the link marks, the meaning of every tone, and the fire character in a ring.
+
+**How it is built.**
+- Library: `ember::ShellTheme` in `common/ProductIdentity.hxx`, pointed at by `Branding::theme` (none means `EmberShellTheme`, SF4 Ember's values). `Theme.cxx` (ImGui's style), `v2::Colors()`, `palette::Ember/Ivory/Muted` and the shell's warm-ink literals all read it.
+- The theme's shape and mark knobs: `corner`, `cut`, `headingSlant`, `rule`, `underlineFocus`, `quietButtons` and `upperTitles`, drawn through `v2::Ground`, `Edge`, `Corner`, `Slant` and `Capitals`. `cut` and `headingSlant` are kept from the first pass; Band leaves them at 0.
+- With Ember's theme every call is the one it replaced, with the same values. SF4-only screens (Training, the public room list, Rankings, the appearance gallery) keep their literals.
+- sfv-ember: `SfvProduct.cxx` defines `Band` and the gold, and names the flat ground. CMake embeds `art/brand/sfv-ember-mark.rgba` and copies sfv-ember's `assets/brand` in place of the library's.
+
+**Evidence (library c15f8a044 on feat/sfv-brand, from feat/ember-library 8a7314d7e).**
+- SF4 unchanged:
+  - UiRenderTest's English shots at 1280x720 and 1920x1080 (402 each), from a build of 8a7314d7e and one of the branch, compared byte for byte. Every difference was texture-load timing: fighter previews, controller pictures and the random tiles, not yet in on one run.
+  - At 720p each build was rendered twice, and the branch's second run matches the base's on every file that its first run did not.
+  - Targeted ctest passes 14 of 14: UiRender, UiRenderLocales, UiRenderGallery, UiRenderAtlas, ProductIdentity (it now pins EmberShellTheme's values), ShellJourney, Localization, V2Layout, RoomPanelNavigation, MenuButtons, MenuSpeech, ButtonLayout, NativeMenuLock and UpgradeRecoveryPowerShell.
+- The library's x86 build and `scripts/probe-x64.ps1` pass.
+- sfv-ember: `scripts/build.ps1` passes 4 of 4 ctest suites.
+- `python -I tools/runshell.py` passes in game. Its screenshots are in `D:\sfv-re\shots\brand\final\`, with `before-after.png` beside section 14's.
+- sf4-net was not rebuilt: the brand build used main's `sf4-net.exe`, which this change does not touch.
