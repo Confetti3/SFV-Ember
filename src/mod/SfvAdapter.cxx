@@ -33,7 +33,8 @@ void SfvAdapter::SeeBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 	const bool sameAddress = battleFrame == battleFrame_;
 	Forget();
 	battleFrame_ = battleFrame;
-	Log("adapter: new battle frame %p (battle %llu%s)", (void*)battleFrame, (unsigned long long)identity_.Battle(),
+	Log("adapter: new battle frame %p (battle %llu, %llu frame(s) constructed%s)", (void*)battleFrame,
+		(unsigned long long)identity_.Battle(), (unsigned long long)identity_.Constructions(),
 		sameAddress ? ", at the last battle's address" : "");
 }
 

@@ -1050,5 +1050,35 @@ On this PC the spec lists 46 selectable fighters (ELEVEN with one costume), 5 to
 
 **Left**
 - **Costume and colour pictures**: the shop images (above) need the shop DataTable's row layout to map them to costumes. Until then a costume has its name and a colour its swatch.
-- **A new battle at the old battle's address is not seen as new.** `SfvAdapter::SeeBattleFrame` tells a new battle by the battle frame's address. In one run the second game's battle frame on one copy landed at the first's address: that copy logged "the flow's state list changed" and never "new battle frame". Its battle never bound to the room, and the peer waited ("load over 60 s"). This is independent of picks and predates section 15; a fresh pair played both games. A new battle should be recognised by its construction (rva 0x4C5C40) or its reset (0x4D8830), not by its address.
+- **A new battle at the old battle's address is not seen as new.** `SfvAdapter::SeeBattleFrame` tells a new battle by the battle frame's address. In one run the second game's battle frame on one copy landed at the first's address: that copy logged "the flow's state list changed" and never "new battle frame". Its battle never bound to the room, and the peer waited ("load over 60 s"). This is independent of picks and predates section 15; a fresh pair played both games. A new battle should be recognised by its construction (rva 0x4C5C40) or its reset (0x4D8830), not by its address. (Fixed, section 16.)
 - Ownership is still the game's own check at launch: Ember's `FighterAvailability` reports everything owned, so an unowned look is replaced by the game as the battle loads rather than refused at Ready.
+
+## 16. A battle is its frame's construction, not its address (2026-11-06)
+
+Section 15's open bug: one copy's second battle never bound and its peer waited ("load over 60 s"). The run's logs were overwritten by later runs, so the cause is confirmed from the code and section 15's record of that run (the copy logged "the flow's state list changed" and no "new battle frame"):
+- The battle frame's owner (a virtual at rva 0x4F4690) allocates the frame, 0x1D0 bytes, with FMemory::Malloc (rva 0x4F4788 calls 0x11370F0) whenever its +0x300 holds none. Another virtual of the same vtable (rva 0x4EFBE0) resets the frame, clears +0x300 and frees it at the battle's end. The next battle's allocation can return the freed block.
+- `SfvAdapter::SeeBattleFrame` returned early when the frame's address was the last one's, so the adapter kept the first battle's layout, flow record and units. The flow record found the old state list gone and broke, which is the log line above.
+- `BattleDriver` also keyed `NewBattle` on that address. So the mode never got the new battle, `RoomBattle::Bind` never took the linked launch, and the runtime never heard the battle had loaded. The copy played the battle offline while its peer waited at the session start.
+- The other places were checked. `LaunchArming` uses tickets, and `RoomBattle`, `NetplayMode`, `MatchEnd` (`ForgetEndedVersusBattle`), the flow record and the cached input and rollback units are all reset from the driver's `NewBattle` or the adapter's `Forget`. They were wrong only through those two compares.
+
+**The event** (every address from our IDA database, verified against the exe's bytes; `SfvOffsets.hxx` `kBattleFrameCtor`, checked by BuildCheck):
+- **Constructor, rva 0x4C5C40.** It sets the frame's vtable (rva 0x2C742D8, whose +0x40 is `BattleFrameUpdate`, rva 0x4DC6A0) and writes the object to +0x1C8. It has one caller (rva 0x4F4795), right after the allocation. That caller then installs the battle through the frame's +0x08 (rva 0x4DA710). So it runs once per battle.
+- **Reset, rva 0x4D8830 (vtable +0x18).** It is not once per battle: it runs at the install (0x4DA710 resets first), at the end (0x4EFBE0), and again in the destructor (rva 0x4C7180).
+- Training resets, round changes and the game's rematch (`RestartBattle`, flow code 18) construct no frame. They stay one battle, as before.
+
+**The fix** (sfv-ember 9e88f46 and the log line after it):
+- `GameHooks` hooks the constructor and calls the listener after the original runs.
+- `mod/BattleIdentity` numbers the battles. An update starts a battle when its frame is not the last update's, or when that frame was constructed again since. Several constructions before an update count as one battle. A late update of an older frame after a construction elsewhere stays the older battle. With no construction seen (a missing hook), the address is all it has.
+- `SfvAdapter` forgets on a new number (`Battle()`), and `BattleDriver` gives the mode `NewBattle` on it.
+- The log line names the number and the constructions so far: "adapter: new battle frame %p (battle N, M frame(s) constructed[, at the last battle's address])". The battle status carries `battle`.
+- `tests/BattleIdentityTests.cxx` (in `sfve_ember_tests`) drives two battles through one address and expects two battles. It also covers frames at another address, constructions that collapse into one battle, the hookless fallback, and the adapter forgetting the first battle's units. `Bind` itself needs the game.
+
+**Evidence**
+- `scripts/build.ps1`: 4 of 4 ctest suites pass, with the 5 new cases in `sfve_ember_tests`.
+- `tools/runroom.ps1 -lag 30 -games 8`: PASS, 616 checkpoints compared, 0 differing. That is 16 battles (8 per copy), each logged "battle N, N frame(s) constructed" and followed by "the room's battle has loaded", so the hook fired once per battle. No battle came at the last battle's address in this run. Copy 0's 8th battle reused its 4th battle's address (`00000236DA4A5C00`), which shows the allocator does hand blocks back.
+- `tools/runroom.ps1 -presses 10 -games 2 -lag 30`: PASS, 154 checkpoints compared, 0 differing; 4 battles, none at the last battle's address.
+- `tools/runshell.py`: PASS.
+
+**Left**
+- A battle installed on an existing frame through +0x08 (rva 0x4DA710) without a construction would still be the old battle. The only caller found is the owner's begin, right after the constructor.
+
