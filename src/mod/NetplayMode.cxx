@@ -81,6 +81,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 			// A room battle with no session (it broke, or never started) has
 			// no other player: back to the main menu and the room.
 			Log("netplay: no session (%s); back to the main menu", session_->FailureReason().c_str());
+			room_.NoteLink(*session_); // the opponent dropped, if they did
 			room_.FlushHeld("the session ended");
 			Leave();
 			return;
@@ -91,6 +92,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		return;
 	}
 	room_.NoteSyncPhase(*session_);
+	room_.NoteLink(*session_);
 	const bool frozen = freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_;
 	if (room_.Prompting() && !frozen) {
 		// Over the WIN the battle stands still; held frames carry both
@@ -269,8 +271,15 @@ std::string NetplayMode::Describe() const
 		JsonString(session_->FailureReason()).c_str(), session_->Frame(), session_->LastConfirmedFrame(),
 		StepName(last_), (unsigned long long)s.framesAdvanced, (unsigned long long)s.rollbacks,
 		(unsigned long long)s.resimulatedFrames, s.longestRollback, (unsigned long long)s.predictionStalls);
+	// The link as the HUD reads it (RollbackSession's ConnectionWarning and the rest).
+	char link[192];
+	snprintf(link, sizeof(link),
+		",\"link\":{\"warning\":%s,\"stalled\":%s,\"countdownMs\":%d,\"delay\":%d,\"recentRollback\":%u,\"peerDropped\":%s}",
+		session_->ConnectionWarning() ? "true" : "false", session_->PredictionStalled() ? "true" : "false",
+		session_->DisconnectCountdownMs(), session_->AppliedDelay(), session_->RecentRollbackFrames(),
+		session_->PeerDisconnected() ? "true" : "false");
 	return text + pacer_.Describe() + ",\"lastResult\":" + room_.LastResult() + ",\"rematch\":" + room_.DescribeRematch() +
-		",\"heldFrames\":" + std::to_string(s.heldFrames) + ",\"heldReplays\":" + std::to_string(s.heldReplays) + "}";
+		",\"heldFrames\":" + std::to_string(s.heldFrames) + ",\"heldReplays\":" + std::to_string(s.heldReplays) + link + "}";
 }
 
 void NetplayMode::RegisterCommands()

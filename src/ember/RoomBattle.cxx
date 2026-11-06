@@ -85,8 +85,10 @@ void RoomBattle::Bind(RollbackSession* previous, RollbackSession& session, const
 	active_ = mod::TakeLinkedBattle();
 	matchEnded_ = false;
 	prompt_ = {};
+	declines_ = 0;
 	s_prompting = false;
 	gamesInPlace_ = 0;
+	linkWarned_ = peerLossTold_ = false;
 	s_gameResult = sf4e::room::MatchResult::Abort;
 	if (!active_) return;
 	SetBattleInPlay({&session, &game, this, std::move(exit)});
@@ -148,6 +150,25 @@ void RoomBattle::NoteSessionStart(bool started)
 	}
 }
 
+void RoomBattle::NoteLink(const RollbackSession& session)
+{
+	if (!active_) return;
+	const bool warned = session.ConnectionWarning() && !matchEnded_;
+	if (warned != linkWarned_) {
+		linkWarned_ = warned;
+		if (warned) {
+			facade::PushAlert(sf4e::loc::T("runtime.connection_unstable_prediction"), sf4e::NoticeSeverity::Warning);
+		} else if (session.Live() && !session.Failed() && !matchEnded_) {
+			// GGPO resumed the link (not a drop, nor the result's silence).
+			facade::PushAlert(sf4e::loc::T("runtime.connection_restored"), sf4e::NoticeSeverity::Info);
+		}
+	}
+	if (session.PeerDisconnected() && !peerLossTold_) {
+		peerLossTold_ = true;
+		if (!matchEnded_) facade::PushAlert(sf4e::loc::T("runtime.opponent_disconnected"), sf4e::NoticeSeverity::Error);
+	}
+}
+
 void RoomBattle::NoteSyncPhase(const RollbackSession& session)
 {
 	if (!active_) return;
@@ -177,6 +198,7 @@ bool RoomBattle::TakeEnd(const mod::SfvAdapter& game, const RollbackSession& ses
 	}
 	lastResult_ = mod::DescribeMatchResult(*decided);
 	prompt_ = {};
+	declines_ = 0;
 	prompt_.active = true;
 	prompt_.result = RoomResult(*decided);
 	prompt_.captureFrame = (std::uint64_t)frame;
@@ -252,6 +274,7 @@ void RoomBattle::Decided(Answer answer, const RollbackSession& session)
 	} else {
 		if (!prompt_.reported) Report(false);
 		prompt_.active = false;
+		declines_ = rip::Declines(prompt_.bits[0], prompt_.bits[1]);
 	}
 	s_prompting = false;
 	s_pipeDeclined = false;
@@ -300,8 +323,8 @@ std::string RoomBattle::DescribeRematch() const
 {
 	char text[256];
 	snprintf(text, sizeof(text),
-		"{\"prompt\":%s,\"offered\":%s,\"held\":%d,\"choices\":%u,\"bits\":[%u,%u],\"games\":%u,\"last\":\"%s\"}",
-		prompt_.active ? "true" : "false", prompt_.offered ? "true" : "false", prompt_.held, prompt_.choices,
+		"{\"prompt\":%s,\"offered\":%s,\"held\":%d,\"choices\":%u,\"declines\":%u,\"bits\":[%u,%u],\"games\":%u,\"last\":\"%s\"}",
+		prompt_.active ? "true" : "false", prompt_.offered ? "true" : "false", prompt_.held, prompt_.choices, declines_,
 		(unsigned)prompt_.bits[0], (unsigned)prompt_.bits[1], gamesInPlace_, lastAnswer_.c_str());
 	return text;
 }

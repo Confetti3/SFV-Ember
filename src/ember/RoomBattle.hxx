@@ -61,6 +61,15 @@ public:
 
 	// Each live frame: the session's phase as the runtime last heard it.
 	void NoteSyncPhase(const RollbackSession& session);
+	// Each frame the battle plays, and once more when its session is gone:
+	// the player hears of the link as SF4 Ember tells them (its GGPO events),
+	// an unstable connection as it starts (a warning), its return (a note),
+	// and the opponent dropped (an error). Nothing once the game's result is
+	// taken: the other copy may leave the WIN first.
+	void NoteLink(const RollbackSession& session);
+	// The match's result was taken and the battle holds it (TakeEnd), until
+	// a rematch goes on from it: SF4's "result known", which silences the link.
+	bool ResultTaken() const { return active_ && matchEnded_; }
 	// The room's match ended and waits for a confirmed frame.
 	bool EndPending() const;
 	// On a confirmed frame, with the match's end pending: takes it and holds
@@ -99,6 +108,9 @@ public:
 	bool ResultHeld() const { return prompt_.active && prompt_.offered && !prompt_.reported; }
 	bool ResultScreenShown() const { return prompt_.active; }
 	unsigned RematchChoices() const { return prompt_.active ? prompt_.choices : 0; }
+	// Each side whose input declined, from the held frame that decided on it
+	// (a decline leaves at once) until the next WIN or battle.
+	unsigned RematchDeclines() const { return declines_; }
 	unsigned GamesInPlace() const { return gamesInPlace_; }
 
 	// The last room match's result, as JSON ("null" before one).
@@ -123,7 +135,10 @@ private:
 	bool active_ = false;      // the room's battle, until its close is reported
 	bool matchEnded_ = false;  // its match reached its end (the result was taken)
 	Prompt prompt_;
+	unsigned declines_ = 0;    // RematchDeclines
 	unsigned gamesInPlace_ = 0;
+	bool linkWarned_ = false;  // the warning NoteLink last told of
+	bool peerLossTold_ = false;
 	sf4e::GgpoSyncPhase phase_ = sf4e::GgpoSyncPhase::None; // as last reported
 	sf4e::NetplayFacade::RuntimeMatchEndpoints endpoints_;
 	std::string lastResult_ = "null";

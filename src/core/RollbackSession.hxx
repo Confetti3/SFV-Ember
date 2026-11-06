@@ -22,6 +22,7 @@
 
 #include "core/GameAdapter.hxx"
 
+#include "RollbackHud.hxx"
 #include "sf4e__GgpoAbortLatch.hxx"
 #include "sf4e__GgpoGate.hxx"
 
@@ -125,6 +126,29 @@ public:
 		int pingMs;
 	};
 	bool ReadRift(Rift* out) const;
+
+	// The link as SF4 Ember's HUD reads its session (LinkSample), with the
+	// same meanings:
+	// * a connection warning: GGPO reported the peer interrupted and has not
+	//   yet resumed or dropped it. It never holds the game (the gate's rule);
+	// * a prediction stall: the last step's input was refused for running too
+	//   far ahead of the peer;
+	// * while warned, the time until GGPO drops the peer, from the timeout its
+	//   interruption reported (-1 otherwise, and with no timeout);
+	// * the input delay GGPO took for the local player (-1 if it refused it);
+	// * the deepest rollback of the last second: the frames replayed after
+	//   each restore (sf4e::RollbackHud, SF4's window).
+	bool ConnectionWarning() const { return session_ && gate_.connectionWarningActive; }
+	bool PredictionStalled() const { return session_ && gate_.predictionStalled; }
+	int DisconnectCountdownMs() const;
+	int AppliedDelay() const { return session_ ? appliedDelay_ : -1; }
+	unsigned RecentRollbackFrames() const;
+	// GGPO dropped the peer: the session failed for it (FailureReason says so),
+	// and stays so until the next Start.
+	bool PeerDisconnected() const { return peerDisconnected_; }
+	// The countdown's arithmetic, as SF4 Ember's (fSystem::DisconnectCountdownMs):
+	// GetTickCount's milliseconds, so a wrap between the two readings still counts.
+	static int DisconnectCountdown(bool warned, uint32_t warnedAtMs, int timeoutMs, uint32_t nowMs);
 	// Hash of the state saved for `frame`, if it was hashed (see
 	// Config::hashEveryFrames) and is still in the history (or kept, see
 	// Config::keepAllHashes). After the frame is confirmed this is final, so
@@ -195,6 +219,12 @@ private:
 	bool failed_ = false;
 	std::string failure_;
 	Stats stats_;
+	// The link (ConnectionWarning and the rest). Presentation only: none of it
+	// is rollback state, and none of it changes what the session plays.
+	int appliedDelay_ = -1;
+	int disconnectTimeoutMs_ = 0; // the open interruption's, 0 when none
+	bool peerDisconnected_ = false;
+	mutable sf4e::RollbackHud rollbackHud_; // Recent() drops the bursts that expired
 };
 
 } // namespace sfve

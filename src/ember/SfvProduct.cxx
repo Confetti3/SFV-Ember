@@ -76,6 +76,9 @@ constexpr ember::ShellTheme Band = {
 	0x080706, 0x1E1D1A, 0x34332F, 0xEDECE0, 0x999892,
 	0.f, 0.f, 0.f,
 	0x7B6633, true, true, true,
+	// The post-match prompt on the shell's own ground, as the room is: SFV's
+	// bright RESULT behind a veil turned to a muddy smear (section 20).
+	true,
 };
 
 // SFV's battle HUD (EMBER_LIBRARY.md section 18), measured on its fights at
@@ -112,6 +115,15 @@ constexpr ember::ProductIdentity SfvEmber = {
 		L"brand/sfv-ember-menu-background.png",
 		&Band,
 		&SfvBattleHud,
+		// The room shows a fighter only where its player shared a pick. A
+		// profile's main is fighter 0 (RYU) until the player sets one, and
+		// nothing in SFV Ember asks them to, so a main would put a face nobody
+		// picked on the Members rows and the unpicked seats (EMBER_LIBRARY.md
+		// section 20).
+		true,
+		// The opponent's Rematch or decline shows on the post-match prompt as
+		// soon as the held frames carry it (section 20).
+		true,
 	},
 	L"SFVEmber",
 	// Settings beside the mod in the game's folder (SFVEmber\settings.json),

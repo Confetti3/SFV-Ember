@@ -27,6 +27,7 @@
 #include "ui/Win32Input.hxx"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <memory>
 #include <mutex>
@@ -133,6 +134,65 @@ struct Shell {
 	std::shared_ptr<const facade::PresentationSnapshot> frame;
 	sf4e::ui::MenuPads::Taken openRequest;
 	bool started = false, wasShown = false, matchResultShown = false;
+	// When the shell last showed or hid (ImGui's clock), for its fade.
+	double changedAt = -1;
+};
+
+// Ember's shell over SFV fades in and out, the ground and all, rather than
+// cut between the game and the shell's flat ground (EMBER_LIBRARY.md section
+// 20): every SFV Ember screen stands on that ground, the post-match prompt
+// too (ShellTheme::promptOnGround), so a fade is all a change of state shows.
+// Opening, the shell and its ground come up together (FadeScope); closing,
+// the ground goes down over the game it uncovers.
+constexpr double kFadeSeconds = 0.2;
+
+// 0 to 1 over the fade, eased out.
+float FadeProgress(double since)
+{
+	if (since < 0 || since >= kFadeSeconds) return 1.f;
+	const float x = static_cast<float>(since / kFadeSeconds);
+	return 1.f - (1.f - x) * (1.f - x);
+}
+
+// What the shell draws in one frame, faded as a whole: its windows (every
+// one it begins, its popups and tooltips too) and what it adds to ImGui's
+// background and foreground lists (the prompt's ground). The shell's design
+// parts draw in their own colours, which ImGui's style alpha would not reach,
+// so the opacity goes on the vertices once they are drawn.
+class FadeScope {
+public:
+	FadeScope()
+		: firstWindow_(ImGui::GetCurrentContext()->WindowsActiveCount),
+		  background_(ImGui::GetBackgroundDrawList()), backgroundFrom_(background_->VtxBuffer.Size),
+		  foreground_(ImGui::GetForegroundDrawList()), foregroundFrom_(foreground_->VtxBuffer.Size)
+	{
+	}
+	void Apply(float opacity) const
+	{
+		if (opacity >= 1.f) return;
+		const ImGuiContext& g = *ImGui::GetCurrentContext();
+		for (ImGuiWindow* window : g.Windows) {
+			if (window->LastFrameActive == g.FrameCount && window->BeginOrderWithinContext >= firstWindow_)
+				Scale(*window->DrawList, 0, opacity);
+		}
+		Scale(*background_, backgroundFrom_, opacity);
+		Scale(*foreground_, foregroundFrom_, opacity);
+	}
+
+private:
+	static void Scale(ImDrawList& list, int from, float opacity)
+	{
+		for (int i = from; i < list.VtxBuffer.Size; ++i) {
+			ImU32& colour = list.VtxBuffer[i].col;
+			const float alpha = static_cast<float>((colour & IM_COL32_A_MASK) >> IM_COL32_A_SHIFT);
+			colour = (colour & ~IM_COL32_A_MASK) | (static_cast<ImU32>(alpha * opacity + .5f) << IM_COL32_A_SHIFT);
+		}
+	}
+	int firstWindow_;
+	ImDrawList* background_;
+	int backgroundFrom_;
+	ImDrawList* foreground_;
+	int foregroundFrom_;
 };
 
 Shell& TheShell()
@@ -217,17 +277,30 @@ overlay::OverlayUi::Shown Draw()
 	if (presentation.Reopened()) shell.host.Shell().ShowPlay();
 	// Under the shell: the match HUD, or only its notices while the shell is open.
 	DrawSfvMatchHud(*shell.frame, presentation.Visible());
+	const double now = ImGui::GetTime();
+	if (presentation.Visible() != shell.wasShown) shell.changedAt = now;
+	const float fade = FadeProgress(now - shell.changedAt);
 	if (presentation.Visible()) {
-		if (const char* close = shell.host.Draw(snapshot, shell.frame->netplay, shell.navigation, shell.game, {}))
-			presentation.Close(close);
+		const FadeScope scope;
+		const char* close = shell.host.Draw(snapshot, shell.frame->netplay, shell.navigation, shell.game, {});
+		scope.Apply(fade);
+		if (close) presentation.Close(close);
 	} else {
 		shell.host.Background(snapshot);
+		// The shell's ground going, over the game it uncovers.
+		if (fade < 1.f) {
+			const ImGuiViewport* viewport = ImGui::GetMainViewport();
+			ImGui::GetBackgroundDrawList()->AddRectFilled(viewport->Pos,
+				ImVec2(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y),
+				sf4e::ui::palette::InkAt(static_cast<int>(sf4e::ui::WindowGroundAlpha * 255 * (1.f - fade) + .5f)));
+		}
 	}
 	s_menuPads.Publish(presentation.Visible(), shell.openRequest);
 	// Back to room or Character select on the prompt: the held WIN's decline.
 	NoteShellLeftPrompt(shell.host.Shell().PostMatchLeft());
 	if (presentation.Visible() != shell.wasShown) {
 		shell.wasShown = presentation.Visible();
+		shell.changedAt = now; // a close from the shell's own Draw too
 		mod::Log("shell: %s (%s), room %s, match %s", shell.wasShown ? "shown" : "hidden", presentation.Why(),
 			input::RoomStateName(snapshot.session.room), input::MatchStateName(snapshot.session.match));
 	}

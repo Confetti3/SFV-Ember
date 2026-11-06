@@ -118,6 +118,74 @@ TEST_CASE("input delay keeps the peers in step")
 	REQUIRE(pair.a.HashAt(confirmed, &ha));
 	REQUIRE(pair.b.HashAt(confirmed, &hb));
 	CHECK(ha == hb);
+	// The delay GGPO took is the one the HUD shows.
+	CHECK(pair.a.AppliedDelay() == 2);
+	CHECK(pair.b.AppliedDelay() == 2);
+}
+
+TEST_CASE("the HUD's rollback count is the deepest replay of the last second")
+{
+	LoopbackPair pair(kBugNone, 0);
+	CHECK(pair.a.RecentRollbackFrames() == 0u);
+	REQUIRE(pair.RunTo(600));
+	const auto& sa = pair.a.GetStats();
+	const auto& sb = pair.b.GetStats();
+	REQUIRE(sa.rollbacks + sb.rollbacks > 0);
+	// The run takes well under a second's rollbacks to the end, so the last
+	// ones are in the window; none is deeper than the session's deepest.
+	const unsigned recent = (std::max)(pair.a.RecentRollbackFrames(), pair.b.RecentRollbackFrames());
+	MESSAGE("recent " << recent << ", longest " << sa.longestRollback << " and " << sb.longestRollback);
+	CHECK(recent > 0u);
+	CHECK(pair.a.RecentRollbackFrames() <= (unsigned)sa.longestRollback);
+	CHECK(pair.b.RecentRollbackFrames() <= (unsigned)sb.longestRollback);
+	// A second later, with nothing replayed since, the window is empty.
+	Sleep(1100);
+	CHECK(pair.a.RecentRollbackFrames() == 0u);
+	CHECK(pair.b.RecentRollbackFrames() == 0u);
+	// No live link to warn of: no warning, no countdown, no stall.
+	CHECK_FALSE(pair.a.ConnectionWarning());
+	CHECK(pair.a.DisconnectCountdownMs() == -1);
+	CHECK_FALSE(pair.a.PeerDisconnected());
+}
+
+TEST_CASE("the disconnect countdown counts down from the interruption, as SF4's does")
+{
+	CHECK(RollbackSession::DisconnectCountdown(false, 1000, 4250, 1500) == -1);
+	CHECK(RollbackSession::DisconnectCountdown(true, 1000, 0, 1500) == -1);
+	CHECK(RollbackSession::DisconnectCountdown(true, 1000, 4250, 1000) == 4250);
+	CHECK(RollbackSession::DisconnectCountdown(true, 1000, 4250, 1500) == 3750);
+	CHECK(RollbackSession::DisconnectCountdown(true, 1000, 4250, 5250) == 0);
+	CHECK(RollbackSession::DisconnectCountdown(true, 1000, 4250, 9000) == 0);
+	// GetTickCount wraps after 49.7 days; the elapsed time still counts.
+	CHECK(RollbackSession::DisconnectCountdown(true, 0xFFFFFF00u, 1000, 0x100u) == 1000 - 0x200);
+}
+
+TEST_CASE("an interruption warns with a countdown, and the drop says so")
+{
+	LoopbackPair pair(kBugNone, 0);
+	REQUIRE(pair.RunTo(60));
+	pair.b.Close();
+	bool warned = false;
+	int countdown = -1;
+	const ULONGLONG start = GetTickCount64();
+	while (!pair.a.Failed() && GetTickCount64() - start < 5000) {
+		pair.a.Step(ScriptedInput(0, pair.a.Frame(), kLoopbackSeed));
+		if (pair.a.ConnectionWarning()) {
+			warned = true;
+			countdown = pair.a.DisconnectCountdownMs();
+			CHECK(countdown >= 0);
+			CHECK(countdown <= 1000); // the pair's disconnect timeout
+		}
+		Sleep(1);
+	}
+	REQUIRE(pair.a.Failed());
+	CHECK(warned);
+	CHECK(pair.a.PeerDisconnected());
+	// The session is gone: nothing more to warn of.
+	CHECK_FALSE(pair.a.ConnectionWarning());
+	CHECK(pair.a.DisconnectCountdownMs() == -1);
+	CHECK(pair.a.AppliedDelay() == -1);
+	CHECK(pair.a.RecentRollbackFrames() == 0u);
 }
 
 TEST_CASE("an unmasked heap pointer makes identical play look like a desync")

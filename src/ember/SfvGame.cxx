@@ -19,6 +19,7 @@
 
 #include "common/InstalledContent.hxx"
 #include "common/Localization.hxx"
+#include "common/MatchTelemetry.hxx"
 #include "common/PadKind.hxx"
 #include "netplay/PlayerPreferencesJson.hxx"
 #include "netplay/SettingsStore.hxx"
@@ -45,6 +46,21 @@ using namespace ember::game;
 BattleInPlay s_battle;
 bool s_synced = false;
 LaunchArming s_launch;
+// The bound battle's pings (SF4's MatchTelemetry), from its session's start.
+sf4e::MatchTelemetry s_telemetry;
+
+// The bound battle's session while it is live.
+const RollbackSession* LiveSession()
+{
+	return s_battle.session && s_battle.session->Live() ? s_battle.session : nullptr;
+}
+
+// GGPO's connection warning, but none once the game's result is taken, as
+// SF4 hears no interruption then: the other copy may leave the WIN first.
+bool LinkWarned(const RollbackSession& session)
+{
+	return session.ConnectionWarning() && !(s_battle.room && s_battle.room->ResultTaken());
+}
 
 // The fight's way out for the runtime (Retire, Abort, Fail): NetplayMode
 // ends the session and leaves for the main menu. With no battle in play
@@ -153,28 +169,54 @@ public:
 	sf4e::room::MatchResult GameResult() const override { return RoomGameResult(); }
 	// Each side's Rematch as the held frames' confirmed inputs carry it.
 	unsigned RematchChoices() const override { return s_battle.room ? s_battle.room->RematchChoices() : 0; }
+	// SFV's held frames carry a decline (RematchDecision's DeclineBit), which
+	// ends the WIN on the frame it is read.
+	unsigned RematchDeclines() const override { return s_battle.room ? s_battle.room->RematchDeclines() : 0; }
 	unsigned GamesPlayedInPlace() const override { return s_battle.room ? s_battle.room->GamesInPlace() : 0; }
 
+	// The live session's link, as SF4 Ember's adapter fills it from its own
+	// (sf4e__Sf4Game.cxx): RollbackSession reports the same GGPO events and
+	// stats with the same meanings, and the ping is the telemetry's, polled
+	// every 250 ms and none while the link is warned. A spectator's fields
+	// stay off: SFV's session has no spectators.
 	LinkSample Sample() const override
 	{
-		// The connection warning, prediction stall, disconnect countdown and
-		// applied delay stay unknown: RollbackSession does not report them yet.
 		LinkSample sample;
-		const RollbackSession* session = s_battle.session;
-		if (!session || !session->Live()) return sample;
-		RollbackSession::Rift rift{};
-		if (session->ReadRift(&rift)) sample.pingMs = rift.pingMs;
+		const RollbackSession* session = LiveSession();
+		if (!session) return sample;
+		sample.connectionWarning = LinkWarned(*session);
+		sample.predictionStalled = session->PredictionStalled();
+		sample.disconnectCountdownMs = DisconnectCountdownMs();
+		sample.pingMs = s_telemetry.Ping(GetTickCount64());
+		sample.appliedDelay = session->AppliedDelay();
 		sample.localFighter = true; // a session is two players, this copy one of them
 		return sample;
 	}
-	// RollbackSession does not report its disconnect countdown yet.
-	int DisconnectCountdownMs() const override { return -1; }
-	// RollbackSession counts rollbacks for the whole session, not the recent ones.
-	unsigned RecentRollbackFrames() const override { return 0; }
-	// No record of the session's pings yet.
+	int DisconnectCountdownMs() const override
+	{
+		const RollbackSession* session = LiveSession();
+		return session && LinkWarned(*session) ? session->DisconnectCountdownMs() : -1;
+	}
+	// The deepest rollback of the last second.
+	unsigned RecentRollbackFrames() const override
+	{
+		const RollbackSession* session = LiveSession();
+		return session ? session->RecentRollbackFrames() : 0;
+	}
+	// The pings are kept (s_telemetry) but not handed on: Auto delay's record
+	// of the games played stays off for SFV until it is reviewed for SFV's
+	// session, which only reads its delay at the start.
 	sf4e::GamePing::Summary PingSummary() const override { return {}; }
+	void PollTelemetry() override
+	{
+		const RollbackSession* session = LiveSession();
+		if (!session) return;
+		const auto now = GetTickCount64();
+		if (!s_telemetry.PollDue(now)) return;
+		RollbackSession::Rift rift{};
+		s_telemetry.Sample(now, !LinkWarned(*session) && session->ReadRift(&rift) ? rift.pingMs : -1);
+	}
 	// NetplayMode's FramePacer paces the session and resets with each battle.
-	void PollTelemetry() override {}
 	void ResetPacing() override {}
 
 	// No spectators: a RollbackSession plays two players and nothing else.
@@ -361,6 +403,7 @@ void SetBattleInPlay(const BattleInPlay& battle)
 {
 	s_battle = battle;
 	s_synced = false;
+	s_telemetry.Reset();
 }
 
 bool SessionSynced()

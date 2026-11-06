@@ -74,6 +74,15 @@ TEST_CASE("each side's Rematch, as the prompt reads the choices")
 	CHECK((rip::kBits & 0xFFFu) == 0u); // above every bit a pad makes (GameInput's kInputBits)
 }
 
+TEST_CASE("each side's decline, as the prompt reads the declines")
+{
+	CHECK(rip::Declines(0, 0) == 0u);
+	CHECK(rip::Declines(kChose, kAsked) == 0u);
+	CHECK(rip::Declines(kNo, kChose) == 1u);
+	CHECK(rip::Declines(kAsked, kNo | kChose) == 2u);
+	CHECK(rip::Declines(kNo, kNo) == 3u);
+}
+
 // Peers that answer at different times, A after `aFrom` held frames and B
 // after `bFrom` (-1: B declines at once), each counting its own held frames.
 struct HeldRun {

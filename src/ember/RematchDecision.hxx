@@ -65,4 +65,10 @@ inline unsigned Choices(std::uint32_t p1, std::uint32_t p2)
 	return (p1 & sf4e::rematch::ChoiceBit ? 1u : 0u) | (p2 & sf4e::rematch::ChoiceBit ? 2u : 0u);
 }
 
+// Each side whose input declined, as the library's RematchDeclines reads it.
+inline unsigned Declines(std::uint32_t p1, std::uint32_t p2)
+{
+	return (p1 & kDeclineBit ? 1u : 0u) | (p2 & kDeclineBit ? 2u : 0u);
+}
+
 } // namespace sfve::adapter::rematch_in_place

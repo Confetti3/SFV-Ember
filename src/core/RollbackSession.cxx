@@ -62,6 +62,10 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	failed_ = false;
 	failure_.clear();
 	stats_ = {};
+	appliedDelay_ = -1;
+	disconnectTimeoutMs_ = 0;
+	peerDisconnected_ = false;
+	rollbackHud_.Reset();
 	frame_ = 0;
 	holding_ = false;
 	heldFrom_ = heldTo_ = -1;
@@ -109,7 +113,9 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 		}
 		(player == config.localPlayer ? localHandle_ : remoteHandle_) = handle;
 	}
-	ggpo_set_frame_delay(session_, localHandle_, config.inputDelay);
+	const GGPOErrorCode delayed = ggpo_set_frame_delay(session_, localHandle_, config.inputDelay);
+	appliedDelay_ = GGPO_SUCCEEDED(delayed) ? config.inputDelay : -1;
+	if (!GGPO_SUCCEEDED(delayed)) CoreLog("session: set_frame_delay(%d) returned %d", config.inputDelay, (int)delayed);
 	ggpo_set_disconnect_timeout(session_, config.disconnectTimeoutMs);
 	ggpo_set_disconnect_notify_start(session_, config.disconnectNotifyStartMs);
 
@@ -285,6 +291,23 @@ bool RollbackSession::ReadRift(Rift* out) const
 	return true;
 }
 
+int RollbackSession::DisconnectCountdown(bool warned, uint32_t warnedAtMs, int timeoutMs, uint32_t nowMs)
+{
+	if (!warned || timeoutMs <= 0) return -1;
+	const uint32_t elapsed = nowMs - warnedAtMs;
+	return elapsed >= (uint32_t)timeoutMs ? 0 : (int)((uint32_t)timeoutMs - elapsed);
+}
+
+int RollbackSession::DisconnectCountdownMs() const
+{
+	return DisconnectCountdown(ConnectionWarning(), gate_.connectionWarningStartedAtMs, disconnectTimeoutMs_, GetTickCount());
+}
+
+unsigned RollbackSession::RecentRollbackFrames() const
+{
+	return session_ ? rollbackHud_.Recent(GetTickCount64()) : 0;
+}
+
 bool RollbackSession::HashAt(int frame, uint64_t* out) const
 {
 	if (frame < 0) return false;
@@ -417,6 +440,7 @@ bool RollbackSession::Load(unsigned char* buffer)
 	stats_.rollbacks++;
 	if (depth > stats_.longestRollback) stats_.longestRollback = depth;
 	frame_ = slot->frame;
+	rollbackHud_.Begin(GetTickCount64());
 
 	if (config_.verifyLoads && layout.HashLive() != slot->localHash) {
 		stats_.loadMismatches++;
@@ -462,6 +486,7 @@ bool RollbackSession::AdvanceFromRollback()
 	}
 	game_.Advance(InputsForThisFrame(inputs), true);
 	stats_.resimulatedFrames++;
+	rollbackHud_.Replayed(GetTickCount64());
 	ggpo_advance_frame(session_);
 	return true;
 }
@@ -475,13 +500,22 @@ void RollbackSession::Event(const GGPOEvent& info)
 		CoreLog("session: running");
 		break;
 	case GGPO_EVENTCODE_DISCONNECTED_FROM_PEER:
+		peerDisconnected_ = true;
+		disconnectTimeoutMs_ = 0;
 		Fail("the other player disconnected");
 		break;
 	case GGPO_EVENTCODE_CONNECTION_INTERRUPTED:
-		if (gate_.OnConnectionInterrupted(GetTickCount())) CoreLog("session: connection interrupted");
+		// The countdown runs from the episode's first report, as SF4's does.
+		if (gate_.OnConnectionInterrupted(GetTickCount())) {
+			disconnectTimeoutMs_ = info.u.connection_interrupted.disconnect_timeout;
+			CoreLog("session: connection interrupted (dropped in %d ms without a reply)", disconnectTimeoutMs_);
+		}
 		break;
 	case GGPO_EVENTCODE_CONNECTION_RESUMED:
-		if (gate_.OnConnectionResumed()) CoreLog("session: connection resumed");
+		if (gate_.OnConnectionResumed()) {
+			disconnectTimeoutMs_ = 0;
+			CoreLog("session: connection resumed");
+		}
 		break;
 	case GGPO_EVENTCODE_TIMESYNC:
 		// A fresh estimate, not a delta (Ember's PacingController notes).
