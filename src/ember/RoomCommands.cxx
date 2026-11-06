@@ -2,16 +2,17 @@
 
 #include "ember/EmberHost.hxx"
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvPick.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/VersusLaunch.hxx"
 
+#include "common/GameCatalog.hxx"
 #include "common/NativeMenuLock.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 
 #include <nlohmann/json.hpp>
 
 #include <cstdlib>
-#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -22,16 +23,6 @@ namespace {
 
 namespace facade = sf4e::NetplayFacade;
 using sf4e::netplay::CommandKind;
-
-// The pick the next Ready sends: the game's ids, by the catalog.
-struct RoomPick {
-	sf4e::wire::ConfirmedCharaConditions character{};
-	int stage = 0;
-	std::string text; // as the command named it, for the status
-};
-
-std::mutex s_mutex; // the pipe thread writes the pick, status reads it
-std::optional<RoomPick> s_pick;
 
 // A command for the runtime, tagged with the session the latest snapshot
 // shows, as the shell tags a press with the screen it was drawn from.
@@ -55,9 +46,9 @@ std::string Host(const std::string& args)
 	int rounds = 3, seconds = 99;
 	std::istringstream in(args);
 	if (!args.empty() && !(in >> rounds >> seconds)) return "error usage: room [rounds] [seconds]";
-	// A table rule Ember offers and SFV plays.
-	if (!mod::PlayableRounds(rounds) || !sf4e::room::ValidRoundCount(rounds)) return "error SFV plays 1, 3, 5 or 7 rounds";
-	if (!mod::RoundClockFrames(seconds) || !sf4e::room::ValidRoundTime(seconds)) return "error SFV rooms play rounds of 30, 60, 99 or 300 s";
+	// A table rule Ember offers and SFV plays (the catalog's).
+	if (!ember::PlayableRoundCount(rounds)) return "error SFV plays 1, 3, 5 or 7 rounds";
+	if (!ember::PlayableRoundTime(seconds)) return "error SFV rooms play rounds of 30, 60, 99 or 300 s";
 	facade::RuntimeCommand command = CommandFor(CommandKind::HostRoom);
 	command.preferences = facade::GetRuntimeSnapshotShared()->preferences;
 	sf4e::room::Rules& rules = command.preferences.tableRules;
@@ -114,31 +105,24 @@ std::string Pick(const std::string& args)
 	}
 	const std::optional<int> id = FighterId(fighter.fighter);
 	if (!id) return "error that fighter is not in this game's list";
-	RoomPick pick;
+	// The one pick the shell edits too (SfvPick); a stage left out stays.
+	PlayerPick pick = CurrentPick();
 	if (!rules.stage.empty()) {
 		const std::optional<int> stage = StageId(rules.stage);
 		if (!stage) return "error that stage is not in this game's list";
 		pick.stage = *stage;
 	}
-	pick.character.charaID = (unsigned char)*id;
-	pick.character.costume = (unsigned char)(fighter.costume < 0 ? 0 : fighter.costume);
-	pick.character.color = (unsigned char)(fighter.colour < 0 ? 0 : fighter.colour);
-	pick.text = args;
-	std::lock_guard lock(s_mutex);
-	s_pick = pick;
-	return "ok " + FighterCode(*id) + " costume " + std::to_string(pick.character.costume) + " colour " +
-		std::to_string(pick.character.color) + " stage " + StageCode(pick.stage);
+	pick.pick.fighter = *id;
+	pick.pick.costume = fighter.costume < 0 ? 0 : fighter.costume;
+	pick.pick.color = fighter.colour < 0 ? 0 : fighter.colour;
+	SetPick(pick);
+	return "ok " + PickText(pick);
 }
 
 std::string Ready()
 {
 	facade::RuntimeCommand command = CommandFor(CommandKind::Ready);
-	{
-		std::lock_guard lock(s_mutex);
-		if (!s_pick) return "error pick first (pick CODE[:costume[:colour]] [STAGE])";
-		command.character = s_pick->character;
-		command.stage = s_pick->stage;
-	}
+	AddPickTo(command);
 	return Submit(std::move(command));
 }
 
@@ -171,8 +155,7 @@ std::string Status()
 		{"notice", presentation->netplay.lastError},
 		{"readyFailure", snapshot->readyFailure},
 	};
-	std::lock_guard lock(s_mutex);
-	status["pick"] = s_pick ? s_pick->text : std::string();
+	status["pick"] = EmberRuntimeRunning() ? PickText(CurrentPick()) : std::string();
 	return status.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 

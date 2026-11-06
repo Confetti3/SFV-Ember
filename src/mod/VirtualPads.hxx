@@ -43,11 +43,14 @@ size_t PendingPadSteps(int slot);
 
 
 // A slot as the game last read it through XInput (physical or virtual),
-// before any pad filter: whether a pad answered, and its XINPUT_GAMEPAD_*
-// buttons. Not connected until the game has read the slot. Any thread.
+// before any pad filter: whether a pad answered, its XINPUT_GAMEPAD_*
+// buttons, and the directions its left stick leans to (the D-pad's bits:
+// 1 up, 2 down, 4 left, 8 right). Not connected until the game has read the
+// slot. Any thread.
 struct PadSeen {
 	bool connected = false;
 	uint16_t buttons = 0;
+	uint8_t stick = 0;
 };
 PadSeen LastPadState(int slot);
 

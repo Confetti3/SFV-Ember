@@ -1,9 +1,11 @@
 #pragma once
 
-// Test commands for Ember's rooms on the control pipe, until SFV draws Ember's
-// shell (B2). Each submits the runtime's own command, as the shell's buttons
-// do (NetplayFacade::SubmitRuntimeCommand), tagged with the session it was
-// read from; the runtime judges it exactly as it judges a press.
+// Test commands for Ember's rooms on the control pipe, beside Ember's shell
+// (SfvShell): tools/runroom.ps1 plays rooms through them. Each submits the
+// runtime's own command, as the shell's buttons do
+// (NetplayFacade::SubmitRuntimeCommand), tagged with the session it was read
+// from; the runtime judges it exactly as it judges a press. `pick` sets the
+// one pick the shell edits too (SfvPick).
 //
 //   room [rounds] [seconds]   host a private room; its tables play that many
 //                             rounds (1, 3, 5 or 7) of that many seconds (30,

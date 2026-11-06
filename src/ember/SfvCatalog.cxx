@@ -3,6 +3,7 @@
 #include "mod/Log.hxx"
 
 #include "common/GameCatalog.hxx"
+#include "common/RoomRules.hxx"
 
 #include <xxhash.h>
 
@@ -21,6 +22,10 @@ std::string s_buildId = kMatchBuild;
 bool s_sealed = false;
 // The roster in the order of the game's list, which is its ids' order.
 std::vector<int> s_rosterOrder;
+// The table rules a room offers that SFV plays (VersusLaunch's
+// PlayableRounds and RoundClockFrames), in the room's order.
+std::vector<std::uint8_t> s_roundCounts;
+std::vector<std::uint16_t> s_roundTimes;
 
 bool ValidPick(const sf4e::selection::Pick& pick, bool)
 {
@@ -88,7 +93,23 @@ int CostumeCount(int)
 // Empty until FillCatalog. SFV offers no public rooms yet, so the showcase
 // faces are simply the first four fighters of the roster.
 constinit ember::GameCatalog s_catalog = {0, kVariantLimit, kVariantLimit, 1, &ValidPick, &ValidStage, {0, 1, 2, 3},
-	-1, &FighterLocked, &AvailablePick, &NormalizePick, &ResolveStage, &FighterName, &CostumeCount, nullptr};
+	-1, &FighterLocked, &AvailablePick, &NormalizePick, &ResolveStage, &FighterName, &CostumeCount, nullptr, nullptr, 0,
+	nullptr, 0, false, false};
+
+// The room's round counts and times SFV plays, so a table offers no other.
+void FillRules()
+{
+	for (std::uint8_t rounds : sf4e::room::RoundCounts) {
+		if (mod::PlayableRounds(rounds)) s_roundCounts.push_back(rounds);
+	}
+	for (std::uint16_t seconds : sf4e::room::RoundTimes) {
+		if (mod::RoundClockFrames(seconds)) s_roundTimes.push_back(seconds);
+	}
+	s_catalog.roundCounts = s_roundCounts.data();
+	s_catalog.roundCountChoices = (int)s_roundCounts.size();
+	s_catalog.roundTimes = s_roundTimes.data();
+	s_catalog.roundTimeChoices = (int)s_roundTimes.size();
+}
 
 std::string CodeAt(const std::vector<std::string>& codes, std::int64_t id)
 {
@@ -124,6 +145,7 @@ bool FillCatalog(const mod::ContentLists& lists)
 	s_buildId = std::string(kMatchBuild) + "/" + ContentFingerprint(lists);
 	for (int id = 0; id < (int)s_lists.fighters.size(); id++) s_rosterOrder.push_back(id);
 	s_catalog.rosterOrder = s_rosterOrder.data();
+	FillRules();
 	s_catalog.fighterCount = (int)s_lists.fighters.size();
 	return true;
 }
@@ -131,6 +153,11 @@ bool FillCatalog(const mod::ContentLists& lists)
 void SealCatalog()
 {
 	s_sealed = true;
+}
+
+int StageCount()
+{
+	return (int)s_lists.stages.size();
 }
 
 const std::string& MatchBuildId()

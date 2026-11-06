@@ -10,6 +10,7 @@
 #include "core/CoreLog.hxx"
 #include "ember/EmberHost.hxx"
 #include "ember/RoomCommands.hxx"
+#include "ember/SfvShell.hxx"
 #include "mod/BackgroundPlay.hxx"
 #include "mod/BattleDriver.hxx"
 #include "mod/BuildCheck.hxx"
@@ -115,8 +116,8 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	RegisterStatus("suppressedDialogs", [] { return std::to_string(SuppressedDialogs()); });
 	if (scene && InstallVersusLaunch(base, Config().ownershipCheck)) RegisterVersusLaunchCommands();
 	InstallMatchEnd(base);
-	// The host for Ember's interface (plugged in once the shared Ember shell
-	// is in); the game's content lists for it, meanwhile on the pipe.
+	// The host for Ember's interface (its shell is plugged in below, with
+	// rooms on); the game's content lists, on the pipe.
 	if (scene && sfve::overlay::InstallOverlay()) SetPadFilter(&sfve::overlay::FilterGamePad);
 	RegisterCommand("content", [](const std::string&) {
 		RunOnGameThread([] {
@@ -137,6 +138,7 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	if (netplay && Config().room) {
 		sfve::adapter::RegisterRoomCommands();
 		sfve::adapter::InstallEmberHost({Config().instance}, *netplay);
+		sfve::adapter::InstallEmberShell();
 	}
 	InstallGameHooks(base, &driver);
 	if (Config().mode == ModMode::SyncTest || Config().mode == ModMode::Netplay) InstallDeterministicProjectileRelease(base);

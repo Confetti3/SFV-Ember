@@ -58,21 +58,28 @@ add_executable(sfve_tests
 target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 
 # SFV's game definitions for Ember's runtime (docs/design/EMBER_LIBRARY.md
-# section 10): the game adapter and Game(), the catalog, the product, the
-# desync check, the pick labels and pictures, and the runtime's host in the
-# mod (EmberHost) with its test commands (RoomCommands).
+# sections 10-13): the game adapter and Game(), the catalog, the product, the
+# desync check, the pick labels and pictures, the runtime's host in the mod
+# (EmberHost) with its test commands (RoomCommands), and Ember's shell over
+# the game (SfvShell, its pick and pick screen) on the mod's Direct3D 11
+# overlay.
 add_library(sfve_ember STATIC
     src/ember/EmberHost.cxx
     src/ember/RoomCommands.cxx
     src/ember/SfvCatalog.cxx
     src/ember/SfvGame.cxx
+    src/ember/SfvPick.cxx
     src/ember/SfvProduct.cxx
     src/ember/SfvSelection.cxx
-    src/ember/SfvVerification.cxx)
+    src/ember/SfvSelectionScreen.cxx
+    src/ember/SfvShell.cxx
+    src/ember/SfvVerification.cxx
+    src/overlay/Overlay.cxx
+    src/overlay/TextureUploaderD3D11.cxx)
 # The header mark is Ember's own until SFV Ember has art of its own.
 include("${SFVE_EMBER_SOURCE_ROOT}/cmake/sf4e_embed.cmake")
 sf4e_embed_brand_mark(sfve_ember "${SFVE_EMBER_SOURCE_ROOT}/src/ui/ember.rgba")
-target_link_libraries(sfve_ember PUBLIC sfve_core ember_runtime_x64)
+target_link_libraries(sfve_ember PUBLIC sfve_core ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
 
 # The runtime under SFV's definitions, with nothing of SF4's roster, stages
 # or custom content: SFV's catalog (SfvCatalog.cxx) answers every pick check.
@@ -80,6 +87,7 @@ add_executable(sfve_ember_tests
     tests/main.cxx
     tests/EmberAdapterTests.cxx
     src/mod/ControlPipe.cxx
+    src/mod/GameContent.cxx
     src/mod/GameHooks.cxx
     src/mod/GameScene.cxx
     src/mod/GameThread.cxx
@@ -123,9 +131,15 @@ add_library(sfv_ember SHARED
     src/mod/GameInput.cxx
     src/mod/WriteWatch.cxx
     src/mod/LagSim.cxx
-    src/mod/GameContent.cxx
-    src/overlay/Overlay.cxx)
-target_link_libraries(sfv_ember PRIVATE sfve_ember minhook::minhook imgui::imgui d3d11 dxgi)
+    src/mod/GameContent.cxx)
+target_link_libraries(sfv_ember PRIVATE sfve_ember)
+# Ember's own pictures the shell draws beside the mod (overlay/Overlay.hxx):
+# the menu backdrop, the button prompts and the flags. SFV has no fighter or
+# stage pictures, so none of SF4's selection art comes along.
+foreach(_folder brand input flags)
+    add_custom_command(TARGET sfv_ember POST_BUILD COMMAND "${CMAKE_COMMAND}" -E copy_directory
+        "${SFVE_EMBER_SOURCE_ROOT}/assets/${_folder}" "${CMAKE_BINARY_DIR}/assets/${_folder}")
+endforeach()
 
 # Proxy the game loads by name from its own folder; it forwards the real
 # exports and loads sfv_ember.dll. Which DLL to proxy is decided from the

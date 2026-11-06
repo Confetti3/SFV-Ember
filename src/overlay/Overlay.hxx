@@ -2,47 +2,65 @@
 
 // The host for Ember's interface on SFV: ImGui drawn into the game's own
 // frames, with keyboard, mouse and pads routed to it. The interface itself
-// (Ember's shell, from the shared Ember library) is plugged in with
-// SetOverlayUi; this file is only the SFV side: the renderer and input.
-//
-// It opens with F1 or the pad's View/Back button once an interface is set;
-// while it is open the game sees no keyboard, mouse or pad input.
+// (Ember's shell, src/ember/SfvShell) is plugged in with SetOverlayUi; this
+// file is only the SFV side: the renderer, its textures and the input.
 //
 // Drawing: SFV renders with Direct3D 11. The host hooks
 // IDXGISwapChain::Present and ResizeBuffers (their code is shared by every
 // swap chain, found through a throwaway one) and draws on the swap chain
-// whose window is the game's, on the thread that presents.
+// whose window is the game's, on the thread that presents. Once an interface
+// is set, every presented frame is an ImGui frame: the interface runs its
+// hidden work then too, and says whether it is shown.
 //
 // Threads: the game's window procedure and pad polling run on the game
-// thread, Present on the engine's render thread. Window messages reach
-// ImGui through a queue the render thread drains; ImGui is touched only on
-// the render thread.
+// thread, Present on the engine's render thread. Window messages reach ImGui
+// through Ember's Win32 input bridge, which the render thread applies at the
+// start of its frame (ui/Win32InputBridge.hxx); ImGui is drawn only on the
+// render thread. The ImGui context is made and its backends replaced under
+// Ember's OverlayLifecycle, so a window message never meets a half-made one.
+//
+// Ember's pictures (ui/SelectionArt.hxx) load through a Direct3D 11 uploader
+// on the game's device, from the mod's folder: assets/brand, assets/input and
+// assets/flags, Ember's own art. SFV's fighters and stages have none.
 
 #include <functional>
 
 namespace sfve::overlay {
 
 struct OverlayUi {
-	// Render thread, with the ImGui context current: before the first frame
-	// and whenever the UI scale changes (1 at 900 px of height). Builds the
-	// interface's fonts and style.
-	std::function<void(float scale)> applyScale;
-	// Render thread, inside an ImGui frame while the overlay is open; false
-	// closes it.
-	std::function<bool()> draw;
+	// Render thread, with the ImGui context current, before each frame: the
+	// interface's fonts and style at the picture's scale (1 at 1080 lines of
+	// height). True when it rebuilt the font atlas, which is then uploaded again.
+	std::function<bool(float scale)> applyScale;
+	// Render thread, after the backends' NewFrame and before ImGui's: the
+	// frame's input that is not the window's (the pads).
+	std::function<void()> beginFrame;
+	// Render thread, inside the ImGui frame, every frame the game presents.
+	struct Shown {
+		bool shown = false;     // the interface is on screen: the keys and the mouse are its own
+		bool available = false; // F10 may show it now
+	};
+	std::function<Shown()> draw;
+	// Game thread, for each pad state the game reads: the slot and its
+	// XINPUT_GAMEPAD buttons. True keeps that state from the game, which then
+	// sees an idle pad.
+	std::function<bool(unsigned long slot, unsigned short buttons)> takesPad;
 };
 
 // Hooks the swap chain; false (logged) when it cannot.
 bool InstallOverlay();
 
-// The interface to show; until one is set the overlay does not open. Any
-// thread, before or after the swap chain appears.
+// The interface to show; until one is set the overlay draws nothing and the
+// game keeps every input. Any thread, before or after the swap chain appears.
 void SetOverlayUi(OverlayUi ui);
 
+// The game's window has the focus (WM_ACTIVATEAPP). Any thread.
+bool GameWindowFocused();
+
 // The overlay's view of the game's pad polling: called for each pad state
-// the game reads (VirtualPads' filter). Opens or closes the overlay on
-// View/Back, feeds its navigation and, while it is open, clears the state so
-// the game sees an idle pad.
+// the game reads (VirtualPads' filter). While the interface takes the pad
+// (OverlayUi::takesPad) the game sees an idle one, and a button still held
+// when it lets go stays hidden from the game until released.
 void FilterGamePad(unsigned long user, void* xinputState);
 
 } // namespace sfve::overlay

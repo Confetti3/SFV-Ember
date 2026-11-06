@@ -35,9 +35,20 @@ struct Slot {
 std::mutex s_mutex;
 Slot s_slots[kPadSlots];
 uint64_t s_reads[kPadSlots]; // XInput reads seen per slot, for the status report
-// Each slot's last read: bit 16 connected, bits 0-15 the buttons.
+// Each slot's last read: bit 16 connected, bits 0-15 the buttons, bits 20-23
+// the left stick's directions (PadSeen::stick).
 std::atomic<uint32_t> s_seen[kPadSlots];
 constexpr uint32_t kSeenConnected = 0x10000;
+constexpr int kSeenStickShift = 20;
+// How far the left stick leans before it counts as a direction (of 32767).
+constexpr SHORT kStickLean = 16000;
+
+uint32_t Seen(const XState& state)
+{
+	const uint32_t stick = (state.ly > kStickLean ? 0x1u : 0u) | (state.ly < -kStickLean ? 0x2u : 0u) |
+		(state.lx < -kStickLean ? 0x4u : 0u) | (state.lx > kStickLean ? 0x8u : 0u);
+	return kSeenConnected | state.buttons | stick << kSeenStickShift;
+}
 
 struct Name {
 	const char* text;
@@ -110,7 +121,7 @@ DWORD WINAPI HookedGetState(DWORD user, void* state)
 	const DWORD result = FillVirtualXInput((int)user, state) ? ERROR_SUCCESS
 		: (Ex ? o_getStateEx[M] : o_getState[M])(user, state);
 	if (user < kPadSlots) {
-		s_seen[user] = result == ERROR_SUCCESS && state ? kSeenConnected | static_cast<const XState*>(state)->buttons : 0;
+		s_seen[user] = result == ERROR_SUCCESS && state ? Seen(*static_cast<const XState*>(state)) : 0;
 	}
 	if (result == ERROR_SUCCESS && state) {
 		if (const PadFilter filter = s_padFilter) filter(user, state);
@@ -152,7 +163,7 @@ PadSeen LastPadState(int slot)
 {
 	if (slot < 0 || slot >= kPadSlots) return {};
 	const uint32_t seen = s_seen[slot];
-	return {(seen & kSeenConnected) != 0, static_cast<uint16_t>(seen & 0xFFFF)};
+	return {(seen & kSeenConnected) != 0, static_cast<uint16_t>(seen & 0xFFFF), static_cast<uint8_t>(seen >> kSeenStickShift & 0xF)};
 }
 
 bool InstallVirtualPads()

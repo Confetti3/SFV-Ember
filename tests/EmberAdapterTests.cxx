@@ -13,6 +13,7 @@
 
 #include "common/SelectionPick.hxx"
 #include "common/GameCatalog.hxx"
+#include "common/Localization.hxx"
 #include "common/ProductIdentity.hxx"
 #include "common/StageCatalog.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
@@ -92,6 +93,18 @@ TEST_CASE("the catalog is empty until it is filled from the game's content lists
 	CHECK(catalog.costumeLimit == kVariantLimit);
 	CHECK(catalog.colorLimit == kVariantLimit);
 	CHECK(catalog.ultraChoices == 1);
+	// The table rules the shell offers: the room's that SFV plays.
+	CHECK_FALSE(catalog.editions);
+	CHECK_FALSE(catalog.rematchInPlace); // no prompt over SFV's WIN yet
+	REQUIRE(catalog.roundCountChoices == 4);
+	REQUIRE(catalog.roundTimeChoices == 4);
+	const int rounds[] = {1, 3, 5, 7}, times[] = {30, 60, 99, 300};
+	for (int i = 0; i < 4; i++) {
+		CHECK(catalog.roundCounts[i] == rounds[i]);
+		CHECK(catalog.roundTimes[i] == times[i]);
+	}
+	CHECK_FALSE(ember::PlayableRoundCount(15));
+	CHECK_FALSE(ember::PlayableRoundTime(9999));
 	CHECK(FighterCode(0) == "RYU");
 	CHECK(FighterCode(4) == "BSN");
 	CHECK(FighterCode(5).empty());
@@ -283,7 +296,19 @@ TEST_CASE("the product is SFV Ember, with names of its own")
 			 product.crashDumpPrefix}) {
 		CHECK_FALSE(HasSf4(text));
 	}
-	CHECK(product.localeOverlays[0].tag == nullptr);
+	// SFV Ember's English over the shared words that name SF4 Ember on the
+	// screens SFV shows; the catalog takes them.
+	REQUIRE(product.localeOverlays[0].tag != nullptr);
+	CHECK(std::string(product.localeOverlays[0].tag) == "en");
+	CHECK(product.localeOverlays[1].tag == nullptr);
+	std::string error;
+	CHECK(sf4e::loc::testing::LayerOverlays(product.localeOverlays, error));
+	CHECK(error.empty());
+	for (const char* id : {"app.name", "shell.home_title", "screen.game", "brand.subtitle", "about.ember_detail", "runtime.open_shortcut",
+			 "runtime.build_mismatch", "runtime.room_join_failed", "runtime.invite_other_build"}) {
+		CHECK_FALSE(HasSf4(sf4e::loc::T(id)));
+	}
+	CHECK(std::string(sf4e::loc::T("brand.subtitle")).rfind("SFV", 0) == 0);
 }
 
 TEST_CASE("the pick labels are plain, from the catalog")

@@ -16,6 +16,10 @@
 // What SFV has no use for: Ultras (one choice, 0), editions (a room's
 // edition rule is ignored), personal actions and win quotes (SF4's; the wire
 // carries SF4's values for them). A handicap is refused: SFV's launch has none.
+// The table rules it offers are the room's that SFV plays: 1, 3, 5 or 7
+// rounds of 30, 60, 99 or 300 seconds (VersusLaunch's PlayableRounds and
+// RoundClockFrames), filled with the lists. It has no rematch in place: SFV
+// shows no prompt over its WIN yet, so every game goes back to the room.
 
 #include "mod/GameContent.hxx"
 #include "mod/VersusLaunch.hxx"
@@ -62,6 +66,8 @@ std::string ContentFingerprint(const mod::ContentLists& lists);
 // outside the lists.
 std::string FighterCode(std::int64_t fighter);
 std::string StageCode(std::int64_t stage);
+// How many stages the catalog lists (0 before FillCatalog); ids run from 0.
+int StageCount();
 // The other way, from a code as a launch names it (L"RYU", VersusLaunch's
 // FighterPick): its id, empty for one not listed.
 std::optional<int> FighterId(const std::wstring& code);

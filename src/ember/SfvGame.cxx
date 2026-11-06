@@ -7,6 +7,7 @@
 
 #include "core/RollbackSession.hxx"
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvShell.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
@@ -17,6 +18,7 @@
 
 #include "common/InstalledContent.hxx"
 #include "common/Localization.hxx"
+#include "common/PadKind.hxx"
 #include "sf4e/sf4e__AbsentGameFeatures.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
 #include "sf4e/sf4e__RuntimeEvents.hxx"
@@ -255,17 +257,26 @@ public:
 		mapped = raw = s_battle.game ? s_battle.game->Sampled(0) : 0;
 		return s_battle.game != nullptr;
 	}
-	bool ReadController(int, int, unsigned& held, unsigned* physical) override
+	// A pad's menu buttons as the slot was last read, before the overlay
+	// hides it from the game (VirtualPads' record): the D-pad, or the left
+	// stick, as the directions (1 up, 2 down, 4 left, 8 right), and the
+	// buttons in Ember's XInput layout. Ember's shell navigates by these.
+	bool ReadController(int deviceType, int deviceIndex, unsigned& held, unsigned* physical) override
 	{
 		held = 0;
 		if (physical) *physical = 0;
-		return false;
+		if (deviceType != sf4e::input::PadXInput) return false;
+		const mod::PadSeen seen = mod::LastPadState(deviceIndex);
+		if (!seen.connected) return false;
+		held = (seen.buttons & 0xFu) | seen.stick;
+		if (physical) *physical = sf4e::input::xinput::Physical(seen.buttons);
+		return true;
 	}
 	// The XInput layout (A confirms, B goes back), the default of MenuButtons.
 	sf4e::input::MenuButtons MenuButtons(int, int) override { return {}; }
 	std::vector<sf4e::gamepads::NativeController> NativeControllers() override { return {}; }
-	// The overlay clears the game's pad state itself while it is open.
-	bool MenuTakesPads() override { return false; }
+	// The shell holds the pads (SfvShell), and the overlay hides them from the game.
+	bool MenuTakesPads() override { return ShellTakesPads(); }
 
 	sf4e::Gamepads::LayerFrame ReadPadLayer() override { return {}; }
 	std::optional<sf4e::gamepads::Identity> PadInSlot(int) override { return std::nullopt; }

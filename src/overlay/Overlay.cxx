@@ -1,6 +1,13 @@
 #include "overlay/Overlay.hxx"
 
 #include "mod/Log.hxx"
+#include "overlay/TextureUploaderD3D11.hxx"
+
+#include "ui/GameMenu.hxx"
+#include "ui/OverlayLifecycle.hxx"
+#include "ui/SelectionArt.hxx"
+#include "ui/Theme.hxx"
+#include "ui/Win32Input.hxx"
 
 #include <MinHook.h>
 
@@ -13,12 +20,10 @@
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
 
-#include <algorithm>
 #include <atomic>
+#include <memory>
 #include <mutex>
-#include <vector>
-
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
+#include <string>
 
 namespace sfve::overlay {
 
@@ -43,24 +48,16 @@ std::mutex s_uiMutex;
 OverlayUi s_ui;              // as set; copied to the render thread under the mutex
 std::atomic<bool> s_haveUi;
 
-std::atomic<bool> s_open;
-// Each slot's last pad state as the game polled it (buttons, then the left
-// stick as direction bits), for the interface's navigation: real and scripted
-// pads alike, on any slot.
-std::atomic<uint32_t> s_pads[XUSER_MAX_COUNT];
-constexpr uint32_t kStickUp = 1u << 16, kStickDown = 1u << 17, kStickLeft = 1u << 18, kStickRight = 1u << 19;
-constexpr SHORT kStickThreshold = 16000;
-std::atomic<DWORD> s_renderThread;
+// What the render thread last published, for the window procedure.
+std::atomic<bool> s_shown, s_available;
+std::atomic<bool> s_focused{true};
 std::atomic<HWND> s_window; // the game's window, once its swap chain presents
 std::atomic<WNDPROC> s_gameWndProc;
 
-struct QueuedMessage {
-	UINT message;
-	WPARAM wParam;
-	LPARAM lParam;
-};
-std::mutex s_inputMutex;
-std::vector<QueuedMessage> s_input; // window messages for ImGui, game thread -> render thread
+// The window's ImGui input, applied by the render thread, and the guard
+// around the context's backends (OverlayLifecycle.hxx).
+sf4e::ui::Win32InputBridge s_inputBridge;
+sf4e::ui::OverlayLifecycle s_lifecycle;
 
 // Render thread only.
 struct Renderer {
@@ -68,7 +65,7 @@ struct Renderer {
 	ID3D11Device* device = nullptr;
 	ID3D11DeviceContext* context = nullptr;
 	ID3D11RenderTargetView* target = nullptr;
-	float scale = 0.0f;
+	std::unique_ptr<sf4e::ui::SelectionArt> art;
 	bool ready = false;
 };
 Renderer s_r;
@@ -94,35 +91,23 @@ struct ShaderBinding {
 	}
 };
 
-void Toggle(const char* how)
-{
-	if (!s_haveUi) return; // nothing to show yet
-	const bool open = !s_open.load();
-	s_open = open;
-	Log("overlay: %s (%s)", open ? "open" : "closed", how);
-}
-
-bool IsInputMessage(UINT message)
-{
-	return (message >= WM_KEYFIRST && message <= WM_KEYLAST) || (message >= WM_MOUSEFIRST && message <= WM_MOUSELAST);
-}
-
-// Ahead of the game's window procedure. While the panel is open, keyboard
-// and mouse go to ImGui only; key releases still reach the game too, so a
-// key held when the panel opened is not left down for it.
+// Ahead of the game's window procedure. With an interface set, keyboard and
+// mouse reach ImGui; while it is shown they are its own (key releases still
+// reach the game, so a key held when it opened is not left down there), and
+// F10, which shows and hides it, is never the game's where it can be shown.
 LRESULT CALLBACK OverlayWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	const bool firstPress = !(lParam & (1 << 30));
-	if (message == WM_KEYDOWN && wParam == VK_F1 && firstPress) {
-		Toggle("F1");
-		return 0;
+	if (message == WM_ACTIVATEAPP) {
+		s_focused = wParam != 0;
+		if (!wParam) s_inputBridge.RequestClear(); // nothing stays held while away
 	}
-	if (s_open && IsInputMessage(message)) {
-		{
-			std::lock_guard lock(s_inputMutex);
-			s_input.push_back({message, wParam, lParam});
+	if (s_haveUi) {
+		const sf4e::ui::OverlayLifecycle::Message handling(s_lifecycle);
+		if (ImGui::GetCurrentContext() && s_r.ready) {
+			const LRESULT handled =
+				sf4e::ui::HandleOverlayMessage(window, message, wParam, lParam, s_shown && s_focused, s_available);
+			if (handled && message != WM_KEYUP && message != WM_SYSKEYUP) return handled;
 		}
-		if (message != WM_KEYUP && message != WM_SYSKEYUP) return 0;
 	}
 	return CallWindowProcW(s_gameWndProc, window, message, wParam, lParam);
 }
@@ -134,20 +119,47 @@ bool IsGameWindow(HWND window)
 	return window && pid == GetCurrentProcessId() && IsWindowVisible(window) && GetAncestor(window, GA_ROOT) == window;
 }
 
-// Takes the game's swap chain: ImGui's backends on its window and device.
-bool Attach(IDXGISwapChain* swap, HWND window)
+// The folder a module was loaded from: the game's exe (null) or the mod.
+std::wstring FolderOf(HMODULE module)
 {
+	wchar_t path[MAX_PATH] = {};
+	GetModuleFileNameW(module, path, MAX_PATH);
+	std::wstring folder(path);
+	return folder.substr(0, folder.find_last_of(L"\\/"));
+}
+
+// The picture's size, for layout and the mouse: the game may draw at another
+// size than its window's client area.
+void FollowRenderSize(const DXGI_SWAP_CHAIN_DESC& desc)
+{
+	ImGui_ImplWin32_SetRenderSize((float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height);
+}
+
+// Takes the game's swap chain: ImGui's backends on its window and device,
+// and Ember's pictures on that device.
+bool Attach(IDXGISwapChain* swap, const DXGI_SWAP_CHAIN_DESC& desc)
+{
+	const sf4e::ui::OverlayLifecycle::Change change(s_lifecycle);
 	if (FAILED(swap->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&s_r.device)))) return false;
 	s_r.device->GetImmediateContext(&s_r.context);
 	if (!ImGui::GetCurrentContext()) {
+		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
 		ImGuiIO& io = ImGui::GetIO();
 		io.IniFilename = nullptr; // nothing written next to the game
 		io.LogFilename = nullptr;
-		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+		ImGui::GetPlatformIO().Platform_SetImeDataFn = nullptr;
+		sf4e::ui::SetAtlasBuildLog([](const char* line) { Log("overlay: %s", line); });
 	}
+	const HWND window = desc.OutputWindow;
 	ImGui_ImplWin32_Init(window);
+	s_inputBridge.RequestClear(); // nothing queued for backends that are gone
+	ImGui_ImplWin32_SetInputBridge(&s_inputBridge);
+	FollowRenderSize(desc);
 	ImGui_ImplDX11_Init(s_r.device, s_r.context);
+	s_r.art = std::make_unique<sf4e::ui::SelectionArt>(MakeTextureUploaderD3D11(s_r.device), FolderOf(nullptr),
+		mod::ModuleFolder() + L"\\assets\\selection", [](const std::string& line) { Log("art: %s", line.c_str()); });
+	sf4e::ui::SetMenuArt(s_r.art.get());
 	s_r.swap = swap;
 	s_r.ready = true;
 	s_window = window;
@@ -158,13 +170,17 @@ bool Attach(IDXGISwapChain* swap, HWND window)
 		s_gameWndProc = reinterpret_cast<WNDPROC>(
 			SetWindowLongPtrW(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&OverlayWndProc)));
 	}
-	Log("overlay: drawing on swap chain %p (window %p)", (void*)swap, (void*)window);
+	Log("overlay: drawing on swap chain %p (window %p), %ux%u", (void*)swap, (void*)window, desc.BufferDesc.Width,
+		desc.BufferDesc.Height);
 	return true;
 }
 
 void Detach()
 {
+	const sf4e::ui::OverlayLifecycle::Change change(s_lifecycle);
 	Release(s_r.target);
+	sf4e::ui::SetMenuArt(nullptr);
+	s_r.art.reset();
 	if (s_r.ready) {
 		ImGui_ImplDX11_Shutdown();
 		ImGui_ImplWin32_Shutdown();
@@ -172,85 +188,15 @@ void Detach()
 	Release(s_r.context);
 	Release(s_r.device);
 	s_r = Renderer{};
+	s_shown = false;
 }
 
-// The pads' merged state as ImGui gamepad keys, once a frame.
-void FeedPads()
+// Draws the frame's ImGui over the picture, leaving the engine's pipeline
+// as it was. ImGui's backend restores the state it changes, except the
+// render targets and the hull, domain and compute shaders it unbinds (the
+// engine's state cache would otherwise think them still bound).
+void Render(ImDrawData* data)
 {
-	uint32_t held = 0;
-	for (const std::atomic<uint32_t>& pad : s_pads) held |= pad.load();
-	struct Map {
-		uint32_t bits;
-		ImGuiKey key;
-	};
-	static const Map kMap[] = {
-		{XINPUT_GAMEPAD_DPAD_UP | kStickUp, ImGuiKey_GamepadDpadUp},
-		{XINPUT_GAMEPAD_DPAD_DOWN | kStickDown, ImGuiKey_GamepadDpadDown},
-		{XINPUT_GAMEPAD_DPAD_LEFT | kStickLeft, ImGuiKey_GamepadDpadLeft},
-		{XINPUT_GAMEPAD_DPAD_RIGHT | kStickRight, ImGuiKey_GamepadDpadRight},
-		{XINPUT_GAMEPAD_A, ImGuiKey_GamepadFaceDown},
-		{XINPUT_GAMEPAD_B, ImGuiKey_GamepadFaceRight},
-		{XINPUT_GAMEPAD_X, ImGuiKey_GamepadFaceLeft},
-		{XINPUT_GAMEPAD_Y, ImGuiKey_GamepadFaceUp},
-		{XINPUT_GAMEPAD_LEFT_SHOULDER, ImGuiKey_GamepadL1},
-		{XINPUT_GAMEPAD_RIGHT_SHOULDER, ImGuiKey_GamepadR1},
-		{XINPUT_GAMEPAD_START, ImGuiKey_GamepadStart},
-	};
-	ImGuiIO& io = ImGui::GetIO();
-	io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
-	for (const Map& m : kMap) io.AddKeyEvent(m.key, (held & m.bits) != 0);
-}
-
-void Draw(IDXGISwapChain* swap)
-{
-	s_renderThread = GetCurrentThreadId();
-	DXGI_SWAP_CHAIN_DESC desc{};
-	if (FAILED(swap->GetDesc(&desc)) || !IsGameWindow(desc.OutputWindow)) return;
-	if (s_r.ready && s_r.swap != swap) {
-		if (desc.OutputWindow != s_window.load()) return; // another window's swap chain
-		Log("overlay: the game's swap chain changed");
-		Detach();
-	}
-	if (!s_r.ready && !Attach(swap, desc.OutputWindow)) return Detach();
-	std::vector<QueuedMessage> input;
-	{
-		std::lock_guard lock(s_inputMutex);
-		input.swap(s_input);
-	}
-	if (!s_open) return; // nothing drawn: no cost while closed
-	for (const QueuedMessage& m : input) ImGui_ImplWin32_WndProcHandler(desc.OutputWindow, m.message, m.wParam, m.lParam);
-
-	OverlayUi ui;
-	{
-		std::lock_guard lock(s_uiMutex);
-		ui = s_ui;
-	}
-	if (!ui.draw) return;
-	const float scale = std::clamp((float)desc.BufferDesc.Height / 900.0f, 0.75f, 3.0f);
-	if (scale != s_r.scale) {
-		s_r.scale = scale;
-		if (ui.applyScale) ui.applyScale(scale);
-		ImGui_ImplDX11_InvalidateDeviceObjects(); // a rebuilt font atlas is uploaded on the next frame
-	}
-	if (!s_r.target) {
-		ID3D11Texture2D* backBuffer = nullptr;
-		if (FAILED(swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer)))) return;
-		s_r.device->CreateRenderTargetView(backBuffer, nullptr, &s_r.target);
-		backBuffer->Release();
-		if (!s_r.target) return;
-	}
-
-	ImGui_ImplDX11_NewFrame();
-	ImGui_ImplWin32_NewFrame();
-	FeedPads();
-	ImGui::NewFrame();
-	const bool keepOpen = ui.draw();
-	ImGui::Render();
-	if (!keepOpen) s_open = false;
-
-	// ImGui's backend restores the pipeline state it changes, except the
-	// render targets and the hull, domain and compute shaders it unbinds (the
-	// engine's state cache would otherwise think them still bound).
 	ID3D11RenderTargetView* targets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
 	ID3D11DepthStencilView* depth = nullptr;
 	ShaderBinding<ID3D11HullShader> hull;
@@ -261,13 +207,54 @@ void Draw(IDXGISwapChain* swap)
 	s_r.context->DSGetShader(&domain.shader, domain.instances, &domain.count);
 	s_r.context->CSGetShader(&compute.shader, compute.instances, &compute.count);
 	s_r.context->OMSetRenderTargets(1, &s_r.target, nullptr);
-	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+	ImGui_ImplDX11_RenderDrawData(data);
 	s_r.context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, targets, depth);
 	s_r.context->HSSetShader(hull.shader, hull.instances, hull.count);
 	s_r.context->DSSetShader(domain.shader, domain.instances, domain.count);
 	s_r.context->CSSetShader(compute.shader, compute.instances, compute.count);
 	for (ID3D11RenderTargetView*& t : targets) Release(t);
 	Release(depth);
+}
+
+void Draw(IDXGISwapChain* swap)
+{
+	OverlayUi ui;
+	{
+		std::lock_guard lock(s_uiMutex);
+		ui = s_ui;
+	}
+	if (!ui.draw) return; // no interface: nothing to draw
+	DXGI_SWAP_CHAIN_DESC desc{};
+	if (FAILED(swap->GetDesc(&desc)) || !IsGameWindow(desc.OutputWindow)) return;
+	if (s_r.ready && s_r.swap != swap) {
+		if (desc.OutputWindow != s_window.load()) return; // another window's swap chain
+		Log("overlay: the game's swap chain changed");
+		Detach();
+	}
+	if (!s_r.ready && !Attach(swap, desc)) return Detach();
+	const sf4e::ui::OverlayLifecycle::Frame drawing(s_lifecycle);
+	if (!drawing) return;
+	if (!s_r.target) {
+		ID3D11Texture2D* backBuffer = nullptr;
+		if (FAILED(swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer)))) return;
+		s_r.device->CreateRenderTargetView(backBuffer, nullptr, &s_r.target);
+		backBuffer->Release();
+		if (!s_r.target) return;
+		FollowRenderSize(desc); // a resize gives a new back buffer
+	}
+	// Ember covers the same share of the picture at every resolution.
+	if (ui.applyScale && ui.applyScale((float)desc.BufferDesc.Height / 1080.0f)) ImGui_ImplDX11_InvalidateDeviceObjects();
+	ImGui_ImplDX11_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	if (ui.beginFrame) ui.beginFrame();
+	ImGui::NewFrame();
+	s_r.art->Pump();
+	const OverlayUi::Shown shown = ui.draw();
+	s_shown = shown.shown;
+	s_available = shown.available;
+	ImGui::Render();
+	ImDrawData* data = ImGui::GetDrawData();
+	if (data->CmdListsCount) Render(data);
 }
 
 HRESULT WINAPI h_Present(IDXGISwapChain* swap, UINT syncInterval, UINT flags)
@@ -343,26 +330,27 @@ void SetOverlayUi(OverlayUi ui)
 	s_haveUi = static_cast<bool>(s_ui.draw);
 }
 
+bool GameWindowFocused()
+{
+	return s_focused;
+}
+
 void FilterGamePad(unsigned long user, void* xinputState)
 {
-	// ImGui's own pad reading (on the render thread) sees the real state.
-	if (GetCurrentThreadId() == s_renderThread.load() || user >= XUSER_MAX_COUNT) return;
-	static WORD previous[XUSER_MAX_COUNT];
-	static WORD heldAtClose[XUSER_MAX_COUNT]; // buttons down when the overlay closed: hidden until released
+	if (user >= XUSER_MAX_COUNT || !s_haveUi) return;
+	std::function<bool(unsigned long, unsigned short)> takesPad;
+	{
+		std::lock_guard lock(s_uiMutex);
+		takesPad = s_ui.takesPad;
+	}
+	static WORD heldAtRelease[XUSER_MAX_COUNT]; // buttons down when the interface let go: hidden until released
 	XINPUT_GAMEPAD& pad = static_cast<XINPUT_STATE*>(xinputState)->Gamepad;
-	s_pads[user] = pad.wButtons | (pad.sThumbLY > kStickThreshold ? kStickUp : 0) |
-		(pad.sThumbLY < -kStickThreshold ? kStickDown : 0) | (pad.sThumbLX < -kStickThreshold ? kStickLeft : 0) |
-		(pad.sThumbLX > kStickThreshold ? kStickRight : 0);
-	const bool backPressed = (pad.wButtons & XINPUT_GAMEPAD_BACK) && !(previous[user] & XINPUT_GAMEPAD_BACK);
-	previous[user] = pad.wButtons;
-	if (backPressed && s_window.load()) Toggle("View");
-	const bool open = s_open;
-	if (open || backPressed) {
-		heldAtClose[user] = pad.wButtons; // what is down now must not reach the game on closing
+	if (takesPad && takesPad(user, pad.wButtons)) {
+		heldAtRelease[user] = pad.wButtons; // what is down now must not reach the game on letting go
 		pad = XINPUT_GAMEPAD{};
 	} else {
-		heldAtClose[user] &= pad.wButtons;
-		pad.wButtons &= ~heldAtClose[user];
+		heldAtRelease[user] &= pad.wButtons;
+		pad.wButtons &= ~heldAtRelease[user];
 	}
 }
 
