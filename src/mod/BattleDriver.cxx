@@ -28,8 +28,8 @@ void BattleDriver::OnBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 	if (!adapter_.Bind()) {
 		adapter_.RunOriginal(); // the battle's objects are not all known yet
 	} else {
-		if (boundBattle_ != battleFrame) {
-			boundBattle_ = battleFrame;
+		if (boundBattle_ != adapter_.Battle()) {
+			boundBattle_ = adapter_.Battle();
 			LogInventory();
 			mode_->NewBattle(adapter_);
 		}

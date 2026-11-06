@@ -21,6 +21,7 @@ public:
 	explicit BattleDriver(std::unique_ptr<BattleMode> mode) : mode_(std::move(mode)) {}
 
 	void OnBattleFrame(uint8_t* battleFrame, BattleFrameFn original) override;
+	void OnBattleFrameConstructed(uint8_t* battleFrame) override { adapter_.SeeBattleFrameConstructed(battleFrame); }
 	void OnInputRecord(uint8_t* inputUnit) override { adapter_.OnInputRecord(inputUnit); }
 	void OnRollbackUnitTick(uint8_t* rollbackUnit) override { adapter_.SeeRollbackUnit(rollbackUnit); }
 	void OnFlowState(int state) override { adapter_.SeeFlowState(state); }
@@ -40,7 +41,7 @@ private:
 
 	std::unique_ptr<BattleMode> mode_;
 	SfvAdapter adapter_;
-	uint8_t* boundBattle_ = nullptr; // the battle frame the mode was last given
+	uint64_t boundBattle_ = 0; // the battle (SfvAdapter::Battle) the mode was last given
 	std::atomic<bool> restart_{false};
 	uint32_t frames_ = 0;
 	std::atomic<uint32_t> gameThread_{0};

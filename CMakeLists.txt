@@ -94,6 +94,7 @@ target_link_libraries(sfve_ember PUBLIC sfve_core ember_runtime_x64 minhook::min
 add_executable(sfve_ember_tests
     tests/main.cxx
     tests/EmberAdapterTests.cxx
+    tests/BattleIdentityTests.cxx
     src/mod/ControlPipe.cxx
     src/mod/GameArt.cxx
     src/mod/GameContent.cxx

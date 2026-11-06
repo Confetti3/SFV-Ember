@@ -25,9 +25,11 @@ using FlowMessageFn = uint64_t (*)(uint8_t* receiver, uint8_t* message);
 using FindUnitFn = GameSharedPtr* (*)(uint8_t* battle, GameSharedPtr* out, const void* type, uint32_t index);
 using GetBattleDataFn = uint8_t* (*)(uint8_t* context);
 using GameAllocFn = void* (*)(size_t size);
+using BattleFrameCtorFn = uint8_t* (*)(uint8_t* battleFrame);
 
 BattleListener* s_listener;
 BattleFrameFn o_battleFrame;
+BattleFrameCtorFn o_battleFrameCtor;
 InputRecordFn o_inputRecord;
 UnitTickFn o_unitTick;
 GetManagerFn s_getManager;
@@ -43,6 +45,13 @@ uintptr_t s_imageBase;
 void h_BattleFrame(uint8_t* battleFrame)
 {
 	s_listener->OnBattleFrame(battleFrame, o_battleFrame);
+}
+
+uint8_t* h_BattleFrameCtor(uint8_t* battleFrame)
+{
+	uint8_t* constructed = o_battleFrameCtor(battleFrame);
+	s_listener->OnBattleFrameConstructed(battleFrame);
+	return constructed;
 }
 
 uint64_t h_InputRecord(uint8_t* inputUnit, uint32_t predictRemote)
@@ -111,9 +120,10 @@ bool InstallGameHooks(uintptr_t base, BattleListener* listener)
 	const bool ok = HookCodeSite(base, sfv::kInputRecord, (void*)h_InputRecord, (void**)&o_inputRecord) &&
 		HookCodeSite(base, sfv::kRollbackUnitPre, (void*)h_UnitTick, (void**)&o_unitTick) &&
 		HookCodeSite(base, sfv::kBattleFrameUpdate, (void*)h_BattleFrame, (void**)&o_battleFrame) &&
+		HookCodeSite(base, sfv::kBattleFrameCtor, (void*)h_BattleFrameCtor, (void**)&o_battleFrameCtor) &&
 		HookCodeSite(base, sfv::kFlowMessage, (void*)h_FlowMessage, (void**)&o_flowMessage) &&
 		HookCodeSite(base, sfv::kGameAlloc, (void*)h_GameAlloc, (void**)&o_gameAlloc);
-	Log("hooks: %s", ok ? "battle frame, input record, rollback unit, battle flow and allocator hooked" : "INCOMPLETE");
+	Log("hooks: %s", ok ? "battle frame and its constructor, input record, rollback unit, battle flow and allocator hooked" : "INCOMPLETE");
 	RegisterStatus("zeroedAllocs", [] {
 		char text[64];
 		snprintf(text, sizeof(text), "{\"count\":%llu,\"bytes\":%llu}",

@@ -18,6 +18,8 @@ public:
 	// One rendered frame of battle. The listener decides how (and whether) the
 	// original runs; `original` is the unhooked function.
 	virtual void OnBattleFrame(uint8_t* battleFrame, BattleFrameFn original) = 0;
+	// The game constructed a battle frame: a new battle, wherever it lies.
+	virtual void OnBattleFrameConstructed(uint8_t* battleFrame) = 0;
 	// A battle tick is about to record its pad inputs.
 	virtual void OnInputRecord(uint8_t* inputUnit) = 0;
 	// A battle tick reached its snapshot task.

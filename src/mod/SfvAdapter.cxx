@@ -29,10 +29,12 @@ constexpr size_t kMaxRegions = 4096;
 void SfvAdapter::SeeBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 {
 	original_ = original;
-	if (battleFrame == battleFrame_) return;
+	if (!identity_.See(battleFrame)) return;
+	const bool sameAddress = battleFrame == battleFrame_;
 	Forget();
 	battleFrame_ = battleFrame;
-	Log("adapter: new battle frame %p", (void*)battleFrame);
+	Log("adapter: new battle frame %p (battle %llu%s)", (void*)battleFrame, (unsigned long long)identity_.Battle(),
+		sameAddress ? ", at the last battle's address" : "");
 }
 
 void SfvAdapter::Forget()
@@ -268,11 +270,11 @@ std::string SfvAdapter::BuildId() const
 std::string SfvAdapter::Describe() const
 {
 	const FlowRollback::Stats& flow = flow_.GetStats();
-	char text[384];
+	char text[448];
 	snprintf(text, sizeof(text),
-		"{\"bound\":%s,\"gameRegions\":%zu,\"regions\":%zu,\"bytes\":%zu,\"ticksLastUpdate\":%u,\"sampled\":[%u,%u],"
+		"{\"battle\":%llu,\"bound\":%s,\"gameRegions\":%zu,\"regions\":%zu,\"bytes\":%zu,\"ticksLastUpdate\":%u,\"sampled\":[%u,%u],"
 		"\"flowState\":%d,\"flowSwitches\":%llu,\"delegatesRebound\":%llu,\"keptUses\":%llu}",
-		bound_ ? "true" : "false", gameRegions_, layout_.Regions().size(), layout_.TotalSize(), ticksInLastUpdate_,
+		(unsigned long long)identity_.Battle(), bound_ ? "true" : "false", gameRegions_, layout_.Regions().size(), layout_.TotalSize(), ticksInLastUpdate_,
 		sampled_[0], sampled_[1], flow_.Announced(), (unsigned long long)flow.stateSwitches,
 		(unsigned long long)flow.delegatesRebound, (unsigned long long)flow.keptUses);
 	return text;

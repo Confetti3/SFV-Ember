@@ -25,6 +25,20 @@ constexpr uint32_t kExeTimestamp = 0x648AD3A4;
 constexpr CodeSite kBattleFrameUpdate{"BattleFrameUpdate", 0x4DC6A0,
 	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0xD9, 0xE8, 0x22, 0xFC, 0xFF, 0xFF, 0x48, 0x8B}};
 
+// BattleFrame* BattleFrameCtor(BattleFrame*): the battle frame's constructor
+// (sets its vtable, rva 0x2C742D8, whose +0x40 is BattleFrameUpdate). Its one
+// caller (rva 0x4F4795) is a virtual of the frame's owner (slot at rva
+// 0x2C7B638), which, when the owner's +0x300 holds no frame, allocates 0x1D0
+// bytes with FMemory::Malloc (rva 0x4F4788 calls 0x11370F0), constructs the
+// frame in them and installs the battle through the frame's +0x08 (rva
+// 0x4DA710). Another virtual of the same vtable (slot at rva 0x2C7B458, rva
+// 0x4EFBE0) resets the frame (+0x18, rva 0x4D8830), clears +0x300 and drops
+// the frame. So the constructor runs once per battle, while the reset runs at
+// that end, in the destructor (rva 0x4C7180) and at the install. Hooked so a
+// new battle at the old one's address is still new (BattleIdentity).
+constexpr CodeSite kBattleFrameCtor{"BattleFrameCtor", 0x4C5C40,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x48, 0x89, 0x7C, 0x24, 0x18, 0x41}};
+
 // void InputRecord(InputUnit*, bool predictRemote): once per battle tick,
 // writes each local pad's value for this tick (+0x118 + 4i) into that pad's
 // history ring (+0x178 + 0x800 i: 128 slots of {tag, frame, value, valid}) at
@@ -298,7 +312,7 @@ constexpr CodeSite kStaticLoadObject{"StaticLoadObject", 0x1242910,
 constexpr CodeSite kColourSwatch{"ColourSwatch", 0x554750,
 	{0x44, 0x89, 0x4C, 0x24, 0x20, 0x48, 0x89, 0x54, 0x24, 0x10, 0x55, 0x53, 0x57, 0x41, 0x55, 0x41}};
 
-constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
+constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
@@ -494,6 +508,7 @@ constexpr int kFight = 6;                          // players are fighting
 // The battle object (0x1D0 bytes, constructor rva 0x4C5C40, reset 0x4D8830).
 // It is allocated by FMemory::Malloc directly (rva 0x4F4788 calls 0x11370F0),
 // not through GameAlloc, so the heap's leftovers stay in what it leaves unset.
+// One per battle (kBattleFrameCtor); the next battle's may reuse its block.
 namespace battleframe {
 constexpr uint32_t kState = 0x190;      // pause, frame counters, slow motion, extra ticks, tick counter, clock
 // Through +0x1BB, the tick counter. +0x1BC..+0x1BF is alignment padding before
