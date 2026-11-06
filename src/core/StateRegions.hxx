@@ -57,6 +57,9 @@ enum class HashScope {
 struct RegionHash {
 	uint64_t size = 0;
 	uint64_t hash = 0;
+	// The region's place in this process's layout, which names it there;
+	// not compared (two processes list their regions in different orders).
+	size_t region = 0;
 	bool operator==(const RegionHash& o) const { return size == o.size && hash == o.hash; }
 };
 

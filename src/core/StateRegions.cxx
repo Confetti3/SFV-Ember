@@ -200,7 +200,7 @@ void StateLayout::PeerRegionHashesSaved(const uint8_t* src, std::vector<RegionHa
 {
 	out.clear();
 	for (size_t i = 0; i < regions_.size(); i++) {
-		if (Hashed(regions_[i], HashScope::Peers)) out.push_back({regions_[i].size, HashRegion(i, src, HashScope::Peers)});
+		if (Hashed(regions_[i], HashScope::Peers)) out.push_back({regions_[i].size, HashRegion(i, src, HashScope::Peers), i});
 		src += regions_[i].size;
 	}
 	std::sort(out.begin(), out.end(),
