@@ -16,7 +16,8 @@ namespace sfve::mod {
 
 namespace {
 
-using HudInvokeFn = void (*)(uint8_t* movie, const GameString* method, float number, const GameString* text);
+// It returns what the movie player's invoke leaves in rax; the callers seen ignore it.
+using HudInvokeFn = uint64_t (*)(uint8_t* movie, const GameString* method, float number, const GameString* text);
 
 HudInvokeFn o_hudInvoke;
 
@@ -56,15 +57,14 @@ std::string Utf8(const GameString* s)
 	return Utf8(s->data, wcsnlen(s->data, (size_t)s->count));
 }
 
-void h_HudInvoke(uint8_t* movie, const GameString* method, float number, const GameString* text)
+uint64_t h_HudInvoke(uint8_t* movie, const GameString* method, float number, const GameString* text)
 {
 	const int side = number == 0.f ? 0 : number == 1.f ? 1 : -1;
 	int label = -1;
 	for (int i = 0; side >= 0 && i < 2; ++i)
 		if (Is(method, kLabels[i].method)) label = i;
 	if (label < 0) {
-		o_hudInvoke(movie, method, number, text);
-		return;
+		return o_hudInvoke(movie, method, number, text);
 	}
 	std::wstring name;
 	bool replace = false;
@@ -89,7 +89,7 @@ void h_HudInvoke(uint8_t* movie, const GameString* method, float number, const G
 		seen.asked = asked;
 		seen.shown = now;
 	}
-	o_hudInvoke(movie, method, number, shown);
+	return o_hudInvoke(movie, method, number, shown);
 }
 
 std::string StatusJson()
