@@ -73,6 +73,7 @@ add_library(sfve_ember STATIC
     src/ember/EmberHost.cxx
     src/ember/RoomBattle.cxx
     src/ember/RoomCommands.cxx
+    src/ember/SfvArt.cxx
     src/ember/SfvCatalog.cxx
     src/ember/SfvGame.cxx
     src/ember/SfvPick.cxx
@@ -94,6 +95,7 @@ add_executable(sfve_ember_tests
     tests/main.cxx
     tests/EmberAdapterTests.cxx
     src/mod/ControlPipe.cxx
+    src/mod/GameArt.cxx
     src/mod/GameContent.cxx
     src/mod/GameExit.cxx
     src/mod/GameHooks.cxx
@@ -139,6 +141,7 @@ add_library(sfv_ember SHARED
     src/mod/GameInput.cxx
     src/mod/WriteWatch.cxx
     src/mod/LagSim.cxx
+    src/mod/GameArt.cxx
     src/mod/GameContent.cxx
     src/mod/GameExit.cxx)
 target_link_libraries(sfv_ember PRIVATE sfve_ember)

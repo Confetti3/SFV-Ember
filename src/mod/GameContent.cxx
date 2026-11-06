@@ -169,9 +169,19 @@ FighterContent ReadFighter(uint8_t* spec, uint8_t* entry, const std::vector<std:
 	return fighter;
 }
 
+// Whether a battle can load the fighter: its entry names a battle setup.
+// Random has none either way, and ELEVEN has none: the select screen turns
+// both into another fighter, which Ember's launch does not.
+bool HasBattleSetup(uint8_t* entry)
+{
+	return Field<GameString>(entry, sfv::content::kCharaSetupData).count > 1;
+}
+
 // The spec's selectable fighters in its order (the select screen's), each
 // with its costumes and colours. A fighter the fighter table does not have,
-// or the Random entry, is not one a player can play.
+// or one with no battle setup of its own (Random, ELEVEN), is not one a
+// player can play here. The rule reads only the exe's own fighter table, so
+// every copy keeps the same fighters.
 std::vector<FighterContent> ReadFighters(uint8_t* singleton, uint8_t* spec)
 {
 	uint8_t* charaAsset = Field<uint8_t*>(singleton, sfv::content::kCharaAsset);
@@ -180,11 +190,8 @@ std::vector<FighterContent> ReadFighters(uint8_t* singleton, uint8_t* spec)
 	std::vector<FighterContent> fighters;
 	for (int id : ReadNumbers([&](GameArray<int32_t>* out) { return At<FighterIdsFn>(sfv::kSpecFighters)(&spec, out); })) {
 		uint8_t* entry = EntryWithId(charaAsset, id);
-		if (!entry) continue;
-		FighterContent fighter = ReadFighter(spec, entry, installed);
-		const std::wstring wide(fighter.code.begin(), fighter.code.end());
-		if (fighter.code.empty() || _wcsicmp(wide.c_str(), sfv::content::kRandomFighter) == 0) continue;
-		fighters.push_back(std::move(fighter));
+		if (!entry || !HasBattleSetup(entry)) continue;
+		fighters.push_back(ReadFighter(spec, entry, installed));
 	}
 	return fighters;
 }

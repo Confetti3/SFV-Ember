@@ -7,6 +7,7 @@
 #include <doctest/doctest.h>
 
 #include "LoopbackPair.hxx"
+#include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
 #include "ember/SfvVerification.hxx"
@@ -458,8 +459,9 @@ TEST_CASE("the pick labels are the game's names, from the catalog")
 	CHECK(std::string(ShortUltraLabel(0)).empty());
 }
 
-TEST_CASE("every picture of the game reports itself missing until SFV art exists")
+TEST_CASE("the game's pictures are its fighters' faces and its stages', and the rest report missing")
 {
+	FillTestCatalog();
 	struct NoTextures final : sf4e::ui::TextureUploader {
 		ImTextureID Create(unsigned, unsigned, const unsigned char*, std::string& failure) override
 		{
@@ -469,13 +471,19 @@ TEST_CASE("every picture of the game reports itself missing until SFV art exists
 		void Release(ImTextureID) override {}
 	};
 	sf4e::ui::SelectionArt art(std::make_unique<NoTextures>(), L"", L"");
-	CHECK(art.Portrait(0).missing);
-	CHECK(art.Portrait(0, true).missing);
+	// Asked for, a fighter's face and a stage's picture wait for the game,
+	// which loads them at its main menu (none runs in a test).
+	CHECK_FALSE(art.Portrait(0).missing);
+	CHECK(art.Portrait(0).texture == 0);
+	CHECK_FALSE(art.Stage(2).missing);
+	CHECK(art.Portrait(5).missing); // not a fighter of the catalog
+	CHECK(art.Stage(3).missing);
+	// The game has no picture of a fighter in a costume or colour.
 	CHECK(art.Character(0, 0, 0).missing);
 	CHECK(art.Appearance(0, 0, 0).missing);
 	CHECK(art.Ultra(0, 0).missing);
-	CHECK(art.Stage(0).missing);
 	CHECK(art.RankingEmblem("class_B.dds").missing);
+	CHECK_FALSE(Swatch(0, 4, 100).has_value()); // read by the game thread
 }
 
 TEST_CASE("the game offers no optional feature and answers as no battle while none is in play")

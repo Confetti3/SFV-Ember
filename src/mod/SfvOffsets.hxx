@@ -277,13 +277,34 @@ constexpr CodeSite kCostumeName{"CostumeName", 0x557870,
 constexpr CodeSite kTextToString{"TextToString", 0x116E270,
 	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x48, 0x83, 0x79, 0x10, 0x00, 0x48, 0x8B, 0x01, 0x48, 0x8B}};
 
+// The game's pictures (GameArt).
+// UClass* Texture2DClass(const TCHAR* package): UTexture2D's class, cached at
+// rva 0x3D91E68 (L"/Script/Engine").
+constexpr CodeSite kTexture2DClass{"Texture2DClass", 0x1F3CF10,
+	{0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05, 0x4D, 0x4F, 0xE5, 0x01, 0x48, 0x85, 0xC0, 0x75, 0x21}};
+// UObject* StaticLoadObject(UClass*, UObject* outer, const TCHAR* name,
+// const TCHAR* filename, uint32 flags, UPackageMap*, bool reconcile): finds
+// the object or loads it, synchronously. The game loads its data assets so
+// (rva 0x53D1D0, with flags 0 and reconcile true).
+constexpr CodeSite kStaticLoadObject{"StaticLoadObject", 0x1242910,
+	{0x4C, 0x8B, 0xDC, 0x55, 0x53, 0x49, 0x8D, 0xAB, 0x18, 0xFE, 0xFF, 0xFF, 0x48, 0x81, 0xEC, 0xD8}};
+// bool ColourSwatch(CharaAsset*, const FString* code, int costume, int
+// colour, uint32 out[2]): the two colours the costume settings menu shows for
+// a colour (rva 0x8CC6E0, case 4), as 0xRRGGBB. It finds, or loads, the
+// costume's DA_<x>_CostumeColorPreview_<nn> (named by the fighter's
+// CostumeColorPreviewDatas entry) and reads its palette: +40 the colours
+// 0-99, +56 the EX colours, 8 bytes each (rva 0x553C70). False, with both
+// white, for a costume with no preview data.
+constexpr CodeSite kColourSwatch{"ColourSwatch", 0x554750,
+	{0x44, 0x89, 0x4C, 0x24, 0x20, 0x48, 0x89, 0x54, 0x24, 0x10, 0x55, 0x53, 0x57, 0x41, 0x55, 0x41}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
 	kSpecStages, kMainMenuClass, kRequestExit, kStageName, kSpecFighters, kSpecCostumes, kPlayableCostumes,
-	kSpecColours, kCostumeName, kTextToString};
+	kSpecColours, kCostumeName, kTextToString, kTexture2DClass, kStaticLoadObject, kColourSwatch};
 
 namespace versus {
 
@@ -312,18 +333,43 @@ constexpr const wchar_t* kRandomFighter = L"RND";
 // 232-byte entries, which the game searches by a spec id as GameContent does
 // (rva 0x547160). An entry: +0 FString CharaCode, +16 CharaProgID,
 // +20 CharaUniqueID (the spec's key), +24 the loaded PersonalData object
-// (KWCharaPersonalDataAsset), +80 CostumeDatas (TArray<FString>, indexed by
-// costume number), +112 CostumeColorPreviewDatas.
+// (KWCharaPersonalDataAsset), +48 SetupData (FString, the fighter's battle
+// setup), +64 PreviewSetupData, +80 CostumeDatas (TArray<FString>, indexed by
+// costume number), +112 CostumeColorPreviewDatas, +128 the loaded
+// BattleResourceList. ELEVEN's entry has no SetupData and no
+// BattleResourceList: the select screen decides which fighter Eleven plays
+// as (bIsDecidedCharaEleven_Left/Right), and a battle cannot load ELV itself.
 constexpr uint32_t kCharaEntries = 40;
 constexpr uint32_t kCharaCount = 48;
 constexpr uint32_t kCharaStride = 232;
 constexpr uint32_t kCharaUniqueId = 20;
 constexpr uint32_t kCharaPersonal = 24;
+constexpr uint32_t kCharaSetupData = 48;
 // PersonalData: the fighter's name (FText), as the versus screen's
 // "charaName" (rva 0x6DD620).
 constexpr uint32_t kPersonalName = 80;
 
 } // namespace content
+
+// A loaded UTexture2D (UE 4.7.6) and its render resource.
+namespace texture {
+// UTexture's FTextureResource*, and the resource's RHI texture
+// (FTexture::TextureRHI, after FRenderResource's 48 bytes: its InitResource,
+// rva 0x155A4C0, links +16..+39 and sets +40). A material's texture
+// parameter is set so (rva 0x17397F0: texture+64, then +48).
+constexpr uint32_t kResource = 0x40;
+constexpr uint32_t kTextureRhi = 0x30;
+// FTexture2DResource's owner, the texture itself.
+constexpr uint32_t kResourceOwner = 0x68;
+// UTexture2D's FTexturePlatformData*: +0 SizeX, +4 SizeY, +8 slices, +12 the
+// pixel format (GetSizeX, rva 0x1CB9410).
+constexpr uint32_t kPlatformData = 0xC0;
+// The D3D11 RHI texture's ID3D11Texture2D (FD3D11TextureBase's resource). Not
+// read from code: found at run time on a loaded texture, and checked on
+// every texture before use (GameArt: its vtable is a D3D11 texture's, and
+// its size is the platform data's).
+constexpr uint32_t kD3DTexture = 0x68;
+} // namespace texture
 
 namespace jump {
 

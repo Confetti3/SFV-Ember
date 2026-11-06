@@ -1,11 +1,17 @@
 #include "ember/SfvSelectionScreen.hxx"
 
+#include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "ui/MenuRows.hxx"
+#include "ui/Theme.hxx"
+#include "ui/V2.hxx"
 
+#include <imgui.h>
+
+#include <cstdint>
 #include <cstdlib>
 #include <optional>
 
@@ -24,6 +30,12 @@ constexpr const char* kCostume = "costume";
 constexpr const char* kColour = "color";
 constexpr const char* kStage = "stage";
 constexpr const char* kDone = "done";
+
+// The fighter's banner (CharaSelectIcon_l) is 380x258 and a stage's picture
+// (StageSelectBG) 2048x512: the shapes their frames keep while they load.
+constexpr float kBannerWidth = 380;
+constexpr float kBannerShape = 258.f / 380.f;
+constexpr float kStageShape = 512.f / 2048.f;
 
 std::string OptionId(int id)
 {
@@ -68,6 +80,25 @@ MenuEntry StepRow(const char* id, const char* label, std::string value, const ch
 	row.choices = std::move(choices);
 	if (chosen >= 0) row.chosen = OptionId(chosen);
 	return row;
+}
+
+ImU32 Rgb(std::uint32_t rgb)
+{
+	return IM_COL32((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, 0xFF);
+}
+
+// A picture `width` wide at its own shape from `at`, or an empty frame of the
+// shape it is expected to have while it loads; the height it takes, none
+// where the game has no picture.
+float DrawPicture(ImDrawList* draw, const sf4e::ui::SelectionImage& image, ImVec2 at, float width, float expectedShape)
+{
+	if (image.missing) return 0;
+	const float s = sf4e::ui::Scale();
+	const float height = image.width > 0 ? width * image.height / image.width : width * expectedShape;
+	const ImVec2 end(at.x + width, at.y + height);
+	if (image.texture) draw->AddImage(image.texture, at, end, image.uvMin, image.uvMax);
+	else draw->AddRect(at, end, sf4e::ui::v2::Colors().border, 4 * s, 0, s);
+	return height;
 }
 
 } // namespace
@@ -141,14 +172,49 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	PlayerPick pick = CurrentPick();
 	const std::vector<MenuEntry> rows = Rows(pick, editable, stageEditable);
 	const char* status = loc::T(editable ? "selection.status_adjust" : "selection.locked_detail");
-	const MenuAction action = menu_.Draw(loc::T("screen.selection"), rows, error.empty() ? status : error.c_str(), {}, 1, {},
-		{}, false, 100, error.empty() ? sf4e::ui::Tone::Neutral : sf4e::ui::Tone::Error);
+	// The pane beside the rows is the pick's preview, as wide as the fighter's banner.
+	menu_.customDetail = true;
+	menu_.paneWidth = kBannerWidth;
+	const sf4e::ui::GameMenu::Detail preview = [&pick](const std::string& focus) { DrawPreview(pick, focus); };
+	const MenuAction action = menu_.Draw(loc::T("screen.selection"), rows, error.empty() ? status : error.c_str(), preview, 1,
+		{}, {}, false, 100, error.empty() ? sf4e::ui::Tone::Neutral : sf4e::ui::Tone::Error);
 	if (action.kind == MenuAction::Close || action.kind == MenuAction::Shortcut) sf4e::ui::ForwardMenuAction(action);
 	if (action.kind == MenuAction::Activate && action.id == kDone) sf4e::ui::ForwardMenuAction({MenuAction::Close});
 	if (!editable || (action.id == kStage && !stageEditable) || !Apply(action, pick)) return;
 	SetPick(pick);
 	// Opened for this one change, a choice made is it: back where it came from.
 	if (action.kind == MenuAction::Chosen && action.id == openOn_) sf4e::ui::ForwardMenuAction({MenuAction::Close});
+}
+
+void SfvSelectionScreen::DrawPreview(const PlayerPick& pick, const std::string& focus)
+{
+	ImDrawList* draw = ImGui::GetWindowDrawList();
+	const auto& colors = sf4e::ui::v2::Colors();
+	const float s = sf4e::ui::Scale(), gap = 10 * s, line = ImGui::GetTextLineHeightWithSpacing();
+	ImVec2 at = ImGui::GetCursorScreenPos();
+	const float width = ImGui::GetContentRegionAvail().x;
+	if (focus == kStage) {
+		at.y += DrawPicture(draw, StageImage(pick.stage), at, width, kStageShape) + gap;
+		draw->AddText(at, colors.text, StageName(pick.stage).c_str());
+		return;
+	}
+	at.y += DrawPicture(draw, FighterImage(pick.pick.fighter, FighterPicture::Banner), at, width, kBannerShape) + gap;
+	draw->AddText(at, colors.text, ember::Catalog().fighterName(pick.pick.fighter));
+	at.y += line;
+	draw->AddText(at, colors.muted, CostumeName(pick.pick.fighter, pick.pick.costume).c_str());
+	at.y += line;
+	// The colour by the costume menu's label, then its two swatch colours.
+	const std::string colour = std::string(loc::T("selection.color_row")) + " " + ColourName(pick.pick.color);
+	draw->AddText(at, colors.muted, colour.c_str());
+	const auto swatch = Swatch(pick.pick.fighter, pick.pick.costume, pick.pick.color);
+	if (!swatch) return;
+	const float side = ImGui::GetTextLineHeight();
+	float x = at.x + ImGui::CalcTextSize(colour.c_str()).x + gap;
+	for (const std::uint32_t rgb : {swatch->first, swatch->second}) {
+		draw->AddRectFilled(ImVec2(x, at.y), ImVec2(x + side, at.y + side), Rgb(rgb), 3 * s);
+		draw->AddRect(ImVec2(x, at.y), ImVec2(x + side, at.y + side), colors.border, 3 * s, 0, s);
+		x += side + 4 * s;
+	}
 }
 
 } // namespace sfve::adapter
