@@ -404,7 +404,7 @@ TEST_CASE("the product is SFV Ember, with names of its own")
 	CHECK(std::string(product.branding.productName) == "SFV Ember");
 	CHECK(std::string(product.branding.shortName) == "SFV Ember");
 	CHECK(std::string(product.branding.gameName) == "Street Fighter V");
-	// Its own look (EMBER_LIBRARY.md section 16): the gold accent, its theme and ground.
+	// Its own look (EMBER_LIBRARY.md section 17): the gold accent, its theme and ground.
 	CHECK(product.branding.accent == 0xDDB961u);
 	CHECK((product.branding.theme != nullptr && product.branding.theme->underlineFocus));
 	CHECK(std::wstring(product.branding.menuBackdrop) == L"brand/sfv-ember-menu-background.png");

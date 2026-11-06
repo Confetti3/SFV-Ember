@@ -8,7 +8,7 @@
 // proxy's messages), the SFVEmber folder and sfv_ember.log (mod/Log.cxx),
 // sfv_ember.dll and StreetFighterV.exe (proxy/xinput_proxy.cxx), and "sfve"
 // for its named objects (ControlPipe, MultiInstance). Its look is Ember's,
-// set in Street Fighter V's own terms (EMBER_LIBRARY.md section 16): the
+// set in Street Fighter V's own terms (EMBER_LIBRARY.md section 17): the
 // Band theme and its gold below, Ember's own mark in those colours
 // (art/brand, embedded by the build) and a flat ground (assets/brand). Where the shared words name SF4
 // Ember, SFV Ember's own replace them (LocaleOverlays).
@@ -69,7 +69,7 @@ constexpr unsigned kGold = 0xDDB961;
 // corners, no cut, upright titles in capitals, gold hairlines closing the
 // header and opening the hint bar, and secondary buttons edged in the border
 // tone. Every text pair is at least as far from its ground as SF4 Ember's
-// lowest (section 16).
+// lowest (section 17).
 constexpr ember::ShellTheme Band = {
 	0x100F0D, 0x282824, 0x191816, 0x2F2E2A, 0x060604, 0x373530, 0x41403C, 0xF2DD9D, 0xEDECE0, 0xC0BEB4, 0xEE5A50, 0xEEB4AB, 0xA2D3A2,
 	0x31302C, 0x0D0B07, 0x050402, 0x57554F, 0x73726B, 0xE8CF8C, 0xDFC398,
