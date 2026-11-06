@@ -78,27 +78,36 @@ try {
       Start-Sleep 20
       Shot "game$game-fight"
       WaitFor "game $game's result on both copies" $gameSeconds { (Count 0 'netplay: match result') -gt $results[0] -and (Count 1 'netplay: match result') -gt $results[1] }
+      # A game that ends the first-to-N set offers no rematch: both copies
+      # decline at once, and the WIN may be over before the status shows it.
+      $decided = { (Count 0 "the WIN's answers") -gt $answers[0] -and (Count 1 "the WIN's answers") -gt $answers[1] }
       WaitFor "the WIN's prompt on both copies after game $game" 30 {
         $r0 = (Status 0).battle.mode.rematch; $r1 = (Status 1).battle.mode.rematch
-        $r0.prompt -and $r1.prompt -and $r0.offered -and $r1.offered
+        ($r0.prompt -and $r1.prompt -and $r0.offered -and $r1.offered) -or (& $decided)
       }
-      Start-Sleep -Milliseconds 1500 # the prompt opens over the WIN
-      Shot "game$game-prompt"
-      # Rematch ("yes") is parked by the runtime as the choice the held frames
-      # carry; asked again until this copy's input shows it.
-      $say = if ($last) { @('yes', 'no') } else { @('yes', 'yes') }
-      Answer 0 $say[0]
-      if ($shots) {
-        Start-Sleep -Milliseconds 700
-        Shot "game$game-prompt-one-chose"
-      }
-      Answer 1 $say[1]
-      WaitFor "both copies' decision over game $game's WIN" 30 {
-        foreach ($i in 0, 1) {
-          $r = (Status $i).battle.mode.rematch
-          if ($r.prompt -and $say[$i] -eq 'yes' -and -not ($r.choices -band (1 -shl $i))) { Answer $i 'yes' }
+      $setEnded = & $decided
+      if ($setEnded) {
+        if (-not $last) { throw "game ${game}'s WIN offered no rematch (did the set end early?)" }
+        "game ${game}: no rematch offered (the set is over); both copies declined"
+      } else {
+        Start-Sleep -Milliseconds 1500 # the prompt opens over the WIN
+        Shot "game$game-prompt"
+        # Rematch ("yes") is parked by the runtime as the choice the held frames
+        # carry; asked again until this copy's input shows it.
+        $say = if ($last) { @('yes', 'no') } else { @('yes', 'yes') }
+        Answer 0 $say[0]
+        if ($shots) {
+          Start-Sleep -Milliseconds 700
+          Shot "game$game-prompt-one-chose"
         }
-        (Count 0 "the WIN's answers") -gt $answers[0] -and (Count 1 "the WIN's answers") -gt $answers[1]
+        Answer 1 $say[1]
+        WaitFor "both copies' decision over game $game's WIN" 30 {
+          foreach ($i in 0, 1) {
+            $r = (Status $i).battle.mode.rematch
+            if ($r.prompt -and $say[$i] -eq 'yes' -and -not ($r.choices -band (1 -shl $i))) { Answer $i 'yes' }
+          }
+          & $decided
+        }
       }
       $decisions = foreach ($i in 0, 1) { (Select-String -Path $logOf[$i] -Pattern "the WIN's answers" | Select-Object -Last 1).Line.Substring(24) }
       foreach ($i in 0, 1) { "copy ${i}: " + $decisions[$i] }
