@@ -140,6 +140,7 @@ while playing identically. The causes, and what each became:
 | A VfxUnit record | the address test took an address's high half plus the next value for an address in one process only | the 4 bytes into a found address are not tested |
 | Battle frame +0x198, +0x19C, +0x1B4 | updates counted since its reset, including those each process runs before its layout binds | masked for peers (only the slow-motion schedule reads +0x198; slow motion is never set) |
 | Input unit +0x2214 | QueryPerformanceCounter's low part at frame-sync start | masked for peers |
+| Battle frame +0x1BC | not a field: alignment padding before +0x1C0 in an object allocated outside GameAlloc, holding the heap's leftovers (1.0f after pad presses at the menu) | left out of the region, which ends at +0x1BB (EMBER_LIBRARY.md section 13) |
 
 `perturb <frame> <region> <offset> <add>` nudges one copy's state on purpose,
 so the peers' checkpoints should differ from the next checkpoint on (the

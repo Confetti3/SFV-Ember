@@ -886,13 +886,19 @@ Ember's shell (the library's `ApplicationShell`, through its neutral `ember::She
 - `tools/runshell.py` drives both copies with their virtual pads only; the pipe only reads status and presses buttons. Copy 0 opens Ember with Start, skips the first-run welcome, creates a room of 1 round of 30 s and copies its invitation. Copy 1 pastes it on Join. Both take a seat from the table card, pick (X), and Ready on their seat. The match launches as in B1, and the shell comes back over the room afterwards ("a match ended").
 - `tools/runroom.ps1` still PASSes (the room commands, shell present but hidden).
 
-**The open blocker: a frame-0 desync after pad presses at the main menu.**
-- Shell-driven two-copy runs passed 3 of 9 attempts (`runshell.py` and one by hand), the last on the final build failing. Every failure is the first checkpoint (frame 60, and frame 0 already differs).
-- The desync log now names the regions (`desync: checkpoint N region ...`, written only on a mismatch). Only `battleframe` differs, always with the same two hashes.
-- Peeks at session start show its last dword, +0x1BC (a float), as the only difference: 1.0 on one copy, 0.0 on the other. In passing runs it is 0.0 on both.
-- The battle frame's reset (rva 0x4D8830, decompiled) clears +0x190 to +0x1BB and not +0x1BC, so the field keeps what was written before the battle. Its writer is not found yet.
-- **The trigger is pad activity before the battle, not the shell.** The room commands with ten DOWN presses on each copy's virtual pad between `pick` and `ready` (the shell hidden, the presses held from the game by the room's lock) desynced in 2 of 3 runs, the same way. runroom without presses passes (3 of 3 this session, the last after the final build). The overlay hides the buttons from the game but not the packet number, and UE4 may still note the pad's activity.
-- Next: find the writer of battleframe +0x1BC in IDA. Then either clear it at the battle frame's bind (if the fight never reads it) or keep the pads' packet numbers still while Ember holds them.
+**The frame-0 desync after pad presses at the main menu (resolved 2026-11-05).**
+- Found: shell-driven two-copy runs passed 3 of 9 attempts, each failure at the first checkpoint, with only `battleframe` differing: its last dword, +0x1BC, 1.0f on one copy and 0.0 on the other. Room commands plus ten DOWN presses per copy desynced 2 of 3; without presses, runroom passed.
+- **Cause: +0x1BC is not a field.** It is the 4-byte alignment gap between the tick counter (+0x1B8, a dword) and the TArray at +0x1C0 in the 0x1D0-byte battle object (SFV_REGION_MAP.md section 0).
+  - The constructor (rva 0x4C5C40) and the reset (0x4D8830) write +0x1B8 as a dword and +0x1C0 as a qword. No battle code reads or writes the gap; the two `+1BCh` reads near it (0x4DBA8D, 0x4DD719) are on a unit's transform.
+  - The object is allocated by FMemory::Malloc directly (0x4F4788 calls 0x11370F0), not through GameAlloc, so the mod's zeroing never covered it, and the gap held whatever the heap left. Pad activity at the menu changes the heap's history, so one copy got a block with 1.0f there.
+- **Fix: the `battleframe` region ends at +0x1BB** (`battleframe::kStateSize` 0x2C; it was the mod's own region, guessed through +0x1BF since the first commit). This corrects the region's bounds to the object's fields; it is not a peer mask: nothing the fight reads left the hash, and every field of the region is still saved, restored and hashed as before.
+- **Evidence** (after the library merged SF4 1.5.3; 1 round of 30 s, 0 ms):
+  - Press repro, `tools/runroom.ps1 -presses 10 -games 1` (the new `-presses` option): 5 of 5 PASS, 77 checkpoints compared each, 0 differing.
+  - `tools/runshell.py`: 3 of 3 PASS, 77 checkpoints on each copy with every hash equal (frame 0 included), no desync line. `6-back-in-room-after-fix.png` shows both copies back in the room, 1 - 0.
+  - `tools/runroom.ps1` (no presses, 2 games): PASS, 154 checkpoints compared, 0 differing.
+  - `tools/synctest.ps1` (the layout changed; RYU vs KEN, random schedule 1, depth up to 8, learning): 7,073 frames, 1,220 rollbacks, 0 failures.
+- **The test tools after 1.5.3.** A seat whose fighter changes now takes back the other seat's Ready, and a Ready carries its pick, so the second copy's first Ready took back the first's and no match started. `runroom.ps1` and `runshell.py` Ready whichever copy can until both sessions start. The room board's bar (copy, copy-short, room-more, leave) sits below the tables, so `runshell.py` reaches Copy by DOWN to room-more and then LEFT.
+- **Library changes the merge needed on SFV's side:** `EmbeddedReturn::openOn` is a `SelectionStart`, and the selection seam gained `UltraMove` and `SelectionArt::UltraIcon` (SFV: empty and missing).
 
 **Left**
 - `room.rules_summary` still says "Edition Select Off": it needs a new msgid without the edition, across the locales.
