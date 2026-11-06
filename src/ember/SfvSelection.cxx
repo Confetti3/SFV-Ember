@@ -50,6 +50,7 @@ std::string ShortAppearanceLabel(const selection::Pick& pick, const selection::I
 
 const char* UltraLabel(int) { return ""; }
 const char* ShortUltraLabel(int) { return ""; }
+std::string UltraMove(int, int) { return {}; }
 
 namespace {
 SelectionImage Missing()
@@ -64,6 +65,7 @@ SelectionImage SelectionArt::Portrait(int, bool) { return Missing(); }
 SelectionImage SelectionArt::Character(int, int, int, bool) { return Missing(); }
 SelectionImage SelectionArt::Appearance(int, int, int) { return Missing(); }
 SelectionImage SelectionArt::Ultra(int, int) { return Missing(); }
+SelectionImage SelectionArt::UltraIcon(int) { return Missing(); }
 SelectionImage SelectionArt::Stage(int) { return Missing(); }
 SelectionImage SelectionArt::RankingEmblem(const std::string&) { return Missing(); }
 

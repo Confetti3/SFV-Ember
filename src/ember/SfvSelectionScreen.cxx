@@ -116,8 +116,12 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	const sf4e::ui::EmbeddedReturn& embedded = sf4e::ui::EmbeddedReturnContext();
 	if (sf4e::ui::TakeEmbeddedFresh()) {
 		nav.Home();
-		const std::string& openOn = embedded.openOn;
-		openOn_ = openOn == "roster" ? kFighter : openOn == "stage" ? kStage : openOn == "costumes" ? kCostume : "";
+		using sf4e::ui::SelectionStart;
+		const SelectionStart openOn = embedded.openOn;
+		openOn_ = openOn == SelectionStart::Roster ? kFighter
+			: openOn == SelectionStart::Stage      ? kStage
+			: openOn == SelectionStart::Costumes   ? kCostume
+												   : "";
 		if (!openOn_.empty()) nav.Prefer(openOn_);
 	}
 	menu_.rootName = loc::T("screen.selection");
