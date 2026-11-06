@@ -107,7 +107,9 @@ def create_room(shots: Path | None) -> None:
 
 
 def copy_invitation(shots: Path | None) -> None:
-    seek(0, "copy", ["DOWN", "DOWN", "DOWN", "DOWN", "DOWN", "LEFT"], 20)
+    # The room's bar (copy, copy-short, room-more, leave) is below its tables.
+    seek(0, "room-more", ["DOWN"], 20)
+    seek(0, "copy", ["LEFT"], 4)
     press(0, "A")
     shot(shots, "3-room-invitation", 0)
 
@@ -149,11 +151,19 @@ def pick(index: int, fighter_steps: int, shots: Path | None, name: str | None) -
     expect(index, "room")
 
 
-def ready(index: int) -> None:
-    """A on the player's own seat readies."""
-    seek(index, "table-0", ["UP"], 20)
-    wait_for(f"copy {index} able to Ready", 60, lambda: status(index)["room"]["canReady"])
-    press(index, "A")
+def ready_both(game: int) -> None:
+    """A on the player's own seat readies. A Ready carries its pick, and a seat
+    whose fighter changes takes back the other seat's Ready (the room's rule),
+    so each copy readies whenever it can until both sessions start."""
+    starts = [lib.count_log(i, "netplay: room match as P") for i in (0, 1)]
+
+    def started() -> bool:
+        for i in (0, 1):
+            if status(i)["room"]["canReady"]:
+                seek(i, "table-0", ["UP"], 20)
+                press(i, "A")
+        return all(lib.count_log(i, "netplay: room match as P") > starts[i] for i in (0, 1))
+    wait_for(f"game {game}'s sessions", 180, started)
 
 
 def main(argv: list[str]) -> int:
@@ -183,8 +193,7 @@ def main(argv: list[str]) -> int:
             results = [lib.count_log(i, "netplay: match result") for i in (0, 1)]
             closes = [lib.count_log(i, "battle closed at its match") for i in (0, 1)]
             desyncs = [lib.count_log(i, "desync:") for i in (0, 1)]
-            ready(0)
-            ready(1)
+            ready_both(game)
 
             def decided() -> bool:
                 if any(lib.count_log(i, "desync:") > desyncs[i] for i in (0, 1)):
