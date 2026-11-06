@@ -312,13 +312,33 @@ constexpr CodeSite kStaticLoadObject{"StaticLoadObject", 0x1242910,
 constexpr CodeSite kColourSwatch{"ColourSwatch", 0x554750,
 	{0x44, 0x89, 0x4C, 0x24, 0x20, 0x48, 0x89, 0x54, 0x24, 0x10, 0x55, 0x53, 0x57, 0x41, 0x55, 0x41}};
 
+// The battle HUD's own text (HudText).
+// void HudInvoke(HudMovie*, const FString* method, float number, const
+// FString* text): calls the HUD's Scaleform movie's ActionScript `method`
+// with (number, text) as its arguments, through the movie's player (+0x318,
+// then +0x28; rva 0x73DDA0); nothing for a movie without one. The player
+// copies the text into its own string table (rva 0xEEBE40), so the caller's
+// FString need only live for the call.
+// The battle HUD's setup (rva 0x3F9260, a HudUnit virtual) names each side,
+// the side (0 or 1) as the number:
+//   "SetPilotName" (rva 0x3FD223): the plate on the life bar, the label
+//     HudPilotLabel (rva 0x416510) picks: ID_SYS_HUD_0015 or _0016 by side
+//     ("PLAYER 1", "PLAYER 2" in the log), _0011 or _0017, or a name;
+//   "SetPlayerName" (rva 0x3FD150 online, 0x3FD428 offline): the fighter's
+//     name under the bar.
+// The HUD's update (rva 0x403220) names a plate again, at rva 0x4037B8, when
+// HudPilotLabel reports its label changed (rva 0x403709). Nothing else calls
+// either method.
+constexpr CodeSite kHudInvoke{"HudInvoke", 0x73D600,
+	{0x48, 0x85, 0xC9, 0x74, 0x15, 0x48, 0x8B, 0x89, 0x18, 0x03, 0x00, 0x00, 0x48, 0x85, 0xC9, 0x74}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
 	kSpecStages, kMainMenuClass, kRequestExit, kStageName, kSpecFighters, kSpecCostumes, kPlayableCostumes,
-	kSpecColours, kCostumeName, kTextToString, kTexture2DClass, kStaticLoadObject, kColourSwatch};
+	kSpecColours, kCostumeName, kTextToString, kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke};
 
 namespace versus {
 

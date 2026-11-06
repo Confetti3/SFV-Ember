@@ -78,6 +78,29 @@ constexpr ember::ShellTheme Band = {
 	0x7B6633, true, true, true,
 };
 
+// SFV's battle HUD (EMBER_LIBRARY.md section 18), measured on its fights at
+// 1280x720, 1920x1080 (every point 1.5 times) and 2560x1080 (the game's 16:9
+// picture pillarboxed, its HUD inside it): a 1280x720 frame, scaled evenly to
+// fit and centred. The plates are SFV's "PLAYER 1"/"PLAYER 2" labels in the
+// life bars (x 113-171, y 63-73; the bars x 105-593 and 686-1174, y 56-82),
+// where the game writes the room's names itself (mod/HudText). Each name's
+// marks go in the free stretch of the row under its bar, between the
+// fighter's name (to y 99) and the stun gauge (x 446-594, y 85-95), against
+// the gauge. Across the top the HUD ends with that row, at y 100 (the
+// portraits end at 95, the timer at 91); in the bottom corners it starts with
+// the V-Skill marks (y 627), and between the EX gauges (to x 367, from 912)
+// the bottom is clear.
+constexpr ember::BattleHud SfvBattleHud = {
+	1280.f, 720.f,
+	{{111.f, 61.f, 173.f, 75.f}, {1107.f, 61.f, 1169.f, 75.f}},
+	true,
+	{{200.f, 83.f, 440.f, 99.f}, {840.f, 83.f, 1080.f, 99.f}},
+	100.f,
+	624.f,
+	// SFV has no option of its own that moves its HUD.
+	false,
+};
+
 constexpr ember::ProductIdentity SfvEmber = {
 	{
 		"SFV Ember",
@@ -88,6 +111,7 @@ constexpr ember::ProductIdentity SfvEmber = {
 		sf4e::ui::brand::Size,
 		L"brand/sfv-ember-menu-background.png",
 		&Band,
+		&SfvBattleHud,
 	},
 	L"SFVEmber",
 	// Settings beside the mod in the game's folder (SFVEmber\settings.json),
