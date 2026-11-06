@@ -327,8 +327,10 @@ constexpr CodeSite kColourSwatch{"ColourSwatch", 0x554750,
 //   "SetPlayerName" (rva 0x3FD150 online, 0x3FD428 offline): the fighter's
 //     name under the bar.
 // The HUD's update (rva 0x403220) names a plate again, at rva 0x4037B8, when
-// HudPilotLabel reports its label changed (rva 0x403709). Nothing else calls
-// either method.
+// HudPilotLabel reports its label changed (rva 0x403709). The marker over
+// each fighter (rva 0x4041D0) takes the same labels by side (_0015, _0016,
+// _0017 or a name) through "SetCursorText", at rva 0x4047C3, with the side
+// as the number. Nothing else calls these methods.
 constexpr CodeSite kHudInvoke{"HudInvoke", 0x73D600,
 	{0x48, 0x85, 0xC9, 0x74, 0x15, 0x48, 0x8B, 0x89, 0x18, 0x03, 0x00, 0x00, 0x48, 0x85, 0xC9, 0x74}};
 

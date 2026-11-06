@@ -12,6 +12,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <string>
 
 namespace sfve::adapter {
@@ -40,8 +41,12 @@ bool PlateName(int side, std::wstring& name)
 	const auto snapshot = facade::GetRuntimeSnapshotShared();
 	if (!snapshot || !snapshot->room) return false;
 	if (!sf4e::netplay::Fighting(snapshot->session.match)) {
-		mod::Log("hud: side %d keeps the game's label (room %s, match %s)", side + 1,
-			sf4e::input::RoomStateName(snapshot->session.room), sf4e::input::MatchStateName(snapshot->session.match));
+		// Once per state: the HUD may ask again each round.
+		static std::atomic<int> logged{-1};
+		const int state = (int)snapshot->session.room * 16 + (int)snapshot->session.match;
+		if (logged.exchange(state) != state)
+			mod::Log("hud: the game's labels stay (room %s, match %s)", sf4e::input::RoomStateName(snapshot->session.room),
+				sf4e::input::MatchStateName(snapshot->session.match));
 		return false;
 	}
 	const sf4e::room::Snapshot& room = *snapshot->room;

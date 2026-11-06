@@ -1,18 +1,20 @@
 #pragma once
 
 // The battle HUD's own text. SFV's HUD is a Scaleform movie, and the game
-// names each side's plate on the life bar through it: the label above the
-// bar ("PLAYER 1", or an online player's name) is the movie's SetPilotName,
-// called with the side as the battle's HUD is set up and again when the
-// side's pilot changes (sfv::kHudInvoke). The mod hooks that call, so a name
-// it is given takes the label's place: the game draws it in its own font, at
-// its own size and place, on every resolution and aspect the HUD supports.
+// names each side's player through it (sfv::kHudInvoke), with the side as
+// the number: the plate on the life bar ("PLAYER 1", or an online player's
+// name) is the movie's SetPilotName, called as the battle's HUD is set up and
+// again when the side's pilot changes, and the marker over the fighter at a
+// round's start is its SetCursorText, with the same label. The mod hooks
+// those calls, so a name it is given takes the label's place: the game draws
+// it in its own font, at its own size and place, on every resolution and
+// aspect the HUD supports.
 //
 // The fighter's name under the bar (SetPlayerName) is left as the game shows
 // it.
 //
-// Status field "hudText": each side's last label as the game asked for it and
-// as shown, and how many labels were replaced.
+// Status field "hudText": each side's last plate and marker as the game asked
+// for them and as shown, and how many labels were replaced.
 
 #include <stdint.h>
 
