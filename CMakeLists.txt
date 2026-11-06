@@ -147,8 +147,9 @@ add_library(sfv_ember SHARED
 target_link_libraries(sfv_ember PRIVATE sfve_ember)
 target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")
 # Ember's own pictures the shell draws beside the mod (overlay/Overlay.hxx):
-# the menu backdrop, the button prompts and the flags. SFV has no fighter or
-# stage pictures, so none of SF4's selection art comes along.
+# the menu backdrop, the button prompts and the flags. SFV's fighter and stage
+# pictures are the game's own, drawn from its textures at run time
+# (src/ember/SfvArt), so no selection art comes along.
 foreach(_folder brand input flags)
     add_custom_command(TARGET sfv_ember POST_BUILD COMMAND "${CMAKE_COMMAND}" -E copy_directory
         "${SFVE_EMBER_SOURCE_ROOT}/assets/${_folder}" "${CMAKE_BINARY_DIR}/assets/${_folder}")

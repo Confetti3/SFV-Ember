@@ -7,7 +7,7 @@
 // ("01", "EX01"; ColourName). SFV has no Ultra, so its label is empty.
 //
 // The pictures are the game's own (SfvArt): a fighter's portrait is its
-// select-screen face and a stage's its stage-select picture. The game has no
+// select grid's face and a stage's its stage-select picture. The game has no
 // picture of a fighter in a costume or colour (its select screens show the
 // 3D model), no Ultra and no ranking emblems, so those report missing.
 

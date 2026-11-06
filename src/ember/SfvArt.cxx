@@ -174,7 +174,7 @@ sf4e::ui::SelectionImage FighterImage(int fighter, FighterPicture picture)
 {
 	const std::string code = FighterCode(fighter);
 	if (code.empty()) return Image({});
-	return Image(AssetPath(L"Chara/" + Wide(code) + L"/Hud", picture == FighterPicture::Face ? L"FaceIconLeft" : L"CharaSelectIcon_l"));
+	return Image(AssetPath(L"Chara/" + Wide(code) + L"/Hud", picture == FighterPicture::Face ? L"CharaSelectIconLeft" : L"CharaSelectIcon_l"));
 }
 
 sf4e::ui::SelectionImage StageImage(int stage)

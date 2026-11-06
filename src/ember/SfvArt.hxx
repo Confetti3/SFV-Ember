@@ -4,8 +4,10 @@
 // fighters and stages, drawn from the game's Direct3D 11 textures (no pixel
 // leaves the game), and the colour swatches its costume menu shows. What
 // exists in the game (EMBER_LIBRARY.md section 15):
-// - per fighter: its HUD pictures, of which Ember uses the select screen's
-//   face (FaceIconLeft, 256x256) and banner (CharaSelectIcon_l, 380x258);
+// - per fighter: its HUD pictures, of which Ember uses the select grid's
+//   face (CharaSelectIconLeft, 116x144) and the select screen's banner
+//   (CharaSelectIcon_l, 380x258); its HUD FaceIconLeft (256x256), drawn as
+//   it is, is a blue silhouette of the same shape for every fighter seen;
 // - per stage: the stage select's picture (StageSelectBG, 2048x512);
 // - per costume colour: two colours, the costume menu's swatch.
 // The game has no picture of a fighter in a given costume or colour: its
@@ -25,7 +27,7 @@
 namespace sfve::adapter {
 
 enum class FighterPicture {
-	Face,   // square, the select screen's face
+	Face,   // upright, the select grid's face
 	Banner, // wide, the select screen's large card
 };
 
