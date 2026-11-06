@@ -3,7 +3,7 @@
   python scripts/build-sfv-brand.py [--ember-root DIR]
 
 SFV Ember's mark is Ember's own, its shapes untouched (docs/design/EMBER_LIBRARY.md
-section 16): the fire character in its brush circle, with the tail. Only its
+section 17): the fire character in its brush circle, with the tail. Only its
 colours change, to the Band theme's (SfvProduct.cxx): Ember's ivory becomes the
 theme's text, its orange (the left dot and the tail) the theme's gold, and the
 tail's light orange the gold's light step.

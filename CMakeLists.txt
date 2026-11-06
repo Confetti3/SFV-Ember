@@ -77,6 +77,7 @@ add_library(sfve_ember STATIC
     src/ember/SfvArt.cxx
     src/ember/SfvCatalog.cxx
     src/ember/SfvGame.cxx
+    src/ember/SfvHud.cxx
     src/ember/SfvPick.cxx
     src/ember/SfvProduct.cxx
     src/ember/SfvSelection.cxx
@@ -96,6 +97,7 @@ add_executable(sfve_ember_tests
     tests/main.cxx
     tests/EmberAdapterTests.cxx
     tests/BattleIdentityTests.cxx
+    tests/HudLayoutTests.cxx
     src/mod/ControlPipe.cxx
     src/mod/GameArt.cxx
     src/mod/GameContent.cxx
@@ -103,6 +105,7 @@ add_executable(sfve_ember_tests
     src/mod/GameHooks.cxx
     src/mod/GameScene.cxx
     src/mod/GameThread.cxx
+    src/mod/HudText.cxx
     src/mod/Log.cxx
     src/mod/MatchEnd.cxx
     src/mod/MatchResult.cxx
@@ -145,7 +148,8 @@ add_library(sfv_ember SHARED
     src/mod/LagSim.cxx
     src/mod/GameArt.cxx
     src/mod/GameContent.cxx
-    src/mod/GameExit.cxx)
+    src/mod/GameExit.cxx
+    src/mod/HudText.cxx)
 target_link_libraries(sfv_ember PRIVATE sfve_ember)
 target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")
 # Ember's own pictures the shell draws beside the mod (overlay/Overlay.hxx):

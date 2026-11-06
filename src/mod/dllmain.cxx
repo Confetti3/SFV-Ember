@@ -17,6 +17,7 @@
 #include "mod/GameHooks.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
+#include "mod/HudText.hxx"
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
 #include "mod/ModConfig.hxx"
@@ -112,6 +113,8 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	// The game's exit request: the point the netplay mode's runtime leaves
 	// its room from (EmberHost), before the engine stops.
 	InstallGameExit(base);
+	// The HUD's plate labels: the netplay mode's shell names them (SfvHud).
+	InstallHudText(base);
 	// The host for Ember's interface (its shell is plugged in below, with
 	// rooms on); the game's content lists, on the pipe.
 	if (scene && sfve::overlay::InstallOverlay()) SetPadFilter(&sfve::overlay::FilterGamePad);

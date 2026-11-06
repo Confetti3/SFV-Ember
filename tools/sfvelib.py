@@ -145,7 +145,9 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
     log_path(index).unlink(missing_ok=True)  # each run starts its own log
     args = [str(GAME_EXE), f"-sfve_instance={index}", f"-sfve_mode={mode}"]
     if windowed:
-        args += ["-windowed", "-ResX=960", "-ResY=540"]
+        # SFVE_RES ("1920x1080") sets the window's size; 960x540 by default.
+        width, height = os.environ.get("SFVE_RES", "960x540").lower().split("x")
+        args += ["-windowed", f"-ResX={int(width)}", f"-ResY={int(height)}"]
     args += extra or []
     # Steam sets these when it starts a game; its DRM wrapper exits (0x35) without them.
     env = dict(os.environ, SteamAppId=STEAM_APP_ID, SteamGameId=STEAM_APP_ID)

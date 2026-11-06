@@ -280,6 +280,7 @@ public:
 // ---- HUD
 struct HudAnchors { Rect playerLabel[2]; Rect timer; Rect koSign; float nameOffsetUnit; };
 class Hud { public: virtual std::optional<HudAnchors> SplitLayout() const { return {}; } };   // MatchHud.cxx:117-121,318-323,421-447
+// As built: a constant table on the product instead, ember::BattleHud (Branding::battleHud), section 18.
 
 // ---- Optional services (null object = feature hidden by capability)
 class Replays { /* Modes(), Request(replay::Request), ReplayStore list: ReplayRequest.hxx:12-21, sf4e__ReplayStore.hxx:16 */ };
@@ -1157,6 +1158,50 @@ So SFV's palette is one family: neutrals with almost no chroma, leaning to hue 9
 - sfv-ember: `scripts/build.ps1` passes 4 of 4 ctest suites.
 - `python -I tools/runshell.py` passes in game. Its screenshots are in `D:\sfv-re\shots\brand\final\`, with `before-after.png` beside section 14's.
 - sf4-net was not rebuilt: the brand build used main's `sf4-net.exe`, which this change does not touch.
+
+## 18. The match HUD on SFV's battle screen (2026-11-06)
+
+The maintainer: "match hud the names should be placed correctly".
+
+**What was wrong.** SFV Ember drew no match HUD at all. Only SF4 Ember's overlay (`sf4e__Overlay.cxx`) builds a `MatchStripView` and calls `DrawOverlayLayers`; SFV's shell (`SfvShell`) never did, so a room's fight showed SFV's own "PLAYER 1"/"PLAYER 2" and none of Ember's names, score or link telemetry (`D:\sfv-re\shots\hud\before\`). Wiring it as it was would not have placed it well either: the split layout's plates are USF4's measurements (`PlaceSplit`, 720p x 146-1134, y 74-95), which land on SFV's life bars, and Top center fits the band above USF4's K.O. sign, where SFV has its timer.
+
+**The names are SFV's own text.** SFV's battle HUD is a Scaleform movie, not UMG. The plate on each life bar is the movie's ActionScript `SetPilotName(side, text)`; the mod hooks the call and gives the room's name in place of the game's label, so the game draws it in its own font and size, scaled with its HUD on every resolution. Every address is from our IDA database of build 13173604 and carries a signature BuildCheck verifies (`SfvOffsets.hxx` `kHudInvoke`):
+- **HudInvoke, rva 0x73D600**: `(HudMovie*, const FString* method, float number, const FString* text)`. It calls the movie's player (+0x318, then +0x28; rva 0x73DDA0), which builds the two arguments (a number and a string) and invokes the method. The string is copied into the player's own string table (rva 0xEEBE40, UTF-16 to UTF-8) before the call, so a substituted FString need only live for the call.
+- **The HUD's setup, rva 0x3F9260** (a `HudUnit` virtual): for each side, the side as the number (`cvtdq2ps` of the side index), it calls `SetFaceIconPath`, `SetPlayerName` (the fighter's name under the bar; rva 0x3FD150 online, 0x3FD428 offline) and `SetPilotName` (rva 0x3FD223) with the label `HudPilotLabel` (rva 0x416510) picks: `ID_SYS_HUD_0015`/`_0016` by side, `_0011`, `_0017`, or a name.
+- **The HUD's update, rva 0x403220**, names a plate again (rva 0x4037B8) when `HudPilotLabel` reports a change (rva 0x403709).
+- **The marker over each fighter at a round's start** ("PLAYER 1" on a diamond) is the same movie's `SetCursorText(side, text)`, at rva 0x4047C3 in its setup (rva 0x4041D0), with the same labels by side. It is named as the plate is, so the two never disagree.
+- No other code calls these methods: the exe's three `SetPilotName` strings, three `SetPlayerName` strings and one `SetCursorText` string are referenced only there and from another screen's setup (rva 0x64B5A0), which calls another invoke (rva 0x73D560) on its own movie.
+- `mod/HudText` hooks HudInvoke, passes every other call through untouched, and for `SetPilotName` and `SetCursorText` asks the adapter for the side's name (`SfvHud`: the member in that seat of the local table, P1 left and P2 right, while `Fighting(session.match)`). It logs each side's plate and marker once per change ("hud: side N's plate "PLAYER N" shows "NAME"") and reports the last ones in the status field `hudText`. Outside a room's game (offline versus, or no room) the plates keep the game's label.
+- The HUD names its plates as the battle loads, 0.3 s before the runtime's session starts and takes the match's sides (`matchSides`, `NoteRuntimeMatchStart`). The first build read those and still showed "PLAYER 1". The table the game was launched from already knows its seats.
+
+**Ember's overlay, laid out around SFV's HUD.** The rest of Ember's match HUD (each name's link and class marks, and the telemetry panel with the score, ping, rollback, delay and watchers) is drawn by the library's `MatchHud`, which now lays out around a game's own battle HUD when the product describes it:
+- `ember::BattleHud` (`common/ProductIdentity.hxx`, `Branding::battleHud`): the HUD frame's size, each side's plate, whether the game writes the names on them (`namesOnPlates`), each side's marks box, where the top HUD ends (`topEnd`), where the bottom corners' HUD starts (`bottomStart`), and whether the game has a HUD position option for the name offset to follow (`nameOffset`). The plan's `game::Hud::SplitLayout()` (section 2) became this table: the placement is a property of the game's art, constant per product, and the shell's Settings page reads it with no battle running.
+- SF4 Ember's product leaves it null, and every SF4 path is unchanged (USF4's arithmetic as it was). SFV Ember's (`SfvProduct.cxx`, `SfvBattleHud`) is measured from its fights.
+- With `namesOnPlates`, the split layout draws no plates of its own, only each side's marks: a chip the marks box's height, against its inner end. Every anchor goes around the game's HUD (`PlaceAroundGameHud`): the top ones just below `topEnd` (Top center under the timer), the bottom corners just above `bottomStart`, Bottom center at the screen's foot. The side margins are 10% of the game's frame, not the window. Without `nameOffset` the Settings page leaves out the Name offset row.
+- SFV draws the match HUD from `SfvShell::Draw` (`SfvHud::DrawSfvMatchHud`): the strip when nothing is open over the fight, only a stalled or ending fight's notice while the shell is open, as `DrawOverlayLayers` decides for SF4. SFV cannot call `DrawOverlayLayers` itself: it draws Training's layers, which the x64 library does not carry.
+
+**How SFV's HUD was measured** (`before\`, fights at three window sizes, Ryu against Chun-Li): SFV keeps a 16:9 picture, pillarboxed at 2560x1080 (x 320-2240), and its HUD is a 1280x720 frame scaled evenly into it: every edge at 1920x1080 is 1.5 times its 1280x720 place (the bars 158-891 against 105-593, the timer 915-1005 against 610-670). In that frame:
+- Life bars x 105-593 and 686-1174, y 56-82, symmetric about x 640. The "PLAYER 1" label inside P1's, x 113-171, y 63-73; P2's mirrored.
+- Under each bar, the fighter's name at the outer end (from x 116, to y 99; Chun-Li's x 1082-1162) and the stun gauge at the inner end, x 446-594 and 685-833, y 85-95.
+- Timer x 610-670, y 43-91. Portraits in the corners, to y 95; their glow reaches over the bars' outer ends.
+- Bottom corners: the V-Skill marks from y 627, the EX gauges y 664-684 to x 367 and from x 912. The middle of the bottom is clear to its foot.
+- So the marks go in the row under each bar, in the free stretch between the fighter's name and the stun gauge, against the gauge (P1 x 200-440, P2 840-1080, y 83-99): next to the side's own name, inside SFV's HUD, covering nothing of it. Above the bars they would sit over the portraits' glow, and beside the name inside the bar they would cover the life bar.
+- `topEnd` 100, `bottomStart` 624.
+
+**Evidence**
+- `tests/HudLayoutTests.cxx` (in `sfve_ember_tests`): on 1280x720, 1920x1080, 2560x1440, 3840x2160 and 2560x1080, every layout, anchor, size and spacing, with and without the score, watchers, class marks and a notice line (720 layouts), Ember's panel, state line and marks stay on screen and clear of SFV's bars, timer, portraits, fighter names, stun gauges and bottom gauges. The marks' places are checked at 720p, 1080p and 2560x1080.
+- In game, `D:\sfv-re\shots\hud\` (both copies of a room's game, `tools/runroom.ps1 -lag 30 -games 1` with `SFVE_RES`): `before\` at 1280x720, 1920x1080 and 2560x1080 shows SFV's "PLAYER 1"/"PLAYER 2" and nothing of Ember's; `after\` shows "SFV 1"/"SFV 2" on SFV's plates in its own font, each name's link mark against its stun gauge, and the telemetry at the bottom's middle between the EX gauges, at all three sizes and on both copies (each PASS, 77 checkpoints, 0 differing). Both copies logged "hud: side 1's plate "PLAYER 1" shows "SFV 1"" and the same for side 2, 0.3 s before "netplay: room match as P1/P2". `after\1280x720-round-start-markers-copy0/1.png` show the round-start markers over the fighters naming them "SFV 1" and "SFV 2" on both copies.
+- Long names (`after\1920x1080-long-names.png`, a build with 31-character names that was not kept): SFV's plate holds about 10 of the widest letters or 15 ordinary ones and cuts the rest itself. The name never spills over the bar or the timer.
+- Library: the SF4 render goldens UiRender, UiRenderLocales and UiRenderGallery (with `ui_render_match_hud`) pass unchanged, with ProductIdentity and ShellJourney. The x64 probe builds clean.
+- sfv-ember: `scripts/build.ps1` passes 4 of 4 ctest suites, with the 3 new cases in `sfve_ember_tests`.
+- `tools/runroom.ps1 -presses 10 -games 2 -lag 30`: PASS, 154 checkpoints compared, 0 differing.
+- `tools/runshell.py`: PASS.
+
+**Left**
+- The telemetry shows ping only. `SfvGame::Sample()` reports neither the applied delay ("Delay —") nor the recent rollbacks (always "0f"), nor the connection warning, stall and disconnect countdown, so the state line has nothing to say about the link either: RollbackSession does not report them yet (the adapter's own comment says so).
+- Class marks: SFV has no class emblems (they are USF4's ranking art), so only the pill marks (a placing "?", the developer's) draw beside the link mark.
+- Names longer than SFV's plate are cut without an ellipsis. Ember could cut them itself with one, but the plate's width in SFV's font is only known from the shot above.
+- 16:10 and 4:3 windows are laid out as SFV's 16:9 picture fitted and centred (letterboxed), as the 21:9 one is pillarboxed; no such window was run.
 
 ## 19. Instant rematch: Ember's prompt over SFV's WIN (2026-11-06)
 

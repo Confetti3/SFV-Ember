@@ -19,7 +19,8 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # -padAnswers answers on the prompt itself with each copy's virtual pad (A
 # Rematch, B Back to room), as a player does, instead of the pipe.
 $ErrorActionPreference = 'Stop'
-Set-Location C:\Users\user\Desktop\sf4\sfv-ember
+# The checkout this script is in, whichever it is.
+Set-Location (Split-Path -Parent $PSScriptRoot)
 $logs = 'G:\SteamLibrary\steamapps\common\StreetFighterV\StreetFighterV\Binaries\Win64\SFVEmber\logs'
 $logOf = @("$logs\sfv_ember.log", "$logs\sfv_ember.1.log")
 function Ctl([int]$i, [string]$line) { python -I tools\sfve.py ctl $i $line }

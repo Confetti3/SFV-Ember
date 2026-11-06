@@ -4,6 +4,7 @@
 #include "ember/RoomBattle.hxx"
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvHud.hxx"
 #include "ember/SfvPick.hxx"
 #include "ember/SfvSelectionScreen.hxx"
 #include "mod/ControlPipe.hxx"
@@ -214,6 +215,8 @@ overlay::OverlayUi::Shown Draw()
 	sf4e::ui::SetMenuInput({shell.navigation.Buttons(), ImGui::GetTime()});
 	sf4e::ui::SetMenuGlyphs(snapshot.menuController.deviceType, snapshot.menuController.menu, snapshot.promptBrand);
 	if (presentation.Reopened()) shell.host.Shell().ShowPlay();
+	// Under the shell: the match HUD, or only its notices while the shell is open.
+	DrawSfvMatchHud(*shell.frame, presentation.Visible());
 	if (presentation.Visible()) {
 		if (const char* close = shell.host.Draw(snapshot, shell.frame->netplay, shell.navigation, shell.game, {}))
 			presentation.Close(close);
@@ -270,6 +273,7 @@ bool ShellTakesPads()
 void InstallEmberShell()
 {
 	InstallSfvArt();
+	InstallSfvHud();
 	mod::RegisterStatus("shell", StatusJson);
 	overlay::OverlayUi ui;
 	ui.applyScale = ApplyScale;
