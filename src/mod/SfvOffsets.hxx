@@ -365,12 +365,19 @@ constexpr uint32_t kStateIndex = 12;              // int in the message
 constexpr int kFight = 6;                          // players are fighting
 } // namespace flow
 
+// The battle object (0x1D0 bytes, constructor rva 0x4C5C40, reset 0x4D8830).
+// It is allocated by FMemory::Malloc directly (rva 0x4F4788 calls 0x11370F0),
+// not through GameAlloc, so the heap's leftovers stay in what it leaves unset.
 namespace battleframe {
 constexpr uint32_t kState = 0x190;      // pause, frame counters, slow motion, extra ticks, tick counter, clock
-constexpr uint32_t kStateSize = 0x30;   // through +0x1BF
+// Through +0x1BB, the tick counter. +0x1BC..+0x1BF is alignment padding before
+// the TArray at +0x1C0: the constructor and the reset write +0x1B8 as a dword
+// and +0x1C0 as a qword, nothing reads or writes the gap, and it holds what
+// the heap left there (1.0f in one copy after pad presses at the main menu).
+constexpr uint32_t kStateSize = 0x2C;
 constexpr uint32_t kMinTicks = 0x1A4;   // ticks per frame = 1 + max(this, extra)
 constexpr uint32_t kExtraTicks = 0x1A8; // the game's own rollback replays through this
-constexpr uint32_t kTickCount = 0x1B8;  // bumped once per battle tick
+constexpr uint32_t kTickCount = 0x1B8;  // zeroed by each update (rva 0x4DC2D0), bumped once per battle tick
 // Counts since the battle frame was reset (rva 0x4D8830): updates (+0x198),
 // updates that ran ticks (+0x19C) and the clock those advance by +0x1B0
 // (+0x1B4, float). They include the updates a process runs before its layout

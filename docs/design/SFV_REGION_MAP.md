@@ -17,6 +17,9 @@ Confidence uses two letters per owner: **L** is layout (H = V confirmed it from 
   - The unit multimap at battle+344 is filled by `sub_1404C8F80`.
   - ModeUnit's `sub_140427380` registers into `this+566264` = obj+0x8A400, and the manager is root+0x8A400. So **the ModeUnit object is the root unit**.
   - Its type chain is ModeUnit 0x143A69CF0 → … → RootUnit 0x1439DA2D8 → Unit 0x1439DA2A0. This is unverified; check it at run time by walking type+8.
+- **The battle object** (the mod's "battle frame"; 2026-11-05) is 0x1D0 bytes, constructed by `sub_1404C5C40` (vtable 0x142C742D8) and reset by `sub_1404D8830`. `sub_1404F4690` allocates it with `sub_1411370F0` (FMemory::Malloc, the function GameAlloc jumps to), so the mod's GameAlloc zeroing never covers it.
+  - +0x190..+0x1BB: pause flags, update counters, slow motion, tick counts, the clock step (+0x1B0, 16.16 fixed point) and clock (+0x1B4, float), and the tick counter (+0x1B8, zeroed by each update in `sub_1404DC2D0`). The mod saves these as `battleframe`.
+  - +0x1BC..+0x1BF: **alignment padding** before the TArray at +0x1C0 (`sub_1405003A0` clears its count). The constructor and the reset write +0x1B8 as a dword and +0x1C0 as a qword; no instruction in the battle code reads or writes the gap. The `+1BCh` reads at 0x1404DBA8D and 0x1404DD719 are on a different object (a unit's transform from `sub_1402E7D20`: a quaternion at +0x1B0, a matrix from +0x1C0).
 - **Resolved gaps from W.**
   - The registrar of the BattleData snapshot fields is ModeUnit `sub_140427380`: root+6448 len 228 = BattleData+6176..+6404.
   - `sub_1403C4220` appends to the **post-restore** list at manager+0x38 (count at +0x40).
