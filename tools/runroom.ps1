@@ -1,8 +1,11 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [switch]$keep)
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [switch]$keep)
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
-# both go back to the room. Repeated for -games games. -shots names a folder
+# both go back to the room. Repeated for -games games. -presses N presses DOWN
+# N times on each copy's virtual pad at the main menu before the first Ready
+# (the room holds the pads from the game; EMBER_LIBRARY.md section 13's
+# frame-0 desync followed such presses). -shots names a folder
 # for a screenshot of each copy in each fight and back in the room. Prints the
 # copies' match results, any desync, and PASS or FAIL.
 $ErrorActionPreference = 'Stop'
@@ -41,12 +44,21 @@ try {
   foreach ($i in 0, 1) { Ctl $i "delay $delay" | Out-Null }
   Ctl 0 "pick $p1 $stage" | Out-Null
   Ctl 1 "pick $p2" | Out-Null
+  for ($n = 0; $n -lt $presses; $n++) {
+    foreach ($i in 0, 1) { Ctl $i 'pad 0 DOWN:120 -:250' | Out-Null }
+    Start-Sleep -Milliseconds 600
+  }
   for ($game = 1; $game -le $games; $game++) {
     $starts = @((Count 0 'netplay: room match as P'), (Count 1 'netplay: room match as P'))
     $results = @((Count 0 'netplay: match result'), (Count 1 'netplay: match result'))
     $closes = @((Count 0 'battle closed at its match'), (Count 1 'battle closed at its match'))
-    foreach ($i in 0, 1) { WaitFor "copy $i able to Ready (game $game)" 90 { (Status $i).room.canReady } ; Ctl $i ready | Out-Null }
-    WaitFor "game $game's sessions" 120 { (Count 0 'netplay: room match as P') -gt $starts[0] -and (Count 1 'netplay: room match as P') -gt $starts[1] }
+    # A seat whose fighter changes takes back the other seat's Ready (the
+    # room's rule), and a Ready carries its pick: Ready whichever copy can,
+    # until both sessions start.
+    WaitFor "game $game's sessions" 180 {
+      foreach ($i in 0, 1) { if ((Status $i).room.canReady) { Ctl $i ready | Out-Null } }
+      (Count 0 'netplay: room match as P') -gt $starts[0] -and (Count 1 'netplay: room match as P') -gt $starts[1]
+    }
     Start-Sleep 20 # past the intro, into the fight
     Shot "game$game-fight"
     WaitFor "game $game's result on both copies" $gameSeconds { (Count 0 'netplay: match result') -gt $results[0] -and (Count 1 'netplay: match result') -gt $results[1] }
