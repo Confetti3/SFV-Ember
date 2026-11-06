@@ -31,6 +31,9 @@ GAME_DIR = Path(os.environ.get(
 BUILD_DIR = Path(os.environ.get("SFVE_BUILD_DIR", r"D:\sfv-ember-build"))
 GAME_EXE = GAME_DIR / "StreetFighterV.exe"
 MOD_FILES = ("xinput1_3.dll", "sfv_ember.dll", "sf4-net.exe")  # sf4-net: scripts/build-helper.ps1
+# Ember's own pictures the shell draws (the menu backdrop, button prompts and
+# flags), which the build copies from the Ember library into its assets/.
+ASSETS = "assets"
 GUARD_TIMEOUT_S = 20.0
 STEAM_APP_ID = "310950"
 
@@ -45,32 +48,43 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _deployed_files() -> list[str]:
+    """The proxy, the mod, its helper and its assets, relative to the build."""
+    assets = BUILD_DIR / ASSETS
+    pictures = [str(p.relative_to(BUILD_DIR)) for p in sorted(assets.rglob("*")) if p.is_file()] if assets.exists() else []
+    return list(MOD_FILES) + pictures
+
+
 def deploy() -> list[str]:
-    """Copies the built proxy and mod next to the game exe."""
+    """Copies the built proxy, mod and assets next to the game exe."""
     copied = []
-    for name in MOD_FILES:
+    for name in _deployed_files():
         src, dst = BUILD_DIR / name, GAME_DIR / name
         if not src.exists():
             raise SfveError(f"{src} is not built")
         if not dst.exists() or _sha256(src) != _sha256(dst):
+            dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
             copied.append(name)
     return copied
 
 
 def undeploy() -> list[str]:
-    """Removes the proxy and mod from the game folder (logs stay)."""
+    """Removes the proxy, mod and assets from the game folder (logs stay)."""
     removed = []
     for name in MOD_FILES:
         path = GAME_DIR / name
         if path.exists():
             path.unlink()
             removed.append(name)
+    if (GAME_DIR / ASSETS).exists():
+        shutil.rmtree(GAME_DIR / ASSETS)
+        removed.append(ASSETS)
     return removed
 
 
 def deployed_matches_build() -> bool:
-    return all((GAME_DIR / n).exists() and _sha256(GAME_DIR / n) == _sha256(BUILD_DIR / n) for n in MOD_FILES)
+    return all((GAME_DIR / n).exists() and _sha256(GAME_DIR / n) == _sha256(BUILD_DIR / n) for n in _deployed_files())
 
 
 # --- control pipe -------------------------------------------------------------
@@ -264,6 +278,12 @@ def tail(index: int, lines: int = 40) -> list[str]:
     if not path.exists():
         return []
     return path.read_text(errors="replace").splitlines()[-lines:]
+
+
+def count_log(index: int, text: str) -> int:
+    """How many of a copy's log lines hold `text`."""
+    path = log_path(index)
+    return sum(text in line for line in path.read_text(errors="replace").splitlines()) if path.exists() else 0
 
 
 # --- window capture -------------------------------------------------------------
