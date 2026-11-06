@@ -2,6 +2,8 @@
 
 #include "ember/SfvCatalog.hxx"
 
+#include "common/GameCatalog.hxx"
+
 #include <mutex>
 
 namespace sfve::adapter {
@@ -11,18 +13,30 @@ namespace {
 std::mutex s_mutex;
 PlayerPick s_pick;
 
+// The pick under the catalog's rules (its NormalizePick, and a stage of the
+// list); as it is until the catalog is filled.
+PlayerPick Fitted(PlayerPick pick)
+{
+	const ember::GameCatalog& catalog = ember::Catalog();
+	if (!ember::Usable(catalog)) return pick;
+	catalog.normalizePick(pick.pick, false, nullptr, nullptr);
+	if (!catalog.validStage(pick.stage)) pick.stage = 0;
+	return pick;
+}
+
 } // namespace
 
 PlayerPick CurrentPick()
 {
 	std::lock_guard lock(s_mutex);
-	return s_pick;
+	return Fitted(s_pick);
 }
 
-void SetPick(const PlayerPick& pick)
+PlayerPick SetPick(const PlayerPick& pick)
 {
 	std::lock_guard lock(s_mutex);
-	s_pick = pick;
+	s_pick = Fitted(pick);
+	return s_pick;
 }
 
 void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command)

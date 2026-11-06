@@ -341,13 +341,14 @@ bool ParseCode(const std::string& text, std::wstring* code)
 	return true;
 }
 
-// A costume or colour: up to two digits, or "-"/nothing for the default.
+// A costume or colour number, 0 to 255 (a room carries it in a byte), or
+// "-"/nothing for the default.
 bool ParseVariant(const std::string& text, int* value)
 {
 	if (text.empty() || text == "-") return *value = -1, true;
-	if (text.size() > 2 || text.find_first_not_of("0123456789") != std::string::npos) return false;
+	if (text.size() > 3 || text.find_first_not_of("0123456789") != std::string::npos) return false;
 	*value = atoi(text.c_str());
-	return true;
+	return *value <= 0xFF;
 }
 
 // A digit of PlayableRounds, or "-"/nothing for the default.

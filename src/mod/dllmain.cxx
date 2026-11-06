@@ -118,11 +118,20 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	RegisterCommand("content", [](const std::string&) {
 		RunOnGameThread([] {
 			const ContentLists lists = ReadContentLists();
-			std::string fighters, stages;
-			for (const std::string& f : lists.fighters) fighters += " " + f;
-			for (const std::string& st : lists.stages) stages += " " + st;
-			Log("content: %zu fighters:%s", lists.fighters.size(), fighters.c_str());
-			Log("content: %zu stages:%s", lists.stages.size(), stages.c_str());
+			Log("content: %zu fighters, %zu stages", lists.fighters.size(), lists.stages.size());
+			for (const FighterContent& fighter : lists.fighters) {
+				Log("content: %s \"%s\"%s, %zu costumes", fighter.code.c_str(), fighter.name.c_str(),
+					fighter.installed ? "" : " (not installed)", fighter.costumes.size());
+				for (const CostumeContent& costume : fighter.costumes) {
+					std::string colours;
+					for (int colour : costume.colours) colours += " " + std::to_string(colour);
+					Log("content:   costume %d \"%s\"%s, colours%s", costume.id, costume.name.c_str(),
+						costume.installed ? "" : " (not installed)", colours.c_str());
+				}
+			}
+			for (size_t i = 0; i < lists.stages.size(); i++) {
+				Log("content: stage %s \"%s\"", lists.stages[i].c_str(), lists.stageNames.size() > i ? lists.stageNames[i].c_str() : "");
+			}
 		});
 		return std::string("ok queued (see the log)");
 	});

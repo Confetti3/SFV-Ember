@@ -60,13 +60,6 @@ bool PickAvailable(const PlayerPick& pick, const Snapshot& snapshot)
 			snapshot.installedContent.get());
 }
 
-std::vector<int> Numbers(int limit)
-{
-	std::vector<int> numbers((size_t)limit);
-	for (int n = 0; n < limit; n++) numbers[(size_t)n] = n;
-	return numbers;
-}
-
 // SFV's part of the shell's frame: the pick (SfvPick) and its screen.
 class SfvShellGame final : public ember::ShellGame {
 public:
@@ -78,11 +71,10 @@ public:
 		view.build = MatchBuildId();
 		view.selectedPick = pick.pick;
 		view.fighterName = ember::Catalog().fighterName(pick.pick.fighter);
-		view.appearanceName =
-			loc::Tf("selection.appearance_value", sf4e::ui::CostumeLabel(pick.pick), std::to_string(pick.pick.color));
+		view.appearanceName = loc::Tf("selection.appearance_value", sf4e::ui::CostumeLabel(pick.pick), ColourName(pick.pick.color));
 		view.selectionSummary = view.fighterName + " / " + view.appearanceName;
 		view.stageName = sf4e::ui::StageLabel(pick.stage);
-		view.colorSteps = ember::Catalog().colorLimit > 1;
+		view.colorSteps = ColourIds(pick.pick.fighter, pick.pick.costume).size() > 1;
 		// SFV's fighters have no Ultra (the catalog's one choice) and no fighter
 		// options (SF4's personal action and win quote): the table page shows
 		// neither row.
@@ -90,12 +82,13 @@ public:
 		if (snapshot.atMainMenu && !available) view.selectionError = loc::T("runtime.selection_unavailable");
 	}
 
-	// The table page's Appearance row steps the colour; there is no Ultra.
+	// The table page's Appearance row steps the colour, through the costume's
+	// own colours; there is no Ultra.
 	bool StepSelection(const sf4e::ui::ShellAction::SelectionStep& step, const RuntimeSnapshot& snapshot) override
 	{
 		if (!snapshot.canEditSelection || step.field != sf4e::ui::ShellAction::SelectionStep::Field::Color) return false;
 		PlayerPick pick = CurrentPick();
-		sf4e::ui::Step(pick.pick.color, Numbers(ember::Catalog().colorLimit), step.delta);
+		sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume), step.delta);
 		SetPick(pick);
 		return true;
 	}

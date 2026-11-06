@@ -61,8 +61,9 @@ struct MatchPicks {
 // A player's setup as the pipe's commands name it, space separated:
 // "CODE[:costume[:colour]]", then "STAGE ROUNDS TIME": a stage code, the
 // rounds (1, 3, 5 or 7) and the round time in seconds (30 to 546) or "inf".
-// "-" keeps a default. Codes are 1 to 8 capital letters or digits. False for anything
-// else.
+// A costume and a colour are the game's numbers, 0 to 255 (EX colours are 100
+// and up). "-" keeps a default. Codes are 1 to 8 capital letters or digits.
+// False for anything else.
 bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rules);
 
 // The rounds and round time SFV plays, as ParseSetup checks them too: best of

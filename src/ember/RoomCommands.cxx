@@ -4,6 +4,7 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvPick.hxx"
 #include "mod/ControlPipe.hxx"
+#include "mod/Log.hxx"
 #include "mod/VersusLaunch.hxx"
 
 #include "common/GameCatalog.hxx"
@@ -115,8 +116,12 @@ std::string Pick(const std::string& args)
 	pick.pick.fighter = *id;
 	pick.pick.costume = fighter.costume < 0 ? 0 : fighter.costume;
 	pick.pick.color = fighter.colour < 0 ? 0 : fighter.colour;
-	SetPick(pick);
-	return "ok " + PickText(pick);
+	// The store fits the pick to the catalog, as for the shell's picks.
+	const PlayerPick asked = pick;
+	pick = SetPick(pick);
+	const bool fitted = pick.pick.costume != asked.pick.costume || pick.pick.color != asked.pick.color;
+	if (fitted) mod::Log("room: pick %s fitted to %s", PickText(asked).c_str(), PickText(pick).c_str());
+	return "ok " + PickText(pick) + (fitted ? " (fitted)" : "");
 }
 
 std::string Ready()

@@ -1,11 +1,12 @@
 // SFV's pick labels (the library's ui/SelectionLabels.hxx) and pictures
 // (ui/SelectionArt.hxx), and the selection files its update packages may add
 // (common/SelectionAssetPath.hxx): none, as SFV Ember installs no updates yet.
-// The labels are plain: a stage by the game's own name for it (its code where
-// the game has none; SfvCatalog's StageName), a costume and a colour by the
-// game's own numbers (as the launch setup and the logs give them). SFV has no Ultra, so its label is empty. No SFV picture exists
-// yet, so every picture of the game reports itself missing and screens say so
-// instead of waiting for one.
+// The labels are the game's: a stage and a costume by the game's own names
+// for them (their code or number where the game has none; SfvCatalog's
+// StageName and CostumeName), a colour as the game's costume menu labels it
+// ("01", "EX01"; ColourName). SFV has no Ultra, so its label is empty. No SFV
+// picture exists yet, so every picture of the game reports itself missing and
+// screens say so instead of waiting for one.
 
 #include "ember/SfvCatalog.hxx"
 
@@ -35,7 +36,7 @@ std::string StageLabel(int stageId, const selection::InstalledContent*)
 
 std::string CostumeLabel(const selection::Pick& pick, const selection::InstalledContent*)
 {
-	return std::string(loc::T("selection.costume")) + " " + std::to_string(pick.costume);
+	return sfve::adapter::CostumeName(pick.fighter, pick.costume);
 }
 
 std::string ShortCostumeLabel(const selection::Pick& pick, const selection::InstalledContent* installed)
@@ -45,7 +46,7 @@ std::string ShortCostumeLabel(const selection::Pick& pick, const selection::Inst
 
 std::string ShortAppearanceLabel(const selection::Pick& pick, const selection::InstalledContent* installed)
 {
-	return loc::Tf("home.selection_appearance", CostumeLabel(pick, installed), pick.color);
+	return loc::Tf("home.selection_appearance", CostumeLabel(pick, installed), sfve::adapter::ColourName(pick.color));
 }
 
 const char* UltraLabel(int) { return ""; }

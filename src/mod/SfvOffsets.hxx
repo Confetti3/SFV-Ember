@@ -233,12 +233,57 @@ constexpr CodeSite kRequestExit{"RequestExit", 0x11D0580,
 constexpr CodeSite kStageName{"StageName", 0x564550,
 	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0xDA, 0x49, 0x8B, 0xD0, 0xE8, 0xEF, 0x9F, 0xFF}};
 
+// The spec's pick space (GameContent's fighter, costume and colour lists).
+// DA_Spec (/Game/Spec/DA_Spec, loaded at boot, rva 0x691790) holds a TMap
+// keyed by a fighter's CharaUniqueID (spec+328, 136-byte elements, value at
+// +8); a fighter's value holds a TMap of costumes (value+24, 120-byte
+// elements, the costume's own value at +8), and each costume's value a TMap of
+// colours (value+24, 40-byte elements). Each lister below walks one of those
+// maps in its own order and appends the keys whose spec flags allow them:
+// bool List(SpecData** spec, ..., TArray<int>* out).
+//
+// The fighters the spec lets players select (the record's flag at value+2):
+// no package check; the game's kSelectableFighters keeps those of them whose
+// package is installed, or whose flag at value+4 says they need none (rva
+// 0x5591E0, FighterInstalled).
+constexpr CodeSite kSpecFighters{"SpecFighters", 0x566AF0,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x48, 0x89, 0x7C, 0x24, 0x18, 0x55}};
+// List(spec, uniqueId, out): the fighter's costumes the spec enables (the
+// costume's flag at value+0), with no package check: the costume settings
+// menu's spin box (rva 0x8CC6E0, case 3) lists these, less the unowned.
+constexpr CodeSite kSpecCostumes{"SpecCostumes", 0x54F1F0,
+	{0x40, 0x55, 0x53, 0x56, 0x57, 0x41, 0x56, 0x48, 0x8B, 0xEC, 0x48, 0x83, 0xEC, 0x70, 0x41, 0x8B}};
+// List(spec, uniqueId, out): kSpecCostumes less those this copy cannot load:
+// a costume whose flag at value+3 is clear needs its CostumeDatas package
+// (rva 0x558DC0, 0x548E40). kCostumeValid is membership in this list.
+constexpr CodeSite kPlayableCostumes{"PlayableCostumes", 0x54FAB0,
+	{0x48, 0x8B, 0xC4, 0x53, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x58, 0x48, 0x89, 0x70, 0x18, 0x48, 0x89}};
+// List(spec, uniqueId, costume, out): the costume's colours the spec enables
+// (flag at value+0) that are either flagged at value+1 or numbered below 128
+// (rva 0x54EE30, 0x558920); no package check. kColourValid is membership in
+// this list. Numbers 0-99 are the colours "01".."99", 100 and up the EX
+// colours "EX01".. (the menu's labels, rva 0x553B80).
+constexpr CodeSite kSpecColours{"SpecColours", 0x54F870,
+	{0x48, 0x8B, 0xC4, 0x53, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x58, 0x48, 0x89, 0x68, 0x10, 0x48, 0x89}};
+// FString* CostumeName(void*, FString* out, const FString* code, int costume):
+// the costume's FText (its spec value+8 object, +64) as shown, or
+// "Costume<n>" where the spec has none (rva 0x55C5B0); the first argument is
+// unused. The costume settings menu names its spin box's entries so.
+constexpr CodeSite kCostumeName{"CostumeName", 0x557870,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x41}};
+// const FString* TextToString(const FText*): the text as shown, rebuilt in
+// the current language first if it has to be (FText::ToString). The versus
+// screen names a fighter so (rva 0x6DD620: PersonalData+80, "charaName").
+constexpr CodeSite kTextToString{"TextToString", 0x116E270,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x48, 0x83, 0x79, 0x10, 0x00, 0x48, 0x8B, 0x01, 0x48, 0x8B}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
-	kSpecStages, kMainMenuClass, kRequestExit, kStageName};
+	kSpecStages, kMainMenuClass, kRequestExit, kStageName, kSpecFighters, kSpecCostumes, kPlayableCostumes,
+	kSpecColours, kCostumeName, kTextToString};
 
 namespace versus {
 
@@ -262,6 +307,21 @@ constexpr uint32_t kStageStride = 80;  // entry: +0 FString code
 // data (BO3, BO4, SH1, SH5, S11, S12), and an empty entry.
 constexpr const wchar_t* kUnplayableStages[] = {L"RND", L"BO3", L"BO4", L"SH1", L"SH5", L"S11", L"S12"};
 constexpr const wchar_t* kRandomFighter = L"RND";
+
+// CharaAsset: the DA_CharaEntry records (parsed at rva 0x56D050), a TArray of
+// 232-byte entries, which the game searches by a spec id as GameContent does
+// (rva 0x547160). An entry: +0 FString CharaCode, +16 CharaProgID,
+// +20 CharaUniqueID (the spec's key), +24 the loaded PersonalData object
+// (KWCharaPersonalDataAsset), +80 CostumeDatas (TArray<FString>, indexed by
+// costume number), +112 CostumeColorPreviewDatas.
+constexpr uint32_t kCharaEntries = 40;
+constexpr uint32_t kCharaCount = 48;
+constexpr uint32_t kCharaStride = 232;
+constexpr uint32_t kCharaUniqueId = 20;
+constexpr uint32_t kCharaPersonal = 24;
+// PersonalData: the fighter's name (FText), as the versus screen's
+// "charaName" (rva 0x6DD620).
+constexpr uint32_t kPersonalName = 80;
 
 } // namespace content
 

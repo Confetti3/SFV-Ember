@@ -31,11 +31,41 @@ using sf4e::selection::Pick;
 
 namespace {
 
-// A content list as GameContent reads one: codes in the game's order, and
-// the stages' names where the game gives one (none for the second).
+mod::CostumeContent Costume(int id, std::vector<int> colours, const char* name = "", bool installed = true)
+{
+	return {id, std::move(colours), name, installed};
+}
+
+mod::FighterContent Fighter(const char* code, std::vector<mod::CostumeContent> costumes, const char* name = "",
+	bool installed = true)
+{
+	return {code, std::move(costumes), name, installed};
+}
+
+// A content list shaped as the game's: fighters in the game's order with
+// their costume numbers (with gaps, as the spec leaves some out) and each
+// costume's colours (EX colours from 100); names where the game gives one;
+// one fighter and one costume this copy has not installed; the stages' names
+// where the game gives one (none for the second).
 mod::ContentLists TestContent()
 {
-	return {{"RYU", "CNL", "KEN", "CMY", "BSN"}, {"S01", "S02", "S25"}, {"Stage One", "", "Stage Twenty-five"}};
+	return {{Fighter("RYU", {Costume(0, {0, 1, 2}, "Story"), Costume(1, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}),
+					 Costume(4, {0, 1, 100, 101}, "Nostalgia")},
+				 "Ryu"),
+				Fighter("CNL", {Costume(0, {0, 1}), Costume(2, {0})}, "Chun-Li"),
+				Fighter("KEN", {Costume(0, {0})}, "Ken"),
+				Fighter("CMY", {Costume(3, {5, 6})}, "", false),
+				Fighter("BSN", {Costume(0, {0, 1}), Costume(1, {0, 1}, "", false)}, "M. Bison")},
+		{"S01", "S02", "S25"}, {"Stage One", "", "Stage Twenty-five"}};
+}
+
+// Lists with only the codes given, each fighter in one costume and colour.
+mod::ContentLists CodesOnly(std::vector<std::string> fighters, std::vector<std::string> stages)
+{
+	mod::ContentLists lists;
+	for (const std::string& code : fighters) lists.fighters.push_back(Fighter(code.c_str(), {Costume(0, {0})}));
+	lists.stages = std::move(stages);
+	return lists;
 }
 
 void FillTestCatalog()
@@ -52,11 +82,13 @@ Pick PickOf(int fighter, int costume = 0, int color = 0)
 	return pick;
 }
 
+// A match of the fighters in their first costume and colour.
 RoomMatch MatchOf(int p1, int p2, std::int64_t stage, int rounds = 3, int seconds = 99)
 {
 	RoomMatch match;
-	match.picks[0] = PickOf(p1, 2, 7);
+	match.picks[0] = PickOf(p1);
 	match.picks[1] = PickOf(p2);
+	for (Pick& pick : match.picks) ember::Catalog().normalizePick(pick, false, nullptr, nullptr);
 	match.stage = stage;
 	match.rounds = rounds;
 	match.roundSeconds = seconds;
@@ -84,15 +116,28 @@ TEST_CASE("the catalog is empty until it is filled from the game's content lists
 	CHECK_FALSE(ember::ValidFighter(0));
 	// The shell names fighter 0 before the lists are filled.
 	CHECK(std::string(ember::Catalog().fighterName(0)) == "?");
-	CHECK_FALSE(FillCatalog({{}, {"S01"}}));
-	CHECK_FALSE(FillCatalog({{"RYU"}, {}}));
+	CHECK_FALSE(FillCatalog(CodesOnly({}, {"S01"})));
+	CHECK_FALSE(FillCatalog(CodesOnly({"RYU"}, {})));
+	// A pick space needs a costume for every fighter and a colour for every
+	// costume, and numbers a room's byte carries.
+	mod::ContentLists bare = CodesOnly({"RYU"}, {"S01"});
+	bare.fighters[0].costumes.clear();
+	CHECK_FALSE(FillCatalog(bare));
+	bare.fighters[0].costumes = {Costume(0, {})};
+	CHECK_FALSE(FillCatalog(bare));
+	bare.fighters[0].costumes = {Costume(256, {0})};
+	CHECK_FALSE(FillCatalog(bare));
+	bare.fighters[0].costumes = {Costume(0, {256})};
+	CHECK_FALSE(FillCatalog(bare));
+	CHECK_FALSE(ember::Usable(ember::Catalog()));
 
 	FillTestCatalog();
 	const ember::GameCatalog& catalog = ember::Catalog();
 	CHECK(ember::Usable(catalog));
 	CHECK(catalog.fighterCount == 5);
-	CHECK(catalog.costumeLimit == kVariantLimit);
-	CHECK(catalog.colorLimit == kVariantLimit);
+	// One past the highest costume (RYU's 4) and colour (RYU's EX02, 101).
+	CHECK(catalog.costumeLimit == 5);
+	CHECK(catalog.colorLimit == 102);
 	CHECK(catalog.ultraChoices == 1);
 	// The table rules the shell offers: the room's that SFV plays.
 	CHECK_FALSE(catalog.editions);
@@ -121,23 +166,42 @@ TEST_CASE("the catalog is empty until it is filled from the game's content lists
 	CHECK_FALSE(FighterId(L"ZZZ").has_value());
 	CHECK(StageId(L"S25") == 2);
 	CHECK_FALSE(StageId(L"RYU").has_value());
+	// Each fighter's costumes in the game's order, and each costume's colours.
+	CHECK(CostumeIds(0, false) == std::vector<int>{0, 1, 4});
+	CHECK(CostumeIds(4, false) == std::vector<int>{0, 1});
+	CHECK(CostumeIds(4, true) == std::vector<int>{0}); // BSN's second is not installed here
+	CHECK(CostumeIds(5, false).empty());
+	CHECK(ColourIds(0, 4) == std::vector<int>{0, 1, 100, 101});
+	CHECK(ColourIds(1, 2) == std::vector<int>{0});
+	CHECK(ColourIds(1, 1).empty()); // CNL has no costume 1
 
 	// Filled once: the same lists again are fine, other lists are refused.
 	CHECK(FillCatalog(TestContent()));
-	CHECK_FALSE(FillCatalog({{"RYU"}, {"S01"}}));
+	mod::ContentLists renamed = TestContent(); // names and installs are this copy's
+	renamed.fighters[0].name = "Ryu in another language";
+	renamed.fighters[3].installed = true;
+	CHECK(FillCatalog(renamed));
+	CHECK_FALSE(FillCatalog(CodesOnly({"RYU"}, {"S01"})));
+	mod::ContentLists recoloured = TestContent();
+	recoloured.fighters[2].costumes[0].colours.push_back(1);
+	CHECK_FALSE(FillCatalog(recoloured));
 	CHECK(ember::Catalog().fighterCount == 5);
 }
 
-TEST_CASE("a pick names a fighter of the roster, a costume and a colour, and nothing SFV lacks")
+TEST_CASE("a pick names a fighter of the roster, one of its costumes and one of that costume's colours")
 {
 	FillTestCatalog();
 	const auto valid = ember::Catalog().validPick;
 	CHECK(valid(PickOf(0), false));
-	CHECK(valid(PickOf(4, 99, 99), true)); // a room's edition rule means nothing to SFV
+	CHECK(valid(PickOf(0, 4, 101), true)); // a room's edition rule means nothing to SFV
+	CHECK(valid(PickOf(3, 3, 6), false));  // the spec's, though this copy lacks it
 	CHECK_FALSE(valid(PickOf(5), false));
 	CHECK_FALSE(valid(PickOf(-1), false));
-	CHECK_FALSE(valid(PickOf(0, kVariantLimit, 0), false));
-	CHECK_FALSE(valid(PickOf(0, 0, kVariantLimit), false));
+	CHECK_FALSE(valid(PickOf(0, 2, 0), false));   // RYU has no costume 2
+	CHECK_FALSE(valid(PickOf(0, 0, 3), false));   // nor colour 3 in costume 0
+	CHECK_FALSE(valid(PickOf(0, 4, 2), false));   // nor colour 2 in costume 4
+	CHECK_FALSE(valid(PickOf(1, 1, 0), false));   // a costume of another fighter
+	CHECK_FALSE(valid(PickOf(3, 0, 0), false));   // CMY's only costume is 3
 	CHECK_FALSE(valid(PickOf(0, -1, 0), false));
 	Pick ultra = PickOf(0);
 	ultra.ultra = 1;
@@ -166,19 +230,25 @@ TEST_CASE("a stage is one of the game's stages, by its place in the list")
 TEST_CASE("a room's match launches its fighters, stage, rounds and time by the game's codes")
 {
 	FillTestCatalog();
-	const std::optional<mod::MatchPicks> picks = LaunchPicks(MatchOf(2, 0, 1, 5, 60));
+	RoomMatch match = MatchOf(2, 0, 1, 5, 60);
+	match.picks[1] = PickOf(0, 4, 101); // RYU's EX02 in costume 4
+	const std::optional<mod::MatchPicks> picks = LaunchPicks(match);
 	REQUIRE(picks);
 	CHECK(picks->target == mod::LaunchTarget::Versus);
 	CHECK(picks->players[0].fighter == L"KEN");
-	CHECK(picks->players[0].costume == 2);
-	CHECK(picks->players[0].colour == 7);
+	CHECK(picks->players[0].costume == 0);
+	CHECK(picks->players[0].colour == 0);
 	CHECK(picks->players[1].fighter == L"RYU");
-	CHECK(picks->players[1].costume == 0);
+	CHECK(picks->players[1].costume == 4);
+	CHECK(picks->players[1].colour == 101);
 	CHECK(picks->rules.stage == L"S02");
 	CHECK(picks->rules.rounds == 5);
 	CHECK(picks->rules.timeFrames == 60 * 60);
 
-	CHECK_FALSE(LaunchPicks(MatchOf(5, 0, 1)));     // a fighter outside the roster
+	match.picks[1] = PickOf(0, 4, 2);
+	CHECK_FALSE(LaunchPicks(match));                // a colour the costume lacks
+	match.picks[1] = PickOf(5);
+	CHECK_FALSE(LaunchPicks(match));                // a fighter outside the roster
 	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 3)));     // a stage outside the list
 	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 99))); // a room's endless rounds
 	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, 9999))); // longer than SFV's clock holds
@@ -201,13 +271,29 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	mod::ContentLists extra = TestContent();
 	extra.stages.push_back("S26");
 	CHECK(ContentFingerprint(extra) != fingerprint);
-	// Stage names follow each copy's language: they never change the build.
+	// A costume or a colour more, less or moved is another pick space.
+	mod::ContentLists costume = TestContent();
+	costume.fighters[1].costumes.push_back(Costume(5, {0}));
+	CHECK(ContentFingerprint(costume) != fingerprint);
+	mod::ContentLists colour = TestContent();
+	colour.fighters[0].costumes[2].colours.pop_back();
+	CHECK(ContentFingerprint(colour) != fingerprint);
+	mod::ContentLists moved = TestContent();
+	moved.fighters[0].costumes[0].colours = {0, 1};
+	moved.fighters[0].costumes[1].colours.push_back(2);
+	CHECK(ContentFingerprint(moved) != fingerprint);
+	// Names follow each copy's language, and what is installed is each
+	// copy's own: neither changes the build.
 	mod::ContentLists translated = TestContent();
 	translated.stageNames = {"Etappe eins", "", ""};
+	translated.fighters[0].name = "Ryu, translated";
+	translated.fighters[0].costumes[0].name = "Story, translated";
+	translated.fighters[3].installed = true;
+	translated.fighters[4].costumes[1].installed = true;
 	CHECK(ContentFingerprint(translated) == fingerprint);
 	// A code that moved from one list to the other.
-	CHECK(ContentFingerprint({{"RYU", "S01"}, {"S02"}}) != ContentFingerprint({{"RYU"}, {"S01", "S02"}}));
-	CHECK(ContentFingerprint({{"RY", "U"}, {"S01"}}) != ContentFingerprint({{"R", "YU"}, {"S01"}}));
+	CHECK(ContentFingerprint(CodesOnly({"RYU", "S01"}, {"S02"})) != ContentFingerprint(CodesOnly({"RYU"}, {"S01", "S02"})));
+	CHECK(ContentFingerprint(CodesOnly({"RY", "U"}, {"S01"})) != ContentFingerprint(CodesOnly({"R", "YU"}, {"S01"})));
 
 	FillTestCatalog();
 	CHECK(MatchBuildId() == std::string(kMatchBuild) + "/" + fingerprint);
@@ -215,51 +301,82 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	CHECK(MatchBuildId().size() <= 128); // the room's limit for a build
 }
 
-TEST_CASE("every pick of an SFV fighter is available to the player, and the runtime's check takes it")
+TEST_CASE("a pick is available when this copy has its fighter and costume installed")
 {
 	FillTestCatalog();
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const ember::game::GameState& state = ember::game::Game().state;
 	const sf4e::selection::Availability availability = state.FighterAvailability(4);
 	CHECK(availability.ready);
-	// The runtime's Ready check (NetplayRuntime__Room) asks the catalog, so
-	// numbers past SF4's roster and colours pass.
+	// The runtime's Ready check (NetplayRuntime__Room) asks the catalog.
 	CHECK_FALSE(catalog.fighterLocked(4, availability));
-	CHECK(catalog.availablePick(PickOf(4, 99, 99), false, availability, nullptr));
+	CHECK(catalog.availablePick(PickOf(4, 0, 1), false, availability, nullptr));
+	CHECK_FALSE(catalog.availablePick(PickOf(4, 1, 1), false, availability, nullptr)); // costume not installed
+	CHECK(catalog.fighterLocked(3, state.FighterAvailability(3)));                       // fighter not installed
+	CHECK_FALSE(catalog.availablePick(PickOf(3, 3, 5), false, state.FighterAvailability(3), nullptr));
+	CHECK(catalog.fighterLocked(5, availability));
 	Pick noAction = PickOf(0);
 	noAction.personalAction = 255;
 	CHECK(catalog.availablePick(noAction, false, state.FighterAvailability(0), nullptr));
 	CHECK_FALSE(catalog.availablePick(PickOf(5), false, availability, nullptr));
-	CHECK_FALSE(catalog.availablePick(PickOf(4, 0, kVariantLimit), false, availability, nullptr));
+	CHECK_FALSE(catalog.availablePick(PickOf(4, 0, 2), false, availability, nullptr));
 }
 
-TEST_CASE("a pick is fitted to SFV's rules, and a stage choice is a stage of the list")
+TEST_CASE("a pick is fitted to the spec: the fighter's first costume, then that costume's first colour")
 {
 	FillTestCatalog();
 	const ember::GameCatalog& catalog = ember::Catalog();
-	Pick pick = PickOf(5, kVariantLimit, 99);
+	Pick pick = PickOf(5, 40, 99);
 	pick.ultra = 2;
 	CHECK(catalog.normalizePick(pick, false, nullptr, nullptr));
 	CHECK(pick.fighter == 0);
 	CHECK(pick.costume == 0);
-	CHECK(pick.color == 99);
+	CHECK(pick.color == 0);
 	CHECK(pick.ultra == 0);
 	CHECK_FALSE(catalog.normalizePick(pick, false, nullptr, nullptr));
+	// A fighter with few costumes at a high costume number, and a costume
+	// with few colours at a high colour number.
+	Pick few = PickOf(1, 40, 120);
+	CHECK(catalog.normalizePick(few, false, nullptr, nullptr));
+	CHECK(few.costume == 0);
+	CHECK(few.color == 0);
+	few = PickOf(1, 2, 120);
+	CHECK(catalog.normalizePick(few, false, nullptr, nullptr));
+	CHECK(few.costume == 2);
+	CHECK(few.color == 0);
+	// The first of each is the game's first, not number 0.
+	Pick firsts = PickOf(3, 0, 0);
+	CHECK(catalog.normalizePick(firsts, false, nullptr, nullptr));
+	CHECK(firsts.costume == 3);
+	CHECK(firsts.color == 5);
+	// A colour of the costume stays, an EX one included.
+	Pick ex = PickOf(0, 4, 101);
+	CHECK_FALSE(catalog.normalizePick(ex, false, nullptr, nullptr));
+	ex.color = 9; // costume 1's, not costume 4's
+	CHECK(catalog.normalizePick(ex, false, nullptr, nullptr));
+	CHECK(ex.color == 0);
+	// What this copy has not installed is not the spec's business.
+	Pick uninstalled = PickOf(4, 1, 1);
+	CHECK_FALSE(catalog.normalizePick(uninstalled, false, nullptr, nullptr));
 	CHECK(catalog.randomStage == -1);
 	const sf4e::selection::RandomPool pool; // the facade carries SF4's pool type; SFV reads none
 	CHECK(catalog.resolveStage(2, 7, pool, nullptr) == 2);
 	CHECK(catalog.resolveStage(255, 7, pool, nullptr) == 0);
 }
 
-TEST_CASE("the shared screens name and list SFV's fighters by the game's codes, in its order")
+TEST_CASE("the shared screens name and list SFV's fighters by the game's names, in its order")
 {
 	FillTestCatalog();
 	const ember::GameCatalog& catalog = ember::Catalog();
-	CHECK(std::string(catalog.fighterName(0)) == "RYU");
-	CHECK(std::string(catalog.fighterName(4)) == "BSN");
+	CHECK(std::string(catalog.fighterName(0)) == "Ryu");
+	CHECK(std::string(catalog.fighterName(4)) == "M. Bison");
+	CHECK(std::string(catalog.fighterName(3)) == "CMY"); // the game gave no name
 	CHECK(std::string(catalog.fighterName(5)) == "?");
 	CHECK(std::string(catalog.fighterName(-1)) == "?");
-	CHECK(catalog.costumeCount(4) == kVariantLimit);
+	// One past the highest costume number: every costume the spec has is known.
+	CHECK(catalog.costumeCount(0) == 5);
+	CHECK(catalog.costumeCount(3) == 4);
+	CHECK(catalog.costumeCount(5) == 0);
 	for (int at = 0; at < catalog.fighterCount; at++) CHECK(catalog.rosterOrder[at] == at);
 }
 
@@ -321,7 +438,7 @@ TEST_CASE("the product is SFV Ember, with names of its own")
 	CHECK(std::string(sf4e::loc::T("brand.subtitle")).rfind("SFV", 0) == 0);
 }
 
-TEST_CASE("the pick labels are plain, from the catalog")
+TEST_CASE("the pick labels are the game's names, from the catalog")
 {
 	FillTestCatalog();
 	using namespace sf4e::ui;
@@ -329,9 +446,14 @@ TEST_CASE("the pick labels are plain, from the catalog")
 	CHECK(StageLabel(1) == "S02"); // the game gave no name
 	CHECK(StageLabel(2) == "Stage Twenty-five");
 	CHECK(StageLabel(9) == "9");
-	CHECK(CostumeLabel(PickOf(0, 3)) == "Costume 3");
-	CHECK(ShortCostumeLabel(PickOf(0, 3)) == "Costume 3");
-	CHECK(ShortAppearanceLabel(PickOf(0, 3, 5)) == "Costume 3, color 5");
+	CHECK(CostumeLabel(PickOf(0, 4)) == "Nostalgia");
+	CHECK(CostumeLabel(PickOf(0, 1)) == "1"); // the game gave no name
+	CHECK(ShortCostumeLabel(PickOf(0, 4)) == "Nostalgia");
+	CHECK(ShortAppearanceLabel(PickOf(0, 4, 100)) == "Nostalgia, color EX01");
+	CHECK(ColourName(0) == "01");
+	CHECK(ColourName(9) == "10");
+	CHECK(ColourName(100) == "EX01");
+	CHECK(ColourName(127) == "EX28");
 	CHECK(std::string(UltraLabel(0)).empty());
 	CHECK(std::string(ShortUltraLabel(0)).empty());
 }
@@ -568,6 +690,6 @@ TEST_CASE("once Ember's runtime starts, the catalog refuses every fill")
 	FillTestCatalog();
 	SealCatalog();
 	CHECK_FALSE(FillCatalog(TestContent()));
-	CHECK_FALSE(FillCatalog({{"RYU"}, {"S01"}}));
+	CHECK_FALSE(FillCatalog(CodesOnly({"RYU"}, {"S01"})));
 	CHECK(ember::Catalog().fighterCount == 5);
 }

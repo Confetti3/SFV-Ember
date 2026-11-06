@@ -6,9 +6,11 @@
 // screen and table page (SfvShell), and the pipe's test command `pick` sets it
 // (RoomCommands); both Ready with it.
 //
-// Until anyone picks, it is the catalog's first fighter in costume 0 and
-// colour 0, on its first stage; the game's own checks judge the costume and
-// colour as the battle launches. Any thread.
+// It is always a pick the catalog takes: what is stored and read is fitted
+// to the catalog's rules (its NormalizePick, the same on every copy), so a
+// costume a fighter lacks becomes its first costume and a colour the costume
+// lacks its first colour. Until anyone picks, it is the catalog's first
+// fighter in its first costume and colour, on the first stage. Any thread.
 
 #include "common/SelectionPick.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
@@ -23,7 +25,8 @@ struct PlayerPick {
 };
 
 PlayerPick CurrentPick();
-void SetPick(const PlayerPick& pick);
+// Stores the pick, fitted; returns what was stored.
+PlayerPick SetPick(const PlayerPick& pick);
 
 // The pick in a room command (Ready, the room's pick updates), as the wire
 // carries it.

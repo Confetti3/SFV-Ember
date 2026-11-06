@@ -43,18 +43,21 @@ std::vector<int> Roster()
 	return std::vector<int>(catalog.rosterOrder, catalog.rosterOrder + catalog.fighterCount);
 }
 
+// The roster less the fighters this copy has not installed.
+std::vector<int> PlayableRoster()
+{
+	std::vector<int> playable;
+	for (int id : Roster()) {
+		if (!ember::Catalog().fighterLocked(id, {})) playable.push_back(id);
+	}
+	return playable;
+}
+
 std::vector<int> Stages()
 {
 	std::vector<int> stages((size_t)StageCount());
 	for (int id = 0; id < StageCount(); id++) stages[(size_t)id] = id;
 	return stages;
-}
-
-std::vector<int> Numbers(int limit)
-{
-	std::vector<int> numbers((size_t)limit);
-	for (int n = 0; n < limit; n++) numbers[(size_t)n] = n;
-	return numbers;
 }
 
 // A value row Left and Right step; with `choices`, Select opens them all.
@@ -73,15 +76,16 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 {
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const char* adjusts = editable ? "selection.adjust_saves" : "selection.locked_detail";
+	// A fighter this copy has not installed is listed, but cannot be chosen.
 	std::vector<MenuChoice> fighters;
-	for (int id : Roster()) fighters.push_back({OptionId(id), catalog.fighterName(id), {}, editable});
+	for (int id : Roster()) fighters.push_back({OptionId(id), catalog.fighterName(id), {}, editable && !catalog.fighterLocked(id, {})});
 	std::vector<MenuChoice> stages;
 	for (int id : Stages()) stages.push_back({OptionId(id), StageName(id), {}, editable && stageEditable});
 	std::vector<MenuEntry> rows;
 	rows.push_back(StepRow(kFighter, "selection.fighter", catalog.fighterName(pick.pick.fighter),
 		editable ? "selection.select_saves" : "selection.locked_detail", editable, std::move(fighters), pick.pick.fighter));
-	rows.push_back(StepRow(kCostume, "selection.costume", std::to_string(pick.pick.costume), adjusts, editable));
-	rows.push_back(StepRow(kColour, "selection.color_row", std::to_string(pick.pick.color), adjusts, editable));
+	rows.push_back(StepRow(kCostume, "selection.costume", CostumeName(pick.pick.fighter, pick.pick.costume), adjusts, editable));
+	rows.push_back(StepRow(kColour, "selection.color_row", ColourName(pick.pick.color), adjusts, editable));
 	rows.push_back(StepRow(kStage, "selection.stage", StageName(pick.stage),
 		!editable ? "selection.locked_detail" : stageEditable ? "selection.p1_stage" : "selection.only_p1_stage",
 		editable && stageEditable, std::move(stages), pick.stage));
@@ -93,15 +97,22 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick)
 {
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const PlayerPick before = pick;
+	// Left and Right go through the values the game has: the fighters this
+	// copy can play, the
+	// fighter's costumes this copy can load, and that costume's colours. A
+	// costume or colour the new fighter or costume lacks is fitted as the pick
+	// is stored (SetPick).
 	if (action.kind == MenuAction::Adjust) {
-		if (action.id == kFighter) sf4e::ui::Step(pick.pick.fighter, Roster(), action.delta);
-		else if (action.id == kCostume) sf4e::ui::Step(pick.pick.costume, Numbers(catalog.costumeLimit), action.delta);
-		else if (action.id == kColour) sf4e::ui::Step(pick.pick.color, Numbers(catalog.colorLimit), action.delta);
-		else if (action.id == kStage) sf4e::ui::Step(pick.stage, Stages(), action.delta);
+		if (action.id == kFighter) sf4e::ui::Step(pick.pick.fighter, PlayableRoster(), action.delta);
+		else if (action.id == kCostume) sf4e::ui::Step(pick.pick.costume, CostumeIds(pick.pick.fighter, true), action.delta);
+		else if (action.id == kColour) {
+			sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume), action.delta);
+		} else if (action.id == kStage) sf4e::ui::Step(pick.stage, Stages(), action.delta);
 	} else if (action.kind == MenuAction::Chosen) {
 		const std::optional<int> option = OptionOf(action.text);
-		if (option && action.id == kFighter && ember::ValidFighter(*option)) pick.pick.fighter = *option;
-		else if (option && action.id == kStage && catalog.validStage(*option)) pick.stage = *option;
+		if (option && action.id == kFighter && ember::ValidFighter(*option) && !catalog.fighterLocked(*option, {})) {
+			pick.pick.fighter = *option;
+		} else if (option && action.id == kStage && catalog.validStage(*option)) pick.stage = *option;
 	}
 	return pick.pick.fighter != before.pick.fighter || pick.pick.costume != before.pick.costume ||
 		pick.pick.color != before.pick.color || pick.stage != before.stage;
