@@ -8,9 +8,6 @@
 //   3. the build check; on anything but a verified build the mod stays inert.
 
 #include "core/CoreLog.hxx"
-#include "ember/EmberHost.hxx"
-#include "ember/RoomCommands.hxx"
-#include "ember/SfvShell.hxx"
 #include "mod/BackgroundPlay.hxx"
 #include "mod/BattleDriver.hxx"
 #include "mod/BuildCheck.hxx"
@@ -43,19 +40,13 @@ constexpr UINT kExitGuardFailed = 0x5F0E0001;
 
 bool s_started = false;
 
-// The process's battle mode; `netplay` is the netplay mode (Ember's tick
-// polls it), null for the other modes.
-std::unique_ptr<sfve::mod::BattleMode> MakeMode(const sfve::mod::ModConfig& config, sfve::mod::NetplayMode** netplay)
+// The process's battle mode.
+std::unique_ptr<sfve::mod::BattleMode> MakeMode(const sfve::mod::ModConfig& config)
 {
 	using namespace sfve::mod;
 	switch (config.mode) {
 	case ModMode::SyncTest: return std::make_unique<SyncTestMode>(config);
-	case ModMode::Netplay: {
-		auto mode = std::make_unique<NetplayMode>(config);
-		mode->RegisterCommands();
-		*netplay = mode.get();
-		return mode;
-	}
+	case ModMode::Netplay: return std::make_unique<NetplayMode>(config);
 	default: return std::make_unique<PassThroughMode>();
 	}
 }
@@ -76,6 +67,7 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	Log("sfv-ember 0.0.1 starting in %ls (%s), instance %d, mode %s", exe,
 		beforeGameCode ? "before game code" : "LATE: the game was already running", Config().instance,
 		ModeName(Config().mode));
+	if (const char* ignored = IgnoredSetting()) Log("config: %s", ignored);
 
 	if (!InstallNetGuard()) {
 		Log("start refused: the network guard is incomplete; closing the game so it never runs online");
@@ -130,16 +122,11 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 		});
 		return std::string("ok queued (see the log)");
 	});
-	static NetplayMode* netplay = nullptr;
-	static BattleDriver driver(MakeMode(Config(), &netplay));
+	static BattleDriver driver(MakeMode(Config()));
 	driver.RegisterControl();
-	// Ember's runtime, hosted once the driver and its mode exist (EmberHost
-	// ends the room link before they go).
-	if (netplay && Config().room) {
-		sfve::adapter::RegisterRoomCommands();
-		sfve::adapter::InstallEmberHost({Config().instance}, *netplay);
-		sfve::adapter::InstallEmberShell();
-	}
+	// The mode's own commands and hosts (the netplay mode's Ember runtime),
+	// once the driver holds it for the process's life.
+	driver.InstallMode();
 	InstallGameHooks(base, &driver);
 	if (Config().mode == ModMode::SyncTest || Config().mode == ModMode::Netplay) InstallDeterministicProjectileRelease(base);
 	return 1;

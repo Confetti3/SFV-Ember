@@ -62,6 +62,9 @@ struct Pending {
 	LaunchFailed onFailed;
 };
 Pending s_pending;
+// Game thread only: a linked launch's picks went into the jump and its
+// battle has not bound yet (TakeLinkedBattle).
+bool s_linkedLoading = false;
 
 template <typename Fn>
 Fn At(const CodeSite& site)
@@ -203,6 +206,7 @@ void WatchLoading(LaunchFailed onFailed)
 		if (why && !*why) return true; // still loading
 		if (why) {
 			Log("launch: failed: %s", why);
+			s_linkedLoading = false; // no battle came for it
 			if (onFailed) onFailed(why);
 		}
 		return false;
@@ -230,6 +234,7 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	for (int player = 0; player < jump::kPlayers; player++) WriteFighter(modeData, player, picks.players[player]);
 	WriteStage(modeData, picks);
 	GiveBackGameRef(flow);
+	s_linkedLoading = picks.linked;
 	WatchLoading(std::move(onFailed));
 	return next;
 }
@@ -436,6 +441,13 @@ void LaunchOnMainMenu(const MatchPicks& picks, std::function<bool()> stillWanted
 		if (onFailed) onFailed("the main menu did not come");
 		return false;
 	});
+}
+
+bool TakeLinkedBattle()
+{
+	const bool linked = s_linkedLoading;
+	s_linkedLoading = false;
+	return linked;
 }
 
 void RegisterVersusLaunchCommands()

@@ -8,6 +8,7 @@ namespace sfve::mod {
 namespace {
 
 ModConfig s_config;
+const char* s_ignored = nullptr;
 
 // The value of `-name=value` in the command line, or nullptr.
 const wchar_t* Find(const wchar_t* line, const wchar_t* name, wchar_t* out, size_t outLen)
@@ -74,7 +75,17 @@ void LoadConfigFromCommandLine(const wchar_t* line)
 			if (*p >= L'0' && *p <= L'3') c.virtualPadMask |= 1u << (*p - L'0');
 		}
 	}
+	s_ignored = nullptr;
+	if (c.room && c.mode != ModMode::Netplay) {
+		c.room = false;
+		s_ignored = "-sfve_room=1 needs -sfve_mode=netplay; Ember's runtime is not started";
+	}
 	s_config = c;
+}
+
+const char* IgnoredSetting()
+{
+	return s_ignored;
 }
 
 const char* ModeName(ModMode mode)

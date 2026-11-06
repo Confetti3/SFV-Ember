@@ -5,12 +5,12 @@
 // inside that Step), or holds it while waiting for the peer.
 //
 // Where the match comes from:
-// - A room's battle (-sfve_room=1, and Ember's runtime holds a room link as
-//   the battle binds): the room's match session gives the ports, seed and
-//   delay, and the session starts once every member's battle has loaded
-//   (EMBER_LIBRARY.md section 10). The battle reports to the runtime
-//   (RuntimeEvents): loaded, the session's phase, the result on the confirmed
-//   frame the match ends, and its close once the main menu is back.
+// - With -sfve_room=1 the mode hosts Ember's runtime and shell (Install), and
+//   a battle the room's launch loaded is the room's (adapter::RoomBattle):
+//   the room's match session gives the ports, seed and delay, the session
+//   starts once every member's battle has loaded, and the battle reports to
+//   the runtime (EMBER_LIBRARY.md sections 10, 12 and 14). Any other battle
+//   plays offline.
 // - Otherwise, with -sfve_peer_port: the ports on the command line, for two
 //   copies on one PC.
 //
@@ -40,11 +40,11 @@
 // desync, for checking that the peers' hashes then differ.
 
 #include "core/RollbackSession.hxx"
+#include "ember/RoomBattle.hxx"
 #include "mod/BattleMode.hxx"
 #include "mod/FramePacer.hxx"
 #include "mod/ModConfig.hxx"
 
-#include "sf4e/sf4e__RuntimeEvents.hxx"
 #include "sf4e/sf4e__RuntimeTick.hxx"
 
 #include <atomic>
@@ -58,10 +58,12 @@ class NetplayMode : public BattleMode, public ember::GameTick {
 public:
 	explicit NetplayMode(const ModConfig& config) : config_(config) {}
 
+	// The pipe's commands; with -sfve_room=1 also Ember's runtime (EmberHost,
+	// ticking this mode), its room test commands and its shell.
+	void Install() override;
 	void NewBattle(SfvAdapter& adapter) override;
 	void Frame(SfvAdapter& adapter) override;
 	std::string Describe() const override;
-	void RegisterCommands();
 
 	// Ember's outer tick (EmberHost), on the game thread between battle
 	// frames: a room's battle whose scene has gone, with the main menu back,
@@ -71,22 +73,12 @@ public:
 	void UpdateGame() override {}
 
 private:
-	void Leave(); // back to the main menu; the battle stands still meanwhile
+	void RegisterCommands();
+	// Back to the main menu; the battle stands still meanwhile. A leave the
+	// scene manager cannot take yet is asked again on the next frame.
+	void Leave();
 	// Starts the session once the match is known; false while it is not.
 	bool StartSession(SfvAdapter& adapter);
-	// A room battle's part of the start: the room's ports, seed and delay,
-	// once every member's battle has loaded. Empty while it waits, and
-	// Gone when the room's match ended before the session could start.
-	enum class RoomStart { Waiting, Ready, Gone };
-	RoomStart RoomSessionConfig(RollbackSession::Config* c, uint32_t* seed, int* delay,
-		sf4e::NetplayFacade::RuntimeMatchEndpoints* endpoints);
-	// The room match ended on this confirmed frame: the result to the room,
-	// then back to it.
-	void EndRoomMatch();
-	// The room's battle is gone (main menu back): its session closes and the
-	// runtime hears how it ended.
-	void CloseRoomBattle();
-	void NoteSyncPhase();
 	void DumpIfRequested();
 	void PerturbIfDue();
 
@@ -96,18 +88,13 @@ private:
 	const ModConfig& config_;
 	mutable std::mutex mutex_; // the game thread steps, the pipe thread reads
 	std::unique_ptr<RollbackSession> session_;
+	adapter::RoomBattle room_; // what the room hears of its battle
 	bool started_ = false;
-	uint64_t frames_ = 0;
-	bool wasLive_ = false;    // the session ran in this battle
-	bool startFailed_ = false; // a session was asked for and could not start
-	bool leaving_ = false;    // the battle is going back to the main menu
-	bool roomBattle_ = false; // a room's battle, until its close is reported
-	bool matchEnded_ = false; // its match reached its end (the result was taken)
-	sf4e::GgpoSyncPhase phase_ = sf4e::GgpoSyncPhase::None; // as last reported
+	bool leaveWanted_ = false; // the battle goes back to the main menu
+	bool leaving_ = false;     // ...and the scene manager took the leave
 	// The runtime asked the battle to end (Retire, Abort, Fail); the next
 	// battle frame ends it.
 	std::atomic<bool> exitAsked_{false};
-	std::string lastResult_ = "null"; // the last room match's result (JSON)
 	FramePacer pacer_;
 	int dumpFrame_ = -1;   // "dump <frame>": write that frame's saved state to the log folder
 	std::vector<uint8_t> dumpBytes_; // its latest save, until it is confirmed

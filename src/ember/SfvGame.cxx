@@ -109,7 +109,7 @@ public:
 		room.stage = match.stageID;
 		room.rounds = lobby.roundCount;
 		room.roundSeconds = lobby.roundTime.integral;
-		const std::optional<mod::MatchPicks> picks = LaunchPicks(room);
+		std::optional<mod::MatchPicks> picks = LaunchPicks(room);
 		if (!picks) {
 			mod::Log("ember: the room's match is not one SFV can launch (fighters %d/%d, stage %lld, %d rounds of %d s)",
 				room.picks[0].fighter, room.picks[1].fighter, (long long)room.stage, room.rounds, room.roundSeconds);
@@ -118,13 +118,17 @@ public:
 		mod::Log("ember: entering the room's match: %s vs %s on %s, %d rounds of %d s", FighterCode(room.picks[0].fighter).c_str(),
 			FighterCode(room.picks[1].fighter).c_str(), StageCode(room.stage).c_str(), room.rounds, room.roundSeconds);
 		const LaunchArming::Ticket ticket = s_launch.Arm();
+		// The battle this launch loads is the room's (RoomBattle), and no other.
+		picks->linked = true;
 		// A launch that fails leaves the game at the main menu with no battle:
-		// the player hears why, and the room's game ends when its setup times out.
+		// the player hears why, and the runtime hears this copy's battle is
+		// not coming, so the room ends the game rather than wait for it.
 		mod::LaunchOnMainMenu(
 			*picks, [ticket] { return s_launch.Armed(ticket); },
 			[](const std::string& why) {
 				mod::Log("ember: the room's battle could not be launched: %s", why.c_str());
 				sf4e::NetplayFacade::PushAlert(sf4e::loc::T("runtime.authorized_connection_unavailable"));
+				sf4e::NetplayFacade::NotifyRuntimeBattleClosedWithoutSession();
 			});
 		return Entry::Entered;
 	}

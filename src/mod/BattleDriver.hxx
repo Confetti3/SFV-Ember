@@ -31,6 +31,8 @@ public:
 	// breakpoint on a field of that region (by size: the first of that size);
 	// "watchhits" lists the writers.
 	void RegisterControl();
+	// The mode's own install (BattleMode::Install); once, after RegisterControl.
+	void InstallMode() { mode_->Install(); }
 
 private:
 	void LogInventory() const;

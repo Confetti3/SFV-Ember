@@ -1,17 +1,13 @@
 #include "mod/NetplayMode.hxx"
 
-#include "ember/SfvGame.hxx"
+#include "ember/EmberHost.hxx"
+#include "ember/RoomCommands.hxx"
+#include "ember/SfvShell.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
-#include "mod/MatchResult.hxx"
-
-#include "common/Localization.hxx"
-#include "sf4e/sf4e__GameAdapter.hxx"
-#include "sf4e/sf4e__NetplayFacade.hxx"
-#include "sf4e/sf4e__RuntimeSession.hxx"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,8 +15,6 @@
 namespace sfve::mod {
 
 namespace {
-
-namespace facade = sf4e::NetplayFacade;
 
 const char* StepName(RollbackSession::StepResult r)
 {
@@ -37,54 +31,52 @@ const char* StepName(RollbackSession::StepResult r)
 
 } // namespace
 
+void NetplayMode::Install()
+{
+	RegisterCommands();
+	if (!config_.room) return;
+	adapter::RegisterRoomCommands();
+	// The runtime ticks this mode for the process's life (the driver holds it).
+	adapter::InstallEmberHost({config_.instance}, *this);
+	adapter::InstallEmberShell();
+}
+
 void NetplayMode::NewBattle(SfvAdapter& adapter)
 {
 	std::lock_guard lock(mutex_);
-	// A room battle the main menu never came back between is closed first.
-	if (roomBattle_) CloseRoomBattle();
-	session_ = std::make_unique<RollbackSession>(adapter);
-	started_ = false;
-	frames_ = 0;
-	wasLive_ = leaving_ = startFailed_ = matchEnded_ = false;
+	auto session = std::make_unique<RollbackSession>(adapter);
+	room_.Bind(session_.get(), *session, adapter, [this](const char* why) {
+		Log("netplay: the room asks the battle to end (%s)", why);
+		exitAsked_ = true;
+	});
+	session_ = std::move(session);
+	started_ = leaveWanted_ = leaving_ = false;
 	exitAsked_ = false;
 	ForgetEndedVersusBattle();
 	pacer_.Reset();
-	roomBattle_ = config_.room && facade::HasRuntimeRoomLink();
-	if (!roomBattle_) return;
-	adapter::SetBattleInPlay({session_.get(), &adapter, [this](const char* why) {
-		Log("netplay: the room asks the battle to end (%s)", why);
-		exitAsked_ = true;
-	}});
-	facade::ClearBattleState();
-	facade::CancelDeferredGgpoClose();
-	facade::ResetGgpoBattleWatch();
-	phase_ = sf4e::GgpoSyncPhase::Starting;
-	facade::NotifyRuntimeBattleLoaded();
-	Log("netplay: the room's battle has loaded; waiting for every member's");
 }
 
 void NetplayMode::Frame(SfvAdapter& adapter)
 {
 	std::lock_guard lock(mutex_);
-	frames_++;
 	if (exitAsked_.exchange(false)) {
 		// The runtime retired or aborted the match: no session goes on, and
 		// the battle goes back to the main menu.
 		if (session_->Live()) session_->Close();
 		started_ = true;
-		if (!leaving_) Leave();
-		return;
+		Leave();
 	}
-	if (!started_ && !StartSession(adapter)) return; // the battle waits for the match
-	if (leaving_) {
+	if (leaveWanted_) {
+		if (!leaving_) Leave();
 		// The battle stands still until the main menu replaces it; the
 		// session keeps answering meanwhile, so the other copy still gets the
 		// inputs it may be missing for the last frames.
 		if (session_->Live()) session_->Poll();
 		return;
 	}
+	if (!started_ && !StartSession(adapter)) return; // the battle waits for the match
 	if (!session_->Live()) {
-		if (roomBattle_) {
+		if (room_.Active()) {
 			// A room battle with no session (it broke, or never started) has
 			// no other player: back to the main menu and the room.
 			Log("netplay: no session (%s); back to the main menu", session_->FailureReason().c_str());
@@ -96,12 +88,11 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		adapter.RunOriginal();
 		return;
 	}
-	wasLive_ = true;
-	if (roomBattle_) NoteSyncPhase();
+	room_.NoteSyncPhase(*session_);
 	const bool frozen = freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_;
 	// A room match that ended is decided only on a confirmed frame: nothing
 	// before the decision can be rolled back then, on either copy (MatchEnd).
-	const bool endPending = roomBattle_ && EndedVersusBattlePending();
+	const bool endPending = room_.EndPending();
 	if (frozen || (endPending && session_->LastConfirmedFrame() < session_->Frame())) {
 		session_->Poll(); // held frames still receive inputs
 		DumpIfRequested(); // and get confirmed
@@ -115,9 +106,10 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		: frame >= config_.mashFrom              ? input::Mash(config_.mashSeed, frame)
 												 : 0;
 	// The game's judgement, the same on both copies (it is restored with the
-	// rest of the state on rollback).
-	if (endPending && TakeEndedVersusBattle(adapter.BattleData())) {
-		EndRoomMatch(); // both copies leave on this same confirmed frame
+	// rest of the state on rollback): both copies leave on this same
+	// confirmed frame.
+	if (endPending && room_.TakeEnd(adapter, *session_)) {
+		Leave();
 		return;
 	}
 	last_ = session_->Step(local);
@@ -128,87 +120,18 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 void NetplayMode::PollBattle()
 {
 	std::lock_guard lock(mutex_);
-	if (roomBattle_ && MainMenuInFront()) CloseRoomBattle();
+	if (!room_.Active() || !MainMenuInFront()) return;
+	room_.Close(session_.get());
+	leaveWanted_ = leaving_ = false;
 }
 
 void NetplayMode::Leave()
 {
-	leaving_ = true;
-	SetLinkedMatchEnd(false);
-	if (!LeaveBattle()) Log("netplay: could not leave the battle (no scene manager)");
-}
-
-void NetplayMode::EndRoomMatch()
-{
-	const std::optional<MatchResult> decided = DecidedMatchResult();
-	lastResult_ = decided ? DescribeMatchResult(*decided) : "null";
-	const sf4e::room::MatchResult result = ember::game::Game().battle.GameResult();
-	const int frame = session_->Frame();
-	const int confirmed = session_->LastConfirmedFrame();
-	// SFV shows no prompt over the WIN yet, so a room game never goes on in
-	// place: both copies take this same confirmed frame back to the room.
-	const bool offered = facade::RematchInPlaceOffered(result);
-	Log("netplay: match result %s at frame %d (confirmed %d); back to the room%s", lastResult_.c_str(), frame, confirmed,
-		offered ? " (the table offers a rematch in place, which SFV cannot prompt for yet)" : "");
-	facade::NotifyRuntimeMatchResult(result, (std::uint64_t)frame, (std::uint64_t)confirmed, 0, false);
-	matchEnded_ = true;
-	Leave();
-}
-
-void NetplayMode::CloseRoomBattle()
-{
-	// A session still live here played its match to the end; one already
-	// gone broke, or the runtime ended it.
-	const bool ended = matchEnded_ || (session_ && session_->Live());
-	if (session_ && session_->Live()) session_->Close();
-	adapter::SetBattleInPlay({});
-	roomBattle_ = leaving_ = false;
-	phase_ = sf4e::GgpoSyncPhase::None;
-	facade::NotifyGgpoSyncPhase(phase_);
-	if (ended) {
-		facade::NotifyMatchEnded();
-	} else {
-		facade::NotifyRuntimeBattleClosedWithoutSession();
-	}
-	if (facade::IsControlPlaneLost()) facade::FinalizeControlPlaneLossAfterBattle();
-	Log("netplay: the room's battle closed %s; back in the room", ended ? "at its match's end" : "without its session");
-}
-
-void NetplayMode::NoteSyncPhase()
-{
-	const sf4e::GgpoSyncPhase now = session_->Running() ? sf4e::GgpoSyncPhase::Running : sf4e::GgpoSyncPhase::Synchronizing;
-	if (now == phase_) return;
-	phase_ = now;
-	facade::NotifyGgpoSyncPhase(now);
-}
-
-NetplayMode::RoomStart NetplayMode::RoomSessionConfig(RollbackSession::Config* c, uint32_t* seed, int* delay,
-	facade::RuntimeMatchEndpoints* endpoints)
-{
-	if (!facade::IsRuntimeMatchLive()) {
-		Log("netplay: the room's match ended before its session started");
-		return RoomStart::Gone;
-	}
-	if (!adapter::SessionSynced() || !facade::GetRuntimeMatchEndpoints(*endpoints)) return RoomStart::Waiting;
-	const std::size_t slot = endpoints->localSlot;
-	// Two fighters: SFV's session has no spectators (Capabilities::spectators is off).
-	if (slot > 1 || endpoints->participantCount < 2 || !endpoints->remotePorts[1 - slot]) {
-		Log("netplay: the room's match is not one this copy fights (slot %zu of %zu)", slot, endpoints->participantCount);
-		return RoomStart::Gone;
-	}
-	if (!facade::BindRuntimeInput((int)slot)) {
-		Log("netplay: this copy's pad could not be bound to its side");
-		return RoomStart::Gone;
-	}
-	const auto& match = ember::RuntimeSession::netplay->client._matchData;
-	c->localPlayer = (int)slot;
-	c->localPort = endpoints->localPort;
-	c->remotePort = endpoints->remotePorts[1 - slot];
-	*seed = match.rngSeed;
-	*delay = match.inputDelay[slot];
-	facade::ReportGgpoTransport(c->remoteIp.c_str(), c->remotePort);
-	Log("netplay: room match as P%zu, local port %u, the peer's port %u, delay %d", slot + 1, c->localPort, c->remotePort, *delay);
-	return RoomStart::Ready;
+	if (!leaveWanted_) SetLinkedMatchEnd(false);
+	const bool retry = leaveWanted_;
+	leaveWanted_ = true;
+	leaving_ = LeaveBattle();
+	if (!leaving_ && !retry) Log("netplay: could not leave the battle yet (no scene manager); asking again each frame");
 }
 
 bool NetplayMode::StartSession(SfvAdapter& adapter)
@@ -216,12 +139,11 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	RollbackSession::Config c;
 	uint32_t seed = kSessionSeed;
 	int delay = config_.delay;
-	facade::RuntimeMatchEndpoints endpoints;
-	if (roomBattle_) {
-		switch (RoomSessionConfig(&c, &seed, &delay, &endpoints)) {
-		case RoomStart::Waiting: return false;
-		case RoomStart::Gone: started_ = startFailed_ = true; return true;
-		case RoomStart::Ready: break;
+	if (room_.Active()) {
+		switch (room_.SessionConfig(&c, &seed, &delay)) {
+		case adapter::RoomBattle::Start::Waiting: return false;
+		case adapter::RoomBattle::Start::Gone: started_ = true; return true;
+		case adapter::RoomBattle::Start::Ready: break;
 		}
 	} else if (config_.room) {
 		// A battle of the player's own while rooms are on: it plays offline.
@@ -233,7 +155,6 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 		c.remotePort = config_.peerPort;
 	}
 	started_ = true;
-	startFailed_ = false;
 	// At least one frame: a decision held for a confirmed frame (match end)
 	// waits for the other side's input for the next frame, which it has
 	// always sent by then.
@@ -245,18 +166,12 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	// Both copies are at the battle's first frame: give the clock-seeded
 	// random generators the same seeds before anything is simulated.
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
-	// The room's match session holds the local port until GGPO takes it.
-	if (roomBattle_) facade::ReleaseRuntimePortToGgpo();
 	std::string error;
-	if (!session_->Start(c, &error)) {
-		Log("netplay: could not start: %s", error.c_str());
-		startFailed_ = true;
-		if (roomBattle_) facade::PushAlert(sf4e::loc::T("runtime.authorized_connection_unavailable"));
-	} else if (roomBattle_) {
-		facade::NoteRuntimeMatchStart(endpoints);
-	}
+	const bool started = session_->Start(c, &error);
+	if (!started) Log("netplay: could not start: %s", error.c_str());
+	if (room_.Active()) room_.NoteSessionStart(started);
 	// The results menu would let each player leave the match their own way.
-	SetLinkedMatchEnd(roomBattle_ && session_->Live());
+	SetLinkedMatchEnd(room_.Active() && session_->Live());
 	return true;
 }
 
@@ -321,11 +236,11 @@ std::string NetplayMode::Describe() const
 		"{\"room\":%s,\"live\":%s,\"running\":%s,\"failure\":%s,\"frame\":%d,\"confirmed\":%d,\"last\":\"%s\","
 		"\"advanced\":%llu,\"rollbacks\":%llu,\"resimulated\":%llu,\"longestRollback\":%d,\"stalls\":%llu,"
 		"\"pacing\":",
-		roomBattle_ ? "true" : "false", session_->Live() ? "true" : "false", session_->Running() ? "true" : "false",
+		room_.Active() ? "true" : "false", session_->Live() ? "true" : "false", session_->Running() ? "true" : "false",
 		JsonString(session_->FailureReason()).c_str(), session_->Frame(), session_->LastConfirmedFrame(),
 		StepName(last_), (unsigned long long)s.framesAdvanced, (unsigned long long)s.rollbacks,
 		(unsigned long long)s.resimulatedFrames, s.longestRollback, (unsigned long long)s.predictionStalls);
-	return text + pacer_.Describe() + ",\"lastResult\":" + lastResult_ + "}";
+	return text + pacer_.Describe() + ",\"lastResult\":" + room_.LastResult() + "}";
 }
 
 void NetplayMode::RegisterCommands()

@@ -65,6 +65,7 @@ target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 # overlay.
 add_library(sfve_ember STATIC
     src/ember/EmberHost.cxx
+    src/ember/RoomBattle.cxx
     src/ember/RoomCommands.cxx
     src/ember/SfvCatalog.cxx
     src/ember/SfvGame.cxx

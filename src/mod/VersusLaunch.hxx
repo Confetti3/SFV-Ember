@@ -52,6 +52,10 @@ struct MatchPicks {
 	LaunchTarget target = LaunchTarget::Versus;
 	FighterPick players[2];
 	MatchRules rules;
+	// A linked match's launch (Ember's room): the battle it loads is that
+	// match's, which the battle mode learns from TakeLinkedBattle. Any other
+	// launch (the pipe's) loads a battle of the player's own.
+	bool linked = false;
 };
 
 // A player's setup as the pipe's commands name it, space separated:
@@ -89,6 +93,13 @@ void QueueLaunch(const MatchPicks& picks, LaunchFailed onFailed = {});
 // end it may not be yet), unless stillWanted() turns false first or the
 // menu does not come within two minutes; any thread.
 void LaunchOnMainMenu(const MatchPicks& picks, std::function<bool()> stillWanted, LaunchFailed onFailed);
+
+// Game thread, as a battle binds: true once for the battle a linked launch
+// loaded (its picks went into the jump and the load did not fail), false for
+// any other battle, which is the player's own (a native menu's, or the
+// pipe's "launch"). A linked launch that fails before its battle binds
+// leaves nothing to take.
+bool TakeLinkedBattle();
 
 // Control command: "launch [versus|cpu|training] [P1] [P2] [stage]", a player
 // as CODE[:costume[:colour]] or "-" to keep the default.

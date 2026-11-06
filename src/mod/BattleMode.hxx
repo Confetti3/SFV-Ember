@@ -13,6 +13,9 @@ namespace sfve::mod {
 class BattleMode {
 public:
 	virtual ~BattleMode() = default;
+	// Once, from SfveStart, after the driver holds the mode for the process's
+	// life: the mode's own pipe commands and whatever it hosts.
+	virtual void Install() {}
 	// A battle (re)started binding: forget the previous one.
 	virtual void NewBattle(SfvAdapter& adapter) = 0;
 	// One rendered frame. The mode decides how the battle advances: the

@@ -62,6 +62,10 @@ struct ModConfig {
 
 const ModConfig& Config();
 void LoadConfigFromCommandLine(const wchar_t* commandLine);
+// A setting the command line gave that its mode cannot take, and so left
+// off, for the log; null when there is none. -sfve_room=1 hosts Ember's
+// runtime in the netplay mode only, so with any other mode rooms stay off.
+const char* IgnoredSetting();
 const char* ModeName(ModMode mode);
 
 } // namespace sfve::mod
