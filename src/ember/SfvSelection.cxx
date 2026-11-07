@@ -72,6 +72,7 @@ SelectionImage SelectionArt::Appearance(int, int, int) { return Missing(); }
 SelectionImage SelectionArt::Ultra(int, int) { return Missing(); }
 SelectionImage SelectionArt::UltraIcon(int) { return Missing(); }
 SelectionImage SelectionArt::Stage(int stage) { return sfve::adapter::StageImage(stage); }
-SelectionImage SelectionArt::RankingEmblem(const std::string&) { return Missing(); }
+// SFV's league icons, for the ranks SfvProduct names (section 28).
+SelectionImage SelectionArt::RankingEmblem(const std::string& entry) { return sfve::adapter::LeagueImage(entry); }
 
 } // namespace sf4e::ui

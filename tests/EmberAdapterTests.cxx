@@ -11,6 +11,7 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
 #include "ember/SfvPick.hxx"
+#include "ember/SfvRankNames.hxx"
 #include "ember/SfvReplays.hxx"
 #include "ember/SfvTraining.hxx"
 #include "ember/SfvVerification.hxx"
@@ -26,12 +27,14 @@
 #include "launcher/GameLocator.hxx"
 #include "launcher/update/github_release_client.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
+#include "ui/NameMarks.hxx"
 #include "ui/SelectionArt.hxx"
 #include "ui/SelectionLabels.hxx"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -799,8 +802,43 @@ TEST_CASE("the game's pictures are its fighters' faces and its stages', and the 
 	CHECK(art.Character(0, 0, 0).missing);
 	CHECK(art.Appearance(0, 0, 0).missing);
 	CHECK(art.Ultra(0, 0).missing);
-	CHECK(art.RankingEmblem("class_B.dds").missing);
+	// A class is one of SFV's league icons, which also waits for the game; a
+	// name that is not one of SFV Ember's ranks (USF4's own emblems among
+	// them) loads nothing and reports missing.
+	CHECK_FALSE(art.RankingEmblem("LI_gold").missing);
+	CHECK(art.RankingEmblem("LI_gold").texture == 0);
+	for (const char* other : {"class_B.dds", "LI_dummy", "LI_super_gold", "", "LI_gold.LI_gold", "../LI_gold"})
+		CHECK(art.RankingEmblem(other).missing);
 	CHECK_FALSE(Swatch(0, 4, 100).has_value()); // read by the game thread
+}
+
+TEST_CASE("SFV Ember's public room classes are SFV's ten league tiers, each with its league icon")
+{
+	// EMBER_LIBRARY.md section 28: the bridge's ten bands, band 1 first.
+	const ember::RankingClass* ranks = ember::Product().branding.rankingClasses;
+	REQUIRE(ranks != nullptr);
+	const char* names[ember::RankingClassCount] = {"Rookie", "Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master",
+		"Grand Master", "Ultimate Grand Master", "Warlord"};
+	const char* icons[ember::RankingClassCount] = {"LI_rookie", "LI_bronze", "LI_silver", "LI_gold", "LI_platinum", "LI_diamond",
+		"LI_master", "LI_grand_master", "LI_ultimet_grand_master", "LI_warlord"};
+	for (int band = 0; band < ember::RankingClassCount; band++) {
+		INFO("band " << band + 1);
+		REQUIRE(ranks[band].name != nullptr);
+		CHECK(std::string(ranks[band].name) == names[band]);
+		CHECK(ranks[band].msgid == nullptr);
+		CHECK(std::string(ranks[band].emblem) == icons[band]);
+		// The shell names each band as SFV does.
+		CHECK(sf4e::ui::ClassName(static_cast<std::uint8_t>(band + 1)) == names[band]);
+	}
+	CHECK(sf4e::ui::ClassName(0).empty());
+	CHECK(sf4e::ui::ClassName(ember::RankingClassCount + 1).empty());
+	// The game's own names come from the game at the main menu (none runs
+	// in a test): until then the English names stand, and the bands map to
+	// the game's leagues 0, 1, 4, ... 19 (ID_CMN_LEAGUE_00NN).
+	CHECK(ember::Product().branding.rankingClassName == &sfve::ranks::Name);
+	for (int band = 0; band <= ember::RankingClassCount + 1; band++) CHECK(std::string(sfve::ranks::Name(band)).empty());
+	CHECK(sfve::ranks::kBandLeague == std::array<int, 10>{0, 1, 4, 7, 10, 13, 16, 17, 18, 19});
+	CHECK(sfve::ranks::kBandLeague.back() == sfve::ranks::kLeagues - 1);
 }
 
 TEST_CASE("the game offers watching, replays and Training, and answers as no battle while none is in play")

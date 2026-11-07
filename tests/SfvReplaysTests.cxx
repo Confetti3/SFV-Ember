@@ -13,6 +13,7 @@
 
 #include "common/Localization.hxx"
 #include "common/ReplayRequest.hxx"
+#include "platform/ReplaySets.hxx"
 #include "platform/Utf8.hxx"
 
 #include <windows.h>
@@ -130,6 +131,17 @@ TEST_CASE("the Replays screen lists the saved battles, keeps the player's mark a
 	CHECK(newest.summary->score[0] == 1);
 	CHECK(newest.summary->score[1] == 1);
 	CHECK(newest.summary->rounds == 4u);
+	// Replays › Sets (EMBER_LIBRARY.md section 28): two battles of the same
+	// two players within half an hour are one room set, oldest first, as SF4's
+	// games of a room set are (the library's ReplaySets.hxx); no bridge holds
+	// it, so it has no pack.
+	const auto sets = sf4e::platform::replays::Sets(*listing);
+	REQUIRE(sets.size() == 1u);
+	CHECK_FALSE(sets[0].Tagged());
+	CHECK(sets[0].bridgeId.empty());
+	REQUIRE(sets[0].games.size() == 2u);
+	CHECK(sets[0].games[0]->path == fileOne);
+	CHECK(sets[0].games[1]->path == fileTwo);
 
 	ember::game::Replays& replays = adapter::SfvReplays();
 	replays.MarkKept(fileOne, true);
