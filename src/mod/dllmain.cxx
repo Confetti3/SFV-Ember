@@ -109,8 +109,7 @@ extern "C" int SfveStart(int beforeGameCode)
 	Log("sfv-ember %s starting in %ls (%s), instance %d, mode %s", SFVE_VERSION, exe,
 		beforeGameCode ? "before game code" : "LATE: the game was already running", Config().instance,
 		ModeName(Config().mode));
-	Log("loaded from %ls, started by the %s%s", claim.module.c_str(), loader,
-		LauncherHookPlanted() && !StartedByEntryHook() ? " (the launcher's entry hook came second)" : "");
+	Log("loaded from %ls, started by the %s", claim.module.c_str(), loader);
 	if (claim.error) Log("could not claim the process for this copy (Win32 %lu): a second copy would not be refused", claim.error);
 	if (const char* ignored = IgnoredSetting()) Log("config: %s", ignored);
 	MigrateSettings();

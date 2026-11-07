@@ -31,7 +31,6 @@ namespace {
 
 uint8_t* s_entry;
 uint8_t s_savedEntry[12];
-bool s_hooked;
 bool s_byEntryHook;
 
 DWORD WINAPI EntryHook(void* peb)
@@ -84,9 +83,14 @@ bool HookEntryPoint()
 	return true;
 }
 
-// Runs once, in this DLL's process attach.
+// Runs once, in this DLL's process attach. A copy the proxy loads in a game
+// the launcher started hooks the entry too; the hooks chain, and that copy's
+// SfveStart has already run, so its own hook only passes on.
 struct EarlyStart {
-	EarlyStart() { s_hooked = StartedByLauncher() && HookEntryPoint(); }
+	EarlyStart()
+	{
+		if (StartedByLauncher()) HookEntryPoint();
+	}
 } s_earlyStart;
 
 } // namespace
@@ -94,11 +98,6 @@ struct EarlyStart {
 bool StartedByEntryHook()
 {
 	return s_byEntryHook;
-}
-
-bool LauncherHookPlanted()
-{
-	return s_hooked;
 }
 
 } // namespace sfve::mod

@@ -7,7 +7,5 @@ namespace sfve::mod {
 
 // SfveStart was called from EarlyStart's entry hook (Launcher.exe's start).
 bool StartedByEntryHook();
-// The command line named the launcher and the entry point was hooked.
-bool LauncherHookPlanted();
 
 } // namespace sfve::mod
