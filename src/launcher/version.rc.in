@@ -1,0 +1,35 @@
+// Launcher.exe's and Updater.exe's icon and version (CMakeLists.txt fills
+// each in). Icon 101 is the one the recovery window and the room link's
+// registry entry use, as in SF4 Ember's resources.
+#include <winver.h>
+
+101 ICON "@SFVE_ICON@"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION @SFVE_VERSION_COMMAS@
+ PRODUCTVERSION @SFVE_VERSION_COMMAS@
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+ FILEFLAGS 0
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "SFV Ember contributors\0"
+            VALUE "FileDescription", "@SFVE_FILE_DESCRIPTION@\0"
+            VALUE "FileVersion", "@SFVE_VERSION@\0"
+            VALUE "InternalName", "@SFVE_FILE_NAME@\0"
+            VALUE "LegalCopyright", "Unofficial Street Fighter V netplay mod.\0"
+            VALUE "OriginalFilename", "@SFVE_FILE_NAME@\0"
+            VALUE "ProductName", "SFV Ember\0"
+            VALUE "ProductVersion", "@SFVE_VERSION@\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

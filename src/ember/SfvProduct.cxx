@@ -6,7 +6,7 @@
 //
 // The names come from what SFV Ember already calls itself: "SFV Ember" (the
 // proxy's messages), the SFVEmber folder and sfv_ember.log (mod/Log.cxx),
-// sfv_ember.dll and StreetFighterV.exe (proxy/xinput_proxy.cxx), and "sfve"
+// sfv_ember.dll and StreetFighterV.exe (src/launcher, proxy/xinput_proxy.cxx), and "sfve"
 // for its named objects (ControlPipe, MultiInstance). Its look is Ember's,
 // set in Street Fighter V's own terms (EMBER_LIBRARY.md section 17): the
 // Band theme and its gold below, Ember's own mark in those colours
@@ -20,9 +20,11 @@ namespace {
 
 // SFV Ember's own words where the shared catalog names SF4 Ember on the
 // screens SFV shows: the shell's header and Home, About and the version line,
-// the room's build checks and the shortcut hint. English replaces every translation of them
-// too (Localization.cxx), until SFV Ember has translations of its own. The
-// launcher's, updater's, recovery's and Training's words are not shown here.
+// the room's build checks and the shortcut hint, and the launcher's,
+// recovery's, updater's and problem reports' words that name SF4, its files
+// or its folders. English replaces every translation of them too
+// (Localization.cxx), until SFV Ember has translations of its own.
+// Training's words are not shown here.
 const char kEnglish[] = R"po(
 msgid "app.name"
 msgstr "SFV Ember"
@@ -53,6 +55,102 @@ msgstr "Could not join the room. Check the invitation and that both players use 
 
 msgid "runtime.invite_other_build"
 msgstr "The host is on a different SFV Ember build or has other fighters and stages installed. Both players need the same."
+
+msgid "launcher.update_failed"
+msgstr "The update could not be installed. Close the game and previous launcher before retrying. See %TEMP%\\sfv-ember-update.log; preserved product copies are in .ember-update-backups."
+
+msgid "launcher.recovery_opened"
+msgstr "Networking was unavailable, so Street Fighter V closed for recovery. Retry launch starts it again."
+
+msgid "launcher.game_not_found"
+msgstr "Street Fighter V could not be found."
+
+msgid "launcher.sidecar_missing"
+msgstr "sfv_ember.dll is missing or its path cannot be used by the injector. Extract the full package to a simple local path."
+
+msgid "launcher.runtime_outdated"
+msgstr "Your Microsoft Visual C++ runtime is out of date, and the game would crash on start. Install the latest Visual C++ Redistributable (x64), then start SFV Ember again.\n\nOpen the download page now?"
+
+msgid "launcher.already_running"
+msgstr "SFV Ember is already running. If you cannot see it, end Launcher.exe and StreetFighterV.exe in Task Manager, then start SFV Ember again."
+
+msgid "launcher.start_failed"
+msgstr "Game startup or injection failed. Check the launcher log at %APPDATA%\\SFVEmber\\logs\\launcher.log, then retry."
+
+msgid "launcher.game_runs_as_admin"
+msgstr "StreetFighterV.exe is set to run as administrator, so SFV Ember cannot start it. Right-click StreetFighterV.exe in the game's StreetFighterV\\Binaries\\Win64 folder, open Properties, then Compatibility, and clear \"Run this program as an administrator\", also under \"Change settings for all users\". Then retry."
+
+msgid "launcher.game_error"
+msgstr "The game exited with an error. Inspect the launcher log at %APPDATA%\\SFVEmber\\logs\\launcher.log, then retry."
+
+msgid "launcher.game_crashed"
+msgstr "The game crashed. To help fix it, choose Send this report below. Or send the files in %APPDATA%\\SFVEmber\\logs yourself."
+
+msgid "launcher.game_wrong_dll"
+msgstr "The game stopped before SFV Ember could start because a DLL it loaded is missing a function. Send the launcher log at %APPDATA%\\SFVEmber\\logs\\launcher.log."
+
+msgid "launcher.game_crashed_files"
+msgstr "The game crashed. Please send the files in %APPDATA%\\SFVEmber\\logs (sfv_ember.log and launcher.log, and sfv_ember-crash-*.dmp if there is one) to the SFV Ember team, then retry."
+
+msgid "launcher.game_crashed_sending"
+msgstr "The game crashed. Send problem reports is on, so its report is being sent, with the small dump if the crash wrote one. The files are also in %APPDATA%\\SFVEmber\\logs."
+
+msgid "recovery.d3d_failed"
+msgstr "The recovery interface could not initialize Direct3D 9. See %APPDATA%\\SFVEmber\\logs\\launcher.log."
+
+msgid "recovery.choose_folder_title"
+msgstr "Select the folder containing StreetFighterV.exe (StreetFighterV\\Binaries\\Win64)"
+
+msgid "recovery.folder_invalid"
+msgstr "That folder does not contain StreetFighterV.exe. Choose the game's StreetFighterV\\Binaries\\Win64 folder."
+
+msgid "recovery.choose_folder_detail"
+msgstr "Select the installed Street Fighter V folder containing StreetFighterV.exe: StreetFighterV\\Binaries\\Win64 inside the game's folder. Game files are not included in this package."
+
+msgid "recovery.close_detail"
+msgstr "Close recovery without starting Street Fighter V. Any running operation is cancelled."
+
+msgid "updates.install_detail"
+msgstr "Close Street Fighter V before installing. The package is verified before installation. Your personal settings are preserved."
+
+msgid "updates.close_detail"
+msgstr "Close the updater without starting Street Fighter V. Any running operation is cancelled."
+
+msgid "updates.start_game"
+msgstr "Start Street Fighter V"
+
+msgid "updates.start_game_detail"
+msgstr "Close the updater and start Street Fighter V with SFV Ember."
+
+msgid "services.diagnostics_saved"
+msgstr "Saved %APPDATA%\\SFVEmber\\diagnostics\\ember-diagnostics.txt"
+
+msgid "services.update_prepared"
+msgstr "Update prepared. Restarting SFV Ember..."
+
+msgid "update.no_zip_asset"
+msgstr "Latest release has no SFV Ember ZIP asset."
+
+msgid "update.close_sf4"
+msgstr "Close Street Fighter V before installing an update."
+
+msgid "update.download_failed"
+msgstr "Download failed ({0}). Manual download: {1} (details in %TEMP%\\sfv-ember-update.log)"
+
+msgid "update.missing_binaries"
+msgstr "Downloaded package is missing Launcher.exe or sfv_ember.dll."
+
+msgid "update.notice.waiting_launcher"
+msgstr "Waiting for SFV Ember to close..."
+
+msgid "update.notice.reopens"
+msgstr "SFV Ember opens again when it is done."
+
+msgid "reports.payload"
+msgstr "Reports go to embernetplay.link. Each holds the SFV Ember version and build, the Windows version, the crash details, redacted tails of sfv_ember.log, launcher.log and sf4-net.log, and the small crash dump when the crash wrote one."
+
+msgid "reports.history_unreadable_detail"
+msgstr "sent-reports.json in %APPDATA%\\SFVEmber cannot be read, so no report is sent without asking. Delete the file to start a new record."
 )po";
 
 const ember::LocaleOverlay LocaleOverlays[] = {{"en", kEnglish}, {nullptr, nullptr}};
@@ -126,9 +224,11 @@ constexpr ember::ProductIdentity SfvEmber = {
 		true,
 	},
 	L"SFVEmber",
-	// Settings beside the mod in the game's folder (SFVEmber\settings.json),
-	// as its logs are (mod/Log.cxx): SFV Ember has no installer of its own.
-	true,
+	// Settings and logs under %APPDATA%\SFVEmber, as SF4 Ember's are under
+	// %APPDATA%\sf4e: the launcher and the mod share them, wherever the
+	// package is. The mod copies a settings.json left beside it by the
+	// xinput1_3.dll proxy's installs once (mod/dllmain.cxx, MigrateSettings).
+	false,
 	L"SFVEmber",
 	L"Local\\SFVEmber.Launcher.",
 	L"Local\\sfve-video-",
@@ -136,19 +236,25 @@ constexpr ember::ProductIdentity SfvEmber = {
 	// A scheme of its own, so a link never opens SF4 Ember (section 5.4 of
 	// EMBER_LIBRARY.md is still open).
 	"ember-sfv",
-	// No releases yet: nothing to update from, and no package to name.
+	// No public release repository yet (EMBER_LIBRARY.md section 22): the
+	// update check offers nothing and makes no request. A release package is
+	// named sfv-ember-<version>.zip (scripts/package.ps1).
 	"",
 	"",
 	"sfv-ember-",
 	L"sfv-ember-update-",
 	L"sfve-updater-",
 	L"sfv-ember-update.log",
-	// No launcher, updater or Discord bridge yet: the xinput1_3.dll proxy
-	// loads the mod when the game starts.
-	L"",
-	L"",
+	// Launcher.exe starts the game with the mod injected (src/launcher);
+	// Updater.exe installs a package. No Discord companion yet.
+	L"Launcher.exe",
+	L"Updater.exe",
 	L"sfv_ember.dll",
 	L"StreetFighterV.exe",
+	// Steam's app 310950. StreetFighterV.exe at the install folder's top is
+	// UE4's small bootstrap, which starts the real game from
+	// StreetFighterV\Binaries\Win64: that one is started, in its own folder.
+	{"310950", L"StreetFighterV", L"StreetFighterV\\Binaries\\Win64"},
 	L"",
 	L"sfv_ember.log",
 	L"launcher.log",

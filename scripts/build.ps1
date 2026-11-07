@@ -66,3 +66,36 @@ if (!$SkipTests) {
 	& $ctest --test-dir $BuildDir --output-on-failure
 	if ($LASTEXITCODE) { throw "tests failed ($LASTEXITCODE)" }
 }
+
+# The build's receipt (build-provenance.json in the build tree), which
+# scripts/package.ps1 checks and the package carries: both checkouts that
+# made it, at which commits and with which source fingerprints (the
+# library's Get-SourceFingerprint: every tracked and untracked file's hash),
+# the binaries it made and whether its tests passed. A build without its
+# tests gets one too, marked so, and package.ps1 refuses it.
+. (Join-Path $EmberRoot 'scripts\BuildProvenance.ps1')
+$EmberRoot = (Resolve-Path -LiteralPath $EmberRoot).Path
+$BuildDir = (Resolve-Path -LiteralPath $BuildDir).Path
+$receipt = [ordered]@{
+	schema = 1
+	product = 'SFV Ember'
+	# SFVE_VERSION as CMakeLists.txt makes it: the project's version and its suffix.
+	version = '{0}-{1}' -f (Select-String -LiteralPath (Join-Path $repo 'CMakeLists.txt') -Pattern '^project\(sfv_ember VERSION ([0-9.]+)').Matches[0].Groups[1].Value,
+		(Select-String -LiteralPath (Join-Path $repo 'CMakeLists.txt') -Pattern '^set\(SFVE_VERSION "\$\{PROJECT_VERSION\}-([^"]+)"\)').Matches[0].Groups[1].Value
+	sourceRoot = $repo
+	sourceRevision = (& git -C $repo rev-parse HEAD)
+	sourceFingerprint = Get-SourceFingerprint $repo
+	emberRoot = $EmberRoot
+	emberRevision = (& git -C $EmberRoot rev-parse HEAD)
+	emberFingerprint = Get-SourceFingerprint $EmberRoot
+	buildRoot = $BuildDir
+	config = $Config
+	testsPassed = !$SkipTests
+	tests = @(if (!$SkipTests) { & $ctest --test-dir $BuildDir -N | Select-String '^\s*Test\s+#\d+: (\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } })
+	binaries = @(foreach ($name in 'Launcher.exe', 'Updater.exe', 'sfv_ember.dll') {
+		[ordered]@{ path = $name; sha256 = (Get-FileHash -LiteralPath (Join-Path $BuildDir $name) -Algorithm SHA256).Hash }
+	})
+	builtAt = (Get-Date).ToUniversalTime().ToString('o')
+}
+$receipt | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $BuildDir 'build-provenance.json') -Encoding UTF8
+Write-Output "build receipt: $(Join-Path $BuildDir 'build-provenance.json') (tests $(if ($SkipTests) { 'skipped' } else { 'passed' }))"

@@ -21,6 +21,6 @@ while ((Get-Date) -lt $deadline) {
 }
 $i = $s.IndexOf('"mode":{"ok"')
 if ($i -ge 0) { $s.Substring($i, [Math]::Min(700, $s.Length - $i)) } else { 'no synctest report' }
-$log = 'G:\SteamLibrary\steamapps\common\StreetFighterV\StreetFighterV\Binaries\Win64\SFVEmber\logs\sfv_ember.log'
+$log = Join-Path $env:APPDATA 'SFVEmber\logs\sfv_ember.log'
 Select-String -Path $log -Pattern 'synctest:|learn:|adapter: (expected|no )' | ForEach-Object { $_.Line.Substring(24) }
 if (!$keep) { python -I tools\sfve.py kill | Out-Null }

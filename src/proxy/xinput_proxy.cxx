@@ -60,6 +60,14 @@ void StartMod(int beforeGameCode)
 		return;
 	}
 	wcscpy_s(slash + 1, MAX_PATH - (slash + 1 - path), L"sfv_ember.dll");
+	// Launcher.exe injected the mod from its package, and that copy starts
+	// from its own entry hook (src/mod/EarlyStart.cxx): this proxy loads no
+	// second one. A second copy would only stay inert (src/mod/StartClaim.hxx).
+	if (HMODULE injected = GetModuleHandleW(L"sfv_ember.dll")) {
+		wchar_t injectedPath[MAX_PATH] = {};
+		const DWORD length = GetModuleFileNameW(injected, injectedPath, MAX_PATH);
+		if (length && length < MAX_PATH && _wcsicmp(injectedPath, path) != 0) return;
+	}
 	HMODULE mod = LoadLibraryW(path);
 	using Start = int (*)(int);
 	Start start = mod ? reinterpret_cast<Start>(GetProcAddress(mod, "SfveStart")) : nullptr;
@@ -68,7 +76,7 @@ void StartMod(int beforeGameCode)
 			   L"unguarded. Put the file back, or delete xinput1_3.dll from the game folder to play without SFV Ember.");
 		return;
 	}
-	if (!start(beforeGameCode)) Refuse(L"SFV Ember refused to start; see SFVEmber\\logs\\sfv_ember.log.");
+	if (!start(beforeGameCode)) Refuse(L"SFV Ember refused to start; see %APPDATA%\\SFVEmber\\logs\\sfv_ember.log.");
 }
 
 DWORD WINAPI EntryHook(void* peb)

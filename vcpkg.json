@@ -3,6 +3,14 @@
   "version-string": "0.0.1",
   "dependencies": [
     {
+      "name": "cli11",
+      "version>=": "2.4.2"
+    },
+    {
+      "name": "detours",
+      "version>=": "4.0.1#7"
+    },
+    {
       "name": "ggpo",
       "version>=": "1.0.0#5"
     },
@@ -11,6 +19,7 @@
       "version>=": "1.91.5",
       "features": [
         "dx11-binding",
+        "dx9-binding",
         "win32-binding"
       ]
     },

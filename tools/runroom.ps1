@@ -21,7 +21,8 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 $ErrorActionPreference = 'Stop'
 # The checkout this script is in, whichever it is.
 Set-Location (Split-Path -Parent $PSScriptRoot)
-$logs = 'G:\SteamLibrary\steamapps\common\StreetFighterV\StreetFighterV\Binaries\Win64\SFVEmber\logs'
+# The mod logs under %APPDATA%\SFVEmber\logs (mod/Log.cxx), whether the launcher or the proxy started it.
+$logs = Join-Path $env:APPDATA 'SFVEmber\logs'
 $logOf = @("$logs\sfv_ember.log", "$logs\sfv_ember.1.log")
 function Ctl([int]$i, [string]$line) { python -I tools\sfve.py ctl $i $line }
 function Status([int]$i) { (Ctl $i status).Substring(3) | ConvertFrom-Json }

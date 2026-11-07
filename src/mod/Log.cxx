@@ -1,6 +1,7 @@
 #include "mod/Log.hxx"
 
 #include <windows.h>
+#include <shlobj.h>
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -29,20 +30,33 @@ std::wstring ModuleFolder()
 	return slash == std::wstring::npos ? L"." : folder.substr(0, slash);
 }
 
+std::wstring DataFolder()
+{
+	PWSTR appData = nullptr;
+	if (FAILED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, KF_FLAG_DEFAULT, nullptr, &appData))) return {};
+	std::wstring folder = std::wstring(appData) + L"\\SFVEmber";
+	CoTaskMemFree(appData);
+	return folder;
+}
+
 std::wstring LogFolder()
 {
-	return ModuleFolder() + L"\\SFVEmber\\logs";
+	const std::wstring data = DataFolder();
+	return data.empty() ? std::wstring() : data + L"\\logs";
 }
 
 void OpenLog(int instance)
 {
 	std::lock_guard lock(s_mutex);
 	if (s_file != INVALID_HANDLE_VALUE) return;
-	const std::wstring root = ModuleFolder() + L"\\SFVEmber";
+	const std::wstring root = DataFolder();
+	if (root.empty()) return;
 	CreateDirectoryW(root.c_str(), nullptr);
 	CreateDirectoryW((root + L"\\logs").c_str(), nullptr);
 	const std::wstring name = instance == 0 ? L"\\logs\\sfv_ember.log" : L"\\logs\\sfv_ember." + std::to_wstring(instance) + L".log";
-	s_file = CreateFileW((root + name).c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr,
+	// Shared for writing: a second copy of the mod in the same game (the
+	// proxy's, beside the launcher's) appends why it stays inert.
+	s_file = CreateFileW((root + name).c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
 		OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 }
 

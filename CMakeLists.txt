@@ -21,6 +21,10 @@ find_package(xxHash CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
+find_package(CLI11 CONFIG REQUIRED)
+# Detours starts the game with the mod in its imports (src/launcher/SfvLaunch.cxx).
+find_path(DETOURS_INCLUDE_DIR detours/detours.h REQUIRED)
+find_library(DETOURS_LIBRARY detours REQUIRED)
 
 add_compile_options(/W4 /permissive- /utf-8 /Zc:__cplusplus)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
@@ -36,6 +40,9 @@ if(NOT EXISTS "${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe/CMakeLists.txt")
         "(docs/design/EMBER_LIBRARY.md section 4); got '${SFVE_EMBER_SOURCE_ROOT}'")
 endif()
 set(EMBER_APP_VERSION "${SFVE_VERSION}")
+# SFV Ember's package files (common/PackageInventory.hxx in the library):
+# what Updater.exe and the update check accept in a package.
+set(EMBER_PACKAGE_INVENTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/launcher/PackageInventory.inc")
 add_subdirectory("${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe" "${CMAKE_BINARY_DIR}/ember")
 
 # Game-agnostic rollback core: state regions, hashing, the GGPO session and
@@ -79,17 +86,20 @@ add_library(sfve_ember STATIC
     src/ember/SfvGame.cxx
     src/ember/SfvHud.cxx
     src/ember/SfvPick.cxx
-    src/ember/SfvProduct.cxx
     src/ember/SfvSelection.cxx
     src/ember/SfvSelectionScreen.cxx
     src/ember/SfvShell.cxx
     src/ember/SfvVerification.cxx
     src/overlay/Overlay.cxx
     src/overlay/TextureUploaderD3D11.cxx)
-# SFV Ember's own header mark (art/brand, scripts/build-sfv-brand.py).
+# SFV Ember's identity (SfvProduct.cxx) with its own header mark (art/brand,
+# scripts/build-sfv-brand.py), in a library of its own: the mod, the
+# launcher, the updater and the tests all link the one definition.
 include("${SFVE_EMBER_SOURCE_ROOT}/cmake/sf4e_embed.cmake")
-sf4e_embed_brand_mark(sfve_ember "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
-target_link_libraries(sfve_ember PUBLIC sfve_core ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
+add_library(sfve_product STATIC src/ember/SfvProduct.cxx)
+target_include_directories(sfve_product PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src")
+sf4e_embed_brand_mark(sfve_product "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
+target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
 
 # The runtime under SFV's definitions, with nothing of SF4's roster, stages
 # or custom content: SFV's catalog (SfvCatalog.cxx) answers every pick check.
@@ -120,6 +130,9 @@ target_link_libraries(sfve_ember_tests PRIVATE sfve_ember sfve_testbed minhook::
 # then does nothing else unless the exe is the exact build it was made for.
 add_library(sfv_ember SHARED
     src/mod/dllmain.cxx
+    src/mod/EarlyStart.cxx
+    src/mod/StartClaim.cxx
+    src/mod/sfv_ember.def
     src/mod/Log.cxx
     src/mod/MatchEnd.cxx
     src/mod/MatchResult.cxx
@@ -163,6 +176,44 @@ foreach(_folder input flags)
 endforeach()
 add_custom_command(TARGET sfv_ember POST_BUILD COMMAND "${CMAKE_COMMAND}" -E copy_directory
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/brand" "${CMAKE_BINARY_DIR}/assets/brand")
+
+# Launcher.exe and Updater.exe: Ember's launcher and updater programs (the
+# library's launcher.cxx and updater.cxx, ember_launcher_x64 and
+# ember_updater_x64) under SFV Ember's product, its launch steps and its
+# package inventory (docs/design/EMBER_LIBRARY.md section 22).
+set(SFVE_ICON "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember.ico")
+set(SFVE_VERSION_COMMAS "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
+function(sfve_program_resources target description file_name)
+    set(SFVE_FILE_DESCRIPTION "${description}")
+    set(SFVE_FILE_NAME "${file_name}")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/launcher/version.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/${target}.rc" @ONLY)
+    target_sources(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/${target}.rc")
+    set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/${target}.rc" APPEND PROPERTY OBJECT_DEPENDS "${SFVE_ICON}")
+endfunction()
+add_executable(Launcher WIN32
+    src/launcher/SfvLaunch.cxx
+    src/launcher/LauncherSelection.cxx
+    src/launcher/Launcher.exe.manifest)
+target_include_directories(Launcher PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/src/common"
+    "${DETOURS_INCLUDE_DIR}")
+target_compile_definitions(Launcher PRIVATE UNICODE _UNICODE)
+# Its wWinMain is in ember_launcher_x64, where the linker does not look for an entry point.
+target_link_options(Launcher PRIVATE "/ENTRY:wWinMainCRTStartup")
+target_link_libraries(Launcher PRIVATE sfve_product ember_launcher_x64 CLI11::CLI11 "${DETOURS_LIBRARY}")
+sfve_program_resources(Launcher "SFV Ember" "Launcher.exe")
+# A Windows program, as SF4 Ember's: its progress window is all a player sees.
+add_executable(Updater WIN32 src/launcher/LauncherSelection.cxx)
+target_include_directories(Updater PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/src/common")
+target_link_options(Updater PRIVATE "/ENTRY:wmainCRTStartup")
+target_link_libraries(Updater PRIVATE sfve_product ember_updater_x64)
+sfve_program_resources(Updater "SFV Ember Updater" "Updater.exe")
+# The updater's own validation and extraction, for scripts/package.ps1 and the
+# library's scripts/test-updater-download-validation.ps1.
+add_executable(sfve_package_check tests/package_check.cxx src/launcher/LauncherSelection.cxx)
+target_include_directories(sfve_package_check PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/src/common")
+target_link_options(sfve_package_check PRIVATE "/ENTRY:wmainCRTStartup")
+target_link_libraries(sfve_package_check PRIVATE sfve_product ember_neutral_x64 nlohmann_json::nlohmann_json bcrypt shell32)
 
 # Proxy the game loads by name from its own folder; it forwards the real
 # exports and loads sfv_ember.dll. Which DLL to proxy is decided from the
