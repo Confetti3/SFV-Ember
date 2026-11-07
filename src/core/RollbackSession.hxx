@@ -29,8 +29,18 @@
 //   same confirmed inputs both fighters played, so the same states. It keeps
 //   no saves and never rolls back; it hashes the state of the same frames
 //   the fighters hash, so the peers' checkpoints compare.
+//
+// Replays (EMBER_LIBRARY.md section 26):
+// * Every session reports each frame it plays (Config::onFrame) and each
+//   checkpoint's hash (Config::onCheckpoint), a rollback's replay of a frame
+//   again, so a recorder that keeps the last report of each confirmed frame
+//   holds the match as both fighters played it.
+// * A replay plays such frames back as a watcher plays P1's stream
+//   (Config::replay): the same path, the same held frames and hashes, with
+//   no GGPO session and no network at all.
 
 #include "core/GameAdapter.hxx"
+#include "core/ReplayFrames.hxx"
 
 #include "RollbackHud.hxx"
 #include "SpectatorPolicy.hxx"
@@ -91,6 +101,22 @@ public:
 		// from remoteIp:remotePort and sends nothing of its own. localPlayer,
 		// inputDelay, the disconnect settings and verifyLoads do not apply.
 		bool watching = false;
+		// This copy plays a recorded battle back: frame N plays replay[N], as
+		// a watcher plays P1's frame N, with no GGPO session. It implies
+		// watching; the ports and the watcher list do not apply. A frame
+		// whose kind is not the recording's (held where it was advanced, or
+		// reading inputs where it ignored them) has left the recording, and
+		// the session fails; so does the end of the frames. The frames must
+		// outlive the session.
+		const ReplayFrames* replay = nullptr;
+		// Each frame as this session plays it, before the game sees it: its
+		// number and what it gave the game (RecordedFrame). A rollback's replay
+		// reports the frame again; the last report of a confirmed frame is
+		// final. Called inside GGPO's calls, so it must not call the session.
+		std::function<void(int frame, const RecordedFrame& played)> onFrame;
+		// Each checkpoint's peers' hash (every kCheckpointInterval frames), as
+		// the "checkpoint:" log line has it; again for a frame saved again.
+		std::function<void(int frame, uint64_t hash)> onCheckpoint;
 	};
 
 	enum class StepResult {
@@ -143,7 +169,10 @@ public:
 	void Poll();
 	void Close();
 
-	bool Live() const { return session_ != nullptr; }
+	// A GGPO session, or a replay playing (Config::replay).
+	bool Live() const { return session_ != nullptr || replaying_; }
+	// This session plays a replay (Config::replay).
+	bool Replaying() const { return replaying_; }
 	bool Running() const { return gate_.phase == sf4e::gate::PHASE_RUNNING; }
 	bool Failed() const { return failed_; }
 	const std::string& FailureReason() const { return failure_; }
@@ -245,7 +274,17 @@ private:
 	bool Load(unsigned char* buffer);
 	void Free(void* buffer);
 	bool AdvanceFromRollback();
+	// The frame about to be advanced as the game gets it; reported to
+	// onFrame as this frame's.
 	FrameInputs InputsForThisFrame(const FrameInputs& inputs);
+	void Report(const FrameInputs& inputs, uint8_t flags) const
+	{
+		if (config_.onFrame) config_.onFrame(frame_, RecordedFrame{inputs, flags});
+	}
+	// A replay's next frame, checked against what the game does with it;
+	// false (the session failed) at the end of the frames or where the
+	// playback left the recording.
+	bool ReplayInputs(bool held, FrameInputs* inputs);
 	void Event(const GGPOEvent& info);
 
 	// A watcher's frame: the next one P1 streamed, run (or, `onHeld`, held
@@ -304,6 +343,8 @@ private:
 	sf4e::SpectatorStreamWatch streamWatch_;
 	bool watchedStartHashed_ = false;
 	bool keptForWatchers_ = false;
+	// A replay plays (Config::replay): Live with no GGPO session.
+	bool replaying_ = false;
 };
 
 } // namespace sfve

@@ -15,6 +15,13 @@
 //   copies on one PC.
 // - A room member who watches the table plays the same battle from P1's
 //   stream of the fighters' confirmed frames and sends nothing (section 25).
+// - A replay's launch (Ember's Replays screen) loads a battle that plays a
+//   recorded room battle back as a watcher plays one, from the recording's
+//   frames (section 26).
+//
+// Every room battle this copy fights or watches is recorded: the frames its
+// session played, kept as they become final, and saved as a replay with the
+// battle's launch and seed when the battle closes (section 26).
 //
 // The local player's input is what the game computed from this copy's pad 0
 // (whichever side it plays), so button layouts apply before the input is
@@ -41,6 +48,7 @@
 // value of this copy's state once the session has played that frame: a real
 // desync, for checking that the peers' hashes then differ.
 
+#include "core/ReplayRecorder.hxx"
 #include "core/RollbackSession.hxx"
 #include "ember/RoomBattle.hxx"
 #include "mod/BattleMode.hxx"
@@ -92,6 +100,11 @@ private:
 	void EndDrain();
 	void DumpIfRequested();
 	void PerturbIfDue();
+	// The room battle's recording: its frames made final so far (after any
+	// step), the end of a game, and the battle's replay saved as it closes.
+	void ConfirmRecording();
+	void NoteRecordedGame();
+	void FinishRecording();
 
 	// Without a room: the same in every copy.
 	static constexpr uint32_t kSessionSeed = 0x5F0E5EED;
@@ -124,6 +137,16 @@ private:
 	};
 	Perturbation perturb_;
 	RollbackSession::StepResult last_ = RollbackSession::StepResult::NoSession;
+	// The room battle being recorded (EMBER_LIBRARY.md section 26): its
+	// frames, its header (made as its session starts) and whether its last
+	// WIN went back, which makes it whole.
+	replay::Recorder recorder_;
+	replay::Header recording_;
+	bool recordingWhole_ = false;
+	// The replay this battle plays back, from its bind to its close, and why
+	// its playback ended.
+	std::shared_ptr<const replay::Replay> replay_;
+	std::string replayEnd_;
 };
 
 } // namespace sfve::mod

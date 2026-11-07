@@ -118,6 +118,14 @@ LRESULT CALLBACK OverlayWndProc(HWND window, UINT message, WPARAM wParam, LPARAM
 				sf4e::ui::HandleOverlayMessage(window, message, wParam, lParam, s_shown && s_focused, s_available);
 			if (handled && message != WM_KEYUP && message != WM_SYSKEYUP) return handled;
 		}
+		if (message == WM_KEYDOWN || message == WM_KEYUP) {
+			std::function<bool(unsigned, unsigned)> takesKey;
+			{
+				std::lock_guard lock(s_uiMutex);
+				takesKey = s_ui.takesKey;
+			}
+			if (takesKey && takesKey(message, (unsigned)wParam)) return 0;
+		}
 	}
 	return CallWindowProcW(s_gameWndProc, window, message, wParam, lParam);
 }

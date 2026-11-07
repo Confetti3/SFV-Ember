@@ -54,14 +54,16 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 		if (error) *error = why;
 		return false;
 	};
-	if (session_) return refuse("a session is already running");
-	if (!config.watching && (config.localPlayer < 0 || config.localPlayer >= kPlayers)) {
+	if (Live()) return refuse("a session is already running");
+	const bool watches = config.watching || config.replay;
+	if (!watches && (config.localPlayer < 0 || config.localPlayer >= kPlayers)) {
 		return refuse("local player out of range");
 	}
 	if (game_.Layout().Empty()) return refuse("the game has no rollback state yet");
 	if (config.hashEveryFrames < 1) return refuse("hashEveryFrames must be at least 1");
 
 	config_ = config;
+	config_.watching = watches;
 	failed_ = false;
 	failure_.clear();
 	stats_ = {};
@@ -77,14 +79,28 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	allHashes_.clear();
 	checkpoints_.clear();
 	// A watcher keeps no saves: one buffer holds the state it hashes.
-	pool_.assign(config.watching ? 1 : kPoolSlots, Slot{});
+	pool_.assign(watches ? 1 : kPoolSlots, Slot{});
 	for (Slot& s : pool_) s.bytes.resize(game_.Layout().TotalSize());
 	policy_.Start(GetTickCount64(), {}, config.watcherSyncDeadlineMs);
 	links_.Start();
 	watcherHandles_.clear();
-	streamWatch_.Start(GetTickCount64(), config.watching);
+	// A replay has no stream to wait for.
+	streamWatch_.Start(GetTickCount64(), config.watching && !config.replay);
 	watchedStartHashed_ = false;
 	keptForWatchers_ = false;
+	replaying_ = false;
+
+	if (config.replay) {
+		// No GGPO: the frames are here, all of them confirmed, so the session
+		// runs from its first step.
+		replaying_ = true;
+		gate_.Reset();
+		gate_.OnSessionStarted();
+		gate_.OnRunning();
+		CoreLog("session: playing a replay of %zu frame(s), state %zu bytes in %zu regions", config.replay->size(),
+			game_.Layout().TotalSize(), game_.Layout().Regions().size());
+		return true;
+	}
 
 	ggpo_set_assert_handler(OnGgpoAssert);
 
@@ -186,7 +202,7 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 
 RollbackSession::StepResult RollbackSession::Step(PackedInput localInput)
 {
-	if (!session_) return failed_ ? StepResult::Failed : StepResult::NoSession;
+	if (!Live()) return failed_ ? StepResult::Failed : StepResult::NoSession;
 	if (config_.watching) return StepWatched(nullptr);
 	ActiveScope active(this);
 
@@ -222,7 +238,7 @@ RollbackSession::StepResult RollbackSession::Step(PackedInput localInput)
 RollbackSession::StepResult RollbackSession::StepHeld(PackedInput localInput,
 	const std::function<void(const FrameInputs&)>& onInputs)
 {
-	if (!session_) return failed_ ? StepResult::Failed : StepResult::NoSession;
+	if (!Live()) return failed_ ? StepResult::Failed : StepResult::NoSession;
 	if (config_.watching) return StepWatched(&onInputs);
 	ActiveScope active(this);
 
@@ -250,6 +266,7 @@ RollbackSession::StepResult RollbackSession::StepHeld(PackedInput localInput,
 	err = ggpo_synchronize_input(session_, inputs.p, sizeof(inputs.p), &disconnectFlags);
 	if (!HandleResult(err, "synchronize_input", &result)) return result;
 	ggpo_set_inputs_ignored(session_, true);
+	Report(inputs, RecordedFrame::kHeld);
 	if (onInputs) onInputs(inputs);
 	stats_.heldFrames++;
 	err = ggpo_advance_frame(session_);
@@ -269,35 +286,41 @@ void RollbackSession::Poll()
 
 RollbackSession::StepResult RollbackSession::StepWatched(const std::function<void(const FrameInputs&)>* onHeld)
 {
-	ActiveScope active(this);
-	ggpo_idle(session_, 0);
-	if (DrainPendingAbort()) return StepResult::Failed;
-	// GGPO's spectator backend never times out; a stream that never ran ends
-	// here (SF4's SpectatorStreamWatch), and the room says what was lost.
-	if (streamWatch_.Poll(GetTickCount64(), false) != sf4e::SpectatorStreamWatch::Step::Wait) {
-		char why[96];
-		snprintf(why, sizeof(why), "P1's stream did not start within %llu s",
-			(unsigned long long)(sf4e::SpectatorPolicy::StreamSyncTimeoutMs / 1000));
-		Fail(why);
-		return StepResult::Failed;
-	}
-	if (!gate_.CanAdvanceDeterministicFrame()) return StepResult::Waiting;
-
 	FrameInputs inputs;
-	int disconnectFlags = 0;
-	const GGPOErrorCode err = ggpo_synchronize_input(session_, inputs.p, sizeof(inputs.p), &disconnectFlags);
-	if (DrainPendingAbort()) return StepResult::Failed;
-	// The spectator backend answers PREDICTION_THRESHOLD for a frame P1 has
-	// not sent yet: it never predicts.
-	if (err == GGPO_ERRORCODE_PREDICTION_THRESHOLD || err == GGPO_ERRORCODE_NOT_SYNCHRONIZED) return StepResult::Waiting;
-	if (!GGPO_SUCCEEDED(err)) {
-		// GENERAL_FAILURE: the frame was overwritten before it was played (the
-		// backlog outgrew GGPO's ring), so the rest of the stream cannot be
-		// played.
-		char why[96];
-		snprintf(why, sizeof(why), "P1's stream broke at frame %d (synchronize_input returned %d)", frame_, (int)err);
-		Fail(why);
-		return StepResult::Failed;
+	if (replaying_) {
+		// The recording's frame, in place of P1's stream.
+		if (!gate_.CanAdvanceDeterministicFrame()) return StepResult::Waiting;
+		if (!ReplayInputs(onHeld != nullptr, &inputs)) return StepResult::Failed;
+	} else {
+		ActiveScope active(this);
+		ggpo_idle(session_, 0);
+		if (DrainPendingAbort()) return StepResult::Failed;
+		// GGPO's spectator backend never times out; a stream that never ran ends
+		// here (SF4's SpectatorStreamWatch), and the room says what was lost.
+		if (streamWatch_.Poll(GetTickCount64(), false) != sf4e::SpectatorStreamWatch::Step::Wait) {
+			char why[96];
+			snprintf(why, sizeof(why), "P1's stream did not start within %llu s",
+				(unsigned long long)(sf4e::SpectatorPolicy::StreamSyncTimeoutMs / 1000));
+			Fail(why);
+			return StepResult::Failed;
+		}
+		if (!gate_.CanAdvanceDeterministicFrame()) return StepResult::Waiting;
+
+		int disconnectFlags = 0;
+		const GGPOErrorCode err = ggpo_synchronize_input(session_, inputs.p, sizeof(inputs.p), &disconnectFlags);
+		if (DrainPendingAbort()) return StepResult::Failed;
+		// The spectator backend answers PREDICTION_THRESHOLD for a frame P1 has
+		// not sent yet: it never predicts.
+		if (err == GGPO_ERRORCODE_PREDICTION_THRESHOLD || err == GGPO_ERRORCODE_NOT_SYNCHRONIZED) return StepResult::Waiting;
+		if (!GGPO_SUCCEEDED(err)) {
+			// GENERAL_FAILURE: the frame was overwritten before it was played (the
+			// backlog outgrew GGPO's ring), so the rest of the stream cannot be
+			// played.
+			char why[96];
+			snprintf(why, sizeof(why), "P1's stream broke at frame %d (synchronize_input returned %d)", frame_, (int)err);
+			Fail(why);
+			return StepResult::Failed;
+		}
 	}
 	// Frame 0, the battle's first state, is hashed before the first frame
 	// runs, as P1 and P2 save it before they add their first input.
@@ -311,6 +334,7 @@ RollbackSession::StepResult RollbackSession::StepWatched(const std::function<voi
 			heldFrom_ = frame_;
 			CoreLog("session: holding the game from frame %d", frame_);
 		}
+		Report(inputs, RecordedFrame::kHeld);
 		(*onHeld)(inputs);
 		stats_.heldFrames++;
 	} else {
@@ -321,20 +345,49 @@ RollbackSession::StepResult RollbackSession::StepWatched(const std::function<voi
 		}
 		// What the fighters' sessions give the game for this frame
 		// (InputsForThisFrame), without telling GGPO: a watcher never predicts.
-		game_.Advance(game_.InputsMatter() ? Restricted(inputs, game_.InputBits()) : FrameInputs{}, false);
+		const bool matter = game_.InputsMatter();
+		const FrameInputs given = matter ? Restricted(inputs, game_.InputBits()) : FrameInputs{};
+		Report(given, matter ? RecordedFrame::kFight : 0);
+		game_.Advance(given, false);
 		stats_.framesAdvanced++;
 	}
-	const GGPOErrorCode advanced = ggpo_advance_frame(session_);
-	if (DrainPendingAbort()) return StepResult::Failed;
-	if (!GGPO_SUCCEEDED(advanced)) {
-		char why[96];
-		snprintf(why, sizeof(why), "advance_frame returned %d", (int)advanced);
-		Fail(why);
-		return StepResult::Failed;
+	if (session_) {
+		const GGPOErrorCode advanced = ggpo_advance_frame(session_);
+		if (DrainPendingAbort()) return StepResult::Failed;
+		if (!GGPO_SUCCEEDED(advanced)) {
+			char why[96];
+			snprintf(why, sizeof(why), "advance_frame returned %d", (int)advanced);
+			Fail(why);
+			return StepResult::Failed;
+		}
 	}
 	frame_++;
 	HashWatched(frame_);
 	return StepResult::Advanced;
+}
+
+bool RollbackSession::ReplayInputs(bool held, FrameInputs* inputs)
+{
+	const ReplayFrames& frames = *config_.replay;
+	char why[128];
+	if (frame_ < 0 || (size_t)frame_ >= frames.size()) {
+		snprintf(why, sizeof(why), "the replay ends at frame %zu", frames.size());
+		Fail(why);
+		return false;
+	}
+	const RecordedFrame& recorded = frames[(size_t)frame_];
+	// The game decides each frame's kind from its own state (the WIN held,
+	// the fight reading inputs). One the recording did not have means the
+	// playback is no longer the recorded battle.
+	const bool fight = !held && game_.InputsMatter();
+	if (recorded.Held() != held || (!held && recorded.Fight() != fight)) {
+		snprintf(why, sizeof(why), "the playback left the recording at frame %d (recorded %s, played %s)", frame_,
+			recorded.Held() ? "held" : recorded.Fight() ? "fight" : "ignored", held ? "held" : fight ? "fight" : "ignored");
+		Fail(why);
+		return false;
+	}
+	*inputs = recorded.inputs;
+	return true;
 }
 
 void RollbackSession::HashWatched(int frame)
@@ -432,7 +485,7 @@ bool RollbackSession::HandleResult(int ggpoError, const char* call, StepResult* 
 
 void RollbackSession::Close()
 {
-	if (!session_) return;
+	if (!Live()) return;
 	if (latch_.InCallback()) {
 		latch_.Request("closed from a callback");
 		return;
@@ -447,6 +500,7 @@ void RollbackSession::CloseNow()
 		ggpo_close_session(session_);
 		session_ = nullptr;
 	}
+	replaying_ = false;
 	localHandle_ = remoteHandle_ = -1;
 	gate_.OnSessionClosed();
 	for (Slot& s : pool_) s.used = false;
@@ -481,7 +535,7 @@ bool RollbackSession::DrainPendingAbort()
 
 int RollbackSession::LastConfirmedFrame() const
 {
-	if (session_ && config_.watching) return frame_;
+	if (Live() && config_.watching) return frame_;
 	int frame = -1;
 	if (session_ && ggpo_get_last_confirmed_frame(session_, &frame) == GGPO_OK) return frame;
 	return -1;
@@ -626,6 +680,7 @@ void RollbackSession::RecordHash(Slot& slot, int frame, long long copyTicks)
 		}
 	}
 	if (checkpoint) {
+		if (config_.onCheckpoint) config_.onCheckpoint(frame, slot.hash);
 		layout.PeerRegionHashesSaved(slot.bytes.data(), checkpoints_[frame]); // a replay overwrites it
 		QueryPerformanceFrequency(&perSecond);
 		const auto us = [&](long long ticks) { return ticks * 1000000 / perSecond.QuadPart; };
@@ -674,7 +729,9 @@ FrameInputs RollbackSession::InputsForThisFrame(const FrameInputs& inputs)
 {
 	const bool matter = game_.InputsMatter();
 	ggpo_set_inputs_ignored(session_, !matter);
-	return matter ? Restricted(inputs, game_.InputBits()) : FrameInputs{};
+	const FrameInputs given = matter ? Restricted(inputs, game_.InputBits()) : FrameInputs{};
+	Report(given, matter ? RecordedFrame::kFight : 0);
+	return given;
 }
 
 bool RollbackSession::AdvanceFromRollback()
@@ -691,6 +748,7 @@ bool RollbackSession::AdvanceFromRollback()
 		// Held frames are stepped confirmed, so none should ever be replayed;
 		// if one is, the game still stands still on it.
 		ggpo_set_inputs_ignored(session_, true);
+		Report(inputs, RecordedFrame::kHeld);
 		if (stats_.heldReplays++ == 0) CoreLog("session: a rollback replayed held frame %d", frame_);
 		ggpo_advance_frame(session_);
 		return true;

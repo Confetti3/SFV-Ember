@@ -85,6 +85,7 @@ void RoomBattle::Bind(RollbackSession* previous, RollbackSession& session, const
 	if (active_) Close(previous);
 	active_ = mod::TakeLinkedBattle(&practice_);
 	watching_ = false;
+	replay_ = false;
 	watchedDelay_ = -1;
 	watchedOwnDelays_ = false;
 	streamLossTold_ = false;
@@ -103,6 +104,15 @@ void RoomBattle::Bind(RollbackSession* previous, RollbackSession& session, const
 	phase_ = sf4e::GgpoSyncPhase::Starting;
 	facade::NotifyRuntimeBattleLoaded();
 	Log("netplay: the room's battle has loaded; waiting for every member's");
+}
+
+void RoomBattle::BindReplay()
+{
+	// Bind ran first and found no room's battle, so nothing of a room is set.
+	active_ = watching_ = replay_ = true;
+	endpoints_ = {};
+	endpoints_.localSlot = 2;
+	Log("netplay: a replay's battle has loaded");
 }
 
 RoomBattle::Start RoomBattle::SessionConfig(RollbackSession::Config* config, std::uint32_t* seed, int* delay)
@@ -216,11 +226,11 @@ void RoomBattle::NoteLink(const RollbackSession& session)
 		// before the game's end is known, it loses this game but not its place
 		// at the table, and the runtime leaves the game. Nothing is lost of a
 		// game whose end the room already has; a watcher who left closed its
-		// session without a failure.
+		// session without a failure. A replay's end is no room's business.
 		if (!session.Failed() || streamLossTold_) return;
 		streamLossTold_ = true;
-		Log("netplay: the watched stream ended: %s", session.FailureReason().c_str());
-		if (matchEnded_ || facade::IsRuntimeMatchEndCommitted()) return;
+		Log("netplay: the %s ended: %s", replay_ ? "replay" : "watched stream", session.FailureReason().c_str());
+		if (replay_ || matchEnded_ || facade::IsRuntimeMatchEndCommitted()) return;
 		facade::NotifyRuntimeSpectatorStreamFailed();
 		facade::PushAlert(sf4e::loc::T("runtime.spectator_stream_lost"), sf4e::NoticeSeverity::Error);
 		return;
@@ -243,7 +253,7 @@ void RoomBattle::NoteLink(const RollbackSession& session)
 
 void RoomBattle::NoteSyncPhase(const RollbackSession& session)
 {
-	if (!active_) return;
+	if (!active_ || replay_) return;
 	const sf4e::GgpoSyncPhase now = session.Running() ? sf4e::GgpoSyncPhase::Running : sf4e::GgpoSyncPhase::Synchronizing;
 	if (now == phase_) return;
 	phase_ = now;
@@ -276,7 +286,7 @@ bool RoomBattle::TakeEnd(const mod::SfvAdapter& game, const RollbackSession& ses
 	prompt_.captureFrame = (std::uint64_t)frame;
 	prompt_.confirmedFrame = (std::uint64_t)(confirmed < 0 ? 0 : confirmed);
 	prompt_.versus = versus;
-	s_gameResult = prompt_.result;
+	if (!replay_) s_gameResult = prompt_.result; // the room's battle's result (RoomGameResult)
 	matchEnded_ = true;
 	if (watching_) {
 		// A watcher has no answer of its own and nothing to report: it holds
@@ -348,7 +358,9 @@ void RoomBattle::Decided(Answer answer, const RollbackSession& session)
 	if (answer == Answer::Rematch) {
 		// A watcher's HUD counts the game it saw end (SF4's
 		// NotifyRuntimeWatchedGame); the fighters report it to the room.
-		if (watching_) {
+		if (replay_) {
+			// A replay's game ends in place: no room counts it.
+		} else if (watching_) {
 			facade::NotifyRuntimeWatchedGame(prompt_.result);
 		} else {
 			Report(true);
@@ -387,6 +399,13 @@ bool RoomBattle::Close(RollbackSession* session)
 {
 	if (!active_) return false;
 	FlushHeld("the battle closed");
+	if (replay_) {
+		// No runtime or room heard of it: the session closes, and that is all.
+		if (session && session->Live()) session->Close();
+		active_ = replay_ = watching_ = false;
+		Log("netplay: the replay's battle closed after %u game(s) in place", gamesInPlace_);
+		return false;
+	}
 	// A session still live here played its match to the end; one already
 	// gone broke, or the runtime ended it.
 	const bool ended = matchEnded_ || (session && session->Live());

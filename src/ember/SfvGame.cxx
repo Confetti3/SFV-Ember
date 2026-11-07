@@ -8,6 +8,7 @@
 #include "core/RollbackSession.hxx"
 #include "ember/RoomBattle.hxx"
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvReplays.hxx"
 #include "ember/SfvShell.hxx"
 #include "ember/SfvTraining.hxx"
 #include "mod/GameScene.hxx"
@@ -127,17 +128,9 @@ class SfvBattle final : public Battle {
 public:
 	Entry Enter() override
 	{
-		const auto& netplay = ember::RuntimeSession::netplay;
-		if (!netplay) return Entry::Deferred;
-		const auto& lobby = netplay->client._lobbyData;
-		const auto& match = netplay->client._matchData;
-		RoomMatch room;
-		room.picks[0] = sf4e::selection::FromNative(match.chara[0]);
-		room.picks[1] = sf4e::selection::FromNative(match.chara[1]);
-		room.stage = match.stageID;
-		room.rounds = lobby.roundCount;
-		room.roundSeconds = lobby.roundTime.integral;
-		room.practice = lobby.trainingMode; // a Practice room's (TRAINING_OVER_ROLLBACK.md, step 2)
+		const std::optional<RoomMatch> now = RoomMatchNow();
+		if (!now) return Entry::Deferred;
+		const RoomMatch& room = *now;
 		std::optional<mod::MatchPicks> picks = LaunchPicks(room);
 		if (!picks) {
 			mod::Log("ember: the room's match is not one SFV can launch (fighters %d/%d, stage %lld, %d rounds of %d s)",
@@ -447,21 +440,39 @@ SfvBattle s_battleSide;
 SfvInput s_input;
 SfvPreferences s_preferences;
 SfvServices s_services;
-NoReplays s_replays;
-// Watching a table's games (EMBER_LIBRARY.md section 25) and Training
-// (section 27: SFV's own Training mode, SfvTraining); SFV offers no replays,
-// pad setup, Steam profiles or custom content yet.
+// Watching a table's games (EMBER_LIBRARY.md section 25), the replays of
+// the room battles SFV Ember recorded (section 26: Watch now, Keep and Show
+// in folder; SFV has no replay list of its own to add one to, no video
+// export, replay meter or inputs reader yet) and Training (section 27: SFV's
+// own Training mode, SfvTraining); SFV offers no pad setup, Steam profiles
+// or custom content yet.
 Capabilities SfvCapabilities()
 {
 	Capabilities caps;
 	caps.spectators = true;
+	caps.replays = true;
 	caps.training = true;
 	return caps;
 }
 const Adapter s_game = {SfvCapabilities(), s_state, s_battleSide, s_input, s_preferences, s_services,
-	SfvTrainingService(), s_replays};
+	SfvTrainingService(), SfvReplays()};
 
 } // namespace
+
+std::optional<RoomMatch> RoomMatchNow()
+{
+	const auto& netplay = ember::RuntimeSession::netplay;
+	if (!netplay) return std::nullopt;
+	const auto& lobby = netplay->client._lobbyData;
+	const auto& match = netplay->client._matchData;
+	RoomMatch room;
+	room.picks[0] = sf4e::selection::FromNative(match.chara[0]);
+	room.picks[1] = sf4e::selection::FromNative(match.chara[1]);
+	room.stage = match.stageID;
+	room.rounds = lobby.roundCount;
+	room.roundSeconds = lobby.roundTime.integral;
+	return room;
+}
 
 void SetWatcherDrain(RollbackSession* session)
 {

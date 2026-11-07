@@ -28,6 +28,12 @@
 // P1 streams to its watchers, drops the ones that cannot keep up, and keeps
 // its session for them after the battle while the runtime drains them.
 //
+// A replay (EMBER_LIBRARY.md section 26) is played as a watcher plays: its
+// battle binds as a replay's (BindReplay) and takes each game's end, holds
+// its WIN, reads the recorded answers and goes on in place or back exactly
+// as the room's battle did, with the same functions. It is no room's: the
+// runtime and the room hear nothing of it.
+//
 // Game thread only, but for DeclineRematch and NoteShellLeftPrompt.
 
 #include "core/RollbackSession.hxx"
@@ -58,6 +64,17 @@ public:
 	bool Active() const { return active_; }
 	// The room's battle is a Practice room's (its launch said so).
 	bool Practice() const { return active_ && practice_; }
+	// The battle a replay's launch loaded (mod::TakeReplayBattle), bound
+	// after Bind found it no room's: played as a watcher plays, reporting
+	// nothing.
+	void BindReplay();
+	bool Replaying() const { return active_ && replay_; }
+	// This copy's match slot (0 and 1 fight, 2 and up watch), once
+	// SessionConfig said Ready.
+	std::size_t LocalSlot() const { return endpoints_.localSlot; }
+	// The games this battle has played to their end so far, the one being
+	// played included once its end is taken (0 before the first ends).
+	unsigned GamesEnded() const { return gamesInPlace_ + (matchEnded_ ? 1u : 0u); }
 
 	enum class Start { Waiting, Ready, Gone };
 	// The room's part of the session's start, once every member's battle has
@@ -165,6 +182,7 @@ private:
 	bool active_ = false;      // the room's battle, until its close is reported
 	bool practice_ = false;    // ...a Practice room's
 	bool watching_ = false;    // ...which this copy watches
+	bool replay_ = false;      // ...or plays back from a replay (BindReplay)
 	int watchedDelay_ = -1;    // the watched game's granted delay (WatchedDelay)
 	bool watchedOwnDelays_ = false;
 	bool streamLossTold_ = false; // a watcher's stream failure was reported

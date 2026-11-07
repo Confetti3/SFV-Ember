@@ -60,6 +60,10 @@ struct MatchPicks {
 	// sets Training's refilling gauges before the session's first frame
 	// (PracticeGauges). Only a linked launch carries it.
 	bool practice = false;
+	// A replay's launch (EMBER_LIBRARY.md section 26): the battle it loads
+	// plays a recorded battle back, which the battle mode learns from
+	// TakeReplayBattle. The game's ownership check never runs for it.
+	bool replay = false;
 };
 
 // A player's setup as the pipe's commands name it, space separated:
@@ -119,6 +123,9 @@ void LaunchOnMainMenu(const MatchPicks& picks, std::function<bool()> stillWanted
 // leaves nothing to take.
 // `practice`, when given, says whether that launch was a Practice room's.
 bool TakeLinkedBattle(bool* practice = nullptr);
+// The same for a replay's launch (MatchPicks::replay): true once for the
+// battle it loaded.
+bool TakeReplayBattle();
 
 // Control command: "launch [versus|cpu|training] [P1] [P2] [stage]", a player
 // as CODE[:costume[:colour]] or "-" to keep the default.

@@ -50,6 +50,9 @@ struct OverlayUi {
 	// the game see it: true keeps it from both (Training's go now on Enter,
 	// SfvShell). Optional.
 	std::function<bool(unsigned message, unsigned long long w, long long l)> takesMessage;
+	// The window's thread, for each key message: true keeps it from the game
+	// (ImGui has already seen it), as SF4 Ember keeps a replay's keys.
+	std::function<bool(unsigned message, unsigned key)> takesKey;
 };
 
 // Hooks the swap chain; false (logged) when it cannot.
