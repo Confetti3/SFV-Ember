@@ -35,6 +35,7 @@
 // Ember's post-match prompt over the WIN, answered by both fighters in the
 // session's held frames (RoomBattle, EMBER_LIBRARY.md section 19).
 
+#include "ember/SfvPickSpace.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/VersusLaunch.hxx"
 
@@ -47,9 +48,9 @@
 
 namespace sfve::adapter {
 
-// The game build a room's matches are played on: the exe's build (BuildCheck's
-// verified one) and the mod's match version. MatchBuildId adds the content.
-constexpr const char* kMatchBuild = "sfv-ember/13173604/0.2";
+// The game build a room's matches are played on (SfvPickSpace). MatchBuildId
+// adds the content.
+using picks::kMatchBuild;
 
 // Fills the catalog from the game's lists, and the build id from them, with
 // Ember's ownership gate on or (development only) off. False,
@@ -74,6 +75,14 @@ const std::string& MatchBuildId();
 // stages' codes, all in order. Equal pick spaces give equal fingerprints;
 // names and what this copy has installed never enter it.
 std::string ContentFingerprint(const mod::ContentLists& lists);
+
+// The lists' pick space: what every copy of the same game data shares, and
+// what SFV's room host judges picks by (SfvPickSpace).
+picks::PickSpace PickSpaceOf(const mod::ContentLists& lists);
+// The filled catalog's pick space and build as the room host's data
+// (picks::ToJson); empty before FillCatalog. The pipe's `catalog-export`
+// writes it (EMBER_LIBRARY.md section 24).
+std::string PickSpaceJson();
 
 // The game's code of a fighter or a stage ("RYU", "S01"); empty for an id
 // outside the lists.

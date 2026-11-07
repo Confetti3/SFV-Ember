@@ -3,11 +3,17 @@
 # SF4 launcher does and talks to it over its named pipe.
 #
 # Output: $BuildDir\sf4-net.exe (tools/sfve.py deploy copies it next to the mod).
+#
+# -Features selftest builds the helper that takes its Ember folder from
+# SF4E_SELFTEST_EMBER_DIR (the library's docs/design/TOURNAMENT_SELFTEST.md),
+# so two copies on one PC have Ember IDs of their own and neither touches the
+# player's: tools/runpublic.ps1 needs it. Build without it afterwards.
 
 param(
 	[string]$EmberRepo = '',
 	[string]$BuildDir = 'D:\sfv-ember-build',
-	[string]$VisualStudioPath = ''
+	[string]$VisualStudioPath = '',
+	[string]$Features = ''
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -30,8 +36,9 @@ cmd /c "`"$vcvars`" >nul && set" | ForEach-Object {
 }
 
 $env:CARGO_TARGET_DIR = Join-Path $BuildDir 'sf4-net-target'
-cargo build --release --manifest-path $manifest -j 12
+$featureArgs = if ($Features) { @('--features', $Features) } else { @() }
+cargo build --release --locked --manifest-path $manifest -j 4 @featureArgs
 if ($LASTEXITCODE) { throw "cargo build failed ($LASTEXITCODE)" }
 Copy-Item (Join-Path $env:CARGO_TARGET_DIR 'release\sf4-net.exe') (Join-Path $BuildDir 'sf4-net.exe') -Force
 $commit = git -C $EmberRepo rev-parse --short HEAD
-Write-Output "built sf4-net.exe from $EmberRepo at $commit"
+Write-Output "built sf4-net.exe from $EmberRepo at $commit$(if ($Features) { " with $Features" })"

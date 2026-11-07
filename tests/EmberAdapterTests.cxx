@@ -19,12 +19,16 @@
 #include "common/Localization.hxx"
 #include "common/ProductIdentity.hxx"
 #include "common/RandomFighter.hxx"
+#include "common/RoomRules.hxx"
 #include "common/StageCatalog.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
 #include "ui/SelectionArt.hxx"
 #include "ui/SelectionLabels.hxx"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -320,6 +324,56 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	CHECK(MatchBuildId().size() <= 128); // the room's limit for a build
 }
 
+TEST_CASE("the room host's data is the catalog's pick space, and reads back as the same build")
+{
+	FillTestCatalog();
+	const std::string text = PickSpaceJson();
+	picks::PickSpace space;
+	std::string build, error;
+	REQUIRE(picks::FromJson(text, space, build, error));
+	CHECK(build == MatchBuildId());
+	CHECK(picks::BuildId(space) == MatchBuildId());
+	CHECK(picks::Fingerprint(space) == ContentFingerprint(TestContent()));
+	CHECK(picks::Problem(space).empty());
+	// The same rules over the data as over the game's lists.
+	for (int fighter = 0; fighter < (int)space.fighters.size(); fighter++) {
+		for (int costume = 0; costume < 12; costume++) {
+			for (int colour = 0; colour < 120; colour++) {
+				Pick pick;
+				pick.fighter = fighter;
+				pick.costume = costume;
+				pick.color = colour;
+				CHECK(picks::ValidPick(space, pick) == ember::Catalog().validPick(pick, false));
+			}
+		}
+	}
+	CHECK(picks::CostumeLimit(space) == ember::Catalog().costumeLimit);
+	CHECK(picks::ColourLimit(space) == ember::Catalog().colorLimit);
+	// Only what ToJson writes is read.
+	nlohmann::json extra = nlohmann::json::parse(text);
+	extra["names"] = nlohmann::json::array();
+	CHECK_FALSE(picks::FromJson(extra.dump(), space, build, error));
+	nlohmann::json colour = nlohmann::json::parse(text);
+	colour["fighters"][0]["costumes"][0]["colours"][0] = "01";
+	CHECK_FALSE(picks::FromJson(colour.dump(), space, build, error));
+	nlohmann::json stages = nlohmann::json::parse(text);
+	stages.erase("stages");
+	CHECK_FALSE(picks::FromJson(stages.dump(), space, build, error));
+	CHECK_FALSE(picks::FromJson("not json", space, build, error));
+}
+
+TEST_CASE("the rules a room host offers for SFV are the ones VersusLaunch plays")
+{
+	for (std::uint8_t rounds : sf4e::room::RoundCounts) {
+		const bool listed = std::find(std::begin(picks::kRoundCounts), std::end(picks::kRoundCounts), rounds) != std::end(picks::kRoundCounts);
+		CHECK(listed == mod::PlayableRounds(rounds));
+	}
+	for (std::uint16_t seconds : sf4e::room::RoundTimes) {
+		const bool listed = std::find(std::begin(picks::kRoundTimes), std::end(picks::kRoundTimes), seconds) != std::end(picks::kRoundTimes);
+		CHECK(listed == mod::RoundClockFrames(seconds).has_value());
+	}
+}
+
 TEST_CASE("a pick is available when this copy has its fighter and costume installed")
 {
 	FillTestCatalog();
@@ -559,6 +613,7 @@ TEST_CASE("the product is SFV Ember, with names of its own")
 	CHECK(std::wstring(product.gameExe) == L"StreetFighterV.exe");
 	CHECK(std::wstring(product.gameLog) == L"sfv_ember.log");
 	CHECK(std::string(product.urlScheme) == "ember-sfv");
+	CHECK(std::string(product.roomGame) == "sfv");
 	CHECK(ember::KernelObjectName(L"JoinLink") == L"Local\\SFVEmberJoinLink");
 	CHECK(ember::SchemeLink("join/ABC") == "ember-sfv://join/ABC");
 	for (const char* text : {product.branding.productName, product.branding.shortName, product.urlScheme,

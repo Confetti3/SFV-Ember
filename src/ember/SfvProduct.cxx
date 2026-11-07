@@ -140,6 +140,9 @@ constexpr ember::ProductIdentity SfvEmber = {
 	// A scheme of its own, so a link never opens SF4 Ember (section 5.4 of
 	// EMBER_LIBRARY.md is still open).
 	"ember-sfv",
+	// Its public rooms are SFV's, apart from SF4 Ember's on the same bridge
+	// (EMBER_LIBRARY.md section 24).
+	"sfv",
 	// No releases yet: nothing to update from, and no package to name.
 	"",
 	"",
