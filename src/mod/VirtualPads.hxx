@@ -51,6 +51,9 @@ struct PadSeen {
 	bool connected = false;
 	uint16_t buttons = 0;
 	uint8_t stick = 0;
+	// The triggers held past XInput's own threshold (30 of 255), which the
+	// buttons do not carry (a replay's RT step and LT).
+	bool leftTrigger = false, rightTrigger = false;
 };
 PadSeen LastPadState(int slot);
 

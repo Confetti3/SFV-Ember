@@ -6,6 +6,7 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvHud.hxx"
 #include "ember/SfvPick.hxx"
+#include "ember/SfvReplays.hxx"
 #include "ember/SfvSelectionScreen.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/Log.hxx"
@@ -16,15 +17,19 @@
 #include "common/MenuInputCapture.hxx"
 #include "common/NativeMenuLock.hxx"
 #include "common/PadKind.hxx"
+#include "common/ReplayTransport.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 #include "sf4e/sf4e__ShellHost.hxx"
 #include "ui/ControllerNavigation.hxx"
 #include "ui/GameMenu.hxx"
 #include "ui/MenuRows.hxx"
 #include "ui/OverlayPresentation.hxx"
+#include "ui/ReplayPlaybackHud.hxx"
 #include "ui/SelectionLabels.hxx"
 #include "ui/Theme.hxx"
 #include "ui/Win32Input.hxx"
+
+#include <windows.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -136,6 +141,12 @@ struct Shell {
 	bool started = false, wasShown = false, matchResultShown = false;
 	// When the shell last showed or hid (ImGui's clock), for its fade.
 	double changedAt = -1;
+	// A replay's playback (EMBER_LIBRARY.md section 26): the Replays
+	// screen's counts last seen, and when the strip was last asked for (a
+	// control taken, or the playback starting).
+	std::uint64_t logOpensSeen = 0, returnsSeen = 0;
+	std::uint32_t takenSeen = 0, sessionSeen = 0;
+	double takenAt = -1;
 };
 
 // Ember's shell over SFV fades in and out, the ground and all, rather than
@@ -201,6 +212,48 @@ Shell& TheShell()
 	return shell;
 }
 
+// A replay's playback (EMBER_LIBRARY.md section 26): its keys, read as SF4's
+// overlay reads them (F1 pause, F2 step, F3 slower, F4 faster), and Esc to
+// stop watching; then the library's strip, shown for a while after each
+// control and as the playback starts, and while paused or slower. SFV has no
+// frame meter or input lanes over a replay.
+void DrawReplayControls(Shell& shell, const Snapshot& snapshot, bool shellShown)
+{
+	namespace rt = sf4e::replaytransport;
+	const rt::View& playback = snapshot.replays.playback;
+	const double now = ImGui::GetTime();
+	if (!playback.playback) {
+		shell.takenAt = -1;
+		return;
+	}
+	if (playback.session != shell.sessionSeen || playback.taken != shell.takenSeen) shell.takenAt = now;
+	shell.sessionSeen = playback.session;
+	shell.takenSeen = playback.taken;
+	if (shellShown) return;
+	const ImGuiIO& io = ImGui::GetIO();
+	if (overlay::GameWindowFocused() && !io.WantTextInput && !io.KeyAlt) {
+		const auto send = [&](rt::Command command) { SubmitPlaybackCommand(command, rt::Device::Keyboard, playback.session); };
+		if (ImGui::IsKeyPressed(ImGuiKey_F1, false)) send(rt::Command::TogglePause);
+		// Held, F2 steps again after 300 ms, ten times a second.
+		for (int steps = ImGui::GetKeyPressedAmount(ImGuiKey_F2, .3f, .1f); steps > 0; --steps) send(rt::Command::Step);
+		if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) send(rt::Command::Slower);
+		if (ImGui::IsKeyPressed(ImGuiKey_F4, false)) send(rt::Command::Faster);
+		if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) SubmitPlaybackStop(playback.session);
+	}
+	sf4e::ui::ReplayHudView view;
+	view.shown = true;
+	view.armed = playback.armed;
+	view.paused = playback.paused;
+	view.divisor = playback.divisor;
+	view.round = playback.round;
+	view.cursor = playback.cursor;
+	view.pad = playback.device == rt::Device::Pad;
+	view.stripAlpha = rt::StripAlpha(playback.paused, playback.divisor, shell.takenAt < 0 ? -1 : now - shell.takenAt);
+	view.meterOffered = false;
+	view.stopOffered = true;
+	sf4e::ui::DrawReplayStrip(view);
+}
+
 // Render thread, before the frame: the fonts at the picture's scale and the
 // player's interface size.
 bool ApplyScale(float pictureScale)
@@ -232,6 +285,18 @@ void BeginFrame()
 		presentation.Close("Start or F10 opens Ember");
 	}
 	presentation.Update(snapshot.menuContext, snapshot.session.match, snapshot.offlineRequested, focused);
+	// Watch now: Ember's menu gets out of the way as the replay's battle is
+	// launched, and comes back on the Replays screen when the main menu does
+	// (SfvReplays), as SF4's overlay does around the game's battle log.
+	if (snapshot.replays.logOpens != shell.logOpensSeen) {
+		shell.logOpensSeen = snapshot.replays.logOpens;
+		presentation.Close("a replay started");
+	}
+	if (snapshot.replays.returns != shell.returnsSeen) {
+		shell.returnsSeen = snapshot.replays.returns;
+		presentation.Open("the replay ended");
+		shell.host.Shell().ShowReplays();
+	}
 	// The WIN of a room game this PC fought: the post-match prompt opens over
 	// it, once per game, as SF4's overlay opens it (RoomBattle holds the WIN).
 	const bool matchResult = snapshot.menuContext == input::MenuContext::MatchResult;
@@ -277,6 +342,7 @@ overlay::OverlayUi::Shown Draw()
 	if (presentation.Reopened()) shell.host.Shell().ShowPlay();
 	// Under the shell: the match HUD, or only its notices while the shell is open.
 	DrawSfvMatchHud(*shell.frame, presentation.Visible());
+	DrawReplayControls(shell, snapshot, presentation.Visible());
 	const double now = ImGui::GetTime();
 	if (presentation.Visible() != shell.wasShown) shell.changedAt = now;
 	const float fade = FadeProgress(now - shell.changedAt);
@@ -314,6 +380,10 @@ overlay::OverlayUi::Shown Draw()
 bool TakesPad(unsigned long slot, unsigned short buttons)
 {
 	if (!EmberRuntimeRunning()) return false;
+	// A replay's battle plays the recording's inputs, and SFV's own pause
+	// menu has no place over it: every pad is the playback's controls
+	// (SfvReplays reads them from VirtualPads' record).
+	if (PlaybackRunning()) return true;
 	const auto snapshot = facade::GetRuntimeSnapshotShared();
 	const input::Device& device = snapshot->inputDevice;
 	if (device.type == input::PadXInput && device.index == (int)slot) {
@@ -353,6 +423,12 @@ void InstallEmberShell()
 	ui.beginFrame = BeginFrame;
 	ui.draw = Draw;
 	ui.takesPad = TakesPad;
+	// During a replay's playback its keys are Ember's (F1 to F4, Esc), kept
+	// from the game as SF4's window procedure keeps them (KeepsKey).
+	ui.takesKey = [](unsigned message, unsigned key) {
+		return PlaybackRunning() && (message == WM_KEYDOWN || message == WM_KEYUP) &&
+			((key >= VK_F1 && key <= VK_F4) || key == VK_ESCAPE);
+	};
 	overlay::SetOverlayUi(std::move(ui));
 }
 

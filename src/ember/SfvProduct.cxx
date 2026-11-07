@@ -23,8 +23,13 @@ namespace {
 // the room's build checks and the shortcut hint, the launcher's, recovery's,
 // updater's and problem reports' words that name SF4, its files or its
 // folders, and SF4's "Not owned on Steam." where SFV's answer is the game's
-// own (EMBER_LIBRARY.md section 23). English replaces every translation of
-// them too (Localization.cxx), until SFV Ember has translations of its own.
+// own (EMBER_LIBRARY.md section 23), and the Replays screen's words that name
+// SF4's Battle Log, its adding and its inputs reader, which SFV does not
+// offer (section 26). Two of those notices, never shown otherwise in SFV,
+// say what an SFV replay's playback needs said: a replay that cannot be
+// played (inputs.unreadable_detail) and one that did not play to its end
+// (replays.not_added). English replaces every translation of them too
+// (Localization.cxx), until SFV Ember has translations of its own.
 // Training's words are not shown here.
 const char kEnglish[] = R"po(
 msgid "app.name"
@@ -155,6 +160,27 @@ msgstr "Reports go to embernetplay.link. Each holds the SFV Ember version and bu
 
 msgid "reports.history_unreadable_detail"
 msgstr "sent-reports.json in %APPDATA%\\SFVEmber cannot be read, so no report is sent without asking. Delete the file to start a new record."
+
+msgid "home.replays_detail"
+msgstr "Your room matches, saved as each battle ends. Watch them again in Street Fighter V."
+
+msgid "replays.empty_detail"
+msgstr "A room match is saved here when its battle ends."
+
+msgid "replays.watch_detail"
+msgstr "Plays its battle again in Street Fighter V, from the start."
+
+msgid "replays.row_detail"
+msgstr "Select to watch it, keep it or show its file."
+
+msgid "replays.open_folder_detail"
+msgstr "Opens the replay folder in Explorer."
+
+msgid "inputs.unreadable_detail"
+msgstr "This replay cannot be played: its file is damaged, or another SFV Ember build made it. The log has the reason."
+
+msgid "replays.not_added"
+msgstr "This replay did not play to its end. The log has the reason."
 )po";
 
 const ember::LocaleOverlay LocaleOverlays[] = {{"en", kEnglish}, {nullptr, nullptr}};

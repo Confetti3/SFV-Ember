@@ -11,6 +11,7 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
 #include "ember/SfvPick.hxx"
+#include "ember/SfvReplays.hxx"
 #include "ember/SfvVerification.hxx"
 #include "mod/ModConfig.hxx"
 
@@ -752,11 +753,17 @@ TEST_CASE("the game's pictures are its fighters' faces and its stages', and the 
 	CHECK_FALSE(Swatch(0, 4, 100).has_value()); // read by the game thread
 }
 
-TEST_CASE("the game offers watching only and answers as no battle while none is in play")
+TEST_CASE("the game offers watching and replays, and answers as no battle while none is in play")
 {
 	const ember::game::Adapter& game = ember::game::Game();
 	CHECK_FALSE(game.caps.training);
-	CHECK_FALSE(game.caps.replays);
+	// Replays (EMBER_LIBRARY.md section 26): Watch now, Keep and Show in
+	// folder; no game list of SFV's own, video, meter or inputs reader.
+	CHECK(game.caps.replays);
+	CHECK_FALSE(game.caps.replayGameList);
+	CHECK_FALSE(game.caps.replayVideo);
+	CHECK_FALSE(game.caps.replayMeter);
+	CHECK_FALSE(game.caps.replayInputs);
 	CHECK(game.caps.spectators); // EMBER_LIBRARY.md section 25
 	CHECK(game.battle.SpectatorStreams() == 0u);
 	CHECK_FALSE(game.battle.DrainingSpectators());
@@ -783,8 +790,11 @@ TEST_CASE("the game offers watching only and answers as no battle while none is 
 	CHECK_FALSE(game.input.ReadAssignedInput({}, 0, mapped, raw));
 	CHECK(mapped == 0u);
 	CHECK(raw == 0u);
-	CHECK_FALSE(game.replays.Ready());
-	CHECK(game.replays.ArchivePath().empty());
+	// The replay folder is SFV Ember's own; nothing plays.
+	CHECK(game.replays.Ready());
+	CHECK(game.replays.ArchivePath() == sfve::adapter::ReplayFolder());
+	CHECK_FALSE(game.replays.Playback().playback);
+	CHECK(game.replays.PlaybackLanes() == nullptr);
 	CHECK_FALSE(game.training.ControlsAvailable());
 }
 

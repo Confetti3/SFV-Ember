@@ -46,6 +46,9 @@ struct OverlayUi {
 	// XINPUT_GAMEPAD buttons. True keeps that state from the game, which then
 	// sees an idle pad.
 	std::function<bool(unsigned long slot, unsigned short buttons)> takesPad;
+	// The window's thread, for each key message: true keeps it from the game
+	// (ImGui has already seen it), as SF4 Ember keeps a replay's keys.
+	std::function<bool(unsigned message, unsigned key)> takesKey;
 };
 
 // Hooks the swap chain; false (logged) when it cannot.

@@ -56,6 +56,10 @@ struct MatchPicks {
 	// match's, which the battle mode learns from TakeLinkedBattle. Any other
 	// launch (the pipe's) loads a battle of the player's own.
 	bool linked = false;
+	// A replay's launch (EMBER_LIBRARY.md section 26): the battle it loads
+	// plays a recorded battle back, which the battle mode learns from
+	// TakeReplayBattle. The game's ownership check never runs for it.
+	bool replay = false;
 };
 
 // A player's setup as the pipe's commands name it, space separated:
@@ -106,6 +110,9 @@ void LaunchOnMainMenu(const MatchPicks& picks, std::function<bool()> stillWanted
 // pipe's "launch"). A linked launch that fails before its battle binds
 // leaves nothing to take.
 bool TakeLinkedBattle();
+// The same for a replay's launch (MatchPicks::replay): true once for the
+// battle it loaded.
+bool TakeReplayBattle();
 
 // Control command: "launch [versus|cpu|training] [P1] [P2] [stage]", a player
 // as CODE[:costume[:colour]] or "-" to keep the default.

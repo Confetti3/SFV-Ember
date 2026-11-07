@@ -4,15 +4,20 @@
 // (sf4e/sf4e__GameAdapter.hxx), defined once by SfvGame.cxx as
 // ember::game::Game(), over sfv-ember's own modules. Of the optional
 // features SFV offers watching a table's games (Capabilities::spectators);
-// its Training and replays are the library's absent ones.
+// SFV offers watching a table's games (Capabilities::spectators) and
+// replays of the room battles it recorded (Capabilities::replays, SfvReplays);
+// its Training is the library's absent one.
 //
 // The adapter's battle and the desync check (SfvVerification) read the
 // battle the mod is playing, which the mod's netplay mode hands over here
 // for a room's battle: its rollback session, the bound battle and the
 // battle's way out. With none in play they answer as with no battle.
 
+#include "ember/SfvCatalog.hxx"
+
 #include <cstdint>
 #include <functional>
+#include <optional>
 
 namespace sfve {
 class RollbackSession;
@@ -34,6 +39,11 @@ struct BattleInPlay {
 	// log. Game thread; it only asks, so it is safe from any runtime call.
 	std::function<void(const char* why)> exit;
 };
+
+// The room's match the runtime holds now, as SfvBattle::Enter launches it:
+// both picks, the stage and the rules; empty with no session client. Game
+// thread.
+std::optional<RoomMatch> RoomMatchNow();
 
 // Game thread: the mod sets it as a room's battle binds and clears it (an
 // empty BattleInPlay) before that battle's session or objects go. Setting

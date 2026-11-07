@@ -65,6 +65,8 @@ Pending s_pending;
 // Game thread only: a linked launch's picks went into the jump and its
 // battle has not bound yet (TakeLinkedBattle).
 bool s_linkedLoading = false;
+// The same for a replay's launch (TakeReplayBattle).
+bool s_replayLoading = false;
 
 template <typename Fn>
 Fn At(const CodeSite& site)
@@ -212,7 +214,7 @@ void WatchLoading(LaunchFailed onFailed, bool gameCheck)
 		if (why && !*why) return true; // still loading
 		if (why) {
 			Log("launch: failed: %s", why);
-			s_linkedLoading = false; // no battle came for it
+			s_linkedLoading = s_replayLoading = false; // no battle came for it
 			if (onFailed) onFailed(why);
 		}
 		return false;
@@ -241,6 +243,7 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	WriteStage(modeData, picks);
 	GiveBackGameRef(flow);
 	s_linkedLoading = picks.linked;
+	s_replayLoading = picks.replay;
 	uint8_t* message = Field<uint8_t*>(jumpState, jump::kJumpStateMessage);
 	WatchLoading(std::move(onFailed), message && Field<uint8_t>(message, jump::kMessageCheckOwnership) != 0);
 	return next;
@@ -324,12 +327,15 @@ void Launch(const MatchPicks& picks, LaunchFailed onFailed)
 	// rand()), so two copies would load different battles. Each player's own
 	// pick was judged by their own copy before Ready (EMBER_LIBRARY.md
 	// section 23); the picks both copies agreed are the picks loaded.
-	const bool gameCheck = s_checkOwnership && !picks.linked;
+	// A replay plays the battle that was recorded, so the check does not run
+	// for it either.
+	const bool gameCheck = s_checkOwnership && !picks.linked && !picks.replay;
 	Field<uint8_t>(message, jump::kMessageCheckOwnership) = gameCheck ? 1 : 0;
 	if (!ChangeScene(jumpClass, message)) return refuse("the scene manager is not known");
 	s_pending = Pending{message, false, picks, std::move(onFailed)};
 	Log("launch: battle jump, target %d, %s", (int)picks.target,
 		picks.linked ? "a room's match: the game's ownership check does not run"
+		: picks.replay ? "a replay: the game's ownership check does not run"
 		: gameCheck  ? "the game's ownership check runs"
 					 : "the game's ownership check does not run");
 	auto frames = std::make_shared<int>(0);
@@ -466,6 +472,13 @@ bool TakeLinkedBattle()
 	const bool linked = s_linkedLoading;
 	s_linkedLoading = false;
 	return linked;
+}
+
+bool TakeReplayBattle()
+{
+	const bool replay = s_replayLoading;
+	s_replayLoading = false;
+	return replay;
 }
 
 void RegisterVersusLaunchCommands()

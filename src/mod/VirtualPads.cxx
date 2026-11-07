@@ -36,10 +36,13 @@ std::mutex s_mutex;
 Slot s_slots[kPadSlots];
 uint64_t s_reads[kPadSlots]; // XInput reads seen per slot, for the status report
 // Each slot's last read: bit 16 connected, bits 0-15 the buttons, bits 20-23
-// the left stick's directions (PadSeen::stick).
+// the left stick's directions (PadSeen::stick), bits 24 and 25 the left and
+// right triggers held.
 std::atomic<uint32_t> s_seen[kPadSlots];
 constexpr uint32_t kSeenConnected = 0x10000;
 constexpr int kSeenStickShift = 20;
+constexpr uint32_t kSeenLeftTrigger = 1u << 24, kSeenRightTrigger = 1u << 25;
+constexpr BYTE kTriggerHeld = 30; // XINPUT_GAMEPAD_TRIGGER_THRESHOLD
 // How far the left stick leans before it counts as a direction (of 32767).
 constexpr SHORT kStickLean = 16000;
 
@@ -47,7 +50,8 @@ uint32_t Seen(const XState& state)
 {
 	const uint32_t stick = (state.ly > kStickLean ? 0x1u : 0u) | (state.ly < -kStickLean ? 0x2u : 0u) |
 		(state.lx < -kStickLean ? 0x4u : 0u) | (state.lx > kStickLean ? 0x8u : 0u);
-	return kSeenConnected | state.buttons | stick << kSeenStickShift;
+	return kSeenConnected | state.buttons | stick << kSeenStickShift |
+		(state.leftTrigger > kTriggerHeld ? kSeenLeftTrigger : 0u) | (state.rightTrigger > kTriggerHeld ? kSeenRightTrigger : 0u);
 }
 
 struct Name {
@@ -163,7 +167,8 @@ PadSeen LastPadState(int slot)
 {
 	if (slot < 0 || slot >= kPadSlots) return {};
 	const uint32_t seen = s_seen[slot];
-	return {(seen & kSeenConnected) != 0, static_cast<uint16_t>(seen & 0xFFFF), static_cast<uint8_t>(seen >> kSeenStickShift & 0xF)};
+	return {(seen & kSeenConnected) != 0, static_cast<uint16_t>(seen & 0xFFFF), static_cast<uint8_t>(seen >> kSeenStickShift & 0xF),
+		(seen & kSeenLeftTrigger) != 0, (seen & kSeenRightTrigger) != 0};
 }
 
 bool InstallVirtualPads()

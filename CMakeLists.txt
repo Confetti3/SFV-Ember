@@ -49,6 +49,7 @@ add_subdirectory("${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe" "${CMAKE_BINA
 # the synctest harness. No game, no hooks; unit tested against MockFighter.
 add_library(sfve_core STATIC
     src/core/StateRegions.cxx
+    src/core/ReplayFile.cxx
     src/core/RollbackSession.cxx
     src/core/SyncTest.cxx
     src/core/NetPolicy.cxx)
@@ -69,6 +70,7 @@ add_executable(sfve_tests
     tests/MatchResultTests.cxx
     tests/RematchDecisionTests.cxx
     tests/WatcherTests.cxx
+    tests/ReplayTests.cxx
     src/mod/MatchResult.cxx)
 target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 
@@ -89,6 +91,7 @@ add_library(sfve_ember STATIC
     src/ember/SfvHud.cxx
     src/ember/SfvPick.cxx
     src/ember/SfvPickSpace.cxx
+    src/ember/SfvReplays.cxx
     src/ember/SfvSelection.cxx
     src/ember/SfvSelectionScreen.cxx
     src/ember/SfvShell.cxx
@@ -111,6 +114,7 @@ add_executable(sfve_ember_tests
     tests/EmberAdapterTests.cxx
     tests/BattleIdentityTests.cxx
     tests/HudLayoutTests.cxx
+    tests/SfvReplaysTests.cxx
     src/mod/ControlPipe.cxx
     src/mod/GameArt.cxx
     src/mod/GameContent.cxx
