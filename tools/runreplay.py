@@ -181,7 +181,20 @@ def watch_through_shell(shots: Path | None) -> None:
 
 
 def exercise_transport(shots: Path | None) -> None:
-    """Pause, step three frames, half speed and back, on copy 0's playback."""
+    """Pause, step three frames, half speed and back, on copy 0's playback;
+    first a pause before the fight (the intro: no fight frame played yet)."""
+    wait_for("copy 0's playback 1 s in", 60, lambda: replays(0)["frames"] > 60)
+    ctl(0, "replay pause")
+    wait_for("the pause in the intro", 5, lambda: replays(0)["paused"])
+    intro = replays(0)
+    time.sleep(1.0)
+    if replays(0)["frames"] != intro["frames"]:
+        raise lib.SfveError("paused in the intro, the playback went on")
+    if intro["cursor"] != 0:
+        raise lib.SfveError(f"the pause meant for the intro came {intro['cursor']} frames into the fight")
+    ctl(0, "replay pause")
+    wait_for("the playback again after the intro's pause", 5, lambda: not replays(0)["paused"])
+    print(f"copy 0: paused in the intro at frame {intro['frames']}, before any fight frame")
     wait_for("copy 0's playback 20 s in", 120, lambda: replays(0)["frames"] > 1200)
     session = replays(0)["session"]
     ctl(0, "replay pause")
