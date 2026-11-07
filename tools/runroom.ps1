@@ -19,6 +19,12 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # -padAnswers answers on the prompt itself with each copy's virtual pad (A
 # Rematch, B Back to room), as a player does, instead of the pipe.
 #
+# -firstTo N without -rematches (EMBER_LIBRARY.md section 28): a first-to-N
+# set played a battle a game. After each game both copies' rooms must agree
+# on the table's score; the game that gives a side its Nth win must end the
+# set, record it on both members (the status's room.sets, the Members card's
+# record) and clear the score. -games of 2N - 1 or more must end a set.
+#
 # -unowned0 / -unowned1 give copy 0 / copy 1 a -sfve_unowned list
 # (EMBER_LIBRARY.md section 23): content that copy's player may not pick.
 # Marking the other copy's pick shows that an opponent's pick plays as picked
@@ -191,6 +197,12 @@ try {
       }
     }
   }
+  # A first-to-N set across battles (-firstTo without -rematches): each game
+  # counts on the table's score, and the game that gives a side N wins ends
+  # the set, which the room records on both members (sets won and lost) and
+  # clears the score for the next.
+  # Scores are kept by copy (a seat's score is table.score[its slot]).
+  $setGames = 0; $setsDone = 0; $lastScore = @(0, 0); $setsWon0 = 0
   for ($game = 1; $rematches -lt 0 -and $game -le $games; $game++) {
     $starts = @((Count 0 'netplay: room match as P'), (Count 1 'netplay: room match as P'))
     $results = @((Count 0 'netplay: match result'), (Count 1 'netplay: match result'))
@@ -240,7 +252,40 @@ try {
     if ($seen -and -not ($watcherLeft -and $watchedGames.Count -eq 1 -and $watchedGames[0] -eq $game - 1)) {
       "copy 2: " + $seen.Line.Substring(24)
     }
+    if ($firstTo -gt 0) {
+      $setGames++
+      WaitFor "the room's set after game $game" 30 {
+        $r0 = (Status 0).room; $r1 = (Status 1).room
+        $scored = ($r0.table.score[0] + $r0.table.score[1]) -eq $setGames -and ($r1.table.score[0] + $r1.table.score[1]) -eq $setGames
+        $ended = ($r0.sets.won + $r0.sets.lost) -gt $setsDone -and ($r1.sets.won + $r1.sets.lost) -gt $setsDone
+        $scored -or $ended
+      }
+      $r0 = (Status 0).room; $r1 = (Status 1).room
+      if (($r0.sets.won + $r0.sets.lost) -gt $setsDone) {
+        # The set ended on this game: its winner had N - 1 wins before it.
+        $winner = if ($r0.sets.won -gt $setsWon0) { 0 } else { 1 }
+        if ($lastScore[$winner] -ne $firstTo - 1) { throw "game ${game} ended the set from $($lastScore -join '-'), not at $($firstTo - 1) wins" }
+        if ($r0.sets.won -ne $r1.sets.lost -or $r0.sets.lost -ne $r1.sets.won) { throw "the copies' rooms record the sets apart: copy 0 $($r0.sets.won)-$($r0.sets.lost), copy 1 $($r1.sets.won)-$($r1.sets.lost)" }
+        if ($r0.table.score[0] + $r0.table.score[1] -ne 0) { throw "the score was not cleared for the next set: $($r0.table.score -join '-')" }
+        "game ${game}: the set is over, copy $winner won it $(if ($winner -eq 0) { $firstTo } else { $lastScore[0] })-$(if ($winner -eq 1) { $firstTo } else { $lastScore[1] }); sets: copy 0 $($r0.sets.won) W / $($r0.sets.lost) L, copy 1 $($r1.sets.won) W / $($r1.sets.lost) L"
+        $setsDone++; $setGames = 0; $lastScore = @(0, 0)
+        $setsWon0 = $r0.sets.won
+        # The table's rotation after a set (winner stays): with nobody
+        # queued both play on; a copy the rotation stood up sits again.
+        "after the set: copy 0 at slot $($r0.slot), copy 1 at slot $($r1.slot)"
+        foreach ($i in 0, 1) {
+          if ((Status $i).room.slot -lt 0) { foreach ($seat in 0, 1) { if ((Status $i).room.slot -lt 0) { Ctl $i "sit 0 $seat" | Out-Null; Start-Sleep 2 } } }
+        }
+      } else {
+        if (($r1.table.score -join '-') -ne ($r0.table.score -join '-')) { throw "the copies' rooms disagree on the score: $($r0.table.score -join '-') and $($r1.table.score -join '-')" }
+        $score = @($r0.table.score[$r0.slot], $r0.table.score[$r1.slot])
+        if (($score | Measure-Object -Maximum).Maximum -ge $firstTo) { throw "the set reached $($score -join '-') without ending" }
+        "game ${game}: set score copy 0 $($score[0]) - $($score[1]) copy 1 (first to $firstTo)"
+        $lastScore = $score
+      }
+    }
   }
+  if ($firstTo -gt 0 -and $rematches -lt 0 -and $games -ge 2 * $firstTo - 1 -and $setsDone -eq 0) { throw "$games games of a first-to-$firstTo set ended no set" }
   if ($watchers -and -not $watchedGames.Count) { throw 'copy 2 watched no game' }
 } catch {
   $failure = $_.Exception.Message
