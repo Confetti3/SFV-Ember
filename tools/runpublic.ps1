@@ -206,7 +206,7 @@ try {
 		foreach ($i in 0, 1) { "copy $i's room: " + ((Status $i).ranking.members | ConvertTo-Json -Compress -Depth 4) }
 		if ($shots) {
 			# The room as copy 1's shell shows it, the marks beside the names.
-			if (!(Status 1).shell.open) { Press 1 'START' | Out-Null }
+			if (!(Status 1).shell.shown) { Press 1 'START' | Out-Null }
 			Start-Sleep 3
 			Shot 'ranked-room'
 			Press 1 'B' | Out-Null
@@ -287,18 +287,38 @@ try {
 		$publicUsf4 = Invoke-RestMethod "$origin/v1/ranking/board/public"
 		"public boards: sfv " + ($publicSfv | ConvertTo-Json -Compress -Depth 5) + "; usf4 " + ($publicUsf4 | ConvertTo-Json -Compress -Depth 5)
 		if (@($publicSfv.players | Where-Object { $_.listing.name -eq 'SFV 1' }).Count -ne 1 -or @($publicUsf4.players).Count -ne 0) { throw 'the public boards do not keep the games apart' }
-		# Copy 1 opens Online play, Rankings with its pad.
+		# Each copy opens Online play, Rankings with its pad: copy 0 its own
+		# standing (SFV's league), copy 1 the board's page. Online play opens
+		# the room while a copy is in one, so both leave it first.
 		if ($shots) {
-			if (!(Status 1).shell.open) { Press 1 'START' | Out-Null }
-			if ((Status 1).shell.screen -ne 'home') { foreach ($n in 1..4) { if ((Status 1).shell.screen -eq 'home') { break }; Press 1 'B' | Out-Null } }
-			Seek 1 'online' @('UP')
-			Press 1 'A' | Out-Null
-			Seek 1 'rankings' @('DOWN') 16
-			Press 1 'A' | Out-Null
-			WaitFor "copy 1's Rankings" 30 { (Status 1).shell.screen -eq 'rankings' -and (Status 1).ranking.board.loaded }
-			Start-Sleep 3
-			"copy 1's shell: " + ((Status 1).shell | ConvertTo-Json -Compress)
+			# Copy 1's standing was read before the seed; read it again.
+			Ctl 1 'ranking standing' | Out-Null
+			foreach ($i in 0, 1) { Ctl $i leave | Out-Null }
+			WaitFor 'both copies out of the room' 30 { (Status 0).room.room -eq 'idle' -and (Status 1).room.room -eq 'idle' }
+			foreach ($i in 0, 1) {
+				if (!(Status $i).shell.shown) { Press $i 'START' | Out-Null }
+				foreach ($n in 1..4) { if ((Status $i).shell.screen -eq 'home') { break }; Press $i 'B' | Out-Null }
+				Seek $i 'online' @('UP')
+				Press $i 'A' | Out-Null
+				# The first visit to Online play asks a welcome screen first.
+				if ((Status $i).shell.screen -eq 'welcome') {
+					Seek $i 'welcome-skip' @('DOWN', 'DOWN', 'RIGHT')
+					Press $i 'A' | Out-Null
+					Seek $i 'online' @('UP')
+					Press $i 'A' | Out-Null
+				}
+				Seek $i 'rankings' @('DOWN') 16
+				Press $i 'A' | Out-Null
+				WaitFor "copy ${i}'s Rankings" 30 { $s = Status $i; $s.shell.screen -eq 'rankings' -and $s.ranking.standing.kind -eq 'ranked' }
+				Start-Sleep 3
+				"copy ${i}'s shell: " + ((Status $i).shell | ConvertTo-Json -Compress)
+			}
 			Shot 'ranked-rankings'
+			# Both turn to the board's page (RB).
+			foreach ($i in 0, 1) { Press $i 'RB' | Out-Null }
+			WaitFor 'the boards' 30 { (Status 0).ranking.board.loaded -and (Status 1).ranking.board.loaded }
+			Start-Sleep 3
+			Shot 'ranked-board'
 		}
 	}
 } catch {
