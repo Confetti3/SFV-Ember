@@ -16,6 +16,7 @@ std::vector<std::function<void()>> s_queue;
 std::vector<std::function<bool()>> s_repeating; // game thread only, after they are added
 std::vector<std::function<bool()>> s_added;
 std::atomic<uint32_t> s_gameThreadId;
+std::atomic<uint64_t> s_frames;
 bool s_pumping; // game thread only
 
 } // namespace
@@ -37,6 +38,11 @@ uint32_t GameThreadId()
 	return s_gameThreadId;
 }
 
+uint64_t GameFrameNumber()
+{
+	return s_frames;
+}
+
 void PumpGameThread()
 {
 	// Work that reaches a game function which pumps again would run inside
@@ -44,6 +50,7 @@ void PumpGameThread()
 	if (s_pumping) return;
 	s_pumping = true;
 	s_gameThreadId = GetCurrentThreadId();
+	s_frames++;
 	std::vector<std::function<void()>> work;
 	{
 		std::lock_guard lock(s_mutex);

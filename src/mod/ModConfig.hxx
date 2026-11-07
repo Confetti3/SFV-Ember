@@ -11,6 +11,7 @@
 //   -sfve_delay=N        netplay: input delay frames (default 0: most rollbacks)
 //   -sfve_mash=N         drive this copy's player (synctest: both) with seeded random inputs
 //   -sfve_mash_from=F    ...starting at session frame F (no input before)
+//   -sfve_mash_pad=1     ...and the pad's input before F (a test's scripted presses first)
 //   -sfve_distance=N     synctest rollback distance (default 7)
 //   -sfve_pads=0,1       XInput slots that are virtual pads from the start
 //   -sfve_background=1   keep playing and reading pads while unfocused
@@ -60,6 +61,7 @@ struct ModConfig {
 	int delay = 0;
 	uint32_t mashSeed = 0; // 0: no mashing
 	int mashFrom = 0;
+	bool mashPad = false; // the pad plays before mashFrom
 	int distance = 7;
 	uint32_t virtualPadMask = 0; // bit i: slot i is virtual from the start
 	bool backgroundPlay = false;

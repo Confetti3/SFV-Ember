@@ -31,6 +31,11 @@ namespace sfve::adapter {
 
 class SfvSelectionScreen {
 public:
+	// `dummy`: the screen edits Training's dummy (SfvPick's CurrentDummy),
+	// with no stage row, as SF4 Ember's dummy selector has none; otherwise
+	// the player's pick.
+	explicit SfvSelectionScreen(bool dummy = false) : dummy_(dummy) {}
+
 	// One frame. `editable`: the pick may change now (the runtime's
 	// canEditSelection); `stageEditable`: and so may the stage this player
 	// offers (out of a room, or as P1). `error` says why the pick cannot be
@@ -49,6 +54,7 @@ private:
 	// last frame's, the rows this frame's.
 	std::string FocusedChoiceNote(const std::vector<sf4e::ui::MenuEntry>& rows) const;
 
+	bool dummy_ = false;
 	sf4e::ui::GameMenu menu_;
 	// The row the shell opened the screen for (its Fighter or Stage row), or
 	// empty: a choice made on that row closes the screen again.

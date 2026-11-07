@@ -135,6 +135,7 @@ struct RoomMatch {
 	std::int64_t stage = -1;
 	int rounds = 0;       // the room's round count
 	int roundSeconds = 0; // the room's round time
+	bool practice = false; // a Practice room's (the lobby's trainingMode)
 };
 
 // The battle to launch for a room's match: both picks and the stage by their

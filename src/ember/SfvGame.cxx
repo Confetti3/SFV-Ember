@@ -9,6 +9,7 @@
 #include "ember/RoomBattle.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvShell.hxx"
+#include "ember/SfvTraining.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
@@ -136,14 +137,16 @@ public:
 		room.stage = match.stageID;
 		room.rounds = lobby.roundCount;
 		room.roundSeconds = lobby.roundTime.integral;
+		room.practice = lobby.trainingMode; // a Practice room's (TRAINING_OVER_ROLLBACK.md, step 2)
 		std::optional<mod::MatchPicks> picks = LaunchPicks(room);
 		if (!picks) {
 			mod::Log("ember: the room's match is not one SFV can launch (fighters %d/%d, stage %lld, %d rounds of %d s)",
 				room.picks[0].fighter, room.picks[1].fighter, (long long)room.stage, room.rounds, room.roundSeconds);
 			return Entry::Rejected;
 		}
-		mod::Log("ember: entering the room's match: %s vs %s on %s, %d rounds of %d s", FighterCode(room.picks[0].fighter).c_str(),
-			FighterCode(room.picks[1].fighter).c_str(), StageCode(room.stage).c_str(), room.rounds, room.roundSeconds);
+		mod::Log("ember: entering the room's match: %s vs %s on %s, %d rounds of %d s%s", FighterCode(room.picks[0].fighter).c_str(),
+			FighterCode(room.picks[1].fighter).c_str(), StageCode(room.stage).c_str(), room.rounds, room.roundSeconds,
+			room.practice ? ", a Practice match" : "");
 		const LaunchArming::Ticket ticket = s_launch.Arm();
 		// The battle this launch loads is the room's (RoomBattle), and no other.
 		picks->linked = true;
@@ -444,24 +447,30 @@ SfvBattle s_battleSide;
 SfvInput s_input;
 SfvPreferences s_preferences;
 SfvServices s_services;
-NoTraining s_training;
 NoReplays s_replays;
-// Watching a table's games (EMBER_LIBRARY.md section 25); SFV offers no
-// Training, replays, pad setup, Steam profiles or custom content yet.
+// Watching a table's games (EMBER_LIBRARY.md section 25) and Training
+// (section 27: SFV's own Training mode, SfvTraining); SFV offers no replays,
+// pad setup, Steam profiles or custom content yet.
 Capabilities SfvCapabilities()
 {
 	Capabilities caps;
 	caps.spectators = true;
+	caps.training = true;
 	return caps;
 }
-const Adapter s_game = {SfvCapabilities(), s_state, s_battleSide, s_input, s_preferences, s_services, s_training,
-	s_replays};
+const Adapter s_game = {SfvCapabilities(), s_state, s_battleSide, s_input, s_preferences, s_services,
+	SfvTrainingService(), s_replays};
 
 } // namespace
 
 void SetWatcherDrain(RollbackSession* session)
 {
 	s_drain = session;
+}
+
+bool PracticeBattleInPlay()
+{
+	return s_battle.room && s_battle.room->Practice() && LiveSession();
 }
 
 void SetBattleInPlay(const BattleInPlay& battle)

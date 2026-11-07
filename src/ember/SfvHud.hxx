@@ -24,4 +24,16 @@ void InstallSfvHud();
 // shell is open over it.
 void DrawSfvMatchHud(const sf4e::NetplayFacade::PresentationSnapshot& frame, bool shellShown);
 
+// Render thread, inside ImGui's frame, over SFV's Training battle
+// (EMBER_LIBRARY.md section 27): what SF4 Ember draws over its own while a
+// room member waits there (ui/TrainingInRoom.hxx), in SFV Ember's look. A
+// muted line under the game's timer says where they stand in their room
+// (hidden while the shell or the game's pause menu is up), and while the
+// room's call back runs its countdown a band across the screen says the
+// match is ready, with who sat down and go now's prompt while it can be
+// pressed. `unread`: the room chat's unread count, as the room screen shows
+// it; `focused`: the game's window has the focus.
+void DrawSfvTraining(const sf4e::NetplayFacade::PresentationSnapshot& frame, bool shellShown, unsigned unread,
+	bool focused);
+
 } // namespace sfve::adapter
