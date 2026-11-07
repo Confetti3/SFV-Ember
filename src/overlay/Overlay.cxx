@@ -3,6 +3,8 @@
 #include "mod/Log.hxx"
 #include "overlay/TextureUploaderD3D11.hxx"
 
+#include "platform/GameWindowSection.hxx"
+
 #include "ui/GameMenu.hxx"
 #include "ui/OverlayLifecycle.hxx"
 #include "ui/SelectionArt.hxx"
@@ -58,6 +60,8 @@ std::atomic<WNDPROC> s_gameWndProc;
 // around the context's backends (OverlayLifecycle.hxx).
 sf4e::ui::Win32InputBridge s_inputBridge;
 sf4e::ui::OverlayLifecycle s_lifecycle;
+// Written on the render thread only, from Draw.
+sf4e::platform::GameWindowPublisher s_windowPublisher;
 
 // Render thread only.
 struct Renderer {
@@ -218,14 +222,18 @@ void Render(ImDrawData* data)
 
 void Draw(IDXGISwapChain* swap)
 {
+	DXGI_SWAP_CHAIN_DESC desc{};
+	if (FAILED(swap->GetDesc(&desc)) || !IsGameWindow(desc.OutputWindow)) return;
+	// The game's window for the launcher (platform/GameWindowSection.hxx):
+	// its freeze watch reads whether the window answers, and a second
+	// launcher started by a link brings it forward.
+	s_windowPublisher.Publish(desc.OutputWindow);
 	OverlayUi ui;
 	{
 		std::lock_guard lock(s_uiMutex);
 		ui = s_ui;
 	}
 	if (!ui.draw) return; // no interface: nothing to draw
-	DXGI_SWAP_CHAIN_DESC desc{};
-	if (FAILED(swap->GetDesc(&desc)) || !IsGameWindow(desc.OutputWindow)) return;
 	if (s_r.ready && s_r.swap != swap) {
 		if (desc.OutputWindow != s_window.load()) return; // another window's swap chain
 		Log("overlay: the game's swap chain changed");

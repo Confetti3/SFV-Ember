@@ -11,6 +11,7 @@ tail's light orange the gold's light step.
   art/brand/sfv-ember-mark.svg                 the mark's source, Ember's SVG with its fills swapped
   art/brand/sfv-ember-mark.png                 its export, 1024 x 1024 RGBA
   art/brand/sfv-ember-mark.rgba                128 x 128 straight RGBA, embedded in the font atlas
+  art/brand/sfv-ember.ico                      Launcher.exe's and Updater.exe's icon, 16 to 256 px
   assets/brand/sfv-ember-menu-background.png   the menu's ground: flat ink, no picture
 
 The exports are recoloured from Ember's own export (src/ui/ember.png in the
@@ -91,6 +92,8 @@ def main() -> None:
     premultiplied_resize(mark, 1024).save(art / "sfv-ember-mark.png", optimize=True)
     # As scripts/build-ember-brand.py makes Ember's: a plain Lanczos resize of the export.
     (art / "sfv-ember-mark.rgba").write_bytes(mark.resize((128, 128), Image.Resampling.LANCZOS).tobytes())
+    # As scripts/build-ember-brand.py makes Ember's ember.ico, at the same sizes.
+    mark.save(art / "sfv-ember.ico", sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])
     Image.new("RGB", (2048, 1152), tuple(int(v) for v in rgb(GROUND))).save(assets / "sfv-ember-menu-background.png", optimize=True)
     print("written under", ROOT)
 

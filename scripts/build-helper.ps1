@@ -2,16 +2,25 @@
 # Ember. The helper is Ember's own, unchanged: SFV Ember runs it the way the
 # SF4 launcher does and talks to it over its named pipe.
 #
-# Output: $BuildDir\sf4-net.exe (tools/sfve.py deploy copies it next to the mod).
+# Output: $BuildDir\sf4-net.exe (tools/sfve.py deploy copies it next to the mod;
+# scripts/package.ps1 packages it) and $BuildDir\sf4-net.provenance.json: the
+# checkout, its commit and source fingerprint, its Cargo.lock and the binary's
+# hash, which scripts/package.ps1 checks against the build's receipt.
+#
+# -EmberRepo defaults to SFVE_EMBER_ROOT, the library checkout scripts/build.ps1
+# builds against, then to sf4-current beside this checkout. cargo runs with
+# -j 4 unless told otherwise: one heavy build at a time on this PC.
 
 param(
-	[string]$EmberRepo = '',
+	[string]$EmberRepo = $env:SFVE_EMBER_ROOT,
 	[string]$BuildDir = 'D:\sfv-ember-build',
-	[string]$VisualStudioPath = ''
+	[string]$VisualStudioPath = '',
+	[int]$Jobs = 4
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 if (!$EmberRepo) { $EmberRepo = Join-Path (Split-Path -Parent $repo) 'sf4-current' }
+$EmberRepo = (Resolve-Path -LiteralPath $EmberRepo).Path
 $manifest = Join-Path $EmberRepo 'rust\sf4-net\Cargo.toml'
 if (!(Test-Path $manifest)) { throw "no sf4-net crate at $manifest" }
 
@@ -30,8 +39,20 @@ cmd /c "`"$vcvars`" >nul && set" | ForEach-Object {
 }
 
 $env:CARGO_TARGET_DIR = Join-Path $BuildDir 'sf4-net-target'
-cargo build --release --manifest-path $manifest -j 12
+cargo build --release --locked --manifest-path $manifest -j $Jobs
 if ($LASTEXITCODE) { throw "cargo build failed ($LASTEXITCODE)" }
-Copy-Item (Join-Path $env:CARGO_TARGET_DIR 'release\sf4-net.exe') (Join-Path $BuildDir 'sf4-net.exe') -Force
+$helper = Join-Path $BuildDir 'sf4-net.exe'
+Copy-Item (Join-Path $env:CARGO_TARGET_DIR 'release\sf4-net.exe') $helper -Force
+
+. (Join-Path $EmberRepo 'scripts\BuildProvenance.ps1')
+[ordered]@{
+	schema = 1
+	emberRoot = $EmberRepo
+	emberRevision = (& git -C $EmberRepo rev-parse HEAD)
+	emberFingerprint = Get-SourceFingerprint $EmberRepo
+	cargoLockSha256 = (Get-FileHash -LiteralPath (Join-Path $EmberRepo 'rust\sf4-net\Cargo.lock') -Algorithm SHA256).Hash
+	sha256 = (Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash
+	builtAt = (Get-Date).ToUniversalTime().ToString('o')
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $BuildDir 'sf4-net.provenance.json') -Encoding UTF8
 $commit = git -C $EmberRepo rev-parse --short HEAD
 Write-Output "built sf4-net.exe from $EmberRepo at $commit"

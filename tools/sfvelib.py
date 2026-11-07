@@ -3,11 +3,23 @@
 Shared by the command line (sfve.py) and the MCP server (sfve_mcp.py).
 Windows only; standard library only.
 
+Two ways to start a copy:
+* through SFV Ember's Launcher.exe (SFVE_VIA=launcher), as players do: the
+  launcher starts the game with the mod injected from its own folder
+  (SFVE_PACKAGE_DIR: a staged package, or the build tree), and nothing needs
+  to be in the game folder. Copy N > 0 is the launcher's test instance
+  (--instance N); the test's game options go through --game-option;
+* straight to the exe, with the xinput1_3.dll proxy deployed beside it
+  (SFVE_VIA=proxy, the default: deploy first).
+
 Safety rules this module enforces:
-* A copy is only launched with the proxy and mod in place, and is killed if
-  its control pipe (which the mod opens only after the network guard is
-  installed) does not answer within GUARD_TIMEOUT_S.
-* Launches go straight to the exe; nothing here uses the game's online modes.
+* A copy is only launched with the mod in place (the proxy and the mod
+  deployed, or the launcher, the mod and the helper in the package folder),
+  and is killed if its control pipe (which the mod opens only after the
+  network guard is installed) does not answer within GUARD_TIMEOUT_S.
+* Nothing here uses the game's online modes.
+* Only copies this module started are killed: their launchers' and games'
+  process ids are kept in LAUNCHED (kill_all).
 """
 
 from __future__ import annotations
@@ -36,6 +48,13 @@ MOD_FILES = ("xinput1_3.dll", "sfv_ember.dll", "sf4-net.exe")  # sf4-net: script
 ASSETS = "assets"
 GUARD_TIMEOUT_S = 20.0
 STEAM_APP_ID = "310950"
+VIA = os.environ.get("SFVE_VIA", "proxy")
+PACKAGE_DIR = Path(os.environ.get("SFVE_PACKAGE_DIR", str(BUILD_DIR)))
+LAUNCHER_FILES = ("Launcher.exe", "sfv_ember.dll", "sf4-net.exe")
+# The mod's logs (mod/Log.cxx) and the launcher's, however the game started.
+LOG_DIR = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming"))) / "SFVEmber" / "logs"
+# The copies this module started, by index: {"launcher": pid or 0, "game": pid}.
+LAUNCHED = Path(os.environ.get("TEMP", str(BUILD_DIR))) / "sfve-launched.json"
 
 
 class SfveError(RuntimeError):
@@ -138,28 +157,65 @@ def running_pids() -> list[int]:
     return [int(line.split('","')[1]) for line in out.splitlines() if line.startswith('"StreetFighterV.exe"')]
 
 
-def launch(index: int, mode: str = "probe", extra: list[str] | None = None, windowed: bool = True) -> Instance:
-    """Starts one copy and waits until its guard is confirmed (or kills it)."""
-    if not deployed_matches_build():
-        raise SfveError("the game folder does not hold the current build: run deploy first")
-    log_path(index).unlink(missing_ok=True)  # each run starts its own log
-    args = [str(GAME_EXE), f"-sfve_instance={index}", f"-sfve_mode={mode}"]
+def _launched() -> dict[str, dict[str, int]]:
+    try:
+        return json.loads(LAUNCHED.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _remember(index: int, launcher: int, game: int) -> None:
+    started = _launched()
+    started[str(index)] = {"launcher": launcher, "game": game}
+    LAUNCHED.write_text(json.dumps(started))
+
+
+def _game_options(index: int, mode: str, extra: list[str], windowed: bool) -> list[str]:
+    options = [f"-sfve_instance={index}", f"-sfve_mode={mode}"]
     if windowed:
         # SFVE_RES ("1920x1080") sets the window's size; 960x540 by default.
         width, height = os.environ.get("SFVE_RES", "960x540").lower().split("x")
-        args += ["-windowed", f"-ResX={int(width)}", f"-ResY={int(height)}"]
-    args += extra or []
-    # Steam sets these when it starts a game; its DRM wrapper exits (0x35) without them.
-    env = dict(os.environ, SteamAppId=STEAM_APP_ID, SteamGameId=STEAM_APP_ID)
-    proc = subprocess.Popen(args, cwd=GAME_DIR, env=env, creationflags=subprocess.DETACHED_PROCESS)
+        options += ["-windowed", f"-ResX={int(width)}", f"-ResY={int(height)}"]
+    return options + extra
+
+
+def launch(index: int, mode: str = "probe", extra: list[str] | None = None, windowed: bool = True) -> Instance:
+    """Starts one copy and waits until its guard is confirmed (or kills it)."""
+    options = _game_options(index, mode, extra or [], windowed)
+    log_path(index).unlink(missing_ok=True)  # each run starts its own log
+    if VIA == "launcher":
+        missing = [name for name in LAUNCHER_FILES if not (PACKAGE_DIR / name).exists()]
+        if missing:
+            raise SfveError(f"{PACKAGE_DIR} has no {', '.join(missing)}: build or stage SFV Ember first")
+        # The test's options come first on the game's command line, so they
+        # take the place of the launcher's own (ModConfig reads the first).
+        args = [str(PACKAGE_DIR / "Launcher.exe")]
+        if index:
+            args += ["--instance", str(index)]
+        args += [f"--game-option={option}" for option in options if not option.startswith("-sfve_instance=")]
+        proc = subprocess.Popen(args, cwd=PACKAGE_DIR, creationflags=subprocess.DETACHED_PROCESS)
+        launcher_pid = proc.pid
+    else:
+        if not deployed_matches_build():
+            raise SfveError("the game folder does not hold the current build: run deploy first")
+        # Steam sets these when it starts a game; its DRM wrapper exits (0x35) without them.
+        env = dict(os.environ, SteamAppId=STEAM_APP_ID, SteamGameId=STEAM_APP_ID)
+        proc = subprocess.Popen([str(GAME_EXE)] + options, cwd=GAME_DIR, env=env, creationflags=subprocess.DETACHED_PROCESS)
+        launcher_pid = 0
+    _remember(index, launcher_pid, 0 if launcher_pid else proc.pid)
+
+    def refuse(why: str) -> SfveError:
+        _kill_copy(launcher_pid, 0 if launcher_pid else proc.pid)
+        return SfveError(f"instance {index} {why}; killed")
+
     try:
         reply = request(index, "status", timeout_s=GUARD_TIMEOUT_S)
     except SfveError:
-        kill_pid(proc.pid)
-        raise SfveError(f"instance {index} did not confirm its network guard within {GUARD_TIMEOUT_S:.0f} s; killed")
+        raise refuse(f"did not confirm its network guard within {GUARD_TIMEOUT_S:.0f} s")
     if not reply.startswith("ok "):
-        kill_pid(proc.pid)
-        raise SfveError(f"instance {index} answered '{reply}'; killed")
+        raise refuse(f"answered '{reply}'")
+    game_pid = int(reply.split('"pid":', 1)[1].split(",", 1)[0])
+    _remember(index, launcher_pid, game_pid)
     # The pipe answers as soon as the guard is in; the mode's own commands
     # (freeze, host, ...) exist once the battle status does.
     if mode != "inert":
@@ -168,24 +224,37 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
             time.sleep(0.2)
             reply = request(index, "status")
         if '"battle":' not in reply:
-            kill_pid(proc.pid)
+            _kill_copy(launcher_pid, game_pid)
             raise SfveError(f"instance {index} did not finish starting the mod; killed")
-    return Instance(index, proc.pid)
+    return Instance(index, game_pid)
 
 
 def kill_pid(pid: int) -> None:
     subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
 
 
+def _kill_copy(launcher: int, game: int) -> None:
+    # The launcher's tree holds its game; a game started directly is alone.
+    if launcher:
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(launcher)], capture_output=True)
+    if game:
+        kill_pid(game)
+
+
 def kill_all(timeout_s: float = 15.0) -> list[int]:
-    """Kills every copy and waits until they are gone (their pipes with them)."""
-    pids = running_pids()
-    for pid in pids:
-        kill_pid(pid)
+    """Kills the copies this module started (and their launchers), and waits
+    until they are gone, their pipes with them. A copy anything else started
+    is left running."""
+    started = _launched()
+    ours = {pid for copy in started.values() for pid in (copy.get("launcher", 0), copy.get("game", 0)) if pid}
+    games = {copy.get("game", 0) for copy in started.values()} - {0}
+    for copy in started.values():
+        _kill_copy(copy.get("launcher", 0), copy.get("game", 0))
     deadline = time.monotonic() + timeout_s
-    while running_pids() and time.monotonic() < deadline:
+    while set(running_pids()) & games and time.monotonic() < deadline:
         time.sleep(0.2)
-    return pids
+    LAUNCHED.unlink(missing_ok=True)
+    return sorted(ours)
 
 
 # --- menu routes ----------------------------------------------------------------
@@ -272,7 +341,7 @@ def fight(index: int) -> None:
 
 def log_path(index: int) -> Path:
     name = "sfv_ember.log" if index == 0 else f"sfv_ember.{index}.log"
-    return GAME_DIR / "SFVEmber" / "logs" / name
+    return LOG_DIR / name
 
 
 def tail(index: int, lines: int = 40) -> list[str]:

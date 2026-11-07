@@ -20,6 +20,8 @@
 #include "common/ProductIdentity.hxx"
 #include "common/RandomFighter.hxx"
 #include "common/StageCatalog.hxx"
+#include "launcher/GameLocator.hxx"
+#include "launcher/update/github_release_client.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
 #include "ui/SelectionArt.hxx"
 #include "ui/SelectionLabels.hxx"
@@ -584,6 +586,68 @@ TEST_CASE("the product is SFV Ember, with names of its own")
 		CHECK_FALSE(HasSf4(sf4e::loc::T(id)));
 	}
 	CHECK(std::string(sf4e::loc::T("brand.subtitle")).rfind("SFV", 0) == 0);
+	// The launcher's, recovery's, updater's and reports' words: none names SF4,
+	// its game, its files or its folders.
+	for (const char* id : {"launcher.update_failed", "launcher.recovery_opened", "launcher.game_not_found",
+			 "launcher.sidecar_missing", "launcher.runtime_outdated", "launcher.already_running", "launcher.start_failed",
+			 "launcher.game_runs_as_admin", "launcher.game_error", "launcher.game_crashed", "launcher.game_wrong_dll",
+			 "launcher.game_crashed_files", "launcher.game_crashed_sending", "recovery.d3d_failed",
+			 "recovery.choose_folder_title", "recovery.folder_invalid", "recovery.choose_folder_detail",
+			 "recovery.close_detail", "updates.install_detail", "updates.close_detail", "updates.start_game",
+			 "updates.start_game_detail", "services.diagnostics_saved", "services.update_prepared", "update.no_zip_asset",
+			 "update.close_sf4", "update.download_failed", "update.missing_binaries", "update.notice.waiting_launcher",
+			 "update.notice.reopens", "reports.payload", "reports.history_unreadable_detail"}) {
+		const std::string text = sf4e::loc::T(id);
+		INFO(id << ": " << text);
+		for (const char* sf4 : {"SF4", "sf4e", "SSFIV", "Ultra Street Fighter IV", "Sidecar", "(x86)", "sf4-netplay"}) {
+			CHECK(text.find(sf4) == std::string::npos);
+		}
+	}
+	CHECK(std::string(sf4e::loc::T("launcher.runtime_outdated")).find("(x64)") != std::string::npos);
+	CHECK(std::string(sf4e::loc::T("launcher.start_failed")).find("%APPDATA%\\SFVEmber\\logs\\launcher.log") != std::string::npos);
+}
+
+TEST_CASE("SFV Ember's launcher, updater and folders")
+{
+	const ember::ProductIdentity& product = ember::Product();
+	// Settings and logs under %APPDATA%\SFVEmber, as SF4 Ember's are under %APPDATA%\sf4e.
+	CHECK_FALSE(product.settingsBesideModule);
+	CHECK(std::wstring(product.launcherExe) == L"Launcher.exe");
+	CHECK(std::wstring(product.updaterExe) == L"Updater.exe");
+	CHECK(std::wstring(product.discordExe).empty());
+	CHECK(std::wstring(product.launcherLog) == L"launcher.log");
+	// Steam's app 310950; the real game, not UE4's bootstrap at the install folder's top.
+	CHECK(std::string(product.steam.appId) == "310950");
+	CHECK(std::wstring(product.steam.installDir) == L"StreetFighterV");
+	CHECK(std::wstring(product.steam.exeFolder) == L"StreetFighterV\\Binaries\\Win64");
+	// No release repository: the update check succeeds, offers nothing and
+	// asks GitHub nothing.
+	CHECK(std::string(product.stableRepo).empty());
+	CHECK(std::string(product.nightlyRepo).empty());
+	for (const auto channel : {sf4e::launcher::UpdateChannel::Stable, sf4e::launcher::UpdateChannel::Nightly}) {
+		const auto result = sf4e::launcher::CheckForUpdate(channel);
+		CHECK(result.ok);
+		CHECK(result.error.empty());
+		CHECK_FALSE(result.updateAvailable);
+		CHECK(result.latestVersion.empty());
+	}
+}
+
+TEST_CASE("the game folder is found from Steam's manifest for app 310950")
+{
+	// A library's appmanifest_310950.acf names StreetFighterV; the game is in
+	// its StreetFighterV\Binaries\Win64 folder.
+	const std::string manifest = "\"AppState\"\n{\n\t\"appid\"\t\t\"310950\"\n\t\"installdir\"\t\t\"StreetFighterV\"\n}\n";
+	CHECK(sf4e::launcher::ManifestInstallDir(manifest) == L"StreetFighterV");
+	CHECK(sf4e::launcher::ManifestInstallDir("\"AppState\"\n{\n\t\"appid\"\t\"45760\"\n\t\"installdir\"\t\"X\"\n}\n").empty());
+	const auto folders = sf4e::launcher::GameFoldersInLibrary(L"G:\\SteamLibrary", manifest);
+	REQUIRE(folders.size() == 1);
+	CHECK(folders[0] == L"G:\\SteamLibrary\\steamapps\\common\\StreetFighterV\\StreetFighterV\\Binaries\\Win64");
+	const auto renamed = sf4e::launcher::GameFoldersInLibrary(L"D:\\Games\\",
+		"\"AppState\"\n{\n\t\"appid\"\t\"310950\"\n\t\"installdir\"\t\"SFV\"\n}\n");
+	REQUIRE(renamed.size() == 2);
+	CHECK(renamed[0] == L"D:\\Games\\steamapps\\common\\SFV\\StreetFighterV\\Binaries\\Win64");
+	CHECK(renamed[1] == L"D:\\Games\\steamapps\\common\\StreetFighterV\\StreetFighterV\\Binaries\\Win64");
 }
 
 TEST_CASE("the pick labels are the game's names, from the catalog")

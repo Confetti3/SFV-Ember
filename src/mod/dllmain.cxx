@@ -1,8 +1,10 @@
-// sfv_ember.dll: started by the proxy (src/proxy) through SfveStart, from the
-// game exe's entry point, before any game code runs.
+// sfv_ember.dll: started through SfveStart from the game exe's entry point,
+// before any game code runs: by its own entry hook when Launcher.exe injected
+// it (mod/EarlyStart.cxx), or by the xinput1_3.dll proxy (src/proxy).
 //
 // Order matters:
-//   1. the log, so a refused start leaves a reason;
+//   1. the log, and the claim of the process (mod/StartClaim.hxx): a second
+//      copy of the mod in the same game stays inert and says why;
 //   2. the network guard; if it cannot be installed the process ends here and
 //      the game never runs with network access;
 //   3. the build check; on anything but a verified build the mod stays inert.
@@ -12,6 +14,7 @@
 #include "mod/BattleDriver.hxx"
 #include "mod/BuildCheck.hxx"
 #include "mod/ControlPipe.hxx"
+#include "mod/EarlyStart.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/GameExit.hxx"
 #include "mod/GameHooks.hxx"
@@ -27,6 +30,7 @@
 #include "mod/OfflineDialogs.hxx"
 #include "mod/ProjectileRelease.hxx"
 #include "mod/SfvOffsets.hxx"
+#include "mod/StartClaim.hxx"
 #include "mod/SyncTestMode.hxx"
 #include "mod/VersusLaunch.hxx"
 #include "mod/VirtualPads.hxx"
@@ -53,9 +57,38 @@ std::unique_ptr<sfve::mod::BattleMode> MakeMode(const sfve::mod::ModConfig& conf
 	}
 }
 
+// SFV Ember's settings moved from beside the mod (SFVEmber\settings.json in
+// the game's folder, under the proxy) to %APPDATA%\SFVEmber, where the
+// launcher's are. The first start that finds no settings there copies the
+// old file once: from beside this module, else from beside the game's exe
+// (where the proxy loaded the mod from). The old file stays; nothing in the
+// game folder is written.
+void MigrateSettings()
+{
+	using namespace sfve::mod;
+	const std::wstring data = DataFolder();
+	if (data.empty()) return;
+	const std::wstring target = data + L"\\settings.json";
+	if (GetFileAttributesW(target.c_str()) != INVALID_FILE_ATTRIBUTES) return;
+	wchar_t exe[MAX_PATH] = {};
+	const DWORD length = GetModuleFileNameW(nullptr, exe, MAX_PATH);
+	std::wstring exeFolder = length && length < MAX_PATH ? std::wstring(exe, length) : std::wstring();
+	const size_t slash = exeFolder.find_last_of(L"\\/");
+	exeFolder = slash == std::wstring::npos ? std::wstring() : exeFolder.substr(0, slash);
+	for (const std::wstring& folder : {ModuleFolder(), exeFolder}) {
+		if (folder.empty()) continue;
+		const std::wstring old = folder + L"\\SFVEmber\\settings.json";
+		if (GetFileAttributesW(old.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+		CreateDirectoryW(data.c_str(), nullptr);
+		if (CopyFileW(old.c_str(), target.c_str(), TRUE)) Log("settings: copied %ls to %ls", old.c_str(), target.c_str());
+		else Log("settings: could not copy %ls to %ls (Win32 %lu)", old.c_str(), target.c_str(), GetLastError());
+		return;
+	}
+}
+
 } // namespace
 
-extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
+extern "C" int SfveStart(int beforeGameCode)
 {
 	using namespace sfve::mod;
 	if (s_started) return 1;
@@ -63,18 +96,28 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 
 	LoadConfigFromCommandLine(GetCommandLineW());
 	OpenLog(Config().instance);
+	const char* loader = StartedByEntryHook() ? "launcher" : "proxy";
+	const StartClaimResult claim = ClaimStart(loader);
+	if (!claim.won) {
+		Log("sfv-ember %s at %ls (started by the %s) stays inert: %ls (started by the %s) started first in this game",
+			SFVE_VERSION, claim.module.c_str(), loader, claim.winnerModule.c_str(), claim.winnerLoader.c_str());
+		return 1;
+	}
 	sfve::CoreLogSink() = &LogLine;
 	wchar_t exe[MAX_PATH] = {};
 	GetModuleFileNameW(nullptr, exe, MAX_PATH);
 	Log("sfv-ember %s starting in %ls (%s), instance %d, mode %s", SFVE_VERSION, exe,
 		beforeGameCode ? "before game code" : "LATE: the game was already running", Config().instance,
 		ModeName(Config().mode));
+	Log("loaded from %ls, started by the %s", claim.module.c_str(), loader);
+	if (claim.error) Log("could not claim the process for this copy (Win32 %lu): a second copy would not be refused", claim.error);
 	if (const char* ignored = IgnoredSetting()) Log("config: %s", ignored);
 	if (!UnownedProblem().empty()) {
 		Log("config: -sfve_unowned=%s has an entry that is not CODE[:costume[:colour]]; left out", UnownedProblem().c_str());
 	}
 	Log("config: Ember's ownership gate %s; %zu -sfve_unowned entries", Config().ownershipGate ? "on" : "off (development)",
 		Config().unowned.size());
+	MigrateSettings();
 
 	if (!InstallNetGuard()) {
 		Log("start refused: the network guard is incomplete; closing the game so it never runs online");

@@ -1,0 +1,5 @@
+; sfv_ember.dll's one export. Ordinal 1: Detours, which adds the DLL to the
+; game's imports when Launcher.exe starts it, imports it by ordinal 1.
+LIBRARY sfv_ember
+EXPORTS
+	SfveStart @1
