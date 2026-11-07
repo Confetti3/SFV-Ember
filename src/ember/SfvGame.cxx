@@ -471,6 +471,7 @@ std::optional<RoomMatch> RoomMatchNow()
 	room.stage = match.stageID;
 	room.rounds = lobby.roundCount;
 	room.roundSeconds = lobby.roundTime.integral;
+	room.practice = lobby.trainingMode; // a Practice room's (TRAINING_OVER_ROLLBACK.md, step 2)
 	return room;
 }
 
