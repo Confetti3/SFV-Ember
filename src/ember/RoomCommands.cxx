@@ -16,6 +16,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cstdlib>
 #include <optional>
 #include <sstream>
@@ -106,6 +107,42 @@ std::string Sit(const std::string& args)
 	return Submit(std::move(command));
 }
 
+// Watching a table, as the room board's Watch sends it: the table's games
+// from the next one this member can join (a game in play is watched from the
+// next; EMBER_LIBRARY.md section 25). Fenced as Sit is.
+std::string WatchTable(const std::string& args)
+{
+	int table = 0;
+	std::istringstream in(args);
+	if (!args.empty() && !(in >> table)) return "error usage: watchtable [table]";
+	const auto snapshot = facade::GetRuntimeSnapshotShared();
+	const sf4e::room::Snapshot& room = snapshot->Room();
+	if (!room.roomEpoch || !room.localMember) return "error not in a room";
+	if (table < 0 || table >= (int)room.tables.size()) return "error no such table";
+	facade::RuntimeCommand command = CommandFor(CommandKind::RoomAction);
+	sf4e::room::Action& action = command.roomAction;
+	action.kind = sf4e::room::ActionKind::Watch;
+	action.table = (std::uint8_t)table;
+	action.seat = -1;
+	action.protocolVersion = sf4e::room::ProtocolVersion;
+	action.roomEpoch = room.roomEpoch;
+	action.revision = room.revision;
+	action.tableRevision = room.tables[(size_t)table].revision;
+	return Submit(std::move(command));
+}
+
+// The shell's Stop watching (ApplicationShell::LeaveWatchedGame): leaves the
+// game this copy watches, as the runtime names it (the snapshot's
+// watchedGame); the runtime decides what leaving it takes when it runs.
+std::string StopWatching()
+{
+	const auto snapshot = facade::GetRuntimeSnapshotShared();
+	if (!snapshot->watchedGame.Active()) return "error no game is being watched";
+	facade::RuntimeCommand command = CommandFor(CommandKind::RoomAction);
+	command.leaveWatchedGame = snapshot->watchedGame;
+	return Submit(std::move(command));
+}
+
 std::string Pick(const std::string& args)
 {
 	if (!EmberRuntimeRunning()) return "error Ember's runtime is not running, so the catalog is not filled";
@@ -188,6 +225,22 @@ std::string Status()
 	// The seat's table as the room keeps it: the set's score, its match and
 	// the rule a game on it goes on in place by.
 	const sf4e::room::Snapshot& room = snapshot->Room();
+	// Watching (not a place: Queue and Watch both end it): the table this
+	// member watches, whether from its next game, and the game it is in.
+	for (std::size_t t = 0; t < room.tables.size(); t++) {
+		const sf4e::room::Table& table = room.tables[t];
+		const auto listed = [&](const auto& members) {
+			return std::find(members.begin(), members.end(), room.localMember) != members.end();
+		};
+		if (!room.localMember || (!listed(table.spectators) && !listed(table.watchingNext))) continue;
+		status["watching"] = {{"table", t}, {"next", listed(table.watchingNext)},
+			{"game", snapshot->watchedGame.generation}, {"score", {table.score[0], table.score[1]}},
+			{"generation", table.matchGeneration}, {"phase", (int)table.phase}};
+	}
+	for (std::size_t t = 0; t < room.tables.size(); t++) {
+		// Everyone at a table sees how many watch it (the HUD's count).
+		if (!room.tables[t].spectators.empty()) status["spectators"][std::to_string(t)] = room.tables[t].spectators.size();
+	}
 	const auto place = sf4e::room::PlaceOf(room, room.localMember);
 	if (place.table >= 0 && place.table < (int)room.tables.size()) {
 		const sf4e::room::Table& table = room.tables[(size_t)place.table];
@@ -209,6 +262,8 @@ void RegisterRoomCommands()
 	});
 	mod::RegisterCommand("join", Join);
 	mod::RegisterCommand("sit", Sit);
+	mod::RegisterCommand("watchtable", WatchTable);
+	mod::RegisterCommand("stopwatching", [](const std::string&) { return StopWatching(); });
 	mod::RegisterCommand("pick", Pick);
 	mod::RegisterCommand("ready", [](const std::string&) { return Ready(); });
 	mod::RegisterCommand("rematch", Rematch);

@@ -431,8 +431,20 @@ def _png(width: int, height: int, rgb_rows: list[bytes]) -> bytes:
             + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
 
 
+def _dpi_aware() -> None:
+    """Window sizes in the game's own pixels: a process the system scales
+    reads a scaled client size (768x432 for a 960x540 window at 125%) while
+    PrintWindow draws the window's real pixels, so a capture kept only its
+    top-left part."""
+    try:
+        _user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # PER_MONITOR_AWARE_V2
+    except (AttributeError, OSError):
+        pass  # before Windows 10 1703: the scaled size, as before
+
+
 def screenshot(pid: int, out: Path) -> Path:
     """Captures a game window (even when covered) to a PNG."""
+    _dpi_aware()
     hwnd = main_window(pid)
     r = wt.RECT()
     _user32.GetClientRect(hwnd, ctypes.byref(r))

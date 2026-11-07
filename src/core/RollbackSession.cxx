@@ -55,8 +55,11 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 		return false;
 	};
 	if (session_) return refuse("a session is already running");
-	if (config.localPlayer < 0 || config.localPlayer >= kPlayers) return refuse("local player out of range");
+	if (!config.watching && (config.localPlayer < 0 || config.localPlayer >= kPlayers)) {
+		return refuse("local player out of range");
+	}
 	if (game_.Layout().Empty()) return refuse("the game has no rollback state yet");
+	if (config.hashEveryFrames < 1) return refuse("hashEveryFrames must be at least 1");
 
 	config_ = config;
 	failed_ = false;
@@ -73,8 +76,15 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	for (HashRecord& h : history_) h = {};
 	allHashes_.clear();
 	checkpoints_.clear();
-	pool_.assign(kPoolSlots, Slot{});
+	// A watcher keeps no saves: one buffer holds the state it hashes.
+	pool_.assign(config.watching ? 1 : kPoolSlots, Slot{});
 	for (Slot& s : pool_) s.bytes.resize(game_.Layout().TotalSize());
+	policy_.Start(GetTickCount64(), {}, config.watcherSyncDeadlineMs);
+	links_.Start();
+	watcherHandles_.clear();
+	streamWatch_.Start(GetTickCount64(), config.watching);
+	watchedStartHashed_ = false;
+	keptForWatchers_ = false;
 
 	ggpo_set_assert_handler(OnGgpoAssert);
 
@@ -88,11 +98,34 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	cb.on_event = OnEvent;
 
 	ActiveScope active(this);
+	if (config.watching) {
+		// GGPO's spectator backend: one link, to P1, which streams the
+		// fighters' confirmed inputs. It takes no frame delay and no
+		// disconnect settings (it refuses both); the room ends a link that
+		// goes quiet (SpectatorStreamWatch below, and the match session).
+		char host[32] = {};
+		strncpy_s(host, config.remoteIp.c_str(), _TRUNCATE);
+		const GGPOErrorCode started = ggpo_start_spectating(&session_, &cb, "sfv-ember", kPlayers, sizeof(PackedInput),
+			config.localPort, host, config.remotePort);
+		if (started != GGPO_OK || !session_) {
+			session_ = nullptr;
+			return refuse("ggpo_start_spectating failed (is the local port free?)");
+		}
+		gate_.Reset();
+		gate_.OnSessionStarted();
+		CoreLog("session: watching, port %u <- P1 at %s:%u, state %zu bytes in %zu regions", config.localPort,
+			config.remoteIp.c_str(), config.remotePort, game_.Layout().TotalSize(), game_.Layout().Regions().size());
+		return true;
+	}
 	GGPOErrorCode err = ggpo_start_session(&session_, &cb, "sfv-ember", kPlayers, sizeof(PackedInput), config.localPort);
 	if (err != GGPO_OK || !session_) {
 		session_ = nullptr;
 		return refuse("ggpo_start_session failed (is the local port free?)");
 	}
+	// Before any player is added: GGPO gives a watcher's link the settings
+	// current when it is added (AddSpectator), the fighters' links as they change.
+	ggpo_set_disconnect_timeout(session_, config.disconnectTimeoutMs);
+	ggpo_set_disconnect_notify_start(session_, config.disconnectNotifyStartMs);
 
 	for (int player = 0; player < kPlayers; player++) {
 		GGPOPlayer p = {};
@@ -113,27 +146,53 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 		}
 		(player == config.localPlayer ? localHandle_ : remoteHandle_) = handle;
 	}
+	// P1's watchers, after both fighters. One GGPO cannot add sits this game
+	// out rather than stop the fighters'; GGPO answers each with its own
+	// handle (spectator-handle-control.patch).
+	std::vector<int> watching;
+	std::map<int, size_t> slots;
+	for (const Config::Watcher& w : config.watchers) {
+		if (config.localPlayer != 0) break; // only P1 streams
+		GGPOPlayer p = {};
+		p.size = sizeof(p);
+		p.type = GGPO_PLAYERTYPE_SPECTATOR;
+		p.player_num = (int)w.slot + 1;
+		strncpy_s(p.u.remote.ip_address, config.remoteIp.c_str(), _TRUNCATE);
+		p.u.remote.port = w.port;
+		GGPOPlayerHandle handle = GGPO_INVALID_HANDLE;
+		err = ggpo_add_player(session_, &p, &handle);
+		if (err != GGPO_OK || handle == GGPO_INVALID_HANDLE) {
+			CoreLog("session: the watcher in slot %zu (port %u) could not be added (%d); it sits this game out", w.slot,
+				w.port, (int)err);
+			continue;
+		}
+		watching.push_back(handle);
+		slots[handle] = w.slot;
+		watcherHandles_.insert(handle);
+	}
+	policy_.Start(GetTickCount64(), watching, config.watcherSyncDeadlineMs);
+	links_.Start(std::move(slots));
 	const GGPOErrorCode delayed = ggpo_set_frame_delay(session_, localHandle_, config.inputDelay);
 	appliedDelay_ = GGPO_SUCCEEDED(delayed) ? config.inputDelay : -1;
 	if (!GGPO_SUCCEEDED(delayed)) CoreLog("session: set_frame_delay(%d) returned %d", config.inputDelay, (int)delayed);
-	ggpo_set_disconnect_timeout(session_, config.disconnectTimeoutMs);
-	ggpo_set_disconnect_notify_start(session_, config.disconnectNotifyStartMs);
 
 	gate_.Reset();
 	gate_.OnSessionStarted();
-	CoreLog("session: started as P%d, port %u -> %s:%u, delay %d, state %zu bytes in %zu regions",
+	CoreLog("session: started as P%d, port %u -> %s:%u, delay %d, %zu watcher(s), state %zu bytes in %zu regions",
 		config.localPlayer + 1, config.localPort, config.remoteIp.c_str(), config.remotePort, config.inputDelay,
-		game_.Layout().TotalSize(), game_.Layout().Regions().size());
+		watching.size(), game_.Layout().TotalSize(), game_.Layout().Regions().size());
 	return true;
 }
 
 RollbackSession::StepResult RollbackSession::Step(PackedInput localInput)
 {
 	if (!session_) return failed_ ? StepResult::Failed : StepResult::NoSession;
+	if (config_.watching) return StepWatched(nullptr);
 	ActiveScope active(this);
 
 	ggpo_idle(session_, 0);
 	if (DrainPendingAbort()) return StepResult::Failed;
+	PollWatchers();
 	if (!gate_.CanAdvanceDeterministicFrame()) return StepResult::Waiting;
 	if (holding_) {
 		holding_ = false;
@@ -164,10 +223,12 @@ RollbackSession::StepResult RollbackSession::StepHeld(PackedInput localInput,
 	const std::function<void(const FrameInputs&)>& onInputs)
 {
 	if (!session_) return failed_ ? StepResult::Failed : StepResult::NoSession;
+	if (config_.watching) return StepWatched(&onInputs);
 	ActiveScope active(this);
 
 	ggpo_idle(session_, 0);
 	if (DrainPendingAbort()) return StepResult::Failed;
+	PollWatchers();
 	if (!gate_.CanAdvanceDeterministicFrame()) return StepResult::Waiting;
 	// The frame's inputs are final only once confirmed: a held frame takes no
 	// input for a misprediction, so a guess would never be corrected.
@@ -202,7 +263,144 @@ void RollbackSession::Poll()
 	if (!session_) return;
 	ActiveScope active(this);
 	ggpo_idle(session_, 0);
-	DrainPendingAbort();
+	if (DrainPendingAbort()) return;
+	PollWatchers();
+}
+
+RollbackSession::StepResult RollbackSession::StepWatched(const std::function<void(const FrameInputs&)>* onHeld)
+{
+	ActiveScope active(this);
+	ggpo_idle(session_, 0);
+	if (DrainPendingAbort()) return StepResult::Failed;
+	// GGPO's spectator backend never times out; a stream that never ran ends
+	// here (SF4's SpectatorStreamWatch), and the room says what was lost.
+	if (streamWatch_.Poll(GetTickCount64(), false) != sf4e::SpectatorStreamWatch::Step::Wait) {
+		char why[96];
+		snprintf(why, sizeof(why), "P1's stream did not start within %llu s",
+			(unsigned long long)(sf4e::SpectatorPolicy::StreamSyncTimeoutMs / 1000));
+		Fail(why);
+		return StepResult::Failed;
+	}
+	if (!gate_.CanAdvanceDeterministicFrame()) return StepResult::Waiting;
+
+	FrameInputs inputs;
+	int disconnectFlags = 0;
+	const GGPOErrorCode err = ggpo_synchronize_input(session_, inputs.p, sizeof(inputs.p), &disconnectFlags);
+	if (DrainPendingAbort()) return StepResult::Failed;
+	// The spectator backend answers PREDICTION_THRESHOLD for a frame P1 has
+	// not sent yet: it never predicts.
+	if (err == GGPO_ERRORCODE_PREDICTION_THRESHOLD || err == GGPO_ERRORCODE_NOT_SYNCHRONIZED) return StepResult::Waiting;
+	if (!GGPO_SUCCEEDED(err)) {
+		// GENERAL_FAILURE: the frame was overwritten before it was played (the
+		// backlog outgrew GGPO's ring), so the rest of the stream cannot be
+		// played.
+		char why[96];
+		snprintf(why, sizeof(why), "P1's stream broke at frame %d (synchronize_input returned %d)", frame_, (int)err);
+		Fail(why);
+		return StepResult::Failed;
+	}
+	// Frame 0, the battle's first state, is hashed before the first frame
+	// runs, as P1 and P2 save it before they add their first input.
+	if (!watchedStartHashed_) {
+		watchedStartHashed_ = true;
+		HashWatched(frame_);
+	}
+	if (onHeld) {
+		if (!holding_) {
+			holding_ = true;
+			heldFrom_ = frame_;
+			CoreLog("session: holding the game from frame %d", frame_);
+		}
+		(*onHeld)(inputs);
+		stats_.heldFrames++;
+	} else {
+		if (holding_) {
+			holding_ = false;
+			heldTo_ = frame_;
+			CoreLog("session: hold ended at frame %d (%d held frame(s))", frame_, frame_ - heldFrom_);
+		}
+		// What the fighters' sessions give the game for this frame
+		// (InputsForThisFrame), without telling GGPO: a watcher never predicts.
+		game_.Advance(game_.InputsMatter() ? Restricted(inputs, game_.InputBits()) : FrameInputs{}, false);
+		stats_.framesAdvanced++;
+	}
+	const GGPOErrorCode advanced = ggpo_advance_frame(session_);
+	if (DrainPendingAbort()) return StepResult::Failed;
+	if (!GGPO_SUCCEEDED(advanced)) {
+		char why[96];
+		snprintf(why, sizeof(why), "advance_frame returned %d", (int)advanced);
+		Fail(why);
+		return StepResult::Failed;
+	}
+	frame_++;
+	HashWatched(frame_);
+	return StepResult::Advanced;
+}
+
+void RollbackSession::HashWatched(int frame)
+{
+	if (frame % kCheckpointInterval != 0 && frame % config_.hashEveryFrames != 0) return;
+	Slot& slot = pool_[0];
+	LARGE_INTEGER started, copied;
+	QueryPerformanceCounter(&started);
+	game_.Layout().SaveTo(slot.bytes.data());
+	QueryPerformanceCounter(&copied);
+	slot.frame = frame;
+	// A scratch copy, never a save GGPO holds: it stays unused.
+	RecordHash(slot, frame, copied.QuadPart - started.QuadPart);
+}
+
+int RollbackSession::WatchedBacklog() const
+{
+	int frames = -1;
+	if (!session_ || !config_.watching || !GGPO_SUCCEEDED(ggpo_get_spectator_backlog(session_, &frames))) return -1;
+	return frames;
+}
+
+size_t RollbackSession::WatcherStreams() const
+{
+	return session_ && !config_.watching ? policy_.Count() : 0;
+}
+
+void RollbackSession::KeepForWatchers()
+{
+	if (keptForWatchers_) return;
+	keptForWatchers_ = true;
+	CoreLog("session: kept for %zu watcher stream(s) after the fight", WatcherStreams());
+}
+
+bool RollbackSession::WatcherHandle(GGPOPlayerHandle handle) const
+{
+	if (config_.watching) return false;
+	return handle != localHandle_ && handle != remoteHandle_;
+}
+
+void RollbackSession::PollWatchers()
+{
+	if (!session_ || config_.watching || !policy_.Count()) return;
+	const uint64_t now = GetTickCount64();
+	for (const int handle : policy_.SyncOverdue(now)) DropWatcher(handle, "not synchronized in time");
+	if (!policy_.SampleDue(now)) return;
+	for (const int handle : policy_.Handles()) {
+		GGPONetworkStats stats = {};
+		if (!GGPO_SUCCEEDED(ggpo_get_network_stats(session_, handle, &stats))) continue;
+		if (policy_.Sample(handle, stats.network.send_queue_len, stats.network.ping)) DropWatcher(handle, "too far behind");
+	}
+}
+
+void RollbackSession::DropWatcher(int handle, const char* why)
+{
+	GGPONetworkStats stats = {};
+	ggpo_get_network_stats(session_, handle, &stats);
+	CoreLog("session: dropping the watcher with handle %d (%s; ping %d ms, %d frames unacknowledged)", handle, why,
+		stats.network.ping, stats.network.send_queue_len);
+	// GGPO raises the drop's DISCONNECTED_FROM_PEER at once (Event), which
+	// notes it for the room too; a watcher already gone answers DISCONNECTED.
+	const GGPOErrorCode result = ggpo_disconnect_player(session_, handle);
+	if (!GGPO_SUCCEEDED(result) && result != GGPO_ERRORCODE_PLAYER_DISCONNECTED) {
+		CoreLog("session: the watcher with handle %d could not be dropped (%d)", handle, (int)result);
+	}
+	links_.Dropped(handle);
 }
 
 bool RollbackSession::HandleResult(int ggpoError, const char* call, StepResult* out)
@@ -252,6 +450,13 @@ void RollbackSession::CloseNow()
 	localHandle_ = remoteHandle_ = -1;
 	gate_.OnSessionClosed();
 	for (Slot& s : pool_) s.used = false;
+	// No watcher is served any more. A drop not yet handed to the room was
+	// this session's, and the room ends this match's links itself (SF4's
+	// RetireGgpoSession forgets it the same way).
+	policy_.Start(GetTickCount64(), {}, config_.watcherSyncDeadlineMs);
+	links_.Start();
+	watcherHandles_.clear();
+	keptForWatchers_ = false;
 }
 
 void RollbackSession::Fail(const char* reason)
@@ -276,6 +481,7 @@ bool RollbackSession::DrainPendingAbort()
 
 int RollbackSession::LastConfirmedFrame() const
 {
+	if (session_ && config_.watching) return frame_;
 	int frame = -1;
 	if (session_ && ggpo_get_last_confirmed_frame(session_, &frame) == GGPO_OK) return frame;
 	return -1;
@@ -387,41 +593,46 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 		Fail("save pool exhausted");
 		return false;
 	}
-	StateLayout& layout = game_.Layout();
-	LARGE_INTEGER started, copied, hashed, perSecond;
+	LARGE_INTEGER started, copied;
 	QueryPerformanceCounter(&started);
-	layout.SaveTo(slot->bytes.data());
+	game_.Layout().SaveTo(slot->bytes.data());
 	QueryPerformanceCounter(&copied);
 	slot->used = true;
 	slot->frame = frame;
-	const bool checkpoint = frame % kCheckpointInterval == 0;
-	slot->hashed = checkpoint || config_.verifyLoads || frame % config_.hashEveryFrames == 0;
-	slot->hash = slot->hashed ? layout.HashSaved(slot->bytes.data(), HashScope::Peers) : 0;
-	slot->localHash = config_.verifyLoads ? layout.HashSaved(slot->bytes.data()) : 0;
-	QueryPerformanceCounter(&hashed);
-	if (slot->hashed) {
-		history_[frame % kHistory] = {frame, slot->hash};
-		if (config_.keepAllHashes) {
-			if ((size_t)frame >= allHashes_.size()) allHashes_.resize((size_t)frame + 1);
-			allHashes_[frame] = {frame, slot->hash};
-		}
-	}
-	if (checkpoint) {
-		layout.PeerRegionHashesSaved(slot->bytes.data(), checkpoints_[frame]); // a replay overwrites it
-		QueryPerformanceFrequency(&perSecond);
-		const auto us = [&](const LARGE_INTEGER& a, const LARGE_INTEGER& b) {
-			return (b.QuadPart - a.QuadPart) * 1000000 / perSecond.QuadPart;
-		};
-		CoreLog("checkpoint: frame %d hash %016llx (copy %lld us, hash %lld us)", frame,
-			(unsigned long long)slot->hash, us(started, copied), us(copied, hashed));
-		while (checkpoints_.size() > kCheckpointsKept) checkpoints_.erase(checkpoints_.begin());
-	}
+	RecordHash(*slot, frame, copied.QuadPart - started.QuadPart);
 	frame_ = frame;
 
 	*buffer = reinterpret_cast<unsigned char*>(slot);
 	*len = 1;      // GGPO asserts on a zero length; it never reads the bytes
 	*checksum = 0; // nor the checksum (only its synctest backend would)
 	return true;
+}
+
+void RollbackSession::RecordHash(Slot& slot, int frame, long long copyTicks)
+{
+	StateLayout& layout = game_.Layout();
+	LARGE_INTEGER started, hashed, perSecond;
+	QueryPerformanceCounter(&started);
+	const bool checkpoint = frame % kCheckpointInterval == 0;
+	slot.hashed = checkpoint || config_.verifyLoads || frame % config_.hashEveryFrames == 0;
+	slot.hash = slot.hashed ? layout.HashSaved(slot.bytes.data(), HashScope::Peers) : 0;
+	slot.localHash = config_.verifyLoads ? layout.HashSaved(slot.bytes.data()) : 0;
+	QueryPerformanceCounter(&hashed);
+	if (slot.hashed) {
+		history_[frame % kHistory] = {frame, slot.hash};
+		if (config_.keepAllHashes) {
+			if ((size_t)frame >= allHashes_.size()) allHashes_.resize((size_t)frame + 1);
+			allHashes_[frame] = {frame, slot.hash};
+		}
+	}
+	if (checkpoint) {
+		layout.PeerRegionHashesSaved(slot.bytes.data(), checkpoints_[frame]); // a replay overwrites it
+		QueryPerformanceFrequency(&perSecond);
+		const auto us = [&](long long ticks) { return ticks * 1000000 / perSecond.QuadPart; };
+		CoreLog("checkpoint: frame %d hash %016llx (copy %lld us, hash %lld us)", frame, (unsigned long long)slot.hash,
+			us(copyTicks), us(hashed.QuadPart - started.QuadPart));
+		while (checkpoints_.size() > kCheckpointsKept) checkpoints_.erase(checkpoints_.begin());
+	}
 }
 
 bool RollbackSession::Load(unsigned char* buffer)
@@ -495,16 +706,46 @@ void RollbackSession::Event(const GGPOEvent& info)
 {
 	sf4e::gate::AbortLatch::Scope scope(latch_);
 	switch (info.code) {
+	case GGPO_EVENTCODE_SYNCHRONIZED_WITH_PEER:
+		// A watcher's wait for synchronization starts once a fighter is
+		// synchronized: before that the fight cannot start anyway.
+		if (WatcherHandle(info.u.synchronized.player)) {
+			policy_.OnSynchronized(info.u.synchronized.player);
+			CoreLog("session: the watcher with handle %d is synchronized", info.u.synchronized.player);
+		} else {
+			policy_.OnFighterSynchronized(GetTickCount64());
+		}
+		break;
 	case GGPO_EVENTCODE_RUNNING:
+		policy_.OnRunning(GetTickCount64());
+		streamWatch_.OnRunning();
 		gate_.OnRunning();
 		CoreLog("session: running");
 		break;
 	case GGPO_EVENTCODE_DISCONNECTED_FROM_PEER:
+		// A watcher's link is not the fight's: GGPO has stopped streaming to
+		// it, and the fight goes on.
+		if (WatcherHandle(info.u.disconnected.player)) {
+			policy_.OnDisconnected(info.u.disconnected.player);
+			links_.Dropped(info.u.disconnected.player);
+			watcherHandles_.erase(info.u.disconnected.player);
+			CoreLog("session: the watcher with handle %d disconnected%s", info.u.disconnected.player,
+				keptForWatchers_ ? "" : "; the fight goes on");
+			break;
+		}
+		// Kept only for the watchers: the other fighter leaving is expected.
+		if (keptForWatchers_) break;
 		peerDisconnected_ = true;
 		disconnectTimeoutMs_ = 0;
-		Fail("the other player disconnected");
+		Fail(config_.watching ? "P1's stream ended" : "the other player disconnected");
 		break;
 	case GGPO_EVENTCODE_CONNECTION_INTERRUPTED:
+		if (WatcherHandle(info.u.connection_interrupted.player) || keptForWatchers_) {
+			if (!keptForWatchers_) {
+				CoreLog("session: the watcher with handle %d is not answering", info.u.connection_interrupted.player);
+			}
+			break;
+		}
 		// The countdown runs from the episode's first report, as SF4's does.
 		if (gate_.OnConnectionInterrupted(GetTickCount())) {
 			disconnectTimeoutMs_ = info.u.connection_interrupted.disconnect_timeout;
@@ -512,6 +753,7 @@ void RollbackSession::Event(const GGPOEvent& info)
 		}
 		break;
 	case GGPO_EVENTCODE_CONNECTION_RESUMED:
+		if (WatcherHandle(info.u.connection_resumed.player)) break;
 		if (gate_.OnConnectionResumed()) {
 			disconnectTimeoutMs_ = 0;
 			CoreLog("session: connection resumed");

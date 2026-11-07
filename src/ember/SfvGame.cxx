@@ -48,11 +48,32 @@ bool s_synced = false;
 LaunchArming s_launch;
 // The bound battle's pings (SF4's MatchTelemetry), from its session's start.
 sf4e::MatchTelemetry s_telemetry;
+// P1's session after its battle closed, kept for its watchers while the
+// runtime drains them (SetWatcherDrain), and the runtime's drain flag.
+RollbackSession* s_drain = nullptr;
+bool s_draining = false;
 
 // The bound battle's session while it is live.
 const RollbackSession* LiveSession()
 {
 	return s_battle.session && s_battle.session->Live() ? s_battle.session : nullptr;
+}
+
+// The session kept for the watchers while it is live.
+RollbackSession* LiveDrain()
+{
+	return s_drain && s_drain->Live() ? s_drain : nullptr;
+}
+
+// The kept session ends: the runtime retired it, ended its drain, or the
+// player's session ended with it (as SF4's RetireGgpoSession closes it). The
+// mod frees it on its next tick (NetplayMode::PollBattle).
+void EndDrain(const char* why)
+{
+	RollbackSession* drain = LiveDrain();
+	if (!drain) return;
+	mod::Log("ember: the session kept for the watchers closes (%s; %zu stream(s) left)", why, drain->WatcherStreams());
+	drain->Close();
 }
 
 // GGPO's connection warning, but none once the game's result is taken, as
@@ -146,14 +167,25 @@ public:
 	// A launch still waiting for the main menu does not go ahead.
 	void DropNextBattle() override { s_launch.Drop(); }
 
-	bool Live() const override { return s_battle.session && s_battle.session->Live(); }
-	void Retire(const char* label) override { ExitBattle("retire", label); }
+	// The battle's session, or P1's kept for its watchers after the battle.
+	bool Live() const override { return LiveSession() || LiveDrain(); }
+	// With a battle in play, its way out; after it, the kept session closes.
+	void Retire(const char* label) override
+	{
+		if (LiveDrain() && !LiveSession()) return EndDrain(label);
+		ExitBattle("retire", label);
+	}
 	void Abort(const char* reason, sf4e::NoticeSeverity severity, bool) override
 	{
 		if (reason && *reason) sf4e::NetplayFacade::PushAlert(reason, severity);
+		if (LiveDrain() && !LiveSession()) return EndDrain(reason);
 		ExitBattle("abort", reason);
 	}
-	void Fail() override { ExitBattle("failure", "the session cannot go on"); }
+	void Fail() override
+	{
+		if (LiveDrain() && !LiveSession()) return EndDrain("the session cannot go on");
+		ExitBattle("failure", "the session cannot go on");
+	}
 
 	// SFV's results menu stays closed in a room's battle (MatchEnd); its WIN
 	// is the mod's held frames (RoomBattle, EMBER_LIBRARY.md section 19): the
@@ -173,8 +205,9 @@ public:
 	// The live session's link, as SF4 Ember's adapter fills it from its own
 	// (sf4e__Sf4Game.cxx): RollbackSession reports the same GGPO events and
 	// stats with the same meanings, and the ping is the telemetry's, polled
-	// every 250 ms and none while the link is warned. A spectator's fields
-	// stay off: SFV's session has no spectators.
+	// every 250 ms and none while the link is warned. A watcher has no ping
+	// (SF4's MatchTelemetry keeps none for a spectator); it shows the delay
+	// the fighters were granted and how far it is behind P1's stream.
 	LinkSample Sample() const override
 	{
 		LinkSample sample;
@@ -183,9 +216,16 @@ public:
 		sample.connectionWarning = LinkWarned(*session);
 		sample.predictionStalled = session->PredictionStalled();
 		sample.disconnectCountdownMs = DisconnectCountdownMs();
+		if (session->Watching()) {
+			sample.spectator = true;
+			sample.spectatorBacklog = session->WatchedBacklog();
+			sample.appliedDelay = s_battle.room ? s_battle.room->WatchedDelay() : -1;
+			sample.ownDelays = s_battle.room && s_battle.room->WatchedOwnDelays();
+			return sample;
+		}
 		sample.pingMs = s_telemetry.Ping(GetTickCount64());
 		sample.appliedDelay = session->AppliedDelay();
-		sample.localFighter = true; // a session is two players, this copy one of them
+		sample.localFighter = true; // one of the session's two players
 		return sample;
 	}
 	int DisconnectCountdownMs() const override
@@ -206,7 +246,7 @@ public:
 	void PollTelemetry() override
 	{
 		const RollbackSession* session = LiveSession();
-		if (!session) return;
+		if (!session || session->Watching()) return;
 		const auto now = GetTickCount64();
 		if (!s_telemetry.PollDue(now)) return;
 		RollbackSession::Rift rift{};
@@ -215,11 +255,28 @@ public:
 	// NetplayMode's FramePacer paces the session and resets with each battle.
 	void ResetPacing() override {}
 
-	// No spectators: a RollbackSession plays two players and nothing else.
-	std::size_t SpectatorStreams() const override { return 0; }
-	bool DrainingSpectators() const override { return false; }
-	void SetDrainingSpectators(bool) override {}
-	bool SpectatorBacklog(int&) const override { return false; }
+	// P1's watcher streams, from the battle's session or the one kept for
+	// them after it (the runtime's drain, which it sets and ends here; its
+	// end closes the kept session, so none outlives the drain).
+	std::size_t SpectatorStreams() const override
+	{
+		if (const RollbackSession* session = LiveSession()) return session->WatcherStreams();
+		const RollbackSession* drain = LiveDrain();
+		return drain ? drain->WatcherStreams() : 0;
+	}
+	bool DrainingSpectators() const override { return s_draining; }
+	void SetDrainingSpectators(bool draining) override
+	{
+		s_draining = draining;
+		if (!draining) EndDrain("the drain ended");
+	}
+	// A watcher's frames received from P1 and not played yet.
+	bool SpectatorBacklog(int& frames) const override
+	{
+		const RollbackSession* session = LiveSession();
+		frames = session ? session->WatchedBacklog() : -1;
+		return frames >= 0;
+	}
 
 	// The desync check holds nothing back (SfvVerification), and the session
 	// keeps its own hashes until the next battle.
@@ -389,11 +446,23 @@ SfvPreferences s_preferences;
 SfvServices s_services;
 NoTraining s_training;
 NoReplays s_replays;
-// Every capability off: SFV offers no Training, replays, spectators, pad
-// setup, Steam profiles or custom content yet.
-const Adapter s_game = {Capabilities{}, s_state, s_battleSide, s_input, s_preferences, s_services, s_training, s_replays};
+// Watching a table's games (EMBER_LIBRARY.md section 25); SFV offers no
+// Training, replays, pad setup, Steam profiles or custom content yet.
+Capabilities SfvCapabilities()
+{
+	Capabilities caps;
+	caps.spectators = true;
+	return caps;
+}
+const Adapter s_game = {SfvCapabilities(), s_state, s_battleSide, s_input, s_preferences, s_services, s_training,
+	s_replays};
 
 } // namespace
+
+void SetWatcherDrain(RollbackSession* session)
+{
+	s_drain = session;
+}
 
 void SetBattleInPlay(const BattleInPlay& battle)
 {

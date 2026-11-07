@@ -14,6 +14,7 @@
 #include "sf4e/sf4e__GameAdapter.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 #include "sf4e/sf4e__RuntimeSession.hxx"
+#include "session/RoomQueries.hxx"
 
 #include <atomic>
 #include <cstdio>
@@ -83,6 +84,10 @@ void RoomBattle::Bind(RollbackSession* previous, RollbackSession& session, const
 {
 	if (active_) Close(previous);
 	active_ = mod::TakeLinkedBattle();
+	watching_ = false;
+	watchedDelay_ = -1;
+	watchedOwnDelays_ = false;
+	streamLossTold_ = false;
 	matchEnded_ = false;
 	prompt_ = {};
 	declines_ = 0;
@@ -108,9 +113,10 @@ RoomBattle::Start RoomBattle::SessionConfig(RollbackSession::Config* config, std
 	}
 	if (!SessionSynced() || !facade::GetRuntimeMatchEndpoints(endpoints_)) return Start::Waiting;
 	const std::size_t slot = endpoints_.localSlot;
-	// Two fighters: SFV's session has no spectators (Capabilities::spectators is off).
-	if (slot > 1 || endpoints_.participantCount < 2 || !endpoints_.remotePorts[1 - slot]) {
-		Log("netplay: the room's match is not one this copy fights (slot %zu of %zu)", slot, endpoints_.participantCount);
+	// Two fighters in slots 0 and 1, and the watchers after them.
+	if (endpoints_.participantCount < 2 || endpoints_.participantCount > endpoints_.remotePorts.size() ||
+		slot >= endpoints_.participantCount) {
+		Log("netplay: the room's match is not one this copy can play (slot %zu of %zu)", slot, endpoints_.participantCount);
 		return Start::Gone;
 	}
 	const auto& netplay = ember::RuntimeSession::netplay;
@@ -119,6 +125,11 @@ RoomBattle::Start RoomBattle::SessionConfig(RollbackSession::Config* config, std
 		return Start::Gone;
 	}
 	const auto& match = netplay->client._matchData;
+	if (slot >= 2) return WatchConfig(config, seed, delay);
+	if (!endpoints_.remotePorts[1 - slot]) {
+		Log("netplay: the room's match has no link to the other fighter (slot %zu)", slot);
+		return Start::Gone;
+	}
 	// The delay the room granted this seat, as SF4's start checks it (UserApp).
 	if (match.inputDelay[slot] > sf4e::InputDelayWireCeiling) {
 		Log("netplay: the room granted a delay of %d, past the wire's %d", (int)match.inputDelay[slot], sf4e::InputDelayWireCeiling);
@@ -131,14 +142,61 @@ RoomBattle::Start RoomBattle::SessionConfig(RollbackSession::Config* config, std
 	config->localPlayer = (int)slot;
 	config->localPort = endpoints_.localPort;
 	config->remotePort = endpoints_.remotePorts[1 - slot];
+	// P1 streams to every watcher whose link came up before the start; one
+	// without a port sits this game out rather than hold the fighters (SF4's
+	// StartRuntimeGgpo). They wait for each other only so long.
+	if (slot == 0) {
+		for (std::size_t watcher = 2; watcher < endpoints_.participantCount; watcher++) {
+			if (endpoints_.remotePorts[watcher]) config->watchers.push_back({watcher, endpoints_.remotePorts[watcher]});
+		}
+	}
+	config->watcherSyncDeadlineMs = netplay->client.SpectatorSyncDeadlineMs();
 	*seed = match.rngSeed;
 	*delay = match.inputDelay[slot];
 	facade::ReportGgpoTransport(config->remoteIp.c_str(), config->remotePort);
-	Log("netplay: room match as P%zu, local port %u, the peer's port %u, delay %d", slot + 1, config->localPort,
-		config->remotePort, *delay);
+	Log("netplay: room match as P%zu, local port %u, the peer's port %u, delay %d, %zu watcher(s)", slot + 1,
+		config->localPort, config->remotePort, *delay, config->watchers.size());
 	// The room's match session holds the local port until GGPO takes it.
 	facade::ReleaseRuntimePortToGgpo();
 	return Start::Ready;
+}
+
+RoomBattle::Start RoomBattle::WatchConfig(RollbackSession::Config* config, std::uint32_t* seed, int* delay)
+{
+	watching_ = true;
+	const std::size_t slot = endpoints_.localSlot;
+	if (!endpoints_.remotePorts[0]) {
+		// P1 left this watcher out (its link did not come up before the start,
+		// or P1 dropped it as the battle loaded): it watches the next game.
+		// Nothing is lost of a game whose end the room already has.
+		Log("netplay: no stream from P1 for this watcher (slot %zu); it watches the next game", slot);
+		if (!facade::IsRuntimeMatchEndCommitted()) {
+			facade::PushAlert(sf4e::loc::T("runtime.spectator_stream_lost"), sf4e::NoticeSeverity::Error);
+		}
+		return Start::Gone;
+	}
+	const auto& netplay = ember::RuntimeSession::netplay;
+	const auto& match = netplay->client._matchData;
+	// The HUD shows the delay the fighters were granted, as SF4's does.
+	const auto granted = sf4e::room::WatchedGameDelay(netplay->client.GetRoomSnapshot().delayPolicy, match.inputDelay[0],
+		match.inputDelay[1]);
+	watchedDelay_ = granted.frames;
+	watchedOwnDelays_ = granted.own;
+	config->watching = true;
+	config->localPort = endpoints_.localPort;
+	config->remotePort = endpoints_.remotePorts[0];
+	*seed = match.rngSeed;
+	*delay = 0;
+	facade::ReportGgpoTransport(config->remoteIp.c_str(), config->remotePort);
+	Log("netplay: room match watched from slot %zu, local port %u, P1's port %u (the fighters' delay %d%s)", slot,
+		config->localPort, config->remotePort, watchedDelay_, watchedOwnDelays_ ? ", their own" : "");
+	facade::ReleaseRuntimePortToGgpo();
+	return Start::Ready;
+}
+
+void RoomBattle::EndDroppedWatcherLinks(RollbackSession& session)
+{
+	for (const std::size_t slot : session.TakeDroppedWatchers()) facade::EndRuntimeSpectatorStream(slot);
 }
 
 void RoomBattle::NoteSessionStart(bool started)
@@ -153,6 +211,20 @@ void RoomBattle::NoteSessionStart(bool started)
 void RoomBattle::NoteLink(const RollbackSession& session)
 {
 	if (!active_) return;
+	if (watching_) {
+		// A watcher hears only of its own stream, as SF4's spectator does: lost
+		// before the game's end is known, it loses this game but not its place
+		// at the table, and the runtime leaves the game. Nothing is lost of a
+		// game whose end the room already has; a watcher who left closed its
+		// session without a failure.
+		if (!session.Failed() || streamLossTold_) return;
+		streamLossTold_ = true;
+		Log("netplay: the watched stream ended: %s", session.FailureReason().c_str());
+		if (matchEnded_ || facade::IsRuntimeMatchEndCommitted()) return;
+		facade::NotifyRuntimeSpectatorStreamFailed();
+		facade::PushAlert(sf4e::loc::T("runtime.spectator_stream_lost"), sf4e::NoticeSeverity::Error);
+		return;
+	}
 	const bool warned = session.ConnectionWarning() && !matchEnded_;
 	if (warned != linkWarned_) {
 		linkWarned_ = warned;
@@ -206,6 +278,13 @@ bool RoomBattle::TakeEnd(const mod::SfvAdapter& game, const RollbackSession& ses
 	prompt_.versus = versus;
 	s_gameResult = prompt_.result;
 	matchEnded_ = true;
+	if (watching_) {
+		// A watcher has no answer of its own and nothing to report: it holds
+		// the WIN as the fighters do and follows their answers.
+		Log("netplay: match result %s at frame %d, game %u of this battle; the WIN follows the fighters' answers",
+			lastResult_.c_str(), frame, gamesInPlace_ + 1);
+		return true;
+	}
 	// Whether this copy's room offers the next game in this battle: the
 	// table's Instant rematch, and a set the game does not end. The copies'
 	// rooms may not agree yet, so the offer is one of the answers the held
@@ -228,11 +307,12 @@ void RoomBattle::NoteFightFrame()
 	// runtime's prompt timer (how long a fighter has been asked) starts over
 	// only on a read with no prompt due, so a later WIN's asks its full time.
 	unsigned mapped = 0, raw = 0;
-	if (active_ && !prompt_.active) facade::ReadRuntimeMatchInput((int)endpoints_.localSlot, mapped, raw);
+	if (active_ && !watching_ && !prompt_.active) facade::ReadRuntimeMatchInput((int)endpoints_.localSlot, mapped, raw);
 }
 
 PackedInput RoomBattle::AnswerBits()
 {
+	if (watching_) return 0; // a watcher sends nothing
 	unsigned mapped = 0, raw = 0;
 	// The runtime's answer: a parked Rematch, or the fighter still asked.
 	if (prompt_.offered && !prompt_.reported) facade::ReadRuntimeMatchInput((int)endpoints_.localSlot, mapped, raw);
@@ -266,13 +346,19 @@ void RoomBattle::Decided(Answer answer, const RollbackSession& session)
 	Log("netplay: the WIN's answers (%s) after %d held frame(s), frame %d: %s", bits, prompt_.held, session.Frame(),
 		answer == Answer::Rematch ? "rematch in place" : "back to the room");
 	if (answer == Answer::Rematch) {
-		Report(true);
+		// A watcher's HUD counts the game it saw end (SF4's
+		// NotifyRuntimeWatchedGame); the fighters report it to the room.
+		if (watching_) {
+			facade::NotifyRuntimeWatchedGame(prompt_.result);
+		} else {
+			Report(true);
+		}
 		++gamesInPlace_;
 		s_gameResult = sf4e::room::MatchResult::Abort;
 		matchEnded_ = false;
 		prompt_ = {};
 	} else {
-		if (!prompt_.reported) Report(false);
+		if (!prompt_.reported && !watching_) Report(false);
 		prompt_.active = false;
 		declines_ = rip::Declines(prompt_.bits[0], prompt_.bits[1]);
 	}
@@ -283,7 +369,7 @@ void RoomBattle::Decided(Answer answer, const RollbackSession& session)
 void RoomBattle::FlushHeld(const char* why)
 {
 	if (!prompt_.active) return;
-	if (!prompt_.reported) {
+	if (!prompt_.reported && !watching_) {
 		Log("netplay: %s over the WIN; the room hears game %u as the match's end", why, gamesInPlace_ + 1);
 		Report(false);
 	}
@@ -297,26 +383,33 @@ void RoomBattle::Report(bool continued)
 	prompt_.reported = true;
 }
 
-void RoomBattle::Close(RollbackSession* session)
+bool RoomBattle::Close(RollbackSession* session)
 {
-	if (!active_) return;
+	if (!active_) return false;
 	FlushHeld("the battle closed");
 	// A session still live here played its match to the end; one already
 	// gone broke, or the runtime ended it.
 	const bool ended = matchEnded_ || (session && session->Live());
-	if (session && session->Live()) session->Close();
+	// The room hears the match's end while the session is still the battle's:
+	// as SF4's CloseBattle has it, that is when the runtime decides whether P1
+	// keeps the session for its watchers (Battle::SpectatorStreams).
+	if (ended) facade::NotifyMatchEnded();
+	const bool keep = ended && session && session->Live() && facade::DrainingSpectators();
+	if (keep) {
+		session->KeepForWatchers();
+	} else if (session && session->Live()) {
+		session->Close();
+	}
 	SetBattleInPlay({});
 	active_ = false;
 	phase_ = sf4e::GgpoSyncPhase::None;
 	facade::NotifyGgpoSyncPhase(phase_);
-	if (ended) {
-		facade::NotifyMatchEnded();
-	} else {
-		facade::NotifyRuntimeBattleClosedWithoutSession();
-	}
+	if (!ended) facade::NotifyRuntimeBattleClosedWithoutSession();
 	if (facade::IsControlPlaneLost()) facade::FinalizeControlPlaneLossAfterBattle();
-	Log("netplay: the room's battle closed %s after %u game(s) in place; back in the room",
-		ended ? "at its match's end" : "without its session", gamesInPlace_);
+	Log("netplay: the room's battle closed %s after %u game(s) in place; back in the room%s",
+		ended ? "at its match's end" : "without its session", gamesInPlace_,
+		keep ? " (the session stays for the watchers)" : "");
+	return keep;
 }
 
 std::string RoomBattle::DescribeRematch() const

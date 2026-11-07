@@ -2,12 +2,16 @@
 
 #include "ember/EmberHost.hxx"
 #include "ember/RoomCommands.hxx"
+#include "ember/SfvGame.hxx"
 #include "ember/SfvShell.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
+
+#include "SpectatorCatchUp.hxx"
+#include "sf4e/sf4e__NetplayFacade.hxx"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,6 +48,9 @@ void NetplayMode::Install()
 void NetplayMode::NewBattle(SfvAdapter& adapter)
 {
 	std::lock_guard lock(mutex_);
+	// The last battle's watchers have had their time: the next session takes
+	// the room's port.
+	EndDrain();
 	auto session = std::make_unique<RollbackSession>(adapter);
 	room_.Bind(session_.get(), *session, adapter, [this](const char* why) {
 		Log("netplay: the room asks the battle to end (%s)", why);
@@ -59,6 +66,12 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 void NetplayMode::Frame(SfvAdapter& adapter)
 {
 	std::lock_guard lock(mutex_);
+	if (!session_) {
+		// No battle bound since the last one's session was kept for its
+		// watchers (PollBattle); the driver binds one before any frame.
+		adapter.RunOriginal();
+		return;
+	}
 	if (exitAsked_.exchange(false)) {
 		// The runtime retired or aborted the match: no session goes on, and
 		// the battle goes back to the main menu.
@@ -71,8 +84,10 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		if (!leaving_) Leave();
 		// The battle stands still until the main menu replaces it; the
 		// session keeps answering meanwhile, so the other copy still gets the
-		// inputs it may be missing for the last frames.
+		// inputs it may be missing for the last frames, and P1's watchers
+		// theirs.
 		if (session_->Live()) session_->Poll();
+		adapter::RoomBattle::EndDroppedWatcherLinks(*session_);
 		return;
 	}
 	if (!started_ && !StartSession(adapter)) return; // the battle waits for the match
@@ -93,6 +108,8 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	}
 	room_.NoteSyncPhase(*session_);
 	room_.NoteLink(*session_);
+	adapter::RoomBattle::EndDroppedWatcherLinks(*session_);
+	if (session_->Watching()) return WatchFrames(adapter);
 	const bool frozen = freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_;
 	if (room_.Prompting() && !frozen) {
 		// Over the WIN the battle stands still; held frames carry both
@@ -146,11 +163,79 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	PerturbIfDue();
 }
 
+void NetplayMode::WatchFrames(SfvAdapter& adapter)
+{
+	if (!WatchFrame(adapter)) return;
+	// The backlog after this update's own frame, as SF4's CatchUpSpectator
+	// reads it; each extra frame goes through the same decisions, so a frame
+	// the fighters held is held here too.
+	const int extra = sf4e::SpectatorCatchUp::ExtraFrames(session_->WatchedBacklog());
+	for (int played = 0; played < extra && !leaveWanted_ && session_->Live(); played++) {
+		if (!WatchFrame(adapter)) return;
+	}
+}
+
+bool NetplayMode::WatchFrame(SfvAdapter& adapter)
+{
+	if (freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_) {
+		session_->Poll();
+		return false;
+	}
+	if (room_.Prompting()) {
+		// The fighters' answers, from the held frames P1 streamed: the same
+		// decision on the same frame as theirs (RoomBattle).
+		adapter::RoomBattle::Answer decided = adapter::RoomBattle::Answer::Wait;
+		last_ = session_->StepHeld(0, [&](const FrameInputs& inputs) {
+			decided = room_.HeldFrame(inputs, session_->HeldFrames(), adapter, seed_);
+		});
+		if (last_ != RollbackSession::StepResult::Advanced) return false;
+		room_.Decided(decided, *session_);
+		if (decided == adapter::RoomBattle::Answer::Rematch) {
+			startTime_ = adapter.StartTime();
+		} else if (decided == adapter::RoomBattle::Answer::Leave) {
+			Leave();
+		}
+		return true;
+	}
+	// Every frame a watcher has is confirmed, so the match's end is taken on
+	// the frame it is seen, the one the fighters take it on.
+	if (room_.EndPending() && room_.TakeEnd(adapter, *session_)) return false;
+	if (adapter.StartTime() != startTime_) {
+		Log("netplay: the match's start time became %u at frame %d; set back to %u", adapter.StartTime(),
+			session_->Frame(), startTime_);
+		adapter.SetStartTime(startTime_);
+	}
+	last_ = session_->Step(0);
+	return last_ == RollbackSession::StepResult::Advanced;
+}
+
+void NetplayMode::EndDrain()
+{
+	if (!drain_) return;
+	adapter::SetWatcherDrain(nullptr);
+	if (drain_->Live()) drain_->Close();
+	drain_.reset();
+}
+
 void NetplayMode::PollBattle()
 {
 	std::lock_guard lock(mutex_);
+	if (drain_) {
+		// The runtime ends the drain once every watcher has left or its time
+		// is up; until then the session sends what the watchers still miss.
+		if (drain_->Live() && sf4e::NetplayFacade::DrainingSpectators()) {
+			drain_->Poll();
+			adapter::RoomBattle::EndDroppedWatcherLinks(*drain_);
+		} else {
+			Log("netplay: the session kept for the watchers is done");
+			EndDrain();
+		}
+	}
 	if (!room_.Active() || !MainMenuInFront()) return;
-	room_.Close(session_.get());
+	if (room_.Close(session_.get())) {
+		drain_ = std::move(session_);
+		adapter::SetWatcherDrain(drain_.get());
+	}
 	leaveWanted_ = leaving_ = false;
 }
 
@@ -271,13 +356,18 @@ std::string NetplayMode::Describe() const
 		JsonString(session_->FailureReason()).c_str(), session_->Frame(), session_->LastConfirmedFrame(),
 		StepName(last_), (unsigned long long)s.framesAdvanced, (unsigned long long)s.rollbacks,
 		(unsigned long long)s.resimulatedFrames, s.longestRollback, (unsigned long long)s.predictionStalls);
-	// The link as the HUD reads it (RollbackSession's ConnectionWarning and the rest).
-	char link[192];
+	// The link as the HUD reads it (RollbackSession's ConnectionWarning and
+	// the rest), and the watchers: whether this copy watches, its backlog of
+	// P1's stream, and P1's watcher streams (also those of the session kept
+	// for them after the battle).
+	char link[320];
 	snprintf(link, sizeof(link),
-		",\"link\":{\"warning\":%s,\"stalled\":%s,\"countdownMs\":%d,\"delay\":%d,\"recentRollback\":%u,\"peerDropped\":%s}",
+		",\"link\":{\"warning\":%s,\"stalled\":%s,\"countdownMs\":%d,\"delay\":%d,\"recentRollback\":%u,\"peerDropped\":%s,"
+		"\"watching\":%s,\"backlog\":%d,\"watchers\":%zu,\"keptForWatchers\":%zu}",
 		session_->ConnectionWarning() ? "true" : "false", session_->PredictionStalled() ? "true" : "false",
 		session_->DisconnectCountdownMs(), session_->AppliedDelay(), session_->RecentRollbackFrames(),
-		session_->PeerDisconnected() ? "true" : "false");
+		session_->PeerDisconnected() ? "true" : "false", session_->Watching() ? "true" : "false",
+		session_->WatchedBacklog(), session_->WatcherStreams(), drain_ ? drain_->WatcherStreams() : (size_t)0);
 	return text + pacer_.Describe() + ",\"lastResult\":" + room_.LastResult() + ",\"rematch\":" + room_.DescribeRematch() +
 		",\"heldFrames\":" + std::to_string(s.heldFrames) + ",\"heldReplays\":" + std::to_string(s.heldReplays) + link + "}";
 }

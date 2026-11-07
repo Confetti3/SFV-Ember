@@ -1,6 +1,6 @@
 #pragma once
 
-// A two-player GGPO session over one GameAdapter.
+// A two-player GGPO session over one GameAdapter, and its watchers.
 //
 // Follows the rules SF4 Ember settled on (docs/design/SFV_PORT.md, "carried
 // over from Ember"):
@@ -19,18 +19,31 @@
 // GGPO call is published in a scoped static for the callbacks to find. Two
 // sessions in one process (the loopback tests) work because calls never nest
 // across sessions.
+//
+// Watchers (EMBER_LIBRARY.md section 25), as SF4 Ember has them:
+// * P1 streams every confirmed frame to each watcher (GGPO's spectator
+//   players). A watcher never holds the fighters: one not synchronized in
+//   time, or too far behind, is dropped (sf4e::SpectatorPolicy), and its
+//   link's events never touch the fight's gate or end the fight.
+// * A watching copy plays those frames from GGPO's spectator backend: the
+//   same confirmed inputs both fighters played, so the same states. It keeps
+//   no saves and never rolls back; it hashes the state of the same frames
+//   the fighters hash, so the peers' checkpoints compare.
 
 #include "core/GameAdapter.hxx"
 
 #include "RollbackHud.hxx"
+#include "SpectatorPolicy.hxx"
 #include "sf4e__GgpoAbortLatch.hxx"
 #include "sf4e__GgpoGate.hxx"
 
 #include <ggponet.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -62,6 +75,22 @@ public:
 		// a frame) instead of the latest 256, so two copies' hashes can be
 		// compared frame by frame after a match, back to the first that differs.
 		bool keepAllHashes = false;
+
+		// P1 of a room's match also streams to these watchers: each one's
+		// match slot (2 and up) and the loopback port of its link. Another
+		// player's list is ignored: only P1 streams.
+		struct Watcher {
+			size_t slot = 0;
+			uint16_t port = 0;
+		};
+		std::vector<Watcher> watchers;
+		// How long P1 waits, once a fighter has synchronized, for a watcher
+		// to synchronize before it drops it (SpectatorPolicy::SyncDeadlineFor).
+		uint64_t watcherSyncDeadlineMs = sf4e::SpectatorPolicy::SyncDeadlineMs;
+		// This copy only watches: it plays the confirmed frames P1 streams
+		// from remoteIp:remotePort and sends nothing of its own. localPlayer,
+		// inputDelay, the disconnect settings and verifyLoads do not apply.
+		bool watching = false;
 	};
 
 	enum class StepResult {
@@ -93,7 +122,9 @@ public:
 
 	bool Start(const Config& config, std::string* error);
 	// One outer frame: pumps the network, then adds the local input and runs
-	// at most one deterministic frame (plus any rollback GGPO asks for).
+	// at most one deterministic frame (plus any rollback GGPO asks for). A
+	// watcher's runs the next frame P1 streamed, Waiting until it has come;
+	// `localInput` is unused.
 	StepResult Step(PackedInput localInput);
 	// One held frame: the game stands still (no Advance) while the session
 	// goes on, so the players' inputs keep travelling. Steps only once the
@@ -102,7 +133,8 @@ public:
 	// frame is saved: a change it makes to the game is that frame's, on every
 	// peer alike. Held frames take no input for a misprediction, and a
 	// rollback that replays one does not advance the game either. The next
-	// Step ends the hold.
+	// Step ends the hold. A watcher's held frame is the next frame P1
+	// streamed, with the fighters' inputs; it sends nothing.
 	StepResult StepHeld(PackedInput localInput, const std::function<void(const FrameInputs&)>& onInputs);
 	// The frames StepHeld played since the hold began (0 when not holding).
 	int HeldFrames() const { return holding_ ? frame_ - heldFrom_ : 0; }
@@ -116,7 +148,26 @@ public:
 	bool Failed() const { return failed_; }
 	const std::string& FailureReason() const { return failure_; }
 	int Frame() const { return frame_; }
+	// The last frame whose inputs both fighters have given. A watcher plays
+	// only such frames, so for it every state it has reached is final: its
+	// current frame.
 	int LastConfirmedFrame() const;
+
+	// This copy watches (Config::watching).
+	bool Watching() const { return config_.watching; }
+	// A watcher's frames received from P1 and not played yet; -1 when the
+	// session cannot tell (not a watcher's, or none).
+	int WatchedBacklog() const;
+	// P1's watcher streams still served: none dropped, disconnected or left.
+	size_t WatcherStreams() const;
+	// The match slots of the watchers P1 dropped or lost since the last call,
+	// each once, for the room to end their links.
+	std::vector<size_t> TakeDroppedWatchers() { return links_.Take(); }
+	// The fight is over and the session is kept only so P1's watchers get
+	// the frames still on their way: the other fighter leaving is expected
+	// then, and no warning or failure of theirs is recorded.
+	void KeepForWatchers();
+	bool KeptForWatchers() const { return keptForWatchers_; }
 	// GGPO's time-sync view of the remote player: how many frames each side
 	// sees itself behind the other (half the difference is how far ahead this
 	// side runs), and the round-trip time.
@@ -187,11 +238,28 @@ private:
 	static bool __cdecl OnEvent(GGPOEvent* info);
 
 	bool Save(unsigned char** buffer, int* len, int* checksum, int frame);
+	// The hash of `slot`'s saved bytes as `frame`'s, kept for HashAt, and at
+	// a checkpoint its regions' hashes and the checkpoint's log line (with
+	// the copy's time, `copyTicks` of QueryPerformanceCounter).
+	void RecordHash(Slot& slot, int frame, long long copyTicks);
 	bool Load(unsigned char* buffer);
 	void Free(void* buffer);
 	bool AdvanceFromRollback();
 	FrameInputs InputsForThisFrame(const FrameInputs& inputs);
 	void Event(const GGPOEvent& info);
+
+	// A watcher's frame: the next one P1 streamed, run (or, `onHeld`, held
+	// with its inputs), and its state hashed as the fighters hash theirs.
+	StepResult StepWatched(const std::function<void(const FrameInputs&)>* onHeld);
+	// A watcher's state at `frame`, hashed where the fighters hash it.
+	void HashWatched(int frame);
+	// P1's watchers: drops the ones SpectatorPolicy gives up on. Outside
+	// GGPO callbacks only (ggpo_disconnect_player).
+	void PollWatchers();
+	void DropWatcher(int handle, const char* why);
+	// A handle that is neither fighter's. On P1 that is a watcher's; a
+	// watching copy's one link is P1's, never a watcher's.
+	bool WatcherHandle(GGPOPlayerHandle handle) const;
 
 	// Aborts now, or latches until the GGPO call on the stack returns.
 	void Fail(const char* reason);
@@ -225,6 +293,17 @@ private:
 	int disconnectTimeoutMs_ = 0; // the open interruption's, 0 when none
 	bool peerDisconnected_ = false;
 	mutable sf4e::RollbackHud rollbackHud_; // Recent() drops the bursts that expired
+
+	// Watchers. P1: who is still served, when to drop one, and the slots of
+	// those dropped (SF4's SpectatorPolicy and SpectatorLinks). A watcher:
+	// whether P1's stream ever started (SpectatorStreamWatch) and whether
+	// frame 0's state was hashed.
+	sf4e::SpectatorPolicy policy_;
+	sf4e::SpectatorLinks links_;
+	std::set<int> watcherHandles_;
+	sf4e::SpectatorStreamWatch streamWatch_;
+	bool watchedStartHashed_ = false;
+	bool keptForWatchers_ = false;
 };
 
 } // namespace sfve

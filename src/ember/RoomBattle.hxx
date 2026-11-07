@@ -20,6 +20,14 @@
 // running match, continued), or back to the room (the room hears the match's
 // end).
 //
+// A room member who watches the table (EMBER_LIBRARY.md section 25) plays
+// the same battle from P1's stream of the fighters' confirmed frames. It
+// reports no result and answers no prompt: it takes each game's end and
+// holds its WIN on the same frames the fighters do, reads their answers from
+// the same held frames, and goes on in place or back to the room with them.
+// P1 streams to its watchers, drops the ones that cannot keep up, and keeps
+// its session for them after the battle while the runtime drains them.
+//
 // Game thread only, but for DeclineRematch and NoteShellLeftPrompt.
 
 #include "core/RollbackSession.hxx"
@@ -51,13 +59,28 @@ public:
 
 	enum class Start { Waiting, Ready, Gone };
 	// The room's part of the session's start, once every member's battle has
-	// loaded: this copy's side and ports, the seed and the delay. Waiting
-	// until then; Gone when the room's match ended first or is not one this
-	// copy fights. Ready also hands the local port to GGPO, so the session
-	// starts next.
+	// loaded: this copy's side and ports (P1's watchers too), or the stream
+	// it watches, the seed and the delay. Waiting until then; Gone when the
+	// room's match ended first, is not one this copy can play or watch, or
+	// left this watcher out. Ready also hands the local port to GGPO, so the
+	// session starts next.
 	Start SessionConfig(RollbackSession::Config* config, std::uint32_t* seed, int* delay);
 	// The session started, or could not.
 	void NoteSessionStart(bool started);
+	// This copy watches the room's battle rather than fighting it (known
+	// once SessionConfig said Ready).
+	bool Watching() const { return active_ && watching_; }
+	// The delay a watched game was granted with (room::WatchedGameDelay),
+	// which a watcher's HUD shows as SF4's does: frames, and whether each
+	// fighter plays at their own.
+	int WatchedDelay() const { return watchedDelay_; }
+	bool WatchedOwnDelays() const { return watchedOwnDelays_; }
+
+	// Each frame P1's session runs, and while it is kept for its watchers:
+	// the watchers it dropped or lost have their links ended, so each one's
+	// copy gives up at once (SF4's EndRuntimeSpectatorStream). Any battle,
+	// the room's or not.
+	static void EndDroppedWatcherLinks(RollbackSession& session);
 
 	// Each live frame: the session's phase as the runtime last heard it.
 	void NoteSyncPhase(const RollbackSession& session);
@@ -98,14 +121,17 @@ public:
 	// it) with a result still held: the room hears it as the match's end.
 	void FlushHeld(const char* why);
 
-	// The main menu is back: the session closes and the runtime hears how
-	// the battle ended. Nothing for a battle that is not the room's.
-	void Close(RollbackSession* session);
+	// The main menu is back: the runtime hears how the battle ended, and the
+	// session closes. True when P1 keeps it instead for its watchers (the
+	// runtime's drain, which decides as the match's end is heard): the caller
+	// keeps it polled until the runtime retires it (SetWatcherDrain). Nothing
+	// for a battle that is not the room's.
+	bool Close(RollbackSession* session);
 
 	// The adapter's view (SfvGame's Battle): the result held for the prompt,
 	// the WIN being shown, each side's Rematch as the inputs carry it, and
 	// the games this battle played and went on from.
-	bool ResultHeld() const { return prompt_.active && prompt_.offered && !prompt_.reported; }
+	bool ResultHeld() const { return prompt_.active && prompt_.offered && !prompt_.reported && !watching_; }
 	bool ResultScreenShown() const { return prompt_.active; }
 	unsigned RematchChoices() const { return prompt_.active ? prompt_.choices : 0; }
 	// Each side whose input declined, from the held frame that decided on it
@@ -120,6 +146,8 @@ public:
 
 private:
 	void Report(bool continued);
+	// SessionConfig for a watcher's slot: P1's stream.
+	Start WatchConfig(RollbackSession::Config* config, std::uint32_t* seed, int* delay);
 
 	struct Prompt {
 		bool active = false;
@@ -133,6 +161,10 @@ private:
 		int held = 0;
 	};
 	bool active_ = false;      // the room's battle, until its close is reported
+	bool watching_ = false;    // ...which this copy watches
+	int watchedDelay_ = -1;    // the watched game's granted delay (WatchedDelay)
+	bool watchedOwnDelays_ = false;
+	bool streamLossTold_ = false; // a watcher's stream failure was reported
 	bool matchEnded_ = false;  // its match reached its end (the result was taken)
 	Prompt prompt_;
 	unsigned declines_ = 0;    // RematchDeclines
