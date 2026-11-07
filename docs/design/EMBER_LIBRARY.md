@@ -1734,3 +1734,89 @@ The shots are in `D:\sfv-re\shots\training\final\`. As in earlier sections' shot
 - **Not run in game:** a watcher in a Practice room (it takes the same `SetPracticeGauges` path at its session's start, and the watcher checks of section 25 apply); a Practice match's game going on in place (a Practice game has no KO and no clock, so it only ends by End practice); go now while the game's pause menu is up (refused by `TrainingPaused`, by reading); the call reaching a player in SFV's own Training character select (they are not in a battle, so not called, as on SF4).
 - **The one-frame order.** `SfvTraining` follows the battle after Ember's tick in the same frame, so the runtime's call reads the previous frame's `ControlsAvailable` and `ReadPlace`: one frame later than the battle, as SF4's lab publishes its view after the battle update.
 - **The test aids.** `-sfve_mash_pad=1` (a copy plays its pad before `-sfve_mash_from`, for a test's scripted presses) and `runtraining.py`'s `perturb` of P2's vital and recovery timer: the mode keeps one pending perturbation, so the timer and the vital go in turn, each at a frame no input in flight crosses.
+
+## 28. Sets, records and rankings (2026-11-07)
+
+The maintainer: SFV Ember "pretty much up to parity with usf4 ember in all functions"; this section is sets, match records and rankings. Library `feat/sfv-rankings` (from `feat/ember-library` 7c1a97990); sfv-ember `feat/rankings` (from `main` 0914122).
+
+**What SF4 Ember has, and where SFV stands now**
+
+| SF4 Ember | Where it lives | SFV Ember |
+|---|---|---|
+| A table's set: Unlimited or first to 1-10, winner stays, loser stays or both rotate, King of the hill's winner keeping the fighter | the room model (`RoomRules.hxx`, `RoomModel`), game-neutral | Works as it is. In one battle through Instant rematch (section 19's `-rematches 3 -firstTo 3` run); across battles, a game a battle, run here (below). |
+| A member's sets won and lost in the room, on the Members card | `Member::setsWon/setsLost`, `RoomPanel` | Works as it is; the room status gains `sets`, and the across-battles run checks both copies record each set. |
+| Profile's online record (wins, losses, the recent keys) | `netplay::ProfileRecord`, `MatchResultOutbox`, the runtime | Works as it is: a room game's result counts once, in-place games by their number; checked in the public room run (status `ranking.record`). |
+| Replays › Sets: a room set of two or more games, Watch set, Pick a game | `platform/ReplaySets.hxx`, `ReplaysPanel` | SFV's listing makes room sets (two battles of the same two names within half an hour; `SfvReplaysTests`). A set's videos are behind `replayVideo` (off), and a pack only exists for a bridge's set. |
+| Public room classes: a Glicko-2 rating per Discord account, the class signed into the room ticket, shown on seats, Members, the match HUD and Profile's card | the bridge's `skill`, the helper, `NameMarks`, `MatchHud` | **Was USF4's only** (section 24: SFV rooms' games unrated, tickets without a class). Now each game has its own rating; SFV's tickets carry SFV's class, drawn as SFV's league. |
+| Rankings (Online play): the standing, Take part / Stop taking part (once a day), the board of classes | the bridge's `/v1/ranking/*`, the helper's `ranking_*`, `RankingsPanel` | **Was a live mismatch:** SFV's shell offered Rankings wherever a bridge offered `ranking`, and every request was USF4's, so an SFV player saw (and could opt out of) their USF4 standing and USF4's board. Now every request is SFV's. |
+| The website's rankings page | `server/ember-short/deploy/site/rankings.*` | Gains a Game switch and SFV's board (`/rankings-sfv.json`). |
+| The public room listing's faces | the room host's `details.fighters` | **Was RYU for everyone** (SFV Ember sets no main). SFV's room host now lists each member's shared pick, else none. |
+| Organised matches and their records: partner and organiser matches (BluMint, Challonge, start.gg, the desk), lobby standings, `GET /v1/players/{id}/record`, tournament sets and set packs, match links | the bridge's matches, lobbies, tournaments; the client's tournament flow | Not for SFV; see "What does not apply". |
+| The replay archive's classes (archive.embernetplay.link) | `ranking::public_classes` | USF4's: the archive holds USF4 replays only (section 26). |
+
+### Rankings per game: the bridge (migration 058)
+
+The rating, the sitting count, the choice to take part and the board's listing are now each game's (`ember_protocol::rooms::GAMES`: `usf4`, `sfv`):
+- `058_ranking_games.sql` rebuilds `skill_ratings`, `rated_pairs` and `ranking_choices` with `game` at the head of their keys, `DEFAULT 'usf4'`, copying every row as USF4's. A query or insert that names no game (an operator's script, an older test) reads and writes USF4's rows as before. `rated_games` is already per room, and a room has one game.
+- `skill::record_games` rates a room's reported games in the rating of the room's game (`rooms.game`, any game of `GAMES`), never another's; `show`, `badge_of`, `load`, `store`, `rated_account` and `sitting_weight` take the game. Ended sittings are forgotten across games, as before.
+- The ticket carries the class of the room's game (the `is_default_game` gate of section 24 is gone).
+- `GET /v1/ranking/me`, `PUT /v1/ranking/me`, `GET /v1/ranking/board` and `GET /v1/ranking/board/public` take `?game=`; without it they are USF4's, so every existing caller (SF4 Ember, the live website) is answered byte for byte as before. An unknown game is `invalid_request`. The public board's 15 s cache is kept per game, so one game's board is never answered for the other.
+- Taking part, its once-a-day rule and the name and flag the board lists are each game's: stopping in SFV leaves USF4 as it was. (the maintainer's call; the alternative is one choice per Discord account for every game.)
+- The rules, the weights, the ten bands' floors and the developer mark are the same in every game. The floors are USF4's until calibrated; SFV's need their own calibration before the maintainer turns classes on for SFV players, and `rooms.skill_badges` is one switch for both.
+- `ranking::public_classes` (the archive) names USF4's games explicitly.
+
+### The helper and the runtime
+
+- The helper's `ranking_standing`, `ranking_choose` and `ranking_board` carry an optional `game` (as `room_list`, `room_create` and `room_ticket` do since section 24), written only when it is not `usf4`; it checks the key and adds `?game=` to the bridge path only for another game, so SF4 Ember's paths are `/v1/ranking/me` and `/v1/ranking/board` exactly as before.
+- The runtime's `WithGame` (moved from the public rooms file into `internal`) is applied to every ranking request: SFV Ember's name `sfv`, SF4 Ember's name nothing.
+
+### SFV's ranks: SFV's own leagues, from the game
+
+USF4's classes are USF4's online classes drawn with the game's emblems (`Ranking.emz`). SFV's equivalent is its league ladder, whose icons are in the install: the pak indexes list `/Game/CommonAsset/LeagueIcon/LI_rookie` to `LI_warlord` (20 leagues and `LI_dummy`; only the indexes were read, no asset). The bridge rates every game in the same ten bands, so the library's change is a product table:
+- `ProductIdentity.hxx`: `RankingClass` (`emblem`, the game's `name`, or a shared `msgid`) and `Branding::rankingClasses` (`RankingClassCount` = 10, band 1 first; none is USF4's, so SF4 Ember is unchanged). `NameMarks` takes the class's name and emblem from the product's table or from USF4's own, which is the old table moved verbatim (`static_assert` that the band counts agree). Where a product's emblem is missing from the install, the class is its name in a pill, faint as the emblem would be; one of USF4's still shows nothing until its emblem loads.
+- SFV Ember's table (`SfvProduct.cxx`): its ten tiers without the Super and Ultra steps, Rookie, Bronze, Silver, Gold, Platinum, Diamond, Master, Grand Master, Ultimate Grand Master, Warlord, each with its `LI_` icon (the game's own spelling, `LI_ultimet_grand_master`). The 1500 every player starts at is the floor of band 5, Platinum, as it is the floor of B in USF4. The names are the leagues' English names in every language, as SF4 Ember shows USF4's letters. Which ten of SFV's twenty leagues stand for the bands is the maintainer's call.
+- `SfvArt::LeagueImage` loads a league icon through section 15's path (`StaticLoadObject` with UTexture2D's class at the main menu, the D3D11 texture checked and viewed); it takes only a name in the product's table, so nothing else is ever loaded by it. `SelectionArt::RankingEmblem` on SFV is that.
+- No new text in the shared catalog, and no SF4-visible text changed. The shared words SFV now shows with its leagues: the tooltip "Class {0}" ("Class Gold"), Rankings' "PLAYERS BY CLASS" and "How classes work"; the maintainer may want SFV overlay wording ("League {0}").
+
+### The listing's faces
+
+`roomhost::DetailsOf` takes which fighter stands for a member (`ListedFaces`: Mains or Picks), and each host build says which beside `PrepareCatalog` (`CatalogFaces`): SF4's lists mains (unchanged), SFV's lists each member's shared pick (`Member::fighter`), else 255 (no face), as SFV's own room shows them (`roomFacesArePicks`, section 20). SFV's ids are under 45, inside the bridge's `FIGHTER_LIMIT` of 64, so the bridge needs no change for them; the website's SFV cards still draw no faces (the face sheet is USF4's).
+
+### The website
+
+`rankings.html` and `rankings.js` gain the Game buttons the rooms page has (`?game=sfv` in the address, the view's filters kept in the fragment): Street Fighter V's board comes from `/rankings-sfv.json` (a new nginx location, its own cache key, `/v1/ranking/board/public?game=sfv`), named in SFV's leagues with the chart's short labels (R, B, S, G, P, D, M, GM, UGM, W). A board that arrives after the player switched games is dropped and the shown game's is fetched. Two lines are per game (`data-game-text`): the lead and the first step of "Getting on the board". New site wording for the maintainer: "Players by their league in SFV Ember's public rooms, from Rookie to Warlord. ..." and "In SFV Ember, open Online play, Rankings and connect Discord if it asks. Your league belongs to your Discord account and is kept apart from your class in Ultra Street Fighter IV."
+
+### What does not apply to SFV, and why
+
+- **Organised matches and their records.** The bridge's matches are USF4's by contract: `CreateMatch::check` refuses any `game` but `usf4` (`protocol/src/matches.rs`), the capabilities list `games: ["usf4"]`, lobbies and tournaments carry `usf4`, and the player record (`/v1/players/{id}/record`) and lobby standings are computed from those matches. SFV Ember registers no `ember-sfv://` handler (no match links), and its build would be refused a USF4 match's room. Bringing SFV in needs a game on matches, partner contracts that name it and the client's tournament flow on SFV: a separate piece of work and the maintainer's call with the partners.
+- **The Ember ID screen's match list** is the same library screen on SFV; a platform that assigned a (USF4) match to an SFV Ember ID would list it there. No platform links SFV Ember IDs today.
+- **A set's videos and packs** (Replays › Sets): `replayVideo` is off on SFV (section 26), and a pack is a tournament set's.
+- **Archive classes**: the archive is USF4's.
+
+### Tests and tools
+
+- Bridge (`server/ember`): `db.rs` `ratings_sittings_and_choices_from_before_games_existed_are_sf4s` (058 copies every row as USF4's, a row written without a game is USF4's, each game keeps its own row); `tests/room_games.rs` `games_in_an_sfv_room_are_rated_in_sfvs_rating_alone` (both players move in SFV's rating, a game reported again counts once, the same players' SF4 game starts SF4's rating from scratch and leaves SFV's, the sittings are per game) and `a_room_admits_only_its_own_games_build_and_each_ticket_carries_its_games_class` (placing in SFV and B+ in USF4 at once, then each game's settled class on its own room's ticket; none when not asked); `tests/ranking.rs` `each_game_has_its_own_standing_choice_and_board` (each game's listing, `game=usf4` said out loud, stopping in SFV leaves SF4 free to change today, each board and each public board, cached apart; an unknown game refused on every route). `tests/archive.rs`' seed now names the new key.
+- Helper (`rust/sf4-net`): `a_game_other_than_sf4s_is_named_and_sf4s_never_is` (the requests round-trip with `game`, `usf4` is never written, SF4's paths exactly as before, an unknown key refused before any call).
+- Library C++: `ProductRules`/`ProductRulesOn` check `ClassName` under USF4's table and under a product's (a game name and a catalog msgid); `SessionServerModeration` checks `DetailsOf` with Picks (shared pick, none, past the roster) and that Mains is unchanged.
+- sfv-ember: `EmberAdapterTests` (SFV's ten ranks and icons, `ClassName` names them; `RankingEmblem` waits for a known league icon and refuses `class_B.dds`, `LI_dummy`, `LI_super_gold`, paths), `RoomHostCatalogTests` (`CatalogFaces` is Picks: shared picks and 255, while Mains would list RYU for all), `SfvReplaysTests` (two battles of the same players 600 s apart are one room set on Replays › Sets).
+- The pipe: `ranking standing|board|take-part <country|-> <name>|stop` and the status field `ranking` (standing, board in league names, the last choice, each room member's mark, the online record); the room status's `sets` (this member's sets won and lost).
+- `tools/runpublic.ps1 -ranked` (its header says what it checks) with `tools/bridgedb.py`, which seeds Discord accounts and ratings only into a test bridge's `bridge\bridge.sqlite3` and reads it with SELECTs only; it also checks the listing's faces on every run. `tools/runroom.ps1 -firstTo N` without `-rematches`: a set played a battle a game.
+
+### Evidence
+
+(Filled from the runs below.)
+
+### Left, and the maintainer's calls
+
+- **Per-game taking part** (chosen here): stopping in SFV leaves USF4 as it was, and each game lists the name its game sends. The alternative is one choice per Discord account.
+- **Which ten of SFV's twenty leagues** stand for the bands (here the ten tiers without Super and Ultra), and SFV's band floors: the floors are USF4's, and `rooms.skill_badges` is one switch for both games; SFV's ratings start counting when the bridge is deployed, whether classes show or not.
+- **Words.** On SFV the shared tooltip reads "Class Gold", Rankings' header "PLAYERS BY CLASS" and its explanations say "class"; SFV's overlay could say "League" (no SF4 text changes either way). The league names are English in every language. The site's two new lines (above).
+- **Organised matches for SFV** (partners, desk, records, links): needs a game on matches and the maintainer's word with the partners.
+- **The website's SFV room cards** still draw no faces: SFV's faces are the game's textures, which the site does not have (the maintainer's "no generated assets").
+
+### Deploy steps (for the maintainer's yes; nothing here was done)
+
+1. **Bridge** (staging, then production), first: migration 058 rebuilds three small tables (`skill_ratings` about a hundred rows) in one transaction. Every existing request is answered as before. The maintainer's admin script `ranks-list.py` should filter `game = 'usf4'` (it would also list SFV rows once there are some); anything that writes these tables with `ON CONFLICT (discord_user_id)` must use `(game, discord_user_id)`.
+2. **SFV's room host** (Linux, as section 24's steps 3-4): `CatalogFaces` is compiled in, so the faces change needs the new host; SF4's room host (`sf4e-room-host`) is rebuilt only with the next SF4 release (its listing is unchanged).
+3. **Website**, after the bridge: `rankings.html`, `assets/rankings.js`, `assets/site.css` and the `/rankings-sfv.json` location (setup.sh's check list names it). Checked locally against fixed boards, not with `nginx -t`.
+4. **SFV Ember's release** with this build: its Rankings is SFV's from then; against an older bridge it would show USF4's standing and board (the bridge ignores `?game=`), so the bridge goes first.
