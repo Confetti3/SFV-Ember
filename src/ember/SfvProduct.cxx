@@ -38,7 +38,7 @@ msgid "about.version_line"
 msgstr "SFV Ember {0} · {1}"
 
 msgid "brand.subtitle"
-msgstr "SFV  /  PRIVATE ROOMS & ROLLBACK NETPLAY"
+msgstr "SFV  /  ROOMS & ROLLBACK NETPLAY"
 
 msgid "about.ember_detail"
 msgstr "Unofficial Street Fighter V mod, built on Ember (based on sf4e by Anthony Danducci). Iroh / QUIC, GGPO, Dear ImGui and Inter typography. Build: {0}"

@@ -131,7 +131,7 @@ try {
 		Start-Sleep 2
 		"copy 1's shell: " + ((Status 1).shell | ConvertTo-Json -Compress)
 		Shot 'public-list'
-		Seek 1 "room:$room" @('DOWN') 16
+		Seek 1 "pr-room:$room" @('DOWN') 16
 		Shot 'public-list-focus'
 		Press 1 'A' | Out-Null
 		WaitFor 'both copies in the room' 90 { $s0 = Status 0; $s1 = Status 1; $s0.room.room -eq 'joined' -and $s1.room.room -eq 'joined' -and $s0.room.members -eq 2 -and $s1.room.members -eq 2 }
