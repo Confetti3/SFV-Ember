@@ -290,6 +290,15 @@ constexpr CodeSite kCostumeName{"CostumeName", 0x557870,
 // screen names a fighter so (rva 0x6DD620: PersonalData+80, "charaName").
 constexpr CodeSite kTextToString{"TextToString", 0x116E270,
 	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x48, 0x83, 0x79, 0x10, 0x00, 0x48, 0x8B, 0x01, 0x48, 0x8B}};
+// FText* CreateText(FText* out, const TCHAR* source, const TCHAR* textNamespace,
+// const TCHAR* key): a text literal (NSLOCTEXT), looked up in the game's own
+// localization data by namespace and key, the source string where it has
+// none. The league names are built so (rva 0x6BDE20: "KW",
+// "ID_CMN_LEAGUE_0000" as both source and key, then TextToString), and so are
+// SFV Ember's (EMBER_LIBRARY.md section 28). The temporary FStrings it builds
+// are its own.
+constexpr CodeSite kCreateText{"CreateText", 0x2DBB50,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x48, 0x89, 0x7C, 0x24, 0x18, 0x55}};
 
 // The game's pictures (GameArt).
 // UClass* Texture2DClass(const TCHAR* package): UTexture2D's class, cached at
@@ -404,7 +413,7 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
 	kSpecStages, kMainMenuClass, kSetPlayerParam, kRequestExit, kStageName, kSpecFighters, kSpecCostumes, kPlayableCostumes,
-	kSpecColours, kCostumeName, kTextToString, kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke,
+	kSpecColours, kCostumeName, kTextToString, kCreateText, kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke,
 	kBattleSetupClass, kOwnedFighters, kOwnedCostumes, kOwnedColours, kOwnedStages, kLoggedIn};
 
 namespace versus {

@@ -15,6 +15,9 @@
 
 #include "common/ProductIdentity.hxx"
 #include "EmbeddedBrand.hxx"
+#include "SfvRankNames.hxx"
+
+#include <atomic>
 
 namespace {
 
@@ -245,8 +248,12 @@ constexpr ember::BattleHud SfvBattleHud = {
 // and draws each band as one of SFV's ten league tiers (its Super and Ultra
 // steps left out): Rookie to Warlord, with the game's league icons
 // (/Game/CommonAsset/LeagueIcon, read from the install as the fighters' faces
-// are, SfvArt). The names are the leagues' English names, which SFV Ember
-// shows in every language, as SF4 Ember shows USF4's letters (section 28).
+// are, SfvArt), drawn at their own shape. Their names are the game's own in
+// the player's language once the game has given them (ranks::Name, read at
+// the main menu); these English names stand in until then. The maintainer's decision:
+// "The ranks for sfv will follow the ranks from the game visually"
+// (section 28).
+static_assert(sfve::ranks::kBandLeague.size() == ember::RankingClassCount, "a league for every band");
 constexpr ember::RankingClass SfvRanks[ember::RankingClassCount] = {
 	{"LI_rookie", "Rookie", nullptr},
 	{"LI_bronze", "Bronze", nullptr},
@@ -283,6 +290,8 @@ constexpr ember::ProductIdentity SfvEmber = {
 		true,
 		// SFV's leagues for the public room classes (section 28).
 		SfvRanks,
+		// Their names as the game gives them.
+		sfve::ranks::Name,
 	},
 	L"SFVEmber",
 	// Settings and logs under %APPDATA%\SFVEmber, as SF4 Ember's are under
@@ -332,3 +341,27 @@ constexpr ember::ProductIdentity SfvEmber = {
 namespace ember {
 const ProductIdentity& Product() { return SfvEmber; }
 } // namespace ember
+
+namespace sfve::ranks {
+
+namespace {
+// Written once, before `s_published` is set, and never again.
+std::array<std::string, 10> s_names;
+std::atomic<bool> s_published{false};
+std::atomic<bool> s_claimed{false};
+} // namespace
+
+const char* Name(int band)
+{
+	if (band < 1 || band > (int)s_names.size() || !s_published.load(std::memory_order_acquire)) return "";
+	return s_names[(size_t)band - 1].c_str();
+}
+
+void Publish(const std::array<std::string, 10>& names)
+{
+	if (s_claimed.exchange(true)) return;
+	s_names = names;
+	s_published.store(true, std::memory_order_release);
+}
+
+} // namespace sfve::ranks

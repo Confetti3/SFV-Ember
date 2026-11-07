@@ -11,6 +11,7 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
 #include "ember/SfvPick.hxx"
+#include "ember/SfvRankNames.hxx"
 #include "ember/SfvReplays.hxx"
 #include "ember/SfvTraining.hxx"
 #include "ember/SfvVerification.hxx"
@@ -33,6 +34,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -830,6 +832,13 @@ TEST_CASE("SFV Ember's public room classes are SFV's ten league tiers, each with
 	}
 	CHECK(sf4e::ui::ClassName(0).empty());
 	CHECK(sf4e::ui::ClassName(ember::RankingClassCount + 1).empty());
+	// The game's own names come from the game at the main menu (none runs
+	// in a test): until then the English names stand, and the bands map to
+	// the game's leagues 0, 1, 4, ... 19 (ID_CMN_LEAGUE_00NN).
+	CHECK(ember::Product().branding.rankingClassName == &sfve::ranks::Name);
+	for (int band = 0; band <= ember::RankingClassCount + 1; band++) CHECK(std::string(sfve::ranks::Name(band)).empty());
+	CHECK(sfve::ranks::kBandLeague == std::array<int, 10>{0, 1, 4, 7, 10, 13, 16, 17, 18, 19});
+	CHECK(sfve::ranks::kBandLeague.back() == sfve::ranks::kLeagues - 1);
 }
 
 TEST_CASE("the game offers watching, replays and Training, and answers as no battle while none is in play")

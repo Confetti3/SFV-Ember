@@ -87,4 +87,12 @@ ContentLists ReadContentLists();
 // does not allow becomes owned. Counted in `ownership.markedUnowned`.
 void MarkUnowned(ContentLists& lists, const std::vector<UnownedContent>& marks);
 
+// Game thread, at the main menu. A text the game's own localization data
+// holds, by namespace and key (sfv::kCreateText, as the game builds its
+// literals), as the game shows it in its current language, UTF-8; empty
+// where the data has no such key (the game would show the key itself). Each
+// call keeps its FText for the process's life, as the game keeps its own, so
+// ask once per key.
+std::string LocalizedText(const wchar_t* textNamespace, const wchar_t* key);
+
 } // namespace sfve::mod

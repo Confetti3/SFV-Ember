@@ -1,7 +1,9 @@
 #include "ember/SfvArt.hxx"
 
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvRankNames.hxx"
 #include "mod/GameArt.hxx"
+#include "mod/GameContent.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
@@ -11,7 +13,10 @@
 
 #include <d3d11.h>
 
+#include <array>
+#include <cwchar>
 #include <deque>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <string>
@@ -205,11 +210,36 @@ std::optional<std::pair<std::uint32_t, std::uint32_t>> Swatch(int fighter, int c
 	return std::nullopt;
 }
 
+// Game thread at the main menu, once: SFV's league names in the game's
+// language (ID_CMN_LEAGUE_0000 to _0019, namespace "KW", as the game builds
+// them, rva 0x6BDE20), logged, and the ten bands' published for the shell
+// (ranks::Name). A league the game has no text for keeps its English name.
+void ReadLeagueNames()
+{
+	static bool read = false;
+	if (read) return;
+	read = true;
+	std::array<std::string, ranks::kLeagues> leagues;
+	std::string logged;
+	for (int league = 0; league < ranks::kLeagues; league++) {
+		wchar_t key[32];
+		swprintf(key, std::size(key), L"ID_CMN_LEAGUE_%04d", league);
+		std::string& name = leagues[(size_t)league];
+		name = mod::LocalizedText(L"KW", key);
+		logged += (league ? ", " : "") + std::to_string(league) + " " + (name.empty() ? std::string("(none)") : name);
+	}
+	mod::Log("ranks: SFV's leagues as the game names them: %s", logged.c_str());
+	std::array<std::string, 10> bands;
+	for (size_t band = 0; band < bands.size(); band++) bands[band] = leagues[(size_t)ranks::kBandLeague[band]];
+	ranks::Publish(bands);
+}
+
 void InstallSfvArt()
 {
 	mod::RunEachGameFrame([] {
 		// Loading is synchronous: never while a battle runs.
 		if (!AtMainMenu()) return true;
+		ReadLeagueNames();
 		PumpPictures();
 		PumpSwatches();
 		return true;

@@ -196,7 +196,9 @@ try {
 		WaitFor 'the classes in both rooms' 30 {
 			$seen = foreach ($i in 0, 1) {
 				$badges = @((Status $i).ranking.members | ForEach-Object { $_.badge })
-				@($badges | Where-Object { $_.kind -eq 'class' -and $_.band -eq 8 -and $_.settled -and $_.name -eq 'Grand Master' }).Count -eq 1 -and
+				# Its name is the game's own for that league (Grand Master in
+				# English), or the English one until the game gave it.
+				@($badges | Where-Object { $_.kind -eq 'class' -and $_.band -eq 8 -and $_.settled -and $_.name }).Count -eq 1 -and
 					@($badges | Where-Object { $_.kind -eq 'placing' }).Count -eq 1
 			}
 			-not ($seen -contains $false)
@@ -268,8 +270,7 @@ try {
 		$standing = (Status 0).ranking
 		if ($standing.choiceFailure) { throw "copy 0's choice was refused: $($standing.choiceFailure)" }
 		"copy 0's standing: " + ($standing.standing | ConvertTo-Json -Compress -Depth 4)
-		$leagues = 'Rookie', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Master', 'Grand Master', 'Ultimate Grand Master', 'Warlord'
-		if ($standing.standing.kind -ne 'ranked' -or $standing.standing.badge.kind -ne 'class' -or $leagues -notcontains $standing.standing.badge.name -or $standing.standing.name -ne 'SFV 1') {
+		if ($standing.standing.kind -ne 'ranked' -or $standing.standing.badge.kind -ne 'class' -or !$standing.standing.badge.name -or $standing.standing.name -ne 'SFV 1') {
 			throw "copy 0's standing is not a listed SFV league"
 		}
 		# Copy 1 reads SFV's board: copy 0 on it, under SFV's league name.
@@ -305,8 +306,9 @@ try {
 }
 foreach ($i in 0, 1) {
 	try { "copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress) } catch { "copy $i is not answering" }
-	# SFV's league icons as the game loaded them, or why not (SfvArt).
-	if ($ranked -and (Test-Path $logOf[$i])) { Select-String -Path $logOf[$i] -Pattern 'art: /Game/CommonAsset/LeagueIcon/' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
+	# SFV's league icons as the game loaded them, or why not, and its league
+	# names as the game gave them (SfvArt).
+	if ($ranked -and (Test-Path $logOf[$i])) { Select-String -Path $logOf[$i] -Pattern "art: /Game/CommonAsset/LeagueIcon/|ranks: SFV's leagues" | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
 	if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern 'desync|mismatch' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
 }
 if (!$keep) { python -I tools\sfve.py kill | Out-Null }

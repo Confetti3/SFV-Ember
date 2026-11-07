@@ -337,4 +337,22 @@ void MarkUnowned(ContentLists& lists, const std::vector<UnownedContent>& marks)
 	}
 }
 
+std::string LocalizedText(const wchar_t* textNamespace, const wchar_t* key)
+{
+	if (!textNamespace || !key || !*key) return {};
+	// An FText is 24 bytes (its shared data's reference and flags); the
+	// buffer is zeroed and larger. It is never released: the game keeps the
+	// texts it builds this way for good (rva 0x6BDE20), and the few Ember
+	// asks for are asked once.
+	auto* text = new uint8_t[64]{};
+	using CreateTextFn = void* (*)(void* out, const wchar_t* source, const wchar_t* textNamespace, const wchar_t* key);
+	At<CreateTextFn>(sfv::kCreateText)(text, key, textNamespace, key);
+	const GameString* shown = At<TextToStringFn>(sfv::kTextToString)(text);
+	const std::string out = shown ? Utf8(*shown) : std::string();
+	// Without the key in the data the text is its source, the key itself.
+	std::string asKey;
+	for (const wchar_t* c = key; *c; c++) asKey += static_cast<char>(*c & 0x7F);
+	return out == asKey ? std::string() : out;
+}
+
 } // namespace sfve::mod
