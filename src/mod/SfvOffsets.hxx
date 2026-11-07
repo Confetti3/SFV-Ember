@@ -343,12 +343,13 @@ constexpr CodeSite kHudInvoke{"HudInvoke", 0x73D600,
 // KWBattleSetupCostumeColor: +0 FString fighter code, +16 costume, +20
 // colour), less a set at +104, each entry also passing the filter object at
 // +280 when one is installed (its vtable +8; a BattleSetupState's constructor
-// installs one, rva 0x5A4D50 and 0x574510, built from a list of the battle
-// settings' own). With +96 clear the costume and colour lists are the
+// installs one, rva 0x5A4D50 and 0x574510, from a list it copies from the
+// object rva 0x141E6A740 returns, its +40). With +96 clear the costume and colour lists are the
 // spec's and the install's alone, and the fighters those of the asset's
 // select-grid list at +48 that are installed. None of these paths calls
-// Steam; the only Steam licence query in the exe (rva 0xE112C0,
-// BIsDlcInstalled of app 475230) is reached from three menu screens (rva
+// Steam; the only Steam licence query in the exe (rva 0xE112C0: ISteamApps
+// vtable +0x38 for app 475230, BIsDlcInstalled by the layout of the shipped
+// Steamworks, Steamv130) is reached from three menu screens (rva
 // 0xAAC150, 0xAADDE0, 0xAC6310), not from these.
 //
 // UClass* BattleSetupClass(const TCHAR* package): the asset's class, cached at
@@ -359,7 +360,8 @@ constexpr CodeSite kBattleSetupClass{"BattleSetupClass", 0xC26230,
 // kSelectableFighters (installed) that the asset allows (rva 0x55A9B0: its
 // list at +48 with +96 clear, else the restriction list); Random and ELEVEN
 // appended on request. The check takes a fighter in this list (rva
-// 0x56AF20), or one of the online free trial's (rva 0x56B3A0, 0x565F20).
+// 0x56AF20), or one of a login-gated list's (rva 0x56B3A0, 0x565F20: lists
+// held by the game instance's +144 object, read only with kLoggedIn).
 constexpr CodeSite kOwnedFighters{"OwnedFighters", 0x54E8E0,
 	{0x44, 0x88, 0x4C, 0x24, 0x20, 0x55, 0x53, 0x56, 0x57, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48}};
 // bool OwnedCostumes(Setup*, const FString* code, TArray<int>* out):
@@ -377,8 +379,10 @@ constexpr CodeSite kOwnedColours{"OwnedColours", 0x55ABA0,
 // stage test (rva 0x56B920).
 constexpr CodeSite kOwnedStages{"OwnedStages", 0x550DA0,
 	{0x48, 0x89, 0x5C, 0x24, 0x20, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x48, 0x83, 0xEC}};
-// bool LoggedIn(): the online identity's login status for user 0 is 2
-// (vtable +288 of the interface from rva 0x73BEC0). The free trial's lists
+// bool LoggedIn(): the default online subsystem (rva 0x73BEC0, from the
+// "OnlineSubsystem" module), its interface from vtable +80, reports status 2
+// from vtable +288 for the local user (UE4's ELoginStatus::LoggedIn is 2).
+// Offline it does not (GameContent: "logged in 0"). The login-gated lists
 // and the shop's fighter list are read only then (rva 0x565F20, 0x551E50).
 constexpr CodeSite kLoggedIn{"LoggedIn", 0x742A20,
 	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x30, 0xE8, 0x91, 0x94, 0xFF, 0xFF, 0x48}};

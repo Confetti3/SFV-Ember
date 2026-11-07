@@ -103,6 +103,25 @@ bool Refuse(const std::string& why)
 	return false;
 }
 
+// What this copy's player may not pick, as the catalog was filled with it
+// (EMBER_LIBRARY.md section 23): the game's answer and -sfve_unowned's marks.
+void LogOwnership(const mod::ContentLists& lists, bool gate)
+{
+	int fighters = 0, costumes = 0, colours = 0;
+	for (const mod::FighterContent& fighter : lists.fighters) {
+		fighters += !fighter.owned;
+		for (const mod::CostumeContent& costume : fighter.costumes) {
+			costumes += !costume.owned;
+			colours += (int)(costume.colours.size() - costume.ownedColours.size());
+		}
+	}
+	const mod::OwnershipSource& source = lists.ownership;
+	mod::Log("ember: ownership gate %s; the game's setup restricted %d (%d entries), filter %d, logged in %d; "
+		"%d marked unowned by -sfve_unowned; not owned: %d fighters, %d costumes, %d colours, %zu of %zu stages",
+		gate ? "on" : "off (development)", source.restricted, source.restrictionEntries, source.filter, source.loggedIn,
+		source.markedUnowned, fighters, costumes, colours, lists.stages.size() - lists.ownedStages.size(), lists.stages.size());
+}
+
 // The first main-menu frames: the catalog, then the helper and the runtime.
 // False once the runtime will not start.
 bool TryStart(const HostSettings& settings, ember::GameTick& battle)
@@ -123,6 +142,7 @@ bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 	const size_t named = std::count_if(lists.stageNames.begin(), lists.stageNames.end(), [](const std::string& n) { return !n.empty(); });
 	mod::Log("ember: catalog of %d fighters and %zu stages (%zu named by the game; read in %llu ms), build %s",
 		ember::Catalog().fighterCount, lists.stages.size(), named, GetTickCount64() - readStarted, MatchBuildId().c_str());
+	LogOwnership(lists, settings.ownershipGate);
 
 	RouteRuntimeLog();
 	// Kept for the process's life: its job ends the helper with the process.
