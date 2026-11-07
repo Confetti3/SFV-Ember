@@ -1431,11 +1431,11 @@ So an SF4 client never lists an SFV room (other build, and no `game` is "usf4"),
    bash sfv/scripts/build-room-host-linux.sh lib ./sfve-room-host
    (cd lib/rust/sf4-net && cargo build --profile server --locked -j 4)   # the helper, without selftest
    ```
-   The nginx location was checked by eye, not with `nginx -t`. Check it: `ldd ./sfve-room-host` lists libc alone, and a configuration line with `"build_id":"sfv-ember/13173604/0.2/8dafe602f7615d90","game":"sfv"` and a missing helper closes `helper_unavailable` (the catalog check passed), while another build closes `other_build`.
+   Check it: `ldd ./sfve-room-host` lists libc alone, and a configuration line with `"build_id":"sfv-ember/13173604/0.2/8dafe602f7615d90","game":"sfv"` and a missing helper closes `helper_unavailable` (the catalog check passed), while another build closes `other_build`.
 4. **Install it under the supervisor.** `deploy/setup.sh` cannot take this build yet: its build ids are folder names matching `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` (no `/`), it expects a file named `sf4e-room-host`, and it rewrites each staged entry as `{room_host, helper}`, which would drop `"game": "sfv"`. Two ways, the maintainer's choice:
    - (a) Teach setup.sh a game and a config key apart from the folder name (for example `builds/sfv-13173604-8dafe602f7615d90/` holding `build_id` and `game` files beside the binaries), with `deploy/test-setup.sh` cases; then stage and run it as for SF4.
    - (b) By hand, as root: copy both binaries to `/usr/local/lib/ember-rooms/builds/sfv-13173604-8dafe602f7615d90/`, add to `/etc/ember-rooms/config.json` `"builds": { "sfv-ember/13173604/0.2/8dafe602f7615d90": { "room_host": ".../sfve-room-host", "helper": ".../sf4-net", "game": "sfv" } }`, and `systemctl reload ember-rooms` (SIGHUP applies `builds` without touching rooms). Until (a) lands, a later setup.sh run must be checked not to rewrite or prune that entry.
-5. **Website** (`server/ember-short/deploy`): `rooms.html`, `assets/rooms.js` and the `/rooms-sfv.json` location (its own 5 s cache key, `rooms-sfv`), after the bridge.
+5. **Website** (`server/ember-short/deploy`): `rooms.html`, `assets/rooms.js` and the `/rooms-sfv.json` location (its own 5 s cache key, `rooms-sfv`), after the bridge. The location was checked by eye, not with `nginx -t`.
 6. **SFV Ember's players** trust the bridge (Linked accounts, Look up `https://bridge.embernetplay.link`, Trust) or press Public rooms' one-press setup, which finds Ember's own service; a release of SFV Ember with this build is needed for any of it.
 
 **Left**
