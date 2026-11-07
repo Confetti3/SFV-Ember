@@ -10,7 +10,8 @@
 // helper itself (ember/EmberHost.cxx), so the launcher hands it none.
 //
 // Test copies: --instance N (1-3) starts copy N of a two-copy test, with its
-// own launcher log (launcher.N.log) and its own single-instance lock, so the
+// own launcher log (launcher.instanceN.log; launcher.N.log are the log's own
+// rotations) and its own single-instance lock, so the
 // one-launcher-per-user rule for instance 0, what players run, is unchanged.
 // --game-option passes one test option to the game: -sfve_* or the window's
 // -windowed, -ResX=N and -ResY=N, nothing else.
@@ -90,7 +91,7 @@ void AddOptions(CLI::App& app)
 std::wstring LauncherLogName()
 {
 	const int instance = InstanceFromCommandLine();
-	return instance == 0 ? std::wstring(Product().launcherLog) : L"launcher." + std::to_wstring(instance) + L".log";
+	return instance == 0 ? std::wstring(Product().launcherLog) : L"launcher.instance" + std::to_wstring(instance) + L".log";
 }
 
 std::wstring InstanceScope()
