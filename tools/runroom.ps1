@@ -235,8 +235,10 @@ try {
       $mode = (Status $i).battle.mode
       "copy ${i}: " + (Select-String -Path $logOf[$i] -Pattern 'netplay: match result' | Select-Object -Last 1).Line.Substring(24) + " rollbacks $($mode.rollbacks), longest $($mode.longestRollback)"
     }
-    if ($watched -and -not ($watcherLeft -and $watchedGames.Count -eq 1 -and $watchedGames[0] -eq $game - 1)) {
-      "copy 2: " + (Select-String -Path $logOf[2] -Pattern 'netplay: match result' | Select-Object -Last 1).Line.Substring(24)
+    # The watcher's result line, when it saw the game's end (not after a Stop watching).
+    $seen = if ($watched) { Select-String -Path $logOf[2] -Pattern 'netplay: match result' | Select-Object -Last 1 }
+    if ($seen -and -not ($watcherLeft -and $watchedGames.Count -eq 1 -and $watchedGames[0] -eq $game - 1)) {
+      "copy 2: " + $seen.Line.Substring(24)
     }
   }
   if ($watchers -and -not $watchedGames.Count) { throw 'copy 2 watched no game' }
