@@ -140,9 +140,11 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 		std::move(costumes), pick.pick.costume));
 	rows.push_back(StepRow(kColour, "selection.color_row", ColourName(pick.pick.color), adjusts, editable, std::move(colours),
 		pick.pick.color));
-	rows.push_back(StepRow(kStage, "selection.stage", StageName(pick.stage),
-		!editable ? "selection.locked_detail" : stageEditable ? "selection.p1_stage" : "selection.only_p1_stage",
-		editable && stageEditable, std::move(stages), pick.stage));
+	if (!dummy_) {
+		rows.push_back(StepRow(kStage, "selection.stage", StageName(pick.stage),
+			!editable ? "selection.locked_detail" : stageEditable ? "selection.p1_stage" : "selection.only_p1_stage",
+			editable && stageEditable, std::move(stages), pick.stage));
+	}
 	rows.push_back(sf4e::ui::Row(kDone, loc::T("keyboard.done"), loc::T("selection.status_adjust")));
 	return rows;
 }
@@ -197,11 +199,12 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 												   : "";
 		if (!openOn_.empty()) nav.Prefer(openOn_);
 	}
-	menu_.rootName = loc::T("screen.selection");
+	const char* title = loc::T(dummy_ ? "training.dummy" : "screen.selection");
+	menu_.rootName = title;
 	menu_.exitName = embedded.exitName;
 	menu_.shortcutHints = embedded.shortcutHints;
-	PlayerPick pick = CurrentPick();
-	const std::vector<MenuEntry> rows = Rows(pick, editable, stageEditable);
+	PlayerPick pick = dummy_ ? CurrentDummy() : CurrentPick();
+	const std::vector<MenuEntry> rows = Rows(pick, editable, stageEditable && !dummy_);
 	const char* status = loc::T(editable ? "selection.status_adjust" : "selection.locked_detail");
 	// The pane beside the rows is the pick's preview, as wide as the fighter's
 	// banner. The choice dialog draws an option's detail under its list,
@@ -211,12 +214,13 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	menu_.paneWidth = kBannerWidth;
 	const std::string note = FocusedChoiceNote(rows);
 	const sf4e::ui::GameMenu::Detail preview = [&pick, &note](const std::string& focus) { DrawPreview(pick, focus, note); };
-	const MenuAction action = menu_.Draw(loc::T("screen.selection"), rows, error.empty() ? status : error.c_str(), preview, 1,
+	const MenuAction action = menu_.Draw(title, rows, error.empty() ? status : error.c_str(), preview, 1,
 		{}, {}, false, 100, error.empty() ? sf4e::ui::Tone::Neutral : sf4e::ui::Tone::Error);
 	if (action.kind == MenuAction::Close || action.kind == MenuAction::Shortcut) sf4e::ui::ForwardMenuAction(action);
 	if (action.kind == MenuAction::Activate && action.id == kDone) sf4e::ui::ForwardMenuAction({MenuAction::Close});
-	if (!editable || (action.id == kStage && !stageEditable) || !Apply(action, pick)) return;
-	SetPick(pick);
+	if (!editable || (action.id == kStage && (!stageEditable || dummy_)) || !Apply(action, pick)) return;
+	if (dummy_) SetDummy(pick);
+	else SetPick(pick);
 	// Opened for this one change, a choice made is it: back where it came from.
 	if (action.kind == MenuAction::Chosen && action.id == openOn_) sf4e::ui::ForwardMenuAction({MenuAction::Close});
 }

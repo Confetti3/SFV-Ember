@@ -56,6 +56,10 @@ struct MatchPicks {
 	// match's, which the battle mode learns from TakeLinkedBattle. Any other
 	// launch (the pipe's) loads a battle of the player's own.
 	bool linked = false;
+	// A Practice room's match (EMBER_LIBRARY.md section 27): the battle mode
+	// sets Training's refilling gauges before the session's first frame
+	// (PracticeGauges). Only a linked launch carries it.
+	bool practice = false;
 };
 
 // A player's setup as the pipe's commands name it, space separated:
@@ -73,6 +77,14 @@ bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rule
 // SFV cannot play.
 bool PlayableRounds(int rounds);
 std::optional<int> RoundClockFrames(int seconds);
+
+// A room's round time as SFV plays it: RoundClockFrames, and the room's
+// longest, 9999 s (room::RoundTimes' last, a Practice room's
+// room::PracticeRoundTime), as the game's own no time limit
+// (MatchRules::kNoTimeLimit, the versus settings' infinite clock). Nothing
+// for a time SFV cannot play.
+constexpr int kNoLimitSeconds = 9999;
+std::optional<int> RoomClockFrames(int seconds);
 
 // `gameCheckOutsideRooms`: a launch that is not a room's (the pipe's
 // `launch`) runs the game's own check, as its menus do (sfv::jump::
@@ -105,7 +117,8 @@ void LaunchOnMainMenu(const MatchPicks& picks, std::function<bool()> stillWanted
 // any other battle, which is the player's own (a native menu's, or the
 // pipe's "launch"). A linked launch that fails before its battle binds
 // leaves nothing to take.
-bool TakeLinkedBattle();
+// `practice`, when given, says whether that launch was a Practice room's.
+bool TakeLinkedBattle(bool* practice = nullptr);
 
 // Control command: "launch [versus|cpu|training] [P1] [P2] [stage]", a player
 // as CODE[:costume[:colour]] or "-" to keep the default.

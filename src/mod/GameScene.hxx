@@ -37,6 +37,23 @@ bool MainMenuInFront();
 // change is pending. Game thread only.
 std::string CurrentSceneName();
 
+// What the last battle frame update showed, for a module that follows a
+// battle the mode does not play (SFV's Training, ember/SfvTraining): the
+// battle's number (SfvAdapter::Battle, from 1), whether its flow was in the
+// fight (SfvAdapter::Fighting, which the flow's announcements set whether or
+// not the layout binds), the battle ticks that update ran (none while the
+// game is paused: SfvOffsets' kBattleFrameUpdate skips them) and the game
+// frame (GameFrameNumber) it ran on. Any thread.
+struct BattleSeen {
+	uint64_t battle = 0;
+	bool fighting = false;
+	uint32_t ticks = 0;
+	uint64_t gameFrame = 0;
+};
+BattleSeen LastBattleSeen();
+// BattleDriver, after each battle frame update. Game thread.
+void NoteBattleSeen(const BattleSeen& seen);
+
 // Asks the manager to change to a state of `stateClass` (a UClass*), with an
 // optional init message the new state receives. Game thread only; false
 // before the manager is known.

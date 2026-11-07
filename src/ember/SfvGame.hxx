@@ -3,8 +3,9 @@
 // Street Fighter V under Ember's runtime: the library's game adapter
 // (sf4e/sf4e__GameAdapter.hxx), defined once by SfvGame.cxx as
 // ember::game::Game(), over sfv-ember's own modules. Of the optional
-// features SFV offers watching a table's games (Capabilities::spectators);
-// its Training and replays are the library's absent ones.
+// features SFV offers watching a table's games (Capabilities::spectators) and
+// Training (Capabilities::training: SFV's own Training mode, SfvTraining);
+// its replays are the library's absent ones.
 //
 // The adapter's battle and the desync check (SfvVerification) read the
 // battle the mod is playing, which the mod's netplay mode hands over here
@@ -40,6 +41,10 @@ struct BattleInPlay {
 // it also forgets the room's sync of the battle before.
 void SetBattleInPlay(const BattleInPlay& battle);
 const BattleInPlay& CurrentBattle();
+
+// Game thread: the battle in play is a Practice room's and its session is
+// live (Training::MatchPracticeActive, EMBER_LIBRARY.md section 27).
+bool PracticeBattleInPlay();
 
 // Game thread: P1's session, kept after its battle closed for the watchers
 // still streaming (RoomBattle::Close), until the runtime retires it or ends

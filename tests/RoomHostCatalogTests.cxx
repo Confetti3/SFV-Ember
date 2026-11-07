@@ -69,7 +69,8 @@ TEST_CASE("SFV's room host takes only the room of the build its pick space makes
 	CHECK(ember::PlayableRoundCount(3));
 	CHECK_FALSE(ember::PlayableRoundCount(15));
 	CHECK(ember::PlayableRoundTime(99));
-	CHECK_FALSE(ember::PlayableRoundTime(9999));
+	CHECK(ember::PlayableRoundTime(9999)); // the game's no time limit (EMBER_LIBRARY.md section 27)
+	CHECK_FALSE(ember::PlayableRoundTime(546));
 
 	// Every costume of every fighter in each of its colours is a pick.
 	for (int fighter = 0; fighter < (int)space.fighters.size(); fighter++) {

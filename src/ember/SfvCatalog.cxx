@@ -399,7 +399,9 @@ std::optional<mod::MatchPicks> LaunchPicks(const RoomMatch& match)
 	if (!ValidPick(match.picks[0], false) || !ValidPick(match.picks[1], false) || !ValidStage(match.stage)) {
 		return std::nullopt;
 	}
-	const std::optional<int> clock = mod::RoundClockFrames(match.roundSeconds);
+	// A Practice room projects the longest round time (room::MatchRoundTime),
+	// which SFV plays as no time limit (RoomClockFrames).
+	const std::optional<int> clock = mod::RoomClockFrames(match.roundSeconds);
 	if (!mod::PlayableRounds(match.rounds) || !clock) return std::nullopt;
 	mod::MatchPicks picks;
 	for (int side = 0; side < 2; side++) {
@@ -409,6 +411,7 @@ std::optional<mod::MatchPicks> LaunchPicks(const RoomMatch& match)
 	picks.rules.stage = WideCode(StageCode(match.stage));
 	picks.rules.rounds = match.rounds;
 	picks.rules.timeFrames = *clock;
+	picks.practice = match.practice;
 	return picks;
 }
 

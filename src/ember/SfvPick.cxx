@@ -5,6 +5,7 @@
 #include "common/GameCatalog.hxx"
 
 #include <mutex>
+#include <optional>
 
 namespace sfve::adapter {
 
@@ -12,6 +13,7 @@ namespace {
 
 std::mutex s_mutex;
 PlayerPick s_pick;
+std::optional<PlayerPick> s_dummy; // none until the player picks one
 
 // The pick under the catalog's rules and fitted to what this copy's player
 // can ready (FitOwnPick), and a stage of the list; as it is until the
@@ -38,6 +40,22 @@ PlayerPick SetPick(const PlayerPick& pick)
 	std::lock_guard lock(s_mutex);
 	s_pick = Fitted(pick);
 	return s_pick;
+}
+
+PlayerPick CurrentDummy()
+{
+	std::lock_guard lock(s_mutex);
+	PlayerPick dummy = Fitted(s_dummy.value_or(s_pick));
+	dummy.stage = 0;
+	return dummy;
+}
+
+PlayerPick SetDummy(const PlayerPick& dummy)
+{
+	std::lock_guard lock(s_mutex);
+	s_dummy = Fitted(dummy);
+	s_dummy->stage = 0;
+	return *s_dummy;
 }
 
 void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command)

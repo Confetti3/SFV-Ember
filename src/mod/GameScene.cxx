@@ -9,6 +9,7 @@
 #include <stdio.h>
 
 #include <atomic>
+#include <mutex>
 #include <string>
 
 namespace sfve::mod {
@@ -23,6 +24,8 @@ ChangeSceneStateFn o_changeSceneState;
 uint8_t* s_manager;             // game thread only
 std::atomic<uintptr_t> s_kind;  // the current state's kind, for other threads
 uintptr_t s_imageBase;
+std::mutex s_seenMutex;
+BattleSeen s_seen;
 
 // Once a frame, before the manager ticks its state (and, when a state has
 // ended, puts the next one in its place): the queued game-thread work runs
@@ -83,10 +86,23 @@ std::string CurrentSceneName()
 	case sfv::scene::kMainMenuVtable: return "MainMenu";
 	case sfv::scene::kJumpStateVtable: return "BattleJumpSetup";
 	case sfv::scene::kVersusBattleVtable: return "VersusBattle";
+	case sfv::scene::kTrainingBattleVtable: return "TrainingBattle";
 	}
 	char text[24];
 	snprintf(text, sizeof(text), "0x%llX", (unsigned long long)SceneStateKind(state));
 	return text;
+}
+
+BattleSeen LastBattleSeen()
+{
+	std::lock_guard lock(s_seenMutex);
+	return s_seen;
+}
+
+void NoteBattleSeen(const BattleSeen& seen)
+{
+	std::lock_guard lock(s_seenMutex);
+	s_seen = seen;
 }
 
 bool ChangeScene(uint8_t* stateClass, uint8_t* initMessage)

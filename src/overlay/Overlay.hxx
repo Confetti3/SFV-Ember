@@ -46,6 +46,10 @@ struct OverlayUi {
 	// XINPUT_GAMEPAD buttons. True keeps that state from the game, which then
 	// sees an idle pad.
 	std::function<bool(unsigned long slot, unsigned short buttons)> takesPad;
+	// Game thread, for each message to the game's window, before ImGui and
+	// the game see it: true keeps it from both (Training's go now on Enter,
+	// SfvShell). Optional.
+	std::function<bool(unsigned message, unsigned long long w, long long l)> takesMessage;
 };
 
 // Hooks the swap chain; false (logged) when it cannot.

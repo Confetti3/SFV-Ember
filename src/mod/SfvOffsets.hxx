@@ -387,12 +387,23 @@ constexpr CodeSite kOwnedStages{"OwnedStages", 0x550DA0,
 constexpr CodeSite kLoggedIn{"LoggedIn", 0x742A20,
 	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x30, 0xE8, 0x91, 0x94, 0xFF, 0xFF, 0x48}};
 
+// bool SetPlayerParam(ParamTable*, int param, int value): one of a player's
+// 0x2A battle parameters ({value, default, min, max}, 16 bytes each); refuses
+// a parameter past 0x29 or a value outside {min, max}, and -2 restores the
+// default. The game's own writers: KWBattlePlayerSetting's SetGaugeVitalType
+// (rva 0x7C7B50: table = setting + 560 + 1424 * player, param 22) and
+// Training's menu (rva 0x4A86F0), which writes params 22, 24, 26 and 27 of
+// both players into GetBattleData's tables (+560, +1984) and into each
+// fighter's own copy (CharaUnit + 864). See namespace practice.
+constexpr CodeSite kSetPlayerParam{"SetPlayerParam", 0x309330,
+	{0x4C, 0x8B, 0xC9, 0x83, 0xFA, 0x29, 0x77, 0x49, 0x48, 0x63, 0xCA, 0x41, 0x83, 0xF8, 0xFE, 0x74}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
-	kSpecStages, kMainMenuClass, kRequestExit, kStageName, kSpecFighters, kSpecCostumes, kPlayableCostumes,
+	kSpecStages, kMainMenuClass, kSetPlayerParam, kRequestExit, kStageName, kSpecFighters, kSpecCostumes, kPlayableCostumes,
 	kSpecColours, kCostumeName, kTextToString, kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke,
 	kBattleSetupClass, kOwnedFighters, kOwnedCostumes, kOwnedColours, kOwnedStages, kLoggedIn};
 
@@ -529,6 +540,13 @@ constexpr uint32_t kManagerNextState = 912;
 constexpr uintptr_t kMainMenuVtable = 0x2D98660; // MainMenuState (class getter rva 0xC20E70)
 constexpr uintptr_t kVersusBattleVtable = 0x2DA9918; // VersusBattleState (class getter rva 0xC222F0)
 constexpr uintptr_t kJumpStateVtable = 0x2D85920; // BattleJumpSetupState (its tick, rva 0x5F9FE0, at +0x580)
+// TrainingBattleState: the jump's target 2 (class getter rva 0xC22130, "TrainingBattleState" registered by rva
+// 0xBF3B20 under FightRequestBattleStateBase, instance size 0x458; its constructor, rva 0x6606D0, sets this
+// vtable). Its pause menu's commands go to the vtable's +0x5E0 (rva 0x66A310, the only vtable that holds it):
+// "EXIT_BATTLE" asks the state's scene manager (state+768) for MainMenuState with no message (rva 0x584D20, which
+// calls kChangeSceneState), the change MatchEnd's LeaveBattle asks for; "BACK_TO_CHARASELECT" asks for the
+// class at rva 0xC220F0 instead.
+constexpr uintptr_t kTrainingBattleVtable = 0x2DA8B70;
 
 } // namespace scene
 
@@ -582,6 +600,41 @@ constexpr uint32_t kState = 0x8;          // uint32 state after the vtable
 constexpr uint32_t kFighterDraw = 0x10;
 constexpr uint32_t kFighterPairSize = 24;
 } // namespace rng
+
+// A Practice room's game (EMBER_LIBRARY.md section 27): the gauges Training
+// mode refills, set for both players before the session's first frame, as
+// Training's own menu sets them (rva 0x4A86F0).
+//   - Each player's parameter table in the battle data (GetBattleData) at
+//     kPlayerParams + kPlayerParamsStride * side, and a copy in the fighter's
+//     CharaUnit at kCharaParams; the fighter's side is the CharaUnit's int at
+//     kCharaSide (rva 0x3512A0 reads the battle data's table by it).
+//   - Vital (22): 6-10 are INFINITY_MIN..INFINITY_MAX (EKWGaugeVital). Damage
+//     (rva 0x361670) never marks the fighter down with them (the KO's flag,
+//     CharaStatusPart's dword 192) and stops the vital at 0; each tick (rva
+//     0x3635C0), once the fighter has been left alone for 60% of the
+//     recovery timer (its dword 50 against dword_143966360), vital and
+//     recoverable vital grow back by 1% of the maximum a frame, up to the
+//     cap (10: the whole gauge). 11 holds them at 0, 12 at full.
+//   - EX (24, EKWGaugeExtra): 3 INFINITY_MAX refills by 1% of the gauge a
+//     frame once its timer (dword 57) is full (rva 0x362AC0); 4 holds 0, 5
+//     full. At a round's start (rva 0x357540) 2, 3 and 5 start it full.
+//   - V-gauge (26): 4 refills to half, 5 to full, the same way (rva
+//     0x3632E0); 6 holds 0, 7 full.
+//   - Stun (27) is left as in a match, as SF4 Ember's Practice leaves stun.
+// Training's menu maps its rows to the same values (rva 0x4A86F0: vital
+// {0, 12, 10, 9, 8, 4, 3}, EX {0, 2, 5, 3}, V {0, 3, 7, 5}). The tables are
+// outside the game's snapshot (the battle data's snapshotted part is +6176..
+// +6404, the CharaUnit's +1892..+2191) and nothing writes them during a
+// battle but Training's menu; the gauges they drive are in it.
+namespace practice {
+constexpr uint32_t kPlayerParams = 560;
+constexpr uint32_t kPlayerParamsStride = 1424;
+constexpr uint32_t kCharaParams = 864;
+constexpr uint32_t kCharaSide = 1880;
+constexpr int kVitalParam = 22, kVitalRefill = 10;
+constexpr int kExtraParam = 24, kExtraRefill = 3;
+constexpr int kVGaugeParam = 26, kVGaugeRefill = 5;
+} // namespace practice
 
 namespace flow {
 constexpr uint32_t kStateMessageType = 0x3A651C0; // data: what a state-change message's type call returns

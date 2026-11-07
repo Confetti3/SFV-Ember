@@ -25,7 +25,8 @@ namespace {
 // folders, and SF4's "Not owned on Steam." where SFV's answer is the game's
 // own (EMBER_LIBRARY.md section 23). English replaces every translation of
 // them too (Localization.cxx), until SFV Ember has translations of its own.
-// Training's words are not shown here.
+// Training's words where SF4's name SF4's own (its Fight Request, a Practice
+// room's 9999-second clock) say SFV's (EMBER_LIBRARY.md section 27).
 const char kEnglish[] = R"po(
 msgid "app.name"
 msgstr "SFV Ember"
@@ -155,6 +156,12 @@ msgstr "Reports go to embernetplay.link. Each holds the SFV Ember version and bu
 
 msgid "reports.history_unreadable_detail"
 msgstr "sent-reports.json in %APPDATA%\\SFVEmber cannot be read, so no report is sent without asking. Delete the file to start a new record."
+
+msgid "home.training_detail"
+msgstr "Go into Street Fighter V's Training mode with your fighter, against the dummy you choose."
+
+msgid "room.practice.detail"
+msgstr "Every game in the room is a Practice match: health and gauges refill, nobody is knocked out, and there is no time limit. This stays for as long as the room is open. To play normal matches, close the room and create a new one."
 )po";
 
 const ember::LocaleOverlay LocaleOverlays[] = {{"en", kEnglish}, {nullptr, nullptr}};

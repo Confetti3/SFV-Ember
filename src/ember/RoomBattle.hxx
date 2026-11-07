@@ -56,6 +56,8 @@ public:
 	void Bind(RollbackSession* previous, RollbackSession& session, const mod::SfvAdapter& game,
 		std::function<void(const char* why)> exit);
 	bool Active() const { return active_; }
+	// The room's battle is a Practice room's (its launch said so).
+	bool Practice() const { return active_ && practice_; }
 
 	enum class Start { Waiting, Ready, Gone };
 	// The room's part of the session's start, once every member's battle has
@@ -161,6 +163,7 @@ private:
 		int held = 0;
 	};
 	bool active_ = false;      // the room's battle, until its close is reported
+	bool practice_ = false;    // ...a Practice room's
 	bool watching_ = false;    // ...which this copy watches
 	int watchedDelay_ = -1;    // the watched game's granted delay (WatchedDelay)
 	bool watchedOwnDelays_ = false;
