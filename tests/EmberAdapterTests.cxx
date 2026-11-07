@@ -12,6 +12,7 @@
 #include "ember/SfvGame.hxx"
 #include "ember/SfvPick.hxx"
 #include "ember/SfvReplays.hxx"
+#include "ember/SfvTraining.hxx"
 #include "ember/SfvVerification.hxx"
 #include "mod/ModConfig.hxx"
 
@@ -164,14 +165,14 @@ TEST_CASE("the catalog is empty until it is filled from the game's content lists
 	CHECK_FALSE(catalog.editions);
 	CHECK(catalog.rematchInPlace); // the post-match prompt over the held WIN (RoomBattle)
 	REQUIRE(catalog.roundCountChoices == 4);
-	REQUIRE(catalog.roundTimeChoices == 4);
-	const int rounds[] = {1, 3, 5, 7}, times[] = {30, 60, 99, 300};
-	for (int i = 0; i < 4; i++) {
-		CHECK(catalog.roundCounts[i] == rounds[i]);
-		CHECK(catalog.roundTimes[i] == times[i]);
-	}
+	REQUIRE(catalog.roundTimeChoices == 5);
+	const int rounds[] = {1, 3, 5, 7}, times[] = {30, 60, 99, 300, 9999};
+	for (int i = 0; i < 4; i++) CHECK(catalog.roundCounts[i] == rounds[i]);
+	for (int i = 0; i < 5; i++) CHECK(catalog.roundTimes[i] == times[i]);
 	CHECK_FALSE(ember::PlayableRoundCount(15));
-	CHECK_FALSE(ember::PlayableRoundTime(9999));
+	// 9999 s is the game's no time limit, and a Practice room's (section 27).
+	CHECK(ember::PlayableRoundTime(9999));
+	CHECK_FALSE(ember::PlayableRoundTime(546));
 	CHECK(FighterCode(0) == "RYU");
 	CHECK(FighterCode(4) == "BSN");
 	CHECK(FighterCode(5).empty());
@@ -274,7 +275,19 @@ TEST_CASE("a room's match launches its fighters, stage, rounds and time by the g
 	CHECK_FALSE(LaunchPicks(match));                // a fighter outside the roster
 	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 3)));     // a stage outside the list
 	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 99))); // a room's endless rounds
-	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, 9999))); // longer than SFV's clock holds
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, 9998))); // longer than SFV's clock holds
+	// The room's longest time is the game's no time limit, and a Practice
+	// room's match says it is one.
+	const std::optional<mod::MatchPicks> endless = LaunchPicks(MatchOf(0, 0, 0, 3, 9999));
+	REQUIRE(endless);
+	CHECK(endless->rules.timeFrames == mod::MatchRules::kNoTimeLimit);
+	CHECK_FALSE(endless->practice);
+	RoomMatch practice = MatchOf(0, 0, 0, 1, sf4e::room::PracticeRoundTime);
+	practice.practice = true;
+	const std::optional<mod::MatchPicks> practised = LaunchPicks(practice);
+	REQUIRE(practised);
+	CHECK(practised->practice);
+	CHECK(practised->rules.timeFrames == mod::MatchRules::kNoTimeLimit);
 	CHECK(LaunchPicks(MatchOf(0, 0, 0, 7, 300)));
 	CHECK(LaunchPicks(MatchOf(0, 0, 0, 1, 30)));
 	CHECK(LaunchPicks(MatchOf(0, 0, 0, 3, 546)));
@@ -365,16 +378,22 @@ TEST_CASE("the room host's data is the catalog's pick space, and reads back as t
 	CHECK_FALSE(picks::FromJson("not json", space, build, error));
 }
 
-TEST_CASE("the rules a room host offers for SFV are the ones VersusLaunch plays")
+TEST_CASE("the rules a room host offers for SFV are the ones VersusLaunch plays, 9999 s as no time limit")
 {
+	FillTestCatalog();
 	for (std::uint8_t rounds : sf4e::room::RoundCounts) {
 		const bool listed = std::find(std::begin(picks::kRoundCounts), std::end(picks::kRoundCounts), rounds) != std::end(picks::kRoundCounts);
 		CHECK(listed == mod::PlayableRounds(rounds));
 	}
 	for (std::uint16_t seconds : sf4e::room::RoundTimes) {
 		const bool listed = std::find(std::begin(picks::kRoundTimes), std::end(picks::kRoundTimes), seconds) != std::end(picks::kRoundTimes);
-		CHECK(listed == mod::RoundClockFrames(seconds).has_value());
+		CHECK(listed == mod::RoomClockFrames(seconds).has_value());
 	}
+	// The room's longest time, a Practice room's, is the game's no time limit.
+	CHECK(mod::RoomClockFrames(sf4e::room::PracticeRoundTime) == mod::MatchRules::kNoTimeLimit);
+	CHECK(mod::RoomClockFrames(99) == 99 * 60);
+	CHECK_FALSE(mod::RoundClockFrames(9999).has_value()); // the pipe's own times stay 30-546 s
+	CHECK(ember::PlayableRoundTime(sf4e::room::PracticeRoundTime) == ember::Usable(ember::Catalog()));
 }
 
 TEST_CASE("a pick is available when this copy has its fighter and costume installed")
@@ -531,6 +550,37 @@ TEST_CASE("this player's stored pick falls back to one they can ready, and Rando
 	const sf4e::selection::Availability cnl = availability(1);
 	const Pick rolled = sf4e::selection::RolledPick(1, PickOf(1, 2, 0), false, &cnl);
 	CHECK(rolled.costume == 0);
+}
+
+TEST_CASE("Training's dummy is a pick of its own, fitted as the player's, and the player's until one is picked")
+{
+	FillTestCatalog();
+	PlayerPick player;
+	player.pick = PickOf(1, 0, 1);
+	player.stage = 2;
+	SetPick(player);
+	// Until the player picks a dummy, it is their own fighter and look; the
+	// dummy has no stage (Training loads on the player's).
+	PlayerPick dummy = CurrentDummy();
+	CHECK(dummy.pick.fighter == 1);
+	CHECK(dummy.pick.color == 1);
+	CHECK(dummy.stage == 0);
+	// A dummy picked is kept apart from the player's pick, and fitted the
+	// same way: an unowned fighter becomes their first one they can play.
+	dummy.pick = PickOf(4);
+	dummy.stage = 3;
+	dummy = SetDummy(dummy);
+	CHECK(dummy.pick.fighter == 4);
+	CHECK(dummy.stage == 0);
+	CHECK(CurrentPick().pick.fighter == 1);
+	CHECK(CurrentPick().stage == 2);
+	dummy.pick = PickOf(2);
+	CHECK(SetDummy(dummy).pick.fighter == 0);
+	CHECK(CurrentDummy().pick.fighter == 0);
+	// The player's pick changing leaves the dummy as picked.
+	player.pick = PickOf(4);
+	SetPick(player);
+	CHECK(CurrentDummy().pick.fighter == 0);
 }
 
 TEST_CASE("the command line marks content unowned for this copy, never owned")
@@ -753,10 +803,10 @@ TEST_CASE("the game's pictures are its fighters' faces and its stages', and the 
 	CHECK_FALSE(Swatch(0, 4, 100).has_value()); // read by the game thread
 }
 
-TEST_CASE("the game offers watching and replays, and answers as no battle while none is in play")
+TEST_CASE("the game offers watching, replays and Training, and answers as no battle while none is in play")
 {
 	const ember::game::Adapter& game = ember::game::Game();
-	CHECK_FALSE(game.caps.training);
+	CHECK(game.caps.training); // EMBER_LIBRARY.md section 27
 	// Replays (EMBER_LIBRARY.md section 26): Watch now, Keep and Show in
 	// folder; no game list of SFV's own, video, meter or inputs reader.
 	CHECK(game.caps.replays);
@@ -795,7 +845,13 @@ TEST_CASE("the game offers watching and replays, and answers as no battle while 
 	CHECK(game.replays.ArchivePath() == sfve::adapter::ReplayFolder());
 	CHECK_FALSE(game.replays.Playback().playback);
 	CHECK(game.replays.PlaybackLanes() == nullptr);
+	// No Training battle runs (no scene manager seen): nothing to follow, no
+	// battle for a call, no Practice match.
 	CHECK_FALSE(game.training.ControlsAvailable());
+	CHECK(game.training.ReadPlace().generation == 0u);
+	CHECK_FALSE(game.training.MatchPracticeActive());
+	CHECK_FALSE(ReadTrainingView().available);
+	CHECK_FALSE(TrainingPaused());
 }
 
 TEST_CASE("P1's session kept for its watchers is the battle's until the runtime's drain ends")

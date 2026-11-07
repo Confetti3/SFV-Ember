@@ -32,6 +32,15 @@ PlayerPick CurrentPick();
 // Stores the pick, fitted; returns what was stored.
 PlayerPick SetPick(const PlayerPick& pick);
 
+// Training's other side (Training select's Dummy row, EMBER_LIBRARY.md
+// section 27): a pick of its own, fitted the same way, as SF4 Ember keeps its
+// Training dummy apart from the player's pick. Its stage is unused (Training
+// loads on the player's). Until the player picks a dummy it is their own
+// fighter, costume and colour. Neither is saved between runs: the player's
+// pick is not saved either.
+PlayerPick CurrentDummy();
+PlayerPick SetDummy(const PlayerPick& dummy);
+
 // The pick in a room command (Ready, the room's pick updates), as the wire
 // carries it.
 void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command);

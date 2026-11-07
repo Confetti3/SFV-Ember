@@ -8,6 +8,7 @@
 #include "ember/SfvPick.hxx"
 #include "ember/SfvReplays.hxx"
 #include "ember/SfvSelectionScreen.hxx"
+#include "ember/SfvTraining.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/Log.hxx"
 #include "overlay/Overlay.hxx"
@@ -18,6 +19,7 @@
 #include "common/NativeMenuLock.hxx"
 #include "common/PadKind.hxx"
 #include "common/ReplayTransport.hxx"
+#include "common/TrainingCallInput.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 #include "sf4e/sf4e__ShellHost.hxx"
 #include "ui/ControllerNavigation.hxx"
@@ -34,6 +36,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -58,6 +61,27 @@ bool NativeMenuLocked(const Snapshot& snapshot)
 {
 	return snapshot.menuContext == input::MenuContext::MainMenu &&
 		input::NativeMenuLockFor(snapshot.session.room, snapshot.session.match) != input::NativeMenuLock::None;
+}
+
+// The pad's View (XINPUT_GAMEPAD_BACK): go now on Training's call.
+constexpr unsigned short kXInputView = 0x0020;
+
+// Go now's Enter on Training's call, taken where the key arrives (the game
+// thread's window procedure), as SF4 Ember's overlay takes it.
+sf4e::ui::GoNowKey s_goNowKey;
+
+// The codes a launch names a pick by (VersusLaunch's FighterPick).
+mod::FighterPick LaunchPick(const PlayerPick& pick)
+{
+	const std::string code = FighterCode(pick.pick.fighter);
+	return {std::wstring(code.begin(), code.end()), pick.pick.costume, pick.pick.color};
+}
+
+// "RYU / DEFAULT / Color 01", as the room's pick is summed up (FillView).
+std::string Summary(const PlayerPick& pick)
+{
+	return std::string(ember::Catalog().fighterName(pick.pick.fighter)) + " / " +
+		loc::Tf("selection.appearance_value", sf4e::ui::CostumeLabel(pick.pick), ColourName(pick.pick.color));
 }
 
 // Whether the pick can be readied, by SFV's catalog.
@@ -89,6 +113,10 @@ public:
 		// neither row.
 		view.fighterOptions = false;
 		if (snapshot.atMainMenu && !available) view.selectionError = loc::T("runtime.selection_unavailable");
+		// Training select's Dummy row (EMBER_LIBRARY.md section 27).
+		const PlayerPick dummy = CurrentDummy();
+		view.dummySummary = Summary(dummy);
+		if (!PickAvailable(dummy, snapshot)) view.dummyError = loc::T("runtime.selection_unavailable");
 	}
 
 	// The table page's Appearance row steps the colour, through the costume's
@@ -102,23 +130,33 @@ public:
 		return true;
 	}
 
-	// SFV offers no Training (the adapter's capability is off), so the host
-	// never calls this.
-	void StartTraining(const RuntimeSnapshot&) override { mod::Log("shell: Training asked for, but SFV Ember has none"); }
+	// Training select's Start at the idle main menu (the host checks it):
+	// SFV's Training battle with the player's pick against the dummy, on the
+	// player's stage (EMBER_LIBRARY.md section 27).
+	void StartTraining(const RuntimeSnapshot&) override
+	{
+		const PlayerPick player = CurrentPick();
+		const std::string stage = StageCode(player.stage);
+		LaunchTraining(LaunchPick(player), LaunchPick(CurrentDummy()), std::wstring(stage.begin(), stage.end()),
+			"Training select's Start", "home.training_unavailable");
+	}
 
 	void AddPick(facade::RuntimeCommand& command) override { AddPickTo(command); }
 
 	// The stage is this player's to choose out of a room, or as P1 in one.
-	void DrawSelection(bool, const RuntimeSnapshot& snapshot) override
+	// Training select's Dummy row opens the dummy's own screen (no stage).
+	void DrawSelection(bool dummy, const RuntimeSnapshot& snapshot) override
 	{
 		const bool stage = snapshot.session.room == sf4e::netplay::RoomState::Idle || snapshot.localSlot == 0;
+		const PlayerPick pick = dummy ? CurrentDummy() : CurrentPick();
 		const std::string error =
-			PickAvailable(CurrentPick(), snapshot) ? std::string() : loc::T("runtime.selection_combination_unavailable");
-		screen_.Draw(snapshot.canEditSelection, stage, error);
+			PickAvailable(pick, snapshot) ? std::string() : loc::T("runtime.selection_combination_unavailable");
+		(dummy ? dummyScreen_ : screen_).Draw(snapshot.canEditSelection, stage && !dummy, error);
 	}
 
 private:
 	SfvSelectionScreen screen_;
+	SfvSelectionScreen dummyScreen_{true};
 };
 
 // What the "shell" status field reports, as the render thread last left it.
@@ -139,6 +177,8 @@ struct Shell {
 	std::shared_ptr<const facade::PresentationSnapshot> frame;
 	sf4e::ui::MenuPads::Taken openRequest;
 	bool started = false, wasShown = false, matchResultShown = false;
+	// The runtime's last Training call the shell opened for (trainingCallSequence).
+	std::uint64_t trainingCallShown = 0;
 	// When the shell last showed or hid (ImGui's clock), for its fade.
 	double changedAt = -1;
 	// A replay's playback (EMBER_LIBRARY.md section 26): the Replays
@@ -302,6 +342,19 @@ void BeginFrame()
 	const bool matchResult = snapshot.menuContext == input::MenuContext::MatchResult;
 	if (matchResult && !shell.matchResultShown) presentation.Open("the match result");
 	shell.matchResultShown = matchResult;
+	// Home's Training row: the game's main menu goes to Ember's Training
+	// select, as SF4's Training item leads there (SfvTraining's Request).
+	if (presentation.Available() && TakeTrainingSelectRequest()) {
+		presentation.Open("Training select");
+		shell.host.Shell().ShowTraining();
+	}
+	// Called out of Training: back at the main menu the shell opens on the
+	// player's table, as SF4's overlay opens it (the shell itself goes to the
+	// table and counts the seconds to ready).
+	if (snapshot.trainingCallSequence != shell.trainingCallShown && snapshot.atMainMenu && presentation.Available()) {
+		presentation.Open("a Training call");
+		shell.trainingCallShown = snapshot.trainingCallSequence;
+	}
 	shell.openRequest = s_menuPads.Take();
 	if (shell.openRequest.kind == sf4e::ui::MenuPads::Kind::Controls) {
 		switch (input::AnswerStart(presentation.Visible(), snapshot.menuContext, shell.host.Shell().TextEntryOpen())) {
@@ -342,6 +395,8 @@ overlay::OverlayUi::Shown Draw()
 	if (presentation.Reopened()) shell.host.Shell().ShowPlay();
 	// Under the shell: the match HUD, or only its notices while the shell is open.
 	DrawSfvMatchHud(*shell.frame, presentation.Visible());
+	// Over SFV's Training battle: the room line and the call's banner.
+	DrawSfvTraining(*shell.frame, presentation.Visible(), shell.host.Shell().UnreadChat(), overlay::GameWindowFocused());
 	DrawReplayControls(shell, snapshot, presentation.Visible());
 	const double now = ImGui::GetTime();
 	if (presentation.Visible() != shell.wasShown) shell.changedAt = now;
@@ -395,8 +450,34 @@ bool TakesPad(unsigned long slot, unsigned short buttons)
 			(overlay::GameWindowFocused() || s_menuPads.StartOpens())) {
 			s_menuPads.Request(sf4e::ui::MenuPads::Kind::Controls);
 		}
+		// Go now on Training's call: a fresh View, while neither Ember's menu
+		// nor the game's pause menu has the pad, is the call's alone (the
+		// library's GoNowGate takes it only while a call is offered); the
+		// game never sees it (the overlay hides it until it is released).
+		static bool viewHeld = false;
+		const bool view = (buttons & kXInputView) != 0;
+		const bool fresh = view && !viewHeld;
+		viewHeld = view;
+		if (fresh && snapshot->menuContext == input::MenuContext::OfflineTraining &&
+			input::TrainingGoNow().Press(input::GoNowGate::Source::Pad, !s_menuPads.Holds() && !TrainingPaused())) {
+			mod::Log("shell: go now on the Training call (the pad's View)");
+			return true;
+		}
 	}
 	return s_menuPads.Holds() || NativeMenuLocked(*snapshot);
+}
+
+// Game thread, for each message to the game's window: go now's Enter on
+// Training's call, while the window has the focus and neither Ember's menu
+// nor the game's pause menu has the keys (the library's GoNowKey decides).
+bool TakesMessage(unsigned message, unsigned long long w, long long l)
+{
+	if (message == WM_ACTIVATEAPP && !w) s_goNowKey.Reset();
+	if (!EmberRuntimeRunning()) return false;
+	const bool free = overlay::GameWindowFocused() && !s_menuPads.Holds() && !TrainingPaused();
+	const bool taken = s_goNowKey.Take(message, static_cast<WPARAM>(w), static_cast<LPARAM>(l), input::TrainingGoNow(), free);
+	if (taken && message == WM_KEYDOWN) mod::Log("shell: go now on the Training call (Enter)");
+	return taken;
 }
 
 std::string StatusJson()
@@ -429,6 +510,7 @@ void InstallEmberShell()
 		return PlaybackRunning() && (message == WM_KEYDOWN || message == WM_KEYUP) &&
 			((key >= VK_F1 && key <= VK_F4) || key == VK_ESCAPE);
 	};
+	ui.takesMessage = TakesMessage;
 	overlay::SetOverlayUi(std::move(ui));
 }
 

@@ -40,10 +40,12 @@ struct PickSpace {
 };
 
 // The table rules SFV plays: the room's round counts and times that
-// VersusLaunch's PlayableRounds and RoundClockFrames accept, in the room's
-// order. sfve_ember_tests checks them against those two.
+// VersusLaunch's PlayableRounds and RoomClockFrames accept, in the room's
+// order (9999 s is the game's no time limit, and what makes a Practice room
+// playable: ember::PlayableRoundTime(room::PracticeRoundTime)).
+// sfve_ember_tests checks them against those two.
 constexpr std::uint8_t kRoundCounts[] = {1, 3, 5, 7};
-constexpr std::uint16_t kRoundTimes[] = {30, 60, 99, 300};
+constexpr std::uint16_t kRoundTimes[] = {30, 60, 99, 300, 9999};
 
 // Why the lists make no pick space, or empty when they do: no list is empty,
 // the roster fits a room (ember::MaxFighters), every fighter has a costume and

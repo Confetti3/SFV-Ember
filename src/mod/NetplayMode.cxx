@@ -5,6 +5,7 @@
 #include "ember/SfvGame.hxx"
 #include "ember/SfvReplays.hxx"
 #include "ember/SfvShell.hxx"
+#include "ember/SfvTraining.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/GameScene.hxx"
@@ -46,6 +47,9 @@ void NetplayMode::Install()
 	// The runtime ticks this mode for the process's life (the driver holds it).
 	adapter::InstallEmberHost({config_.instance, config_.ownershipGate, config_.unowned}, *this);
 	adapter::InstallEmberShell();
+	// SFV's Training under Ember: followed once a frame, after Ember's tick
+	// has set the room's call (EMBER_LIBRARY.md section 27).
+	adapter::InstallSfvTraining();
 }
 
 void NetplayMode::NewBattle(SfvAdapter& adapter)
@@ -173,6 +177,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	// the fight) get neutral ones in RollbackSession, whatever was sent.
 	const PackedInput local = !config_.mashSeed ? adapter.Sampled(0)
 		: frame >= config_.mashFrom              ? input::Mash(config_.mashSeed, frame)
+		: config_.mashPad                        ? adapter.Sampled(0)
 												 : 0;
 	// The game's judgement, the same on both copies (it is restored with the
 	// rest of the state on rollback): both copies hold the battle for the
@@ -381,6 +386,9 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	// Both copies are at the battle's first frame: give the clock-seeded
 	// random generators the same seeds before anything is simulated.
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
+	// A Practice room's game: Training's refilling gauges on both copies at
+	// this same frame, before anything is simulated (EMBER_LIBRARY.md 27).
+	if (room_.Practice() && !adapter.SetPracticeGauges()) Log("netplay: the Practice match plays with a match's gauges");
 	seed_ = seed;
 	startTime_ = adapter.StartTime();
 	// A room battle is recorded from its first frame (EMBER_LIBRARY.md

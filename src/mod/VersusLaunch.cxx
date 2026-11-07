@@ -65,6 +65,7 @@ Pending s_pending;
 // Game thread only: a linked launch's picks went into the jump and its
 // battle has not bound yet (TakeLinkedBattle).
 bool s_linkedLoading = false;
+bool s_linkedPractice = false; // ...and it was a Practice room's
 // The same for a replay's launch (TakeReplayBattle).
 bool s_replayLoading = false;
 
@@ -244,6 +245,7 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	GiveBackGameRef(flow);
 	s_linkedLoading = picks.linked;
 	s_replayLoading = picks.replay;
+	s_linkedPractice = picks.linked && picks.practice;
 	uint8_t* message = Field<uint8_t*>(jumpState, jump::kJumpStateMessage);
 	WatchLoading(std::move(onFailed), message && Field<uint8_t>(message, jump::kMessageCheckOwnership) != 0);
 	return next;
@@ -422,6 +424,12 @@ std::optional<int> RoundClockFrames(int seconds)
 	return seconds * kFramesPerSecond;
 }
 
+std::optional<int> RoomClockFrames(int seconds)
+{
+	if (seconds == kNoLimitSeconds) return MatchRules::kNoTimeLimit;
+	return RoundClockFrames(seconds);
+}
+
 bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rules)
 {
 	std::istringstream in(setup);
@@ -467,10 +475,11 @@ void LaunchOnMainMenu(const MatchPicks& picks, std::function<bool()> stillWanted
 	});
 }
 
-bool TakeLinkedBattle()
+bool TakeLinkedBattle(bool* practice)
 {
 	const bool linked = s_linkedLoading;
-	s_linkedLoading = false;
+	if (practice) *practice = linked && s_linkedPractice;
+	s_linkedLoading = s_linkedPractice = false;
 	return linked;
 }
 

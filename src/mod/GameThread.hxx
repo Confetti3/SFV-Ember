@@ -24,4 +24,7 @@ void PumpGameThread();
 // The game thread (0 before the first frame of the scene manager).
 uint32_t GameThreadId();
 
+// The game frames pumped so far (one per scene manager tick); any thread.
+uint64_t GameFrameNumber();
+
 } // namespace sfve::mod

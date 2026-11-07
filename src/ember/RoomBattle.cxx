@@ -83,7 +83,7 @@ void RoomBattle::Bind(RollbackSession* previous, RollbackSession& session, const
 	std::function<void(const char* why)> exit)
 {
 	if (active_) Close(previous);
-	active_ = mod::TakeLinkedBattle();
+	active_ = mod::TakeLinkedBattle(&practice_);
 	watching_ = false;
 	replay_ = false;
 	watchedDelay_ = -1;

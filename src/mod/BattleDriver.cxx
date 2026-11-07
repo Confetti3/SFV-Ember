@@ -1,6 +1,7 @@
 #include "mod/BattleDriver.hxx"
 
 #include "mod/ControlPipe.hxx"
+#include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
 #include "mod/WriteWatch.hxx"
@@ -36,6 +37,7 @@ void BattleDriver::OnBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 		if (restart_.exchange(false)) mode_->Restart();
 		mode_->Frame(adapter_);
 	}
+	NoteBattleSeen({adapter_.Battle(), adapter_.Fighting(), adapter_.TicksInLastUpdate(), GameFrameNumber()});
 	if (frames_ % kStatusEveryFrames == 0) PublishStatus();
 }
 

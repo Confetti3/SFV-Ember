@@ -62,6 +62,8 @@ public:
 	void Bind(RollbackSession* previous, RollbackSession& session, const mod::SfvAdapter& game,
 		std::function<void(const char* why)> exit);
 	bool Active() const { return active_; }
+	// The room's battle is a Practice room's (its launch said so).
+	bool Practice() const { return active_ && practice_; }
 	// The battle a replay's launch loaded (mod::TakeReplayBattle), bound
 	// after Bind found it no room's: played as a watcher plays, reporting
 	// nothing.
@@ -178,6 +180,7 @@ private:
 		int held = 0;
 	};
 	bool active_ = false;      // the room's battle, until its close is reported
+	bool practice_ = false;    // ...a Practice room's
 	bool watching_ = false;    // ...which this copy watches
 	bool replay_ = false;      // ...or plays back from a replay (BindReplay)
 	int watchedDelay_ = -1;    // the watched game's granted delay (WatchedDelay)

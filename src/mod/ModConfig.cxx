@@ -97,6 +97,7 @@ void LoadConfigFromCommandLine(const wchar_t* line)
 	c.delay = (int)Number(line, L"sfve_delay", 0);
 	c.mashSeed = (uint32_t)Number(line, L"sfve_mash", 0);
 	c.mashFrom = (int)Number(line, L"sfve_mash_from", 0);
+	c.mashPad = Number(line, L"sfve_mash_pad", 0) != 0;
 	c.distance = (int)Number(line, L"sfve_distance", 7);
 	c.backgroundPlay = Number(line, L"sfve_background", 0) != 0;
 	c.learn = Number(line, L"sfve_learn", 0) != 0;

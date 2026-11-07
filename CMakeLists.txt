@@ -95,6 +95,7 @@ add_library(sfve_ember STATIC
     src/ember/SfvSelection.cxx
     src/ember/SfvSelectionScreen.cxx
     src/ember/SfvShell.cxx
+    src/ember/SfvTraining.cxx
     src/ember/SfvVerification.cxx
     src/overlay/Overlay.cxx
     src/overlay/TextureUploaderD3D11.cxx)

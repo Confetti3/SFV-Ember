@@ -30,7 +30,8 @@ namespace {
 // played (inputs.unreadable_detail) and one that did not play to its end
 // (replays.not_added). English replaces every translation of them too
 // (Localization.cxx), until SFV Ember has translations of its own.
-// Training's words are not shown here.
+// Training's words where SF4's name SF4's own (its Fight Request, a Practice
+// room's 9999-second clock) say SFV's (EMBER_LIBRARY.md section 27).
 const char kEnglish[] = R"po(
 msgid "app.name"
 msgstr "SFV Ember"
@@ -181,6 +182,12 @@ msgstr "This replay cannot be played: its file is damaged, or another SFV Ember 
 
 msgid "replays.not_added"
 msgstr "This replay did not play to its end. The log has the reason."
+
+msgid "home.training_detail"
+msgstr "Go into Street Fighter V's Training mode with your fighter, against the dummy you choose."
+
+msgid "room.practice.detail"
+msgstr "Every game in the room is a Practice match: health and gauges refill, nobody is knocked out, and there is no time limit. This stays for as long as the room is open. To play normal matches, close the room and create a new one."
 )po";
 
 const ember::LocaleOverlay LocaleOverlays[] = {{"en", kEnglish}, {nullptr, nullptr}};
