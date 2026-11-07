@@ -393,9 +393,10 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	startTime_ = adapter.StartTime();
 	// A room battle is recorded from its first frame (EMBER_LIBRARY.md
 	// section 26): the session reports each frame it plays to the recorder.
-	// A watched one only with Settings' "Save matches you watch", as SF4's
-	// (UserApp's recordReplay).
-	const bool record = room_.Active() && !replay_ &&
+	// A watched one only with Settings' "Save matches you watch", and never a
+	// Practice room's (its refilling gauges are set outside the frames, and
+	// it reaches no result), as SF4's (UserApp's recordReplay).
+	const bool record = room_.Active() && !replay_ && !room_.Practice() &&
 		(!room_.Watching() || sf4e::NetplayFacade::GetRuntimeSnapshotShared()->preferences.recordWatched);
 	if (record) {
 		recorder_.Start();
