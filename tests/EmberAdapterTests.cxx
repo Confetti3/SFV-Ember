@@ -697,12 +697,17 @@ TEST_CASE("the game's pictures are its fighters' faces and its stages', and the 
 	CHECK_FALSE(Swatch(0, 4, 100).has_value()); // read by the game thread
 }
 
-TEST_CASE("the game offers no optional feature and answers as no battle while none is in play")
+TEST_CASE("the game offers watching only and answers as no battle while none is in play")
 {
 	const ember::game::Adapter& game = ember::game::Game();
 	CHECK_FALSE(game.caps.training);
 	CHECK_FALSE(game.caps.replays);
-	CHECK_FALSE(game.caps.spectators);
+	CHECK(game.caps.spectators); // EMBER_LIBRARY.md section 25
+	CHECK(game.battle.SpectatorStreams() == 0u);
+	CHECK_FALSE(game.battle.DrainingSpectators());
+	int backlog = 0;
+	CHECK_FALSE(game.battle.SpectatorBacklog(backlog));
+	CHECK(backlog == -1);
 	CHECK_FALSE(game.caps.padSetup);
 	CHECK_FALSE(game.caps.steamProfile);
 	CHECK_FALSE(game.caps.customContent);
@@ -726,6 +731,43 @@ TEST_CASE("the game offers no optional feature and answers as no battle while no
 	CHECK_FALSE(game.replays.Ready());
 	CHECK(game.replays.ArchivePath().empty());
 	CHECK_FALSE(game.training.ControlsAvailable());
+}
+
+TEST_CASE("P1's session kept for its watchers is the battle's until the runtime's drain ends")
+{
+	const ember::game::Adapter& game = ember::game::Game();
+	MockFighter fighter;
+	RollbackSession session(fighter);
+	const uint16_t base = LoopbackPortBase();
+	RollbackSession::Config config;
+	config.localPlayer = 0;
+	config.localPort = base;
+	config.remotePort = (uint16_t)(base + 1);
+	config.watchers.push_back({2, (uint16_t)(base + 2)});
+	std::string error;
+	REQUIRE_MESSAGE(session.Start(config, &error), error);
+	session.KeepForWatchers();
+	SetWatcherDrain(&session);
+	// No battle in play, yet the session is live: the runtime holds the
+	// room's receipt open and asks it how many watchers it still streams to.
+	CHECK(game.battle.Live());
+	CHECK(game.battle.SpectatorStreams() == 1u);
+	game.battle.SetDrainingSpectators(true);
+	CHECK(game.battle.DrainingSpectators());
+	SUBCASE("the runtime retires it")
+	{
+		game.battle.Retire("deferred_close");
+		CHECK_FALSE(session.Live());
+	}
+	SUBCASE("the drain ends another way (the next battle, a shutdown)")
+	{
+		game.battle.SetDrainingSpectators(false);
+		CHECK_FALSE(session.Live());
+	}
+	CHECK_FALSE(game.battle.Live());
+	CHECK(game.battle.SpectatorStreams() == 0u);
+	game.battle.SetDrainingSpectators(false);
+	SetWatcherDrain(nullptr);
 }
 
 namespace {

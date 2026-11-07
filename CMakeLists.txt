@@ -68,6 +68,7 @@ add_executable(sfve_tests
     tests/NetPolicyTests.cxx
     tests/MatchResultTests.cxx
     tests/RematchDecisionTests.cxx
+    tests/WatcherTests.cxx
     src/mod/MatchResult.cxx)
 target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 

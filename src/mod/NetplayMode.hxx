@@ -13,6 +13,8 @@
 //   plays offline.
 // - Otherwise, with -sfve_peer_port: the ports on the command line, for two
 //   copies on one PC.
+// - A room member who watches the table plays the same battle from P1's
+//   stream of the fighters' confirmed frames and sends nothing (section 25).
 //
 // The local player's input is what the game computed from this copy's pad 0
 // (whichever side it plays), so button layouts apply before the input is
@@ -79,6 +81,15 @@ private:
 	void Leave();
 	// Starts the session once the match is known; false while it is not.
 	bool StartSession(SfvAdapter& adapter);
+	// A watcher's frame (EMBER_LIBRARY.md section 25): the next frame P1
+	// streamed and, while this copy is behind, a few more (SF4's
+	// SpectatorCatchUp), each through the decisions a fighter's frame takes.
+	void WatchFrames(SfvAdapter& adapter);
+	// One of them; false when no frame was played.
+	bool WatchFrame(SfvAdapter& adapter);
+	// P1's session kept for its watchers after the battle: closed if it is
+	// not already, and freed.
+	void EndDrain();
 	void DumpIfRequested();
 	void PerturbIfDue();
 
@@ -88,6 +99,10 @@ private:
 	const ModConfig& config_;
 	mutable std::mutex mutex_; // the game thread steps, the pipe thread reads
 	std::unique_ptr<RollbackSession> session_;
+	// P1's last session, kept after its battle for the watchers still
+	// streaming (RoomBattle::Close) and polled between battles, until the
+	// runtime's drain ends (adapter::SetWatcherDrain).
+	std::unique_ptr<RollbackSession> drain_;
 	adapter::RoomBattle room_; // what the room hears of its battle
 	bool started_ = false;
 	uint32_t seed_ = kSessionSeed; // the session's: a rematch in place reseeds from it
