@@ -228,9 +228,11 @@ with neutral inputs, and no check restores to one's start.
   after its second step it writes the fighters, costumes, colours and stage
   into the new mode's data object through the object's own setters. The
   game loads and enters the battle itself (about 4 s).
-  `launch versus RYU:0:1 CNL -`. The game's ownership check is skipped
-  while developing and turned on (`-sfve_ownership=1`) in the public
-  version (the maintainer, 2026-11-04).
+  `launch versus RYU:0:1 CNL -`. A room's launch never runs the game's
+  own ownership check (it would judge both players by this copy and can
+  replace the stage by `rand()`); Ember's gate judges each player's pick on
+  their own copy before Ready instead (EMBER_LIBRARY.md section 23). A pipe
+  launch runs the game's check only with `-sfve_game_ownership=1`.
 - **Room start** (Ember's runtime in the mod, `-sfve_room=1`;
   docs/design/EMBER_LIBRARY.md section 12). The players' picks and the
   room's rules come from Ember's private room; once the room grants a match
@@ -398,12 +400,8 @@ loopback-only rule stays true in the finished design.
 
 ## Not doing
 
-- Any character, costume or entitlement unlock. Offline, SFV may treat
-  characters as unavailable (the reference project bypasses the game's
-  free-play check for every character); whether and how ownership is checked
-  offline is the maintainer's call, as it was for SF4's DLC gate. (The development
-  build skips the launch's ownership check by the maintainer's decision; the public
-  version keeps it, see open question 3.)
+- Any character, costume or entitlement unlock. Ember reads what the game
+  lets a player pick and never writes it (EMBER_LIBRARY.md section 23).
 - Anything that talks to Capcom, ranked, CFN or Fighting Chance/Fight Money.
 
 ## Open questions for the maintainer
@@ -411,13 +409,20 @@ loopback-only rule stays true in the finished design.
 1. Project name and repository: local folder `sfv-ember` only for now, no
    GitHub repository. Name it, and say whether it should be pushed.
 2. The firewall rule (layer 2) — commands are in the summary message.
-3. Character availability offline (see Not doing). Decided 2026-11-04:
-   development skips the game's ownership check in the launch; the public
-   version runs it (`-sfve_ownership=1`). The check judges both players by
-   each copy's own entitlements, so for the public version two players who
-   own different content still need a rule: (a) pick only what both own
-   (the setups would carry ownership), or (b) each copy checks only its own
-   player's pick and shows the opponent's as picked, as online play does.
+3. Character availability offline. **Decided (the maintainer, 2026-11-06): SF4
+   parity, rule (b).** Each player may pick only what their own copy of the
+   game lets them pick; the opponent's pick plays as picked, whatever this
+   copy allows. Ember's gate judges the pick on the player's own copy
+   (pick screen NOT OWNED, Ready refused, Random and a stored pick fitted to
+   what they own), and a room's launch never runs the game's own check,
+   which would judge both players by one copy (EMBER_LIBRARY.md section 23).
+   `-sfve_ownership=0` turns Ember's gate off for development;
+   `-sfve_unowned=...` marks content unowned on one copy for tests. What
+   the offline game reports (section 23's evidence): on this install every
+   fighter, costume and colour is pickable, because offline SFV judges only
+   its own battle setup data and the installed packages, never the
+   account's purchases. Whether Ember should judge the account's purchases
+   some other way is open (section 23, Left).
 4. The optional privacy-policy consent in SFV's first-run prompts was
    declined; the Options screen only offers to revoke it. Nothing needs it
    offline.

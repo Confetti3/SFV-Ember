@@ -1,6 +1,7 @@
 #include "mod/GameContent.hxx"
 
 #include "mod/GameMemory.hxx"
+#include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
 
 #include <windows.h>
@@ -31,6 +32,23 @@ using CostumeNameFn = GameString* (*)(void* unused, GameString* out, const GameS
 using TextToStringFn = const GameString* (*)(const void* text);
 using FreeFn = void (*)(void* block);
 using StageNameFn = GameString* (*)(uint8_t* stageAsset, GameString* out, const GameString* code);
+using ClassFn = uint8_t* (*)(const wchar_t* package);
+using LoadObjectFn = uint8_t* (*)(uint8_t* objectClass, uint8_t* outer, const wchar_t* name, const wchar_t* filename,
+	uint32_t flags, void* packageMap, bool reconcile);
+using OwnedFightersFn = void (*)(uint8_t* setup, GameArray<GameString>* out, bool random, bool eleven);
+using OwnedCostumesFn = bool (*)(uint8_t* setup, const GameString* code, GameArray<int32_t>* out);
+using OwnedColoursFn = void (*)(uint8_t* setup, const GameString* code, int32_t costume, GameArray<int32_t>* out);
+using OwnedStagesFn = void (*)(uint8_t* setup, GameArray<GameString>* out, bool random);
+using LoggedInFn = bool (*)();
+
+// The battle setup data asset (sfv::kOwnedFighters and the rest): the one the
+// battle jump's check loads (rva 0x551520).
+constexpr const wchar_t* kBattleSetupPath =
+	L"/Game/GameFlow/CommonSceneStates/BattleSetup/BattleSetupDataAsset.BattleSetupDataAsset";
+// UKWBattleSetupDataAsset's fields (sfv::kBattleSetupClass).
+constexpr uint32_t kSetupRestricted = 96;
+constexpr uint32_t kSetupRestrictionCount = 128;
+constexpr uint32_t kSetupFilter = 280;
 
 template <typename Fn>
 Fn At(const CodeSite& site)
@@ -78,6 +96,19 @@ std::vector<std::string> ReadCodes(const CodeSite& lister, uint8_t* spec)
 	for (int i = 0; i < list.count; i++) FreeBlock(list.data[i].data);
 	FreeBlock(list.data);
 	return codes;
+}
+
+// A code list the game fills, freed after.
+template <typename List>
+std::vector<std::string> TakeCodes(List&& list)
+{
+	GameArray<GameString> codes;
+	list(&codes);
+	std::vector<std::string> out;
+	for (int i = 0; i < codes.count; i++) out.push_back(Narrow(codes.data[i]));
+	for (int i = 0; i < codes.count; i++) FreeBlock(codes.data[i].data);
+	FreeBlock(codes.data);
+	return out;
 }
 
 // One of the spec's number lists, in the lister's order; the array is freed
@@ -196,6 +227,66 @@ std::vector<FighterContent> ReadFighters(uint8_t* singleton, uint8_t* spec)
 	return fighters;
 }
 
+bool Contains(const std::vector<int>& list, int value)
+{
+	return std::find(list.begin(), list.end(), value) != list.end();
+}
+
+bool Contains(const std::vector<std::string>& list, const std::string& value)
+{
+	return std::find(list.begin(), list.end(), value) != list.end();
+}
+
+// The battle setup asset, found or loaded; null when the game has no such
+// object (the class or the asset is missing).
+uint8_t* BattleSetup()
+{
+	uint8_t* setupClass = At<ClassFn>(sfv::kBattleSetupClass)(L"/Script/KiwiGame");
+	if (!setupClass) return nullptr;
+	return At<LoadObjectFn>(sfv::kStaticLoadObject)(setupClass, nullptr, kBattleSetupPath, nullptr, 0, nullptr, true);
+}
+
+// What the game lets this copy's player pick, as its menus and the battle
+// jump's check ask it (sfv::kOwnedFighters and the rest), into `lists`.
+// False, with nothing changed, when the battle setup asset is not there.
+bool ReadOwnership(ContentLists& lists)
+{
+	uint8_t* setup = BattleSetup();
+	if (!setup) return false;
+	OwnershipSource& source = lists.ownership;
+	source.read = true;
+	source.restricted = Field<uint8_t>(setup, kSetupRestricted) != 0;
+	source.restrictionEntries = Field<int32_t>(setup, kSetupRestrictionCount);
+	source.filter = Field<void*>(setup, kSetupFilter) != nullptr;
+	source.loggedIn = At<LoggedInFn>(sfv::kLoggedIn)();
+	const std::vector<std::string> fighters =
+		TakeCodes([&](GameArray<GameString>* out) { At<OwnedFightersFn>(sfv::kOwnedFighters)(setup, out, false, false); });
+	for (FighterContent& fighter : lists.fighters) {
+		fighter.owned = Contains(fighters, fighter.code);
+		const CodeView view(fighter.code);
+		const GameString code = view.Get();
+		const std::vector<int> costumes = ReadNumbers(
+			[&](GameArray<int32_t>* out) { return At<OwnedCostumesFn>(sfv::kOwnedCostumes)(setup, &code, out); });
+		for (CostumeContent& costume : fighter.costumes) {
+			costume.owned = Contains(costumes, costume.id);
+			const std::vector<int> colours = ReadNumbers([&](GameArray<int32_t>* out) {
+				At<OwnedColoursFn>(sfv::kOwnedColours)(setup, &code, costume.id, out);
+				return true;
+			});
+			costume.ownedColours.clear();
+			for (int colour : costume.colours) {
+				if (Contains(colours, colour)) costume.ownedColours.push_back(colour);
+			}
+		}
+	}
+	const std::vector<std::string> stages =
+		TakeCodes([&](GameArray<GameString>* out) { At<OwnedStagesFn>(sfv::kOwnedStages)(setup, out, false); });
+	for (const std::string& stage : lists.stages) {
+		if (Contains(stages, stage)) lists.ownedStages.push_back(stage);
+	}
+	return true;
+}
+
 } // namespace
 
 ContentLists ReadContentLists()
@@ -208,11 +299,42 @@ ContentLists ReadContentLists()
 	for (std::string& stage : ReadCodes(sfv::kSpecStages, spec)) {
 		if (!Unplayable(stage)) lists.stages.push_back(std::move(stage));
 	}
+	if (lists.fighters.empty() || lists.stages.empty()) return {};
+	// Without the battle setup asset there is no answer to what this copy's
+	// player may pick: no lists at all, rather than lists that say nothing is
+	// owned or everything is.
+	if (!ReadOwnership(lists)) {
+		static bool logged = false;
+		if (!logged) Log("content: the battle setup asset is not there yet; the lists wait for it");
+		logged = true;
+		return {};
+	}
+
 	// The names only once both lists are there: each may load a stage's data.
 	uint8_t* stageAsset = Field<uint8_t*>(singleton, sfv::content::kStageAsset);
 	if (lists.fighters.empty() || lists.stages.empty() || !stageAsset) return lists;
 	for (const std::string& stage : lists.stages) lists.stageNames.push_back(StageName(stageAsset, stage));
 	return lists;
+}
+
+void MarkUnowned(ContentLists& lists, const std::vector<UnownedContent>& marks)
+{
+	for (const UnownedContent& mark : marks) {
+		for (FighterContent& fighter : lists.fighters) {
+			if (fighter.code != mark.fighter) continue;
+			lists.ownership.markedUnowned++;
+			if (mark.costume < 0) {
+				fighter.owned = false;
+				continue;
+			}
+			for (CostumeContent& costume : fighter.costumes) {
+				if (costume.id != mark.costume) continue;
+				if (mark.colour < 0) costume.owned = false;
+				else costume.ownedColours.erase(std::remove(costume.ownedColours.begin(), costume.ownedColours.end(), mark.colour),
+					costume.ownedColours.end());
+			}
+		}
+	}
 }
 
 } // namespace sfve::mod

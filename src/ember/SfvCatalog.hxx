@@ -19,7 +19,12 @@
 // (MatchBuildId) carries a fingerprint of it: copies whose spec differs fail
 // that check instead of disagreeing on fighter N or on what a costume is.
 // What this copy's install lacks is per copy: such a fighter is locked and
-// such a costume cannot be readied (FighterLocked, AvailablePick).
+// such a costume cannot be readied (FighterLocked, AvailablePick). So is what
+// the game does not let this copy's player pick (GameContent's `owned`)
+// while Ember's ownership gate is on: each player may ready only what their
+// own copy lets them pick, and the opponent's pick plays as picked, whatever
+// this copy owns (LaunchPicks checks the spec alone). EMBER_LIBRARY.md
+// section 23.
 //
 // What SFV has no use for: Ultras (one choice, 0), editions (a room's
 // edition rule is ignored), personal actions and win quotes (SF4's; the wire
@@ -46,14 +51,15 @@ namespace sfve::adapter {
 // verified one) and the mod's match version. MatchBuildId adds the content.
 constexpr const char* kMatchBuild = "sfv-ember/13173604/0.2";
 
-// Fills the catalog from the game's lists, and the build id from them. False,
+// Fills the catalog from the game's lists, and the build id from them, with
+// Ember's ownership gate on or (development only) off. False,
 // and nothing changed, when the lists make no pick space (a list empty, a
 // roster longer than ember::MaxFighters, a fighter with no costume or a
 // costume with no colour, a number past the wire's byte) or the catalog
 // already holds another pick space; true again for the same one. Game thread,
 // before Ember's runtime starts: once SealCatalog has run, it logs and
 // refuses, because the runtime's threads read the catalog without a lock.
-bool FillCatalog(const mod::ContentLists& lists);
+bool FillCatalog(const mod::ContentLists& lists, bool ownershipGate = true);
 
 // Called once as Ember's runtime starts: the catalog is final from here on.
 void SealCatalog();
@@ -79,11 +85,30 @@ std::string StageName(std::int64_t stage);
 // How many stages the catalog lists (0 before FillCatalog); ids run from 0.
 int StageCount();
 
-// The fighter's costume numbers in the game's order (those this copy can
-// load, with installedOnly), and a costume's colour numbers; empty for a
-// fighter or costume the catalog does not have.
-std::vector<int> CostumeIds(std::int64_t fighter, bool installedOnly);
-std::vector<int> ColourIds(std::int64_t fighter, int costume);
+// The fighter's costume numbers in the game's order, and a costume's colour
+// numbers; with pickableOnly, only those this copy's player can ready (a
+// costume installed here and, with the gate on, a costume or colour the game
+// lets them pick). Empty for a fighter or costume the catalog does not have.
+std::vector<int> CostumeIds(std::int64_t fighter, bool pickableOnly);
+std::vector<int> ColourIds(std::int64_t fighter, int costume, bool pickableOnly = false);
+// With the gate on, the game does not let this copy's player pick the
+// fighter, the costume, or that colour of the costume (the select screen's
+// NOT OWNED); false for anything the catalog does not have, and always false
+// with the gate off.
+bool FighterNotOwned(std::int64_t fighter);
+bool CostumeNotOwned(std::int64_t fighter, int costume);
+bool ColourNotOwned(std::int64_t fighter, int costume, int colour);
+// What SfvGame reports as the fighter's Availability (the library's
+// GameState::FighterAvailability): `ready` when this copy's player may play
+// the fighter, and every costume and colour bit set then. SFV's costume and
+// colour numbers do not follow that layout (SF4's), so its catalog rules
+// read their own table for costumes and colours, and nothing reads those
+// bits.
+sf4e::selection::Availability OwnedAvailability(std::int64_t fighter);
+// This copy's player's own pick fitted to the catalog and to what they can
+// ready (NormalizePick with their availability): the pick store's rule, so
+// a stored pick they cannot ready falls back to one they can.
+void FitOwnPick(sf4e::selection::Pick& pick);
 // A costume as the game names it, in its language (its number where the
 // game gave no name), and a colour as the game's costume menu labels it
 // ("01", "EX01").

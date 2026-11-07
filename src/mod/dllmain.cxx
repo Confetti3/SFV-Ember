@@ -70,6 +70,11 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 		beforeGameCode ? "before game code" : "LATE: the game was already running", Config().instance,
 		ModeName(Config().mode));
 	if (const char* ignored = IgnoredSetting()) Log("config: %s", ignored);
+	if (!UnownedProblem().empty()) {
+		Log("config: -sfve_unowned=%s has an entry that is not CODE[:costume[:colour]]; left out", UnownedProblem().c_str());
+	}
+	Log("config: Ember's ownership gate %s; %zu -sfve_unowned entries", Config().ownershipGate ? "on" : "off (development)",
+		Config().unowned.size());
 
 	if (!InstallNetGuard()) {
 		Log("start refused: the network guard is incomplete; closing the game so it never runs online");
@@ -108,7 +113,7 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	if (!scene) dialogs = std::min(dialogs, OfflineDialogs::HideDownloadFails);
 	InstallOfflineDialogs(base, dialogs);
 	RegisterStatus("suppressedDialogs", [] { return std::to_string(SuppressedDialogs()); });
-	if (scene && InstallVersusLaunch(base, Config().ownershipCheck)) RegisterVersusLaunchCommands();
+	if (scene && InstallVersusLaunch(base, Config().gameOwnershipCheck)) RegisterVersusLaunchCommands();
 	InstallMatchEnd(base);
 	// The game's exit request: the point the netplay mode's runtime leaves
 	// its room from (EmberHost), before the engine stops.
@@ -120,21 +125,39 @@ extern "C" __declspec(dllexport) int SfveStart(int beforeGameCode)
 	if (scene && sfve::overlay::InstallOverlay()) SetPadFilter(&sfve::overlay::FilterGamePad);
 	RegisterCommand("content", [](const std::string&) {
 		RunOnGameThread([] {
-			const ContentLists lists = ReadContentLists();
-			Log("content: %zu fighters, %zu stages", lists.fighters.size(), lists.stages.size());
+			ContentLists lists = ReadContentLists();
+			MarkUnowned(lists, Config().unowned);
+			const OwnershipSource& source = lists.ownership;
+			Log("content: %zu fighters, %zu stages; ownership %s: setup restricted %d (%d entries), filter %d, "
+				"logged in %d, %d marked unowned by -sfve_unowned",
+				lists.fighters.size(), lists.stages.size(), source.read ? "read" : "not read", source.restricted,
+				source.restrictionEntries, source.filter, source.loggedIn, source.markedUnowned);
+			int unownedFighters = 0, unownedCostumes = 0, unownedColours = 0;
 			for (const FighterContent& fighter : lists.fighters) {
-				Log("content: %s \"%s\"%s, %zu costumes", fighter.code.c_str(), fighter.name.c_str(),
-					fighter.installed ? "" : " (not installed)", fighter.costumes.size());
+				unownedFighters += !fighter.owned;
+				Log("content: %s \"%s\"%s%s, %zu costumes", fighter.code.c_str(), fighter.name.c_str(),
+					fighter.installed ? "" : " (not installed)", fighter.owned ? "" : " (not owned)", fighter.costumes.size());
 				for (const CostumeContent& costume : fighter.costumes) {
 					std::string colours;
-					for (int colour : costume.colours) colours += " " + std::to_string(colour);
-					Log("content:   costume %d \"%s\"%s, colours%s", costume.id, costume.name.c_str(),
-						costume.installed ? "" : " (not installed)", colours.c_str());
+					for (int colour : costume.colours) {
+						const bool owned =
+							std::find(costume.ownedColours.begin(), costume.ownedColours.end(), colour) != costume.ownedColours.end();
+						unownedColours += !owned;
+						colours += " " + std::to_string(colour) + (owned ? "" : "(not owned)");
+					}
+					unownedCostumes += !costume.owned;
+					Log("content:   costume %d \"%s\"%s%s, colours%s", costume.id, costume.name.c_str(),
+						costume.installed ? "" : " (not installed)", costume.owned ? "" : " (not owned)", colours.c_str());
 				}
 			}
 			for (size_t i = 0; i < lists.stages.size(); i++) {
-				Log("content: stage %s \"%s\"", lists.stages[i].c_str(), lists.stageNames.size() > i ? lists.stageNames[i].c_str() : "");
+				const bool owned =
+					std::find(lists.ownedStages.begin(), lists.ownedStages.end(), lists.stages[i]) != lists.ownedStages.end();
+				Log("content: stage %s \"%s\"%s", lists.stages[i].c_str(),
+					lists.stageNames.size() > i ? lists.stageNames[i].c_str() : "", owned ? "" : " (not owned)");
 			}
+			Log("content: not owned: %d fighters, %d costumes, %d colours, %zu stages", unownedFighters, unownedCostumes,
+				unownedColours, lists.stages.size() - lists.ownedStages.size());
 		});
 		return std::string("ok queued (see the log)");
 	});

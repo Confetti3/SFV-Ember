@@ -334,13 +334,63 @@ constexpr CodeSite kColourSwatch{"ColourSwatch", 0x554750,
 constexpr CodeSite kHudInvoke{"HudInvoke", 0x73D600,
 	{0x48, 0x85, 0xC9, 0x74, 0x15, 0x48, 0x8B, 0x89, 0x18, 0x03, 0x00, 0x00, 0x48, 0x85, 0xC9, 0x74}};
 
+// What the game lets this copy's player pick (GameContent). The menus and
+// the battle jump's check (rva 0x5E2D10) ask the battle setup data asset
+// (UKWBattleSetupDataAsset, 344 bytes,
+// /Game/GameFlow/CommonSceneStates/BattleSetup/BattleSetupDataAsset; the
+// check finds it so, rva 0x551520 and 0x477A70). Its +96 byte restricts the
+// picks to the asset's own list at +120 (TArray of 24-byte
+// KWBattleSetupCostumeColor: +0 FString fighter code, +16 costume, +20
+// colour), less a set at +104, each entry also passing the filter object at
+// +280 when one is installed (its vtable +8; a BattleSetupState's constructor
+// installs one, rva 0x5A4D50 and 0x574510, built from a list of the battle
+// settings' own). With +96 clear the costume and colour lists are the
+// spec's and the install's alone, and the fighters those of the asset's
+// select-grid list at +48 that are installed. None of these paths calls
+// Steam; the only Steam licence query in the exe (rva 0xE112C0,
+// BIsDlcInstalled of app 475230) is reached from three menu screens (rva
+// 0xAAC150, 0xAADDE0, 0xAC6310), not from these.
+//
+// UClass* BattleSetupClass(const TCHAR* package): the asset's class, cached at
+// rva 0x3AA5C20 (L"/Script/KiwiGame"; the check's IsA test, rva 0x477A70).
+constexpr CodeSite kBattleSetupClass{"BattleSetupClass", 0xC26230,
+	{0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05, 0xE5, 0xF9, 0xE7, 0x02, 0x48, 0x85, 0xC0, 0x75, 0x21}};
+// void OwnedFighters(Setup*, TArray<FString>* out, bool random, bool eleven):
+// kSelectableFighters (installed) that the asset allows (rva 0x55A9B0: its
+// list at +48 with +96 clear, else the restriction list); Random and ELEVEN
+// appended on request. The check takes a fighter in this list (rva
+// 0x56AF20), or one of the online free trial's (rva 0x56B3A0, 0x565F20).
+constexpr CodeSite kOwnedFighters{"OwnedFighters", 0x54E8E0,
+	{0x44, 0x88, 0x4C, 0x24, 0x20, 0x55, 0x53, 0x56, 0x57, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48}};
+// bool OwnedCostumes(Setup*, const FString* code, TArray<int>* out):
+// kPlayableCostumes that the asset allows (rva 0x55AEF0); the costume
+// settings menu's spin box lists these (rva 0x8CC6E0, case 3).
+constexpr CodeSite kOwnedCostumes{"OwnedCostumes", 0x5545B0,
+	{0x48, 0x89, 0x5C, 0x24, 0x20, 0x55, 0x56, 0x57, 0x48, 0x83, 0xEC, 0x40, 0x41, 0x8B, 0x40, 0x0C}};
+// void OwnedColours(Setup*, const FString* code, int costume, TArray<int>*
+// out): kSpecColours with +96 clear, else the restriction list's colours of
+// that costume.
+constexpr CodeSite kOwnedColours{"OwnedColours", 0x55ABA0,
+	{0x4C, 0x89, 0x4C, 0x24, 0x20, 0x44, 0x89, 0x44, 0x24, 0x18, 0x48, 0x89, 0x54, 0x24, 0x10, 0x53}};
+// void OwnedStages(Setup*, TArray<FString>* out, bool random): kSpecStages
+// that the asset lists at +184 and does not exclude at +168; the check's
+// stage test (rva 0x56B920).
+constexpr CodeSite kOwnedStages{"OwnedStages", 0x550DA0,
+	{0x48, 0x89, 0x5C, 0x24, 0x20, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x48, 0x83, 0xEC}};
+// bool LoggedIn(): the online identity's login status for user 0 is 2
+// (vtable +288 of the interface from rva 0x73BEC0). The free trial's lists
+// and the shop's fighter list are read only then (rva 0x565F20, 0x551E50).
+constexpr CodeSite kLoggedIn{"LoggedIn", 0x742A20,
+	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x30, 0xE8, 0x91, 0x94, 0xFF, 0xFF, 0x48}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
 	kSpecStages, kMainMenuClass, kRequestExit, kStageName, kSpecFighters, kSpecCostumes, kPlayableCostumes,
-	kSpecColours, kCostumeName, kTextToString, kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke};
+	kSpecColours, kCostumeName, kTextToString, kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke,
+	kBattleSetupClass, kOwnedFighters, kOwnedCostumes, kOwnedColours, kOwnedStages, kLoggedIn};
 
 namespace versus {
 
@@ -420,6 +470,14 @@ constexpr uint32_t kMessageCopySetting = 44;
 constexpr uint32_t kMessageSwapSides = 45;
 constexpr uint32_t kMessageCheckOwnership = 46;
 constexpr uint32_t kJumpStateMessage = 848; // the jump state's init message
+// The ownership check's result, once it has run (rva 0x602790, the step
+// after the second): 0 when it changed nothing; 0x210 a fighter it does not
+// allow (that player's costume and colour set to 0; the jump then leaves
+// with the error notice Notice_ERROR_0030, rva 0x602830), 0x102 a costume set
+// to 0, 0x101 a colour set to 0, 0x108 a stage it does not allow replaced
+// (by TRN or S25, in one branch chosen by rand(): rva 0x5E3082-0x5E360A),
+// 0x400 the setup asset missing.
+constexpr uint32_t kJumpCheckResult = 856;
 constexpr int kModeVersusCpu = 0;
 constexpr int kModeVersus = 1;
 constexpr int kModeTraining = 2;

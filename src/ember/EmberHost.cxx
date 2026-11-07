@@ -108,13 +108,14 @@ bool Refuse(const std::string& why)
 bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 {
 	const ULONGLONG readStarted = GetTickCount64();
-	const mod::ContentLists lists = mod::ReadContentLists();
+	mod::ContentLists lists = mod::ReadContentLists();
+	mod::MarkUnowned(lists, settings.unowned);
 	if (lists.fighters.empty() || lists.stages.empty()) {
 		if (s_state != HostState::WaitingForContent) mod::Log("ember: waiting for the game's content lists");
 		s_state = HostState::WaitingForContent;
 		return true;
 	}
-	if (!FillCatalog(lists) || !ember::Usable(ember::Catalog())) {
+	if (!FillCatalog(lists, settings.ownershipGate) || !ember::Usable(ember::Catalog())) {
 		return Refuse("the game's lists (" + std::to_string(lists.fighters.size()) + " fighters, " +
 			std::to_string(lists.stages.size()) + " stages) do not make a usable catalog");
 	}

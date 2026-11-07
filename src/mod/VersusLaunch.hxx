@@ -74,12 +74,17 @@ bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rule
 bool PlayableRounds(int rounds);
 std::optional<int> RoundClockFrames(int seconds);
 
-// `checkOwnership`: the jump runs the game's ownership check, as its menus
-// do. It judges both players by this copy's entitlements (replacing unowned
-// costumes, colours and stages, the stage by rand(); an unowned fighter ends
-// the jump), so linked copies owning different content can load different
-// battles. Off while developing; the public version turns it on.
-bool InstallVersusLaunch(uintptr_t imageBase, bool checkOwnership);
+// `gameCheckOutsideRooms`: a launch that is not a room's (the pipe's
+// `launch`) runs the game's own check, as its menus do (sfv::jump::
+// kMessageCheckOwnership). The check judges both players by what this copy
+// allows: a fighter it does not allow ends the jump with an error notice, a
+// costume or colour it does not allow becomes 0, and a stage it does not
+// allow is replaced, in one branch by rand(). A room's match never runs it,
+// whatever this says: two copies allowing different content would load
+// different battles. Ember's own gate judges each player's pick on that
+// player's copy before Ready instead (SfvCatalog, EMBER_LIBRARY.md
+// section 23).
+bool InstallVersusLaunch(uintptr_t imageBase, bool gameCheckOutsideRooms);
 
 // Called on the game thread when a launch is refused or fails on the way
 // (the game then stays on, or goes back to, the main menu, or loads the

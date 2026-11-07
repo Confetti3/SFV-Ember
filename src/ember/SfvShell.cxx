@@ -78,7 +78,7 @@ public:
 		view.appearanceName = loc::Tf("selection.appearance_value", sf4e::ui::CostumeLabel(pick.pick), ColourName(pick.pick.color));
 		view.selectionSummary = view.fighterName + " / " + view.appearanceName;
 		view.stageName = sf4e::ui::StageLabel(pick.stage);
-		view.colorSteps = ColourIds(pick.pick.fighter, pick.pick.costume).size() > 1;
+		view.colorSteps = ColourIds(pick.pick.fighter, pick.pick.costume, true).size() > 1;
 		// SFV's fighters have no Ultra (the catalog's one choice) and no fighter
 		// options (SF4's personal action and win quote): the table page shows
 		// neither row.
@@ -87,12 +87,12 @@ public:
 	}
 
 	// The table page's Appearance row steps the colour, through the costume's
-	// own colours; there is no Ultra.
+	// own colours this player can ready; there is no Ultra.
 	bool StepSelection(const sf4e::ui::ShellAction::SelectionStep& step, const RuntimeSnapshot& snapshot) override
 	{
 		if (!snapshot.canEditSelection || step.field != sf4e::ui::ShellAction::SelectionStep::Field::Color) return false;
 		PlayerPick pick = CurrentPick();
-		sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume), step.delta);
+		sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), step.delta);
 		SetPick(pick);
 		return true;
 	}

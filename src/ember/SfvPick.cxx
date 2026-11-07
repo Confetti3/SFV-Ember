@@ -13,13 +13,14 @@ namespace {
 std::mutex s_mutex;
 PlayerPick s_pick;
 
-// The pick under the catalog's rules (its NormalizePick, and a stage of the
-// list); as it is until the catalog is filled.
+// The pick under the catalog's rules and fitted to what this copy's player
+// can ready (FitOwnPick), and a stage of the list; as it is until the
+// catalog is filled.
 PlayerPick Fitted(PlayerPick pick)
 {
 	const ember::GameCatalog& catalog = ember::Catalog();
 	if (!ember::Usable(catalog)) return pick;
-	catalog.normalizePick(pick.pick, false, nullptr, nullptr);
+	FitOwnPick(pick.pick);
 	if (!catalog.validStage(pick.stage)) pick.stage = 0;
 	return pick;
 }

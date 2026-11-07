@@ -21,7 +21,11 @@
 // The runtime logs through spdlog; its lines go to the mod's log, marked
 // "ember:". The status field "ember" reports whether it runs, or why not.
 
+#include "mod/ModConfig.hxx"
+
 #include "sf4e/sf4e__RuntimeTick.hxx"
+
+#include <vector>
 
 namespace sfve::adapter {
 
@@ -29,6 +33,11 @@ struct HostSettings {
 	// Names this copy in rooms ("SFV <instance + 1>"): a room's member names
 	// are unique, and copies on one PC would otherwise share one.
 	int instance = 0;
+	// Ember's ownership gate (ModConfig's ownershipGate; off only while
+	// developing) and the content marked unowned for this copy on top of the
+	// game's answer (-sfve_unowned). SfvCatalog, EMBER_LIBRARY.md section 23.
+	bool ownershipGate = true;
+	std::vector<mod::UnownedContent> unowned;
 };
 
 // Registers the tick; `battle` must outlive the process (the battle mode).

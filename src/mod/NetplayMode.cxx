@@ -37,7 +37,7 @@ void NetplayMode::Install()
 	if (!config_.room) return;
 	adapter::RegisterRoomCommands();
 	// The runtime ticks this mode for the process's life (the driver holds it).
-	adapter::InstallEmberHost({config_.instance}, *this);
+	adapter::InstallEmberHost({config_.instance, config_.ownershipGate, config_.unowned}, *this);
 	adapter::InstallEmberShell();
 }
 

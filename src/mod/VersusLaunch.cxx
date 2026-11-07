@@ -194,11 +194,17 @@ void WriteStage(uint8_t* modeData, const MatchPicks& picks)
 // while the game loads; leaving it for the main menu, or never leaving it,
 // means no battle came, which a linked match must hear about rather than
 // wait for.
-void WatchLoading(LaunchFailed onFailed)
+void WatchLoading(LaunchFailed onFailed, bool gameCheck)
 {
 	auto frames = std::make_shared<int>(0);
-	RunEachGameFrame([onFailed = std::move(onFailed), frames]() mutable {
-		const uintptr_t kind = SceneStateKind(CurrentSceneState());
+	RunEachGameFrame([onFailed = std::move(onFailed), frames, gameCheck]() mutable {
+		uint8_t* state = CurrentSceneState();
+		const uintptr_t kind = SceneStateKind(state);
+		// The check runs in the step after the second (sfv::jump::
+		// kJumpCheckResult); its result, once, the first frame after it.
+		if (gameCheck && *frames == 1 && kind == sfv::scene::kJumpStateVtable) {
+			Log("launch: the game's ownership check gave 0x%x", Field<uint32_t>(state, jump::kJumpCheckResult));
+		}
 		const char* why = kind == sfv::scene::kMainMenuVtable ? "the game went back to the main menu while loading"
 			: kind != sfv::scene::kJumpStateVtable            ? nullptr
 			: ++*frames >= kLoadFrames                        ? "the battle did not load within a minute"
@@ -235,7 +241,8 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	WriteStage(modeData, picks);
 	GiveBackGameRef(flow);
 	s_linkedLoading = picks.linked;
-	WatchLoading(std::move(onFailed));
+	uint8_t* message = Field<uint8_t*>(jumpState, jump::kJumpStateMessage);
+	WatchLoading(std::move(onFailed), message && Field<uint8_t>(message, jump::kMessageCheckOwnership) != 0);
 	return next;
 }
 
@@ -312,10 +319,19 @@ void Launch(const MatchPicks& picks, LaunchFailed onFailed)
 	Field<int32_t>(message, jump::kMessageMode) = (int32_t)picks.target;
 	Field<uint8_t>(message, jump::kMessageCopySetting) = 0;
 	Field<uint8_t>(message, jump::kMessageSwapSides) = 0;
-	Field<uint8_t>(message, jump::kMessageCheckOwnership) = s_checkOwnership ? 1 : 0;
+	// A room's match never runs the game's check: it judges both players by
+	// this copy's content and may rewrite either pick (and the stage, by
+	// rand()), so two copies would load different battles. Each player's own
+	// pick was judged by their own copy before Ready (EMBER_LIBRARY.md
+	// section 23); the picks both copies agreed are the picks loaded.
+	const bool gameCheck = s_checkOwnership && !picks.linked;
+	Field<uint8_t>(message, jump::kMessageCheckOwnership) = gameCheck ? 1 : 0;
 	if (!ChangeScene(jumpClass, message)) return refuse("the scene manager is not known");
 	s_pending = Pending{message, false, picks, std::move(onFailed)};
-	Log("launch: battle jump, target %d", (int)picks.target);
+	Log("launch: battle jump, target %d, %s", (int)picks.target,
+		picks.linked ? "a room's match: the game's ownership check does not run"
+		: gameCheck  ? "the game's ownership check runs"
+					 : "the game's ownership check does not run");
 	auto frames = std::make_shared<int>(0);
 	RunEachGameFrame([message, frames] {
 		if (s_pending.message != message) return false; // done, or failed already
@@ -410,11 +426,12 @@ bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rule
 		ParseRounds(rounds, &rules->rounds) && ParseTime(time, &rules->timeFrames);
 }
 
-bool InstallVersusLaunch(uintptr_t imageBase, bool checkOwnership)
+bool InstallVersusLaunch(uintptr_t imageBase, bool gameCheckOutsideRooms)
 {
 	s_base = imageBase;
-	s_checkOwnership = checkOwnership;
-	Log("launch: the game's ownership check %s", checkOwnership ? "runs" : "is skipped (development)");
+	s_checkOwnership = gameCheckOutsideRooms;
+	Log("launch: the game's ownership check %s; a room's match never runs it",
+		gameCheckOutsideRooms ? "runs in launches that are not a room's" : "does not run");
 	s_installed = HookCodeSite(imageBase, sfv::kJumpCopyPlayers, (void*)h_JumpCopyPlayers, (void**)&o_jumpCopyPlayers) &&
 		HookCodeSite(imageBase, sfv::kJumpSecondStep, (void*)h_JumpSecondStep, (void**)&o_jumpSecondStep);
 	return s_installed;

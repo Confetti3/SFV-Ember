@@ -20,7 +20,8 @@ namespace {
 
 // SFV Ember's own words where the shared catalog names SF4 Ember on the
 // screens SFV shows: the shell's header and Home, About and the version line,
-// the room's build checks and the shortcut hint. English replaces every translation of them
+// the room's build checks and the shortcut hint; and SF4's "Not owned on
+// Steam." where SFV's answer is the game's own (EMBER_LIBRARY.md section 23). English replaces every translation of them
 // too (Localization.cxx), until SFV Ember has translations of its own. The
 // launcher's, updater's, recovery's and Training's words are not shown here.
 const char kEnglish[] = R"po(
@@ -50,6 +51,9 @@ msgstr "Build mismatch. Both players must use the same SFV Ember build and the s
 
 msgid "runtime.room_join_failed"
 msgstr "Could not join the room. Check the invitation and that both players use the same SFV Ember build."
+
+msgid "selection.not_owned"
+msgstr "Not owned in this copy of Street Fighter V."
 
 msgid "runtime.invite_other_build"
 msgstr "The host is on a different SFV Ember build or has other fighters and stages installed. Both players need the same."

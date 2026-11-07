@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$keep)
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$keep)
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -18,6 +18,11 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # -games is then ignored. -shots also takes the prompt over each WIN.
 # -padAnswers answers on the prompt itself with each copy's virtual pad (A
 # Rematch, B Back to room), as a player does, instead of the pipe.
+#
+# -unowned0 / -unowned1 give copy 0 / copy 1 a -sfve_unowned list
+# (EMBER_LIBRARY.md section 23): content that copy's player may not pick.
+# Marking the other copy's pick shows that an opponent's pick plays as picked
+# whatever this copy owns: both copies must load the same picks.
 $ErrorActionPreference = 'Stop'
 # The checkout this script is in, whichever it is.
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -43,8 +48,11 @@ function Shot([string]$name) {
 
 python -I tools\sfve.py kill | Out-Null
 $seeds = @($seed0, $seed1)
+$unowned = @($unowned0, $unowned1)
 foreach ($i in 0, 1) {
-  python -I tools\sfve.py launch $i --mode netplay -- '-sfve_pads=01' '-sfve_background=1' '-sfve_room=1' "-sfve_mash=$($seeds[$i])" "-sfve_mash_from=$mashFrom" "-sfve_lag=$lag" "-sfve_hash_every=$hashEvery" | Out-Null
+  $marks = @()
+  if ($unowned[$i]) { $marks += "-sfve_unowned=$($unowned[$i])" }
+  python -I tools\sfve.py launch $i --mode netplay -- '-sfve_pads=01' '-sfve_background=1' '-sfve_room=1' "-sfve_mash=$($seeds[$i])" "-sfve_mash_from=$mashFrom" "-sfve_lag=$lag" "-sfve_hash_every=$hashEvery" $marks | Out-Null
 }
 $failure = ''
 try {

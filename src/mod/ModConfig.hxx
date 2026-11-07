@@ -22,17 +22,34 @@
 //                        hash for the match (pipe "hash F"; tools/compare.py)
 //   -sfve_room=1         netplay: host Ember's runtime; battles are rooms' matches
 //                        (the pipe's room commands, RoomCommands.hxx)
-//   -sfve_ownership=1    the match launch runs the game's ownership check
-//                        (off while developing; on in the public version)
+//   -sfve_ownership=0    development: Ember's ownership gate is off, so this
+//                        copy's player may pick what the game does not let
+//                        them (default 1: the gate is on, as in the public
+//                        version; EMBER_LIBRARY.md section 23)
+//   -sfve_unowned=LIST   development: content marked unowned for this copy, on
+//                        top of the game's answer: CODE, CODE:costume or
+//                        CODE:costume:colour, comma separated (RYU,KEN:3,CNL:0:100)
+//   -sfve_game_ownership=1  a launch that is not a room's runs the game's own
+//                        ownership check (default off; a room's never does)
 //   -sfve_dialogs=N      offline start-up dialogs hidden: 0 none, 1 download errors,
 //                        2 those and the offline notice (default)
 
 #include <stdint.h>
 
+#include <string>
+#include <vector>
 
 namespace sfve::mod {
 
 enum class ModMode { Inert, Probe, SyncTest, Netplay };
+
+// One -sfve_unowned entry: a fighter, one costume of it (colour -1), or one
+// colour of that costume.
+struct UnownedContent {
+	std::string fighter; // the game's code
+	int costume = -1;
+	int colour = -1;
+};
 
 struct ModConfig {
 	int instance = 0;
@@ -55,9 +72,15 @@ struct ModConfig {
 	// Offline start-up dialogs kept from showing: 0 none, 1 the download
 	// failures, 2 those and the offline-mode notice.
 	int offlineDialogs = 2;
-	// The launch runs the game's ownership check. Off for development (the maintainer,
-	// 2026-11-04); the public version of Ember turns it on.
-	bool ownershipCheck = false;
+	// Ember's ownership gate: this copy's player may pick only what the game
+	// lets them (GameContent's `owned`). Off only for development.
+	bool ownershipGate = true;
+	// Content this copy treats as unowned on top of the game's answer, to try
+	// the gate's screens and refusals with an account that owns everything.
+	std::vector<UnownedContent> unowned;
+	// A launch that is not a room's runs the game's own check (the battle
+	// jump's, VersusLaunch). A room's launch never does.
+	bool gameOwnershipCheck = false;
 };
 
 const ModConfig& Config();
@@ -66,6 +89,9 @@ void LoadConfigFromCommandLine(const wchar_t* commandLine);
 // off, for the log; null when there is none. -sfve_room=1 hosts Ember's
 // runtime in the netplay mode only, so with any other mode rooms stay off.
 const char* IgnoredSetting();
+// "-sfve_unowned=..." as the command line gave it, when an entry did not
+// parse (and was left out); empty otherwise. For the log.
+const std::string& UnownedProblem();
 const char* ModeName(ModMode mode);
 
 } // namespace sfve::mod

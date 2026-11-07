@@ -109,6 +109,7 @@ add_executable(sfve_ember_tests
     src/mod/Log.cxx
     src/mod/MatchEnd.cxx
     src/mod/MatchResult.cxx
+    src/mod/ModConfig.cxx
     src/mod/SfvAdapter.cxx
     src/mod/SfvFlow.cxx
     src/mod/SfvRegionNames.cxx

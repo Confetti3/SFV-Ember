@@ -10,17 +10,21 @@
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
+#include "ember/SfvPick.hxx"
 #include "ember/SfvVerification.hxx"
+#include "mod/ModConfig.hxx"
 
 #include "common/SelectionPick.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "common/ProductIdentity.hxx"
+#include "common/RandomFighter.hxx"
 #include "common/StageCatalog.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
 #include "ui/SelectionArt.hxx"
 #include "ui/SelectionLabels.hxx"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -32,29 +36,38 @@ using sf4e::selection::Pick;
 
 namespace {
 
-mod::CostumeContent Costume(int id, std::vector<int> colours, const char* name = "", bool installed = true)
+// A costume the game lets this copy's player pick, in every colour but
+// `notOwned`, unless `owned` says otherwise.
+mod::CostumeContent Costume(int id, std::vector<int> colours, const char* name = "", bool installed = true,
+	bool owned = true, std::vector<int> notOwned = {})
 {
-	return {id, std::move(colours), name, installed};
+	std::vector<int> ownedColours;
+	for (int colour : colours) {
+		if (std::find(notOwned.begin(), notOwned.end(), colour) == notOwned.end()) ownedColours.push_back(colour);
+	}
+	return {id, std::move(colours), name, installed, owned, std::move(ownedColours)};
 }
 
 mod::FighterContent Fighter(const char* code, std::vector<mod::CostumeContent> costumes, const char* name = "",
-	bool installed = true)
+	bool installed = true, bool owned = true)
 {
-	return {code, std::move(costumes), name, installed};
+	return {code, std::move(costumes), name, installed, owned};
 }
 
 // A content list shaped as the game's: fighters in the game's order with
 // their costume numbers (with gaps, as the spec leaves some out) and each
 // costume's colours (EX colours from 100); names where the game gives one;
-// one fighter and one costume this copy has not installed; the stages' names
+// one fighter and one costume this copy has not installed; one fighter, one
+// costume and two colours the game does not let this copy's player pick
+// (KEN; CNL's costume 2; RYU's EX colours of costume 4); the stages' names
 // where the game gives one (none for the second).
 mod::ContentLists TestContent()
 {
 	return {{Fighter("RYU", {Costume(0, {0, 1, 2}, "Story"), Costume(1, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}),
-					 Costume(4, {0, 1, 100, 101}, "Nostalgia")},
+					 Costume(4, {0, 1, 100, 101}, "Nostalgia", true, true, {100, 101})},
 				 "Ryu"),
-				Fighter("CNL", {Costume(0, {0, 1}), Costume(2, {0})}, "Chun-Li"),
-				Fighter("KEN", {Costume(0, {0})}, "Ken"),
+				Fighter("CNL", {Costume(0, {0, 1}), Costume(2, {0}, "", true, false)}, "Chun-Li"),
+				Fighter("KEN", {Costume(0, {0})}, "Ken", true, false),
 				Fighter("CMY", {Costume(3, {5, 6})}, "", false),
 				Fighter("BSN", {Costume(0, {0, 1}), Costume(1, {0, 1}, "", false)}, "M. Bison")},
 		{"S01", "S02", "S25"}, {"Stage One", "", "Stage Twenty-five"}};
@@ -175,6 +188,8 @@ TEST_CASE("the catalog is empty until it is filled from the game's content lists
 	CHECK(ColourIds(0, 4) == std::vector<int>{0, 1, 100, 101});
 	CHECK(ColourIds(1, 2) == std::vector<int>{0});
 	CHECK(ColourIds(1, 1).empty()); // CNL has no costume 1
+	CHECK(CostumeIds(1, true) == std::vector<int>{0});     // CNL's costume 2 is not this player's
+	CHECK(ColourIds(0, 4, true) == std::vector<int>{0, 1}); // nor RYU's EX colours of costume 4
 
 	// Filled once: the same lists again are fine, other lists are refused.
 	CHECK(FillCatalog(TestContent()));
@@ -283,14 +298,17 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	moved.fighters[0].costumes[0].colours = {0, 1};
 	moved.fighters[0].costumes[1].colours.push_back(2);
 	CHECK(ContentFingerprint(moved) != fingerprint);
-	// Names follow each copy's language, and what is installed is each
-	// copy's own: neither changes the build.
+	// Names follow each copy's language, and what is installed or owned is
+	// each copy's own: none of them changes the build.
 	mod::ContentLists translated = TestContent();
 	translated.stageNames = {"Etappe eins", "", ""};
 	translated.fighters[0].name = "Ryu, translated";
 	translated.fighters[0].costumes[0].name = "Story, translated";
 	translated.fighters[3].installed = true;
 	translated.fighters[4].costumes[1].installed = true;
+	translated.fighters[2].owned = true;
+	translated.fighters[1].costumes[1].owned = true;
+	translated.fighters[0].costumes[2].ownedColours = {0};
 	CHECK(ContentFingerprint(translated) == fingerprint);
 	// A code that moved from one list to the other.
 	CHECK(ContentFingerprint(CodesOnly({"RYU", "S01"}, {"S02"})) != ContentFingerprint(CodesOnly({"RYU"}, {"S01", "S02"})));
@@ -363,6 +381,132 @@ TEST_CASE("a pick is fitted to the spec: the fighter's first costume, then that 
 	const sf4e::selection::RandomPool pool; // the facade carries SF4's pool type; SFV reads none
 	CHECK(catalog.resolveStage(2, 7, pool, nullptr) == 2);
 	CHECK(catalog.resolveStage(255, 7, pool, nullptr) == 0);
+}
+
+TEST_CASE("this player readies only what the game lets them pick; the opponent's pick plays as picked")
+{
+	FillTestCatalog();
+	const ember::GameCatalog& catalog = ember::Catalog();
+	const ember::game::GameState& state = ember::game::Game().state;
+	// The runtime's Ready check (NetplayRuntime__Room) refuses a fighter the
+	// game does not let this player pick, and a pick of a costume or colour
+	// they do not own.
+	CHECK_FALSE(state.FighterAvailability(2).ready);
+	CHECK(catalog.fighterLocked(2, state.FighterAvailability(2)));
+	CHECK_FALSE(catalog.availablePick(PickOf(2), false, state.FighterAvailability(2), nullptr));
+	CHECK(catalog.availablePick(PickOf(1, 0, 1), false, state.FighterAvailability(1), nullptr));
+	CHECK_FALSE(catalog.availablePick(PickOf(1, 2, 0), false, state.FighterAvailability(1), nullptr));
+	CHECK(catalog.availablePick(PickOf(0, 4, 1), false, state.FighterAvailability(0), nullptr));
+	CHECK_FALSE(catalog.availablePick(PickOf(0, 4, 100), false, state.FighterAvailability(0), nullptr));
+	CHECK_FALSE(catalog.availablePick(PickOf(0, 4, 101), false, state.FighterAvailability(0), nullptr));
+	// The pick screen says which (NOT OWNED); what is only not installed
+	// here (CMY, BSN's costume 1) is not that.
+	CHECK(FighterNotOwned(2));
+	CHECK_FALSE(FighterNotOwned(3));
+	CHECK_FALSE(FighterNotOwned(0));
+	CHECK(CostumeNotOwned(1, 2));
+	CHECK_FALSE(CostumeNotOwned(4, 1));
+	CHECK(ColourNotOwned(0, 4, 101));
+	CHECK_FALSE(ColourNotOwned(0, 4, 1));
+	CHECK_FALSE(ColourNotOwned(0, 4, 2)); // not a colour of the costume at all
+	// The opponent's pick is never judged by this copy: a room's match with
+	// KEN against RYU's EX02 in costume 4 launches as picked.
+	RoomMatch match = MatchOf(2, 0, 0);
+	match.picks[1] = PickOf(0, 4, 101);
+	const std::optional<mod::MatchPicks> picks = LaunchPicks(match);
+	REQUIRE(picks);
+	CHECK(picks->players[0].fighter == L"KEN");
+	CHECK(picks->players[1].fighter == L"RYU");
+	CHECK(picks->players[1].costume == 4);
+	CHECK(picks->players[1].colour == 101);
+	// And the spec's fitting, which every copy does alike, never looks at
+	// ownership.
+	Pick theirs = PickOf(2);
+	CHECK_FALSE(catalog.normalizePick(theirs, false, nullptr, nullptr));
+	Pick theirsEx = PickOf(0, 4, 101);
+	CHECK_FALSE(catalog.normalizePick(theirsEx, false, nullptr, nullptr));
+}
+
+TEST_CASE("this player's stored pick falls back to one they can ready, and Random rolls only theirs")
+{
+	FillTestCatalog();
+	// An unowned fighter becomes the first fighter of the roster they may
+	// play, in that fighter's first costume and colour.
+	Pick pick = PickOf(2);
+	FitOwnPick(pick);
+	CHECK(pick.fighter == 0);
+	CHECK(pick.costume == 0);
+	CHECK(pick.color == 0);
+	// A fighter not installed here falls back the same way.
+	pick = PickOf(3, 3, 5);
+	FitOwnPick(pick);
+	CHECK(pick.fighter == 0);
+	// An unowned costume becomes their first costume of the fighter, an
+	// unowned colour their first colour of the costume.
+	pick = PickOf(1, 2, 0);
+	FitOwnPick(pick);
+	CHECK(pick.fighter == 1);
+	CHECK(pick.costume == 0);
+	CHECK(pick.color == 0);
+	pick = PickOf(0, 4, 101);
+	FitOwnPick(pick);
+	CHECK(pick.costume == 4);
+	CHECK(pick.color == 0);
+	// What is theirs stays.
+	pick = PickOf(1, 0, 1);
+	FitOwnPick(pick);
+	CHECK(pick.fighter == 1);
+	CHECK(pick.color == 1);
+	// The pick store (SfvPick) keeps only a pick they can ready.
+	PlayerPick stored;
+	stored.pick = PickOf(2);
+	stored.stage = 2;
+	stored = SetPick(stored);
+	CHECK(stored.pick.fighter == 0);
+	CHECK(stored.stage == 2);
+	CHECK(CurrentPick().pick.fighter == 0);
+	stored.pick = PickOf(1, 2, 0);
+	CHECK(SetPick(stored).pick.costume == 0);
+	// Random rolls only fighters they may play (not KEN, not CMY), in a look
+	// they can ready.
+	const auto availability = [](int id) { return ember::game::Game().state.FighterAvailability(id); };
+	CHECK(sf4e::selection::RandomCandidates(availability, false) == std::vector<int>{0, 1, 4});
+	const sf4e::selection::Availability cnl = availability(1);
+	const Pick rolled = sf4e::selection::RolledPick(1, PickOf(1, 2, 0), false, &cnl);
+	CHECK(rolled.costume == 0);
+}
+
+TEST_CASE("the command line marks content unowned for this copy, never owned")
+{
+	mod::LoadConfigFromCommandLine(L"game.exe -sfve_mode=netplay -sfve_unowned=KEN,RYU:4,CNL:0:1,bad:x,ZZZ");
+	const mod::ModConfig& config = mod::Config();
+	CHECK(config.ownershipGate);
+	CHECK_FALSE(config.gameOwnershipCheck);
+	REQUIRE(config.unowned.size() == 4);
+	CHECK(config.unowned[0].fighter == "KEN");
+	CHECK(config.unowned[0].costume == -1);
+	CHECK(config.unowned[1].fighter == "RYU");
+	CHECK(config.unowned[1].costume == 4);
+	CHECK(config.unowned[1].colour == -1);
+	CHECK(config.unowned[2].colour == 1);
+	CHECK(config.unowned[3].fighter == "ZZZ");
+	CHECK(mod::UnownedProblem() == "KEN,RYU:4,CNL:0:1,bad:x,ZZZ");
+	mod::ContentLists lists = TestContent();
+	lists.fighters[2].owned = true; // as if the game let this player pick KEN
+	mod::MarkUnowned(lists, config.unowned);
+	CHECK_FALSE(lists.fighters[2].owned);
+	CHECK_FALSE(lists.fighters[0].costumes[2].owned);
+	CHECK(lists.fighters[0].costumes[0].owned);
+	CHECK(lists.fighters[1].costumes[0].ownedColours == std::vector<int>{0});
+	CHECK(lists.ownership.markedUnowned == 3); // ZZZ is no fighter of the lists
+	// Nothing the game does not allow becomes owned.
+	CHECK_FALSE(lists.fighters[1].costumes[1].owned);
+	mod::LoadConfigFromCommandLine(L"game.exe -sfve_ownership=0 -sfve_game_ownership=1");
+	CHECK_FALSE(mod::Config().ownershipGate);
+	CHECK(mod::Config().gameOwnershipCheck);
+	CHECK(mod::Config().unowned.empty());
+	CHECK(mod::UnownedProblem().empty());
+	mod::LoadConfigFromCommandLine(L"");
 }
 
 TEST_CASE("the shared screens name and list SFV's fighters by the game's names, in its order")

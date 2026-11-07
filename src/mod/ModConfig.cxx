@@ -3,12 +3,15 @@
 #include <stdlib.h>
 #include <wchar.h>
 
+#include <string>
+
 namespace sfve::mod {
 
 namespace {
 
 ModConfig s_config;
 const char* s_ignored = nullptr;
+std::string s_unownedProblem;
 
 // The value of `-name=value` in the command line, or nullptr.
 const wchar_t* Find(const wchar_t* line, const wchar_t* name, wchar_t* out, size_t outLen)
@@ -33,6 +36,41 @@ long Number(const wchar_t* line, const wchar_t* name, long fallback)
 {
 	wchar_t buf[32];
 	return Find(line, name, buf, 32) ? wcstol(buf, nullptr, 10) : fallback;
+}
+
+// Command-line text for the log, ASCII as it was typed (anything else as '?').
+std::string Narrow(const wchar_t* text)
+{
+	std::string out;
+	for (; *text; text++) out += *text < 0x80 ? (char)*text : '?';
+	return out;
+}
+
+// A costume or colour number of an -sfve_unowned entry: 0 to 255, as a room
+// carries them.
+bool Variant(const std::wstring& text, int* value)
+{
+	if (text.empty() || text.size() > 3 || text.find_first_not_of(L"0123456789") != std::wstring::npos) return false;
+	*value = (int)wcstol(text.c_str(), nullptr, 10);
+	return *value <= 0xFF;
+}
+
+// "CODE[:costume[:colour]]": a code of 1 to 8 capital letters or digits.
+bool ParseUnowned(const std::wstring& entry, UnownedContent* out)
+{
+	std::vector<std::wstring> parts(1);
+	for (wchar_t c : entry) {
+		if (c == L':') parts.emplace_back();
+		else parts.back() += c;
+	}
+	const std::wstring& code = parts[0];
+	if (parts.size() > 3 || code.empty() || code.size() > 8) return false;
+	for (wchar_t c : code) {
+		if (!((c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9'))) return false;
+	}
+	out->fighter.clear();
+	for (wchar_t c : code) out->fighter += (char)c; // capitals and digits only
+	return (parts.size() < 2 || Variant(parts[1], &out->costume)) && (parts.size() < 3 || Variant(parts[2], &out->colour));
 }
 
 } // namespace
@@ -68,7 +106,24 @@ void LoadConfigFromCommandLine(const wchar_t* line)
 	c.hashEvery = (int)Number(line, L"sfve_hash_every", 0);
 	c.room = Number(line, L"sfve_room", 0) != 0;
 	c.offlineDialogs = (int)Number(line, L"sfve_dialogs", 2);
-	c.ownershipCheck = Number(line, L"sfve_ownership", 0) != 0;
+	c.ownershipGate = Number(line, L"sfve_ownership", 1) != 0;
+	c.gameOwnershipCheck = Number(line, L"sfve_game_ownership", 0) != 0;
+	s_unownedProblem.clear();
+	wchar_t unowned[512];
+	if (Find(line, L"sfve_unowned", unowned, 512)) {
+		std::wstring entry;
+		for (const wchar_t* p = unowned;; p++) {
+			if (*p && *p != L',') {
+				entry += *p;
+				continue;
+			}
+			UnownedContent mark;
+			if (ParseUnowned(entry, &mark)) c.unowned.push_back(mark);
+			else s_unownedProblem = Narrow(unowned);
+			entry.clear();
+			if (!*p) break;
+		}
+	}
 	wchar_t pads[32];
 	if (Find(line, L"sfve_pads", pads, 32)) {
 		for (const wchar_t* p = pads; *p; p++) {
@@ -86,6 +141,11 @@ void LoadConfigFromCommandLine(const wchar_t* line)
 const char* IgnoredSetting()
 {
 	return s_ignored;
+}
+
+const std::string& UnownedProblem()
+{
+	return s_unownedProblem;
 }
 
 const char* ModeName(ModMode mode)

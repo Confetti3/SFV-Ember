@@ -151,6 +151,29 @@ def pick(index: int, fighter_steps: int, shots: Path | None, name: str | None) -
     expect(index, "room")
 
 
+def not_owned_shots(shots: Path | None) -> None:
+    """Copy 0, after its pick, with --unowned CNL,KEN:1,KEN:0:1 (the pick is
+    KEN's costume 0 in colour 03, the fitting having skipped CNL and colour
+    02): each row's choices opened (Select) and the focus moved onto the
+    choice its player does not own (CHUN-LI beside KEN, KEN's costume 1, his
+    colour 02), where the pane says NOT OWNED's words."""
+    if not shots:
+        return
+    press(0, "X")  # the screen opens on its first row, the fighter
+    expect(0, "selection")
+    for row, moves in (("fighter", ["LEFT"]), ("costume", ["RIGHT"]), ("color", ["UP", "RIGHT"])):
+        if row != "fighter":
+            press(0, "DOWN")
+        press(0, "A")
+        for move in moves:
+            press(0, move)
+        time.sleep(0.5)
+        shot(shots, f"4b-not-owned-{row}", 0)
+        press(0, "B")  # the choice closes; the pick is as it was
+    press(0, "B")
+    expect(0, "room")
+
+
 def room_shots(shots: Path | None) -> None:
     """Copy 1, a guest seated as P2 with a pick, before Ready: its seat focused
     (the room, its members, the hint bar and what Ready will say), then its
@@ -187,13 +210,16 @@ def main(argv: list[str]) -> int:
     p.add_argument("--shots", type=Path)
     p.add_argument("--games", type=int, default=1)
     p.add_argument("--keep", action="store_true")
+    p.add_argument("--unowned", help="copy 0's -sfve_unowned (CODE[:costume[:colour]],...): content its player "
+                   "may not pick, to show the pick screen's NOT OWNED")
     a = p.parse_args(argv)
     if a.shots:
         a.shots.mkdir(parents=True, exist_ok=True)
     lib.kill_all()
     for i, seed in ((0, 101), (1, 202)):
+        unowned = [f"-sfve_unowned={a.unowned}"] if a.unowned and i == 0 else []
         lib.launch(i, "netplay", ["-sfve_pads=01", "-sfve_background=1", "-sfve_room=1", f"-sfve_mash={seed}",
-                                  "-sfve_mash_from=300"])
+                                  "-sfve_mash_from=300"] + unowned)
     failure = ""
     try:
         wait_for("the runtime on both copies", 120,
@@ -205,6 +231,8 @@ def main(argv: list[str]) -> int:
         take_seat(1, 1)
         pick(0, 2, a.shots, "4-pick")
         pick(1, 3, None, None)
+        if a.unowned:
+            not_owned_shots(a.shots)
         room_shots(a.shots)
         for game in range(1, a.games + 1):
             results = [lib.count_log(i, "netplay: match result") for i in (0, 1)]

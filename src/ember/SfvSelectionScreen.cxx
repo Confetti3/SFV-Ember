@@ -11,6 +11,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <optional>
@@ -55,7 +56,8 @@ std::vector<int> Roster()
 	return std::vector<int>(catalog.rosterOrder, catalog.rosterOrder + catalog.fighterCount);
 }
 
-// The roster less the fighters this copy has not installed.
+// The roster less the fighters this copy's player cannot play: not
+// installed here, or (with Ember's ownership gate on) not theirs.
 std::vector<int> PlayableRoster()
 {
 	std::vector<int> playable;
@@ -107,16 +109,37 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 {
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const char* adjusts = editable ? "selection.adjust_saves" : "selection.locked_detail";
-	// A fighter this copy has not installed is listed, but cannot be chosen.
+	// Every fighter, costume and colour of the spec is listed, as SF4's grid
+	// keeps an unowned fighter's card: one this player cannot ready cannot be
+	// chosen, and one the game does not let them pick says so (NOT OWNED,
+	// SF4's words). Left and Right step through only those they can ready.
+	const auto notOwned = [](bool unowned) { return unowned ? std::string(loc::T("selection.not_owned")) : std::string(); };
 	std::vector<MenuChoice> fighters;
-	for (int id : Roster()) fighters.push_back({OptionId(id), catalog.fighterName(id), {}, editable && !catalog.fighterLocked(id, {})});
+	for (int id : Roster()) {
+		fighters.push_back({OptionId(id), catalog.fighterName(id), notOwned(FighterNotOwned(id)),
+			editable && !catalog.fighterLocked(id, {})});
+	}
+	const std::vector<int> pickableCostumes = CostumeIds(pick.pick.fighter, true);
+	std::vector<MenuChoice> costumes;
+	for (int id : CostumeIds(pick.pick.fighter, false)) {
+		const bool pickable = std::find(pickableCostumes.begin(), pickableCostumes.end(), id) != pickableCostumes.end();
+		costumes.push_back({OptionId(id), CostumeName(pick.pick.fighter, id), notOwned(CostumeNotOwned(pick.pick.fighter, id)),
+			editable && pickable});
+	}
+	std::vector<MenuChoice> colours;
+	for (int id : ColourIds(pick.pick.fighter, pick.pick.costume)) {
+		const bool notOwnedColour = ColourNotOwned(pick.pick.fighter, pick.pick.costume, id);
+		colours.push_back({OptionId(id), ColourName(id), notOwned(notOwnedColour), editable && !notOwnedColour});
+	}
 	std::vector<MenuChoice> stages;
 	for (int id : Stages()) stages.push_back({OptionId(id), StageName(id), {}, editable && stageEditable});
 	std::vector<MenuEntry> rows;
 	rows.push_back(StepRow(kFighter, "selection.fighter", catalog.fighterName(pick.pick.fighter),
 		editable ? "selection.select_saves" : "selection.locked_detail", editable, std::move(fighters), pick.pick.fighter));
-	rows.push_back(StepRow(kCostume, "selection.costume", CostumeName(pick.pick.fighter, pick.pick.costume), adjusts, editable));
-	rows.push_back(StepRow(kColour, "selection.color_row", ColourName(pick.pick.color), adjusts, editable));
+	rows.push_back(StepRow(kCostume, "selection.costume", CostumeName(pick.pick.fighter, pick.pick.costume), adjusts, editable,
+		std::move(costumes), pick.pick.costume));
+	rows.push_back(StepRow(kColour, "selection.color_row", ColourName(pick.pick.color), adjusts, editable, std::move(colours),
+		pick.pick.color));
 	rows.push_back(StepRow(kStage, "selection.stage", StageName(pick.stage),
 		!editable ? "selection.locked_detail" : stageEditable ? "selection.p1_stage" : "selection.only_p1_stage",
 		editable && stageEditable, std::move(stages), pick.stage));
@@ -128,21 +151,29 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick)
 {
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const PlayerPick before = pick;
-	// Left and Right go through the values the game has: the fighters this
-	// copy can play, the
-	// fighter's costumes this copy can load, and that costume's colours. A
-	// costume or colour the new fighter or costume lacks is fitted as the pick
-	// is stored (SetPick).
+	// Left and Right go through what this copy's player can ready: the
+	// fighters they can play, the fighter's costumes installed here and
+	// theirs, and that costume's colours of theirs. A costume or colour the
+	// new fighter or costume lacks, or that is not theirs, is fitted as the
+	// pick is stored (SetPick). A choice they cannot ready is refused here
+	// too, whatever the list let through.
 	if (action.kind == MenuAction::Adjust) {
 		if (action.id == kFighter) sf4e::ui::Step(pick.pick.fighter, PlayableRoster(), action.delta);
 		else if (action.id == kCostume) sf4e::ui::Step(pick.pick.costume, CostumeIds(pick.pick.fighter, true), action.delta);
 		else if (action.id == kColour) {
-			sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume), action.delta);
+			sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), action.delta);
 		} else if (action.id == kStage) sf4e::ui::Step(pick.stage, Stages(), action.delta);
 	} else if (action.kind == MenuAction::Chosen) {
 		const std::optional<int> option = OptionOf(action.text);
+		const auto pickable = [&option](const std::vector<int>& ids) {
+			return option && std::find(ids.begin(), ids.end(), *option) != ids.end();
+		};
 		if (option && action.id == kFighter && ember::ValidFighter(*option) && !catalog.fighterLocked(*option, {})) {
 			pick.pick.fighter = *option;
+		} else if (action.id == kCostume && pickable(CostumeIds(pick.pick.fighter, true))) {
+			pick.pick.costume = *option;
+		} else if (action.id == kColour && pickable(ColourIds(pick.pick.fighter, pick.pick.costume, true))) {
+			pick.pick.color = *option;
 		} else if (option && action.id == kStage && catalog.validStage(*option)) pick.stage = *option;
 	}
 	return pick.pick.fighter != before.pick.fighter || pick.pick.costume != before.pick.costume ||
@@ -172,10 +203,14 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	PlayerPick pick = CurrentPick();
 	const std::vector<MenuEntry> rows = Rows(pick, editable, stageEditable);
 	const char* status = loc::T(editable ? "selection.status_adjust" : "selection.locked_detail");
-	// The pane beside the rows is the pick's preview, as wide as the fighter's banner.
+	// The pane beside the rows is the pick's preview, as wide as the fighter's
+	// banner. The choice dialog draws an option's detail under its list,
+	// which a long list (45 fighters, a costume's 17 colours) pushes below a
+	// 540-line screen, so the pane says it too.
 	menu_.customDetail = true;
 	menu_.paneWidth = kBannerWidth;
-	const sf4e::ui::GameMenu::Detail preview = [&pick](const std::string& focus) { DrawPreview(pick, focus); };
+	const std::string note = FocusedChoiceNote(rows);
+	const sf4e::ui::GameMenu::Detail preview = [&pick, &note](const std::string& focus) { DrawPreview(pick, focus, note); };
 	const MenuAction action = menu_.Draw(loc::T("screen.selection"), rows, error.empty() ? status : error.c_str(), preview, 1,
 		{}, {}, false, 100, error.empty() ? sf4e::ui::Tone::Neutral : sf4e::ui::Tone::Error);
 	if (action.kind == MenuAction::Close || action.kind == MenuAction::Shortcut) sf4e::ui::ForwardMenuAction(action);
@@ -186,13 +221,26 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	if (action.kind == MenuAction::Chosen && action.id == openOn_) sf4e::ui::ForwardMenuAction({MenuAction::Close});
 }
 
-void SfvSelectionScreen::DrawPreview(const PlayerPick& pick, const std::string& focus)
+std::string SfvSelectionScreen::FocusedChoiceNote(const std::vector<MenuEntry>& rows) const
+{
+	const auto& nav = menu_.navigation;
+	if (!nav.Choosing()) return {};
+	for (const MenuEntry& row : rows) {
+		if (row.id == nav.DialogId() && nav.ChoiceIndex() < row.choices.size()) return row.choices[nav.ChoiceIndex()].detail;
+	}
+	return {};
+}
+
+void SfvSelectionScreen::DrawPreview(const PlayerPick& pick, const std::string& focus, const std::string& note)
 {
 	ImDrawList* draw = ImGui::GetWindowDrawList();
 	const auto& colors = sf4e::ui::v2::Colors();
 	const float s = sf4e::ui::Scale(), gap = 10 * s, line = ImGui::GetTextLineHeightWithSpacing();
 	ImVec2 at = ImGui::GetCursorScreenPos();
 	const float width = ImGui::GetContentRegionAvail().x;
+	if (!note.empty()) {
+		at.y += sf4e::ui::v2::Paragraph(draw, at, width, note, ImGui::GetFontSize(), colors.danger) + gap;
+	}
 	if (focus == kStage) {
 		at.y += DrawPicture(draw, StageImage(pick.stage), at, width, kStageShape) + gap;
 		draw->AddText(at, colors.text, StageName(pick.stage).c_str());

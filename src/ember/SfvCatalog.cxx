@@ -21,6 +21,9 @@ mod::ContentLists s_lists;
 std::string s_buildId = kMatchBuild;
 // The runtime has started (SealCatalog): nothing writes the catalog again.
 bool s_sealed = false;
+// Ember's ownership gate (FillCatalog's ownershipGate): this copy's player
+// may pick only what the game lets them. Off only while developing.
+bool s_gate = true;
 // The roster in the order of the game's list, which is its ids' order.
 std::vector<int> s_rosterOrder;
 // The table rules a room offers that SFV plays (VersusLaunch's
@@ -48,6 +51,32 @@ bool HasColour(const mod::CostumeContent& costume, int colour)
 	return std::find(costume.colours.begin(), costume.colours.end(), colour) != costume.colours.end();
 }
 
+// What this copy's player may pick, by the game's answer (GameContent's
+// `owned`) while the gate is on. Only this copy's own player's picks are
+// judged so: the opponent's pick plays as picked (LaunchPicks checks the
+// spec alone), as SF4's DLC gate does.
+bool FighterOwned(const mod::FighterContent& fighter)
+{
+	return !s_gate || fighter.owned;
+}
+
+bool CostumeOwned(const mod::CostumeContent& costume)
+{
+	return !s_gate || costume.owned;
+}
+
+bool ColourOwned(const mod::CostumeContent& costume, int colour)
+{
+	return !s_gate ||
+		std::find(costume.ownedColours.begin(), costume.ownedColours.end(), colour) != costume.ownedColours.end();
+}
+
+// A costume this copy's player can ready: installed here and theirs.
+bool CostumePickable(const mod::CostumeContent& costume)
+{
+	return costume.installed && CostumeOwned(costume);
+}
+
 // A costume of the fighter the spec has, in one of that costume's colours.
 bool ValidPick(const sf4e::selection::Pick& pick, bool)
 {
@@ -60,29 +89,72 @@ bool ValidStage(std::int64_t id)
 	return id >= 0 && id < (std::int64_t)s_lists.stages.size();
 }
 
-// This copy's install: a fighter whose package it lacks cannot be played
-// here, whatever the spec says (GameContent's `installed`).
+// This copy's player cannot play a fighter whose package this copy lacks,
+// whatever the spec says (GameContent's `installed`), nor, with the gate on,
+// one the game does not let them pick (`owned`). SFV's catalog reads its own
+// table for both; `availability` (SfvGame's FighterAvailability, made from
+// the same table by OwnedAvailability) adds nothing to it.
 bool FighterLocked(int fighter, const sf4e::selection::Availability&)
 {
 	const mod::FighterContent* content = FighterAt(fighter);
-	return !content || !content->installed;
+	return !content || !content->installed || !FighterOwned(*content);
 }
 
-// A valid pick this copy can load. Ownership is not judged here: the game's
-// own check replaces unowned looks as the battle launches (VersusLaunch's
-// checkOwnership), as SfvGame's FighterAvailability reports everything owned.
+// A valid pick this copy's player can ready: the fighter not locked, the
+// costume installed here and, with the gate on, the costume and the colour
+// theirs. The runtime's Ready check asks this for this copy's own player
+// only.
 bool AvailablePick(const sf4e::selection::Pick& pick, bool editionSelect, const sf4e::selection::Availability& availability,
 	const sf4e::selection::InstalledContent*)
 {
+	if (!ValidPick(pick, editionSelect) || FighterLocked(pick.fighter, availability)) return false;
 	const mod::CostumeContent* costume = CostumeAt(pick.fighter, pick.costume);
-	return ValidPick(pick, editionSelect) && !FighterLocked(pick.fighter, availability) && costume->installed;
+	return CostumePickable(*costume) && ColourOwned(*costume, pick.color);
+}
+
+// This copy's player's own pick, made one they can ready where they can:
+// the first fighter of the roster's order they may play, that fighter's
+// first costume they may ready, that costume's first colour of theirs. A
+// part already theirs stays; one with no such choice stays as it is (and a
+// Ready of it is refused).
+void FitOwned(sf4e::selection::Pick& pick)
+{
+	if (FighterLocked(pick.fighter, {})) {
+		for (int id : s_rosterOrder) {
+			if (FighterLocked(id, {})) continue;
+			pick.fighter = id;
+			break;
+		}
+	}
+	const mod::FighterContent* fighter = FighterAt(pick.fighter);
+	if (!fighter) return;
+	const mod::CostumeContent* costume = CostumeAt(pick.fighter, pick.costume);
+	if (!costume || !CostumePickable(*costume)) {
+		for (const mod::CostumeContent& candidate : fighter->costumes) {
+			if (!CostumePickable(candidate)) continue;
+			costume = &candidate;
+			pick.costume = candidate.id;
+			break;
+		}
+	}
+	if (!costume) return;
+	if (!HasColour(*costume, pick.color) || !ColourOwned(*costume, pick.color)) {
+		for (int colour : costume->colours) {
+			if (!ColourOwned(*costume, colour)) continue;
+			pick.color = colour;
+			break;
+		}
+	}
 }
 
 // Each part SFV refuses becomes the game's first of its kind, in this order
 // so that each is fitted to the one before it: fighter 0; the fighter's first
 // costume; that costume's first colour; no Ultra and no handicap. Only the
-// spec decides, so every copy fits a pick the same way.
-bool NormalizePick(sf4e::selection::Pick& pick, bool, const sf4e::selection::Availability*,
+// spec decides, so every copy fits a pick the same way. With `availability`
+// given the pick is this copy's own player's (their stored pick, a Random
+// roll's look), and is then also fitted to what they can ready (FitOwned),
+// which is per copy.
+bool NormalizePick(sf4e::selection::Pick& pick, bool, const sf4e::selection::Availability* availability,
 	const sf4e::selection::InstalledContent*)
 {
 	const sf4e::selection::Pick before = pick;
@@ -94,6 +166,7 @@ bool NormalizePick(sf4e::selection::Pick& pick, bool, const sf4e::selection::Ava
 		pick.costume = costume->id;
 	}
 	if (costume && !HasColour(*costume, pick.color)) pick.color = costume->colours.front();
+	if (availability && fighter) FitOwned(pick);
 	pick.ultra = 0;
 	pick.handicap = 0;
 	return pick.fighter != before.fighter || pick.costume != before.costume || pick.color != before.color ||
@@ -195,7 +268,7 @@ std::wstring WideCode(const std::string& code)
 
 } // namespace
 
-bool FillCatalog(const mod::ContentLists& lists)
+bool FillCatalog(const mod::ContentLists& lists, bool ownershipGate)
 {
 	if (s_sealed) {
 		mod::Log("catalog: refused a fill after Ember's runtime started (%zu fighters, %zu stages)", lists.fighters.size(),
@@ -208,6 +281,7 @@ bool FillCatalog(const mod::ContentLists& lists)
 		return false;
 	}
 	s_lists = lists;
+	s_gate = ownershipGate;
 	s_buildId = std::string(kMatchBuild) + "/" + ContentFingerprint(lists);
 	for (int id = 0; id < (int)s_lists.fighters.size(); id++) s_rosterOrder.push_back(id);
 	s_catalog.rosterOrder = s_rosterOrder.data();
@@ -271,21 +345,61 @@ std::string StageName(std::int64_t stage)
 	return name.empty() ? StageCode(stage) : name;
 }
 
-std::vector<int> CostumeIds(std::int64_t fighter, bool installedOnly)
+std::vector<int> CostumeIds(std::int64_t fighter, bool pickableOnly)
 {
 	std::vector<int> ids;
 	if (const mod::FighterContent* content = FighterAt(fighter)) {
 		for (const mod::CostumeContent& costume : content->costumes) {
-			if (!installedOnly || costume.installed) ids.push_back(costume.id);
+			if (!pickableOnly || CostumePickable(costume)) ids.push_back(costume.id);
 		}
 	}
 	return ids;
 }
 
-std::vector<int> ColourIds(std::int64_t fighter, int costume)
+std::vector<int> ColourIds(std::int64_t fighter, int costume, bool pickableOnly)
 {
 	const mod::CostumeContent* content = CostumeAt(fighter, costume);
-	return content ? content->colours : std::vector<int>();
+	std::vector<int> ids;
+	if (!content) return ids;
+	for (int colour : content->colours) {
+		if (!pickableOnly || ColourOwned(*content, colour)) ids.push_back(colour);
+	}
+	return ids;
+}
+
+bool FighterNotOwned(std::int64_t fighter)
+{
+	const mod::FighterContent* content = FighterAt(fighter);
+	return content && !FighterOwned(*content);
+}
+
+bool CostumeNotOwned(std::int64_t fighter, int costume)
+{
+	const mod::CostumeContent* content = CostumeAt(fighter, costume);
+	return content && !CostumeOwned(*content);
+}
+
+bool ColourNotOwned(std::int64_t fighter, int costume, int colour)
+{
+	const mod::CostumeContent* content = CostumeAt(fighter, costume);
+	return content && HasColour(*content, colour) && !ColourOwned(*content, colour);
+}
+
+sf4e::selection::Availability OwnedAvailability(std::int64_t fighter)
+{
+	sf4e::selection::Availability availability;
+	if (!FighterAt(fighter) || FighterLocked((int)fighter, {})) return availability;
+	availability.ready = true;
+	availability.costumes = ~0u;
+	availability.colors.fill(~0u);
+	return availability;
+}
+
+void FitOwnPick(sf4e::selection::Pick& pick)
+{
+	if (s_catalog.fighterCount == 0) return;
+	const sf4e::selection::Availability availability = OwnedAvailability(pick.fighter);
+	NormalizePick(pick, false, &availability, nullptr);
 }
 
 std::string CostumeName(std::int64_t fighter, int costume)

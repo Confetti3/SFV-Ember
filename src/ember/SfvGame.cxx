@@ -78,18 +78,14 @@ public:
 	std::string ForegroundScreen() const override { return mod::CurrentSceneName(); }
 	// Empty until the game's language has a reader (a contract issue is queued).
 	std::string Language() const override { return {}; }
-	// No reader of the player's SFV content yet: every fighter, costume,
-	// colour and personal action is reported owned, so availability refuses
-	// no pick. The game's own ownership check judges the content as the
-	// battle launches (VersusLaunch's checkOwnership).
-	sf4e::selection::Availability FighterAvailability(int) const override
+	// Whether this copy's player may play the fighter, from SFV's catalog
+	// (its OwnedAvailability: installed here and, with Ember's ownership gate
+	// on, a fighter the game lets them pick). SFV's catalog rules judge
+	// costumes and colours from their own table (EMBER_LIBRARY.md
+	// section 23).
+	sf4e::selection::Availability FighterAvailability(int fighter) const override
 	{
-		sf4e::selection::Availability all;
-		all.ready = true;
-		all.costumes = ~0u;
-		all.colors.fill(~0u);
-		all.personalActions = 0xFFFF;
-		return all;
+		return OwnedAvailability(fighter);
 	}
 	// The host's match seed and its Random rolls. No reader of the game's own
 	// generator yet, so the system's serves.
