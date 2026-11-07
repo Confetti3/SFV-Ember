@@ -1,5 +1,5 @@
 param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$gameSeconds = 240, [int]$presses = 0, [string]$shots = '',
-	[Parameter(Mandatory)][string]$bridgeExe, [Parameter(Mandatory)][string]$roomsExe, [string]$roomHost = 'D:\sfv-ember-build\sfve-room-host.exe',
+	[Parameter(Mandatory)][string]$bridgeExe, [Parameter(Mandatory)][string]$roomsExe, [string]$roomHost = $(if ($env:SFVE_BUILD_DIR) { Join-Path $env:SFVE_BUILD_DIR 'sfve-room-host.exe' } else { 'D:\sfv-ember-build\sfve-room-host.exe' }),
 	[string]$work = 'D:\sfv-re\scratch\public', [int]$port = 18797, [int]$roomPorts = 52100, [switch]$shellJoin, [switch]$ranked, [switch]$keep)
 # Two copies play Ember's public room (EMBER_LIBRARY.md section 24) on a local
 # stack: an Ember bridge on http://127.0.0.1:$port, an ember-rooms supervisor
@@ -125,6 +125,17 @@ try {
 	$db = "$work\bridge\bridge.sqlite3"
 	function Rows([string]$sql) { $text = python -I tools\bridgedb.py rows $db $sql; if ($LASTEXITCODE) { throw "bridgedb: $text" }; @($text | ConvertFrom-Json) }
 	if ($ranked) {
+		# Each copy reads its SFV standing first: no Discord account yet (and the
+		# bridge then knows both Ember IDs).
+		foreach ($i in 0, 1) {
+			WaitFor "copy $i's first standing" 60 {
+				$s = (Status $i).ranking.standing
+				if (!$s.loaded -and !$s.loading) { Ctl $i 'ranking standing' | Out-Null }
+				$s.loaded
+			}
+			$s = (Status $i).ranking.standing
+			if ($s.kind -ne 'no_account') { throw "copy ${i}'s first standing is $($s.kind) ($($s.error))" }
+		}
 		# Discord accounts for both Ember IDs, copy 0 settled in both games.
 		"seeded: " + (python -I tools\bridgedb.py seed $db $ids[0] $ids[1])
 		if ($LASTEXITCODE) { throw 'the seed failed' }
@@ -225,7 +236,14 @@ try {
 			"copy ${i}: " + (Select-String -Path $logOf[$i] -Pattern 'netplay: match result' | Select-Object -Last 1).Line.Substring(24) + " rollbacks $($mode.rollbacks), longest $($mode.longestRollback)"
 		}
 	}
-	"room host: " + ((Invoke-RestMethod "http://127.0.0.1:$roomsPort/rooms" -Headers @{ Authorization = "Bearer $secret" }) | ConvertTo-Json -Compress -Depth 6)
+	$hosted = Invoke-RestMethod "http://127.0.0.1:$roomsPort/rooms" -Headers @{ Authorization = "Bearer $secret" }
+	"room host: " + ($hosted | ConvertTo-Json -Compress -Depth 6)
+	# The listing's faces (section 28): SFV's host lists each member's shared
+	# pick, never the profile main both copies have (fighter 0): two fighters,
+	# both picks, so not the same one twice.
+	$faces = @(@($hosted)[0].details.fighters)
+	if ($faces.Count -ne 2 -or $faces -contains 255 -or $faces[0] -eq $faces[1]) { throw "the listing's faces are not the two shared picks: $($faces -join ', ')" }
+	"listing faces: $($faces -join ', ') (the shared picks)"
 	if ($ranked) {
 		# Rated once each, in SFV's rating alone.
 		WaitFor 'the games rated by the bridge' 60 { (Rows 'SELECT COUNT(*) AS n FROM rated_games')[0].n -ge $games }
@@ -287,6 +305,8 @@ try {
 }
 foreach ($i in 0, 1) {
 	try { "copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress) } catch { "copy $i is not answering" }
+	# SFV's league icons as the game loaded them, or why not (SfvArt).
+	if ($ranked -and (Test-Path $logOf[$i])) { Select-String -Path $logOf[$i] -Pattern 'art: /Game/CommonAsset/LeagueIcon/' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
 	if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern 'desync|mismatch' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
 }
 if (!$keep) { python -I tools\sfve.py kill | Out-Null }
