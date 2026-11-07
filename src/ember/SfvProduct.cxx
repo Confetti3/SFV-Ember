@@ -40,7 +40,7 @@ msgid "about.version_line"
 msgstr "SFV Ember {0} · {1}"
 
 msgid "brand.subtitle"
-msgstr "SFV  /  PRIVATE ROOMS & ROLLBACK NETPLAY"
+msgstr "SFV  /  ROOMS & ROLLBACK NETPLAY"
 
 msgid "about.ember_detail"
 msgstr "Unofficial Street Fighter V mod, built on Ember (based on sf4e by Anthony Danducci). Iroh / QUIC, GGPO, Dear ImGui and Inter typography. Build: {0}"
@@ -240,6 +240,9 @@ constexpr ember::ProductIdentity SfvEmber = {
 	// A scheme of its own, so a link never opens SF4 Ember (section 5.4 of
 	// EMBER_LIBRARY.md is still open).
 	"ember-sfv",
+	// Its public rooms are SFV's, apart from SF4 Ember's on the same bridge
+	// (EMBER_LIBRARY.md section 24).
+	"sfv",
 	// No public release repository yet (EMBER_LIBRARY.md section 22): the
 	// update check offers nothing and makes no request. A release package is
 	// named sfv-ember-<version>.zip (scripts/package.ps1).

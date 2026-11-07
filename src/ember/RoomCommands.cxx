@@ -1,6 +1,7 @@
 #include "ember/RoomCommands.hxx"
 
 #include "ember/EmberHost.hxx"
+#include "ember/PublicCommands.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvPick.hxx"
 #include "mod/ControlPipe.hxx"
@@ -214,6 +215,7 @@ void RegisterRoomCommands()
 	mod::RegisterCommand("delay", Delay);
 	mod::RegisterCommand("leave", [](const std::string&) { return Submit(CommandFor(CommandKind::LeaveRoom)); });
 	mod::RegisterStatus("room", Status);
+	RegisterPublicCommands();
 }
 
 } // namespace sfve::adapter

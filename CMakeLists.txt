@@ -79,6 +79,7 @@ target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 # overlay.
 add_library(sfve_ember STATIC
     src/ember/EmberHost.cxx
+    src/ember/PublicCommands.cxx
     src/ember/RoomBattle.cxx
     src/ember/RoomCommands.cxx
     src/ember/SfvArt.cxx
@@ -86,6 +87,7 @@ add_library(sfve_ember STATIC
     src/ember/SfvGame.cxx
     src/ember/SfvHud.cxx
     src/ember/SfvPick.cxx
+    src/ember/SfvPickSpace.cxx
     src/ember/SfvSelection.cxx
     src/ember/SfvSelectionScreen.cxx
     src/ember/SfvShell.cxx
@@ -227,10 +229,52 @@ add_executable(guard_probe tests/guard_probe.cxx)
 target_link_libraries(guard_probe PRIVATE sfve_proxy ws2_32)
 add_dependencies(guard_probe sfv_ember)
 
+# SFV's room host (docs/design/EMBER_LIBRARY.md section 24): the library's
+# public room host (server/roomhost) with SFV's catalog in place of SF4's. It
+# judges picks by the pick space the game exported (the pipe's
+# `catalog-export`, kept in data/pick-space.json), embedded here as bytes,
+# and hosts only the build that pick space makes. scripts/build-room-host-linux.sh
+# builds the same for the server.
+set(SFVE_PICK_SPACE "${CMAKE_CURRENT_SOURCE_DIR}/data/pick-space.json")
+if(NOT EXISTS "${SFVE_PICK_SPACE}")
+    message(FATAL_ERROR "data/pick-space.json is missing: export it from the game (the pipe's catalog-export)")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SFVE_PICK_SPACE}")
+file(READ "${SFVE_PICK_SPACE}" _sfve_pick_space HEX)
+string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _sfve_pick_space "${_sfve_pick_space}")
+file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/generated/SfvHostPickSpace.cxx" CONTENT
+"// Generated from data/pick-space.json by CMakeLists.txt.
+namespace sfve { namespace roomhost {
+static const char kBytes[] = {${_sfve_pick_space}0};
+extern const char* const kPickSpaceJson = kBytes;
+} }
+")
+set(SFVE_ROOM_HOST_SOURCES
+    "${SFVE_EMBER_SOURCE_ROOT}/server/roomhost/main.cxx"
+    "${SFVE_EMBER_SOURCE_ROOT}/server/roomhost/RoomHost.cxx"
+    "${SFVE_EMBER_SOURCE_ROOT}/server/roomhost/RoomHostStatus.cxx"
+    "${SFVE_EMBER_SOURCE_ROOT}/server/roomhost/RoomHostHelperWindows.cxx")
+add_library(sfve_room_host_catalog STATIC
+    src/roomhost/SfvHostCatalog.cxx
+    src/ember/SfvPickSpace.cxx
+    "${CMAKE_BINARY_DIR}/generated/SfvHostPickSpace.cxx")
+target_include_directories(sfve_room_host_catalog PUBLIC src "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/server/roomhost")
+target_link_libraries(sfve_room_host_catalog PUBLIC ember_neutral_x64 xxHash::xxhash nlohmann_json::nlohmann_json bcrypt ws2_32)
+add_executable(sfve-room-host ${SFVE_ROOM_HOST_SOURCES})
+target_link_libraries(sfve-room-host PRIVATE sfve_room_host_catalog)
+
+# The room host's catalog without the game: the exported pick space is the
+# build it names, and its rules refuse what SFV cannot play.
+add_executable(sfve_room_host_tests tests/main.cxx tests/RoomHostCatalogTests.cxx
+    "${SFVE_EMBER_SOURCE_ROOT}/server/roomhost/RoomHost.cxx" "${SFVE_EMBER_SOURCE_ROOT}/server/roomhost/RoomHostStatus.cxx")
+target_link_libraries(sfve_room_host_tests PRIVATE sfve_room_host_catalog doctest::doctest)
+
 enable_testing()
 add_test(NAME sfve_tests COMMAND sfve_tests)
 # Ember's runtime under the library's test game, built with SFV Ember's packages.
 add_test(NAME ember_runtime COMMAND ember_runtime_x64_test)
 # SFV's game definitions, and the runtime linked under them.
 add_test(NAME sfve_ember_tests COMMAND sfve_ember_tests)
+# SFV's room host catalog over the exported pick space.
+add_test(NAME sfve_room_host_tests COMMAND sfve_room_host_tests)
 add_test(NAME guard_probe COMMAND guard_probe WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
