@@ -116,4 +116,10 @@ bool PrepareCatalog(const Config& config, std::string& reason)
 	return true;
 }
 
+// SFV Ember's players have no main (nothing in SFV Ember asks for one, so a
+// profile's is fighter 0, RYU): the listing shows the pick each member shared
+// in the room, else no fighter, as SFV Ember's own room does
+// (Branding::roomFacesArePicks; EMBER_LIBRARY.md sections 20 and 28).
+ListedFaces CatalogFaces() { return ListedFaces::Picks; }
+
 } } // namespace sf4e::roomhost

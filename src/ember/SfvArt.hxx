@@ -22,6 +22,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace sfve::adapter {
@@ -35,6 +36,11 @@ enum class FighterPicture {
 // game has none.
 sf4e::ui::SelectionImage FighterImage(int fighter, FighterPicture picture);
 sf4e::ui::SelectionImage StageImage(int stage);
+// A league's icon (/Game/CommonAsset/LeagueIcon/<name>, as "LI_gold"), the
+// art SFV Ember's ranks are drawn with (SfvProduct's ranking classes,
+// EMBER_LIBRARY.md section 28). Missing for a name that is not one of those
+// ranks', so nothing else is ever loaded by this path.
+sf4e::ui::SelectionImage LeagueImage(const std::string& name);
 
 // Render thread: a colour's two swatch colours (0xRRGGBB), once read; empty
 // while they load or where the game has none.

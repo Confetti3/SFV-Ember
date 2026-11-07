@@ -241,6 +241,11 @@ std::string Status()
 		// Everyone at a table sees how many watch it (the HUD's count).
 		if (!room.tables[t].spectators.empty()) status["spectators"][std::to_string(t)] = room.tables[t].spectators.size();
 	}
+	// This member's sets won and lost in the room, as the Members card shows
+	// them (EMBER_LIBRARY.md section 28).
+	for (const auto& member : room.members) {
+		if (room.localMember && member.id == room.localMember) status["sets"] = {{"won", member.setsWon}, {"lost", member.setsLost}};
+	}
 	const auto place = sf4e::room::PlaceOf(room, room.localMember);
 	if (place.table >= 0 && place.table < (int)room.tables.size()) {
 		const sf4e::room::Table& table = room.tables[(size_t)place.table];

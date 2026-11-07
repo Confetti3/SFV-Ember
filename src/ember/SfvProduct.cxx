@@ -239,6 +239,28 @@ constexpr ember::BattleHud SfvBattleHud = {
 	false,
 };
 
+// The public room classes (the library's docs/design/SKILL_BADGE.md) as SFV's
+// own leagues: the bridge rates SFV Ember's public room games in a rating of
+// their own, apart from USF4's, in the same ten bands, and SFV Ember names
+// and draws each band as one of SFV's ten league tiers (its Super and Ultra
+// steps left out): Rookie to Warlord, with the game's league icons
+// (/Game/CommonAsset/LeagueIcon, read from the install as the fighters' faces
+// are, SfvArt). The names are the leagues' English names, which SFV Ember
+// shows in every language, as SF4 Ember shows USF4's letters (section 28).
+constexpr ember::RankingClass SfvRanks[ember::RankingClassCount] = {
+	{"LI_rookie", "Rookie", nullptr},
+	{"LI_bronze", "Bronze", nullptr},
+	{"LI_silver", "Silver", nullptr},
+	{"LI_gold", "Gold", nullptr},
+	{"LI_platinum", "Platinum", nullptr},
+	{"LI_diamond", "Diamond", nullptr},
+	{"LI_master", "Master", nullptr},
+	{"LI_grand_master", "Grand Master", nullptr},
+	// The game's own spelling of its asset.
+	{"LI_ultimet_grand_master", "Ultimate Grand Master", nullptr},
+	{"LI_warlord", "Warlord", nullptr},
+};
+
 constexpr ember::ProductIdentity SfvEmber = {
 	{
 		"SFV Ember",
@@ -259,6 +281,8 @@ constexpr ember::ProductIdentity SfvEmber = {
 		// The opponent's Rematch or decline shows on the post-match prompt as
 		// soon as the held frames carry it (section 20).
 		true,
+		// SFV's leagues for the public room classes (section 28).
+		SfvRanks,
 	},
 	L"SFVEmber",
 	// Settings and logs under %APPDATA%\SFVEmber, as SF4 Ember's are under

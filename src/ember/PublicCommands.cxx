@@ -4,9 +4,13 @@
 #include "ember/SfvCatalog.hxx"
 #include "mod/ControlPipe.hxx"
 
+#include "common/Country.hxx"
 #include "common/GameCatalog.hxx"
+#include "common/SkillBadge.hxx"
+#include "netplay/Rankings.hxx"
 #include "netplay/TableSetup.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
+#include "ui/NameMarks.hxx"
 
 #include <nlohmann/json.hpp>
 
@@ -159,6 +163,90 @@ std::string Public(const std::string& args)
 	return answer.rfind("ok", 0) == 0 ? "ok " + std::to_string(request.request) : answer;
 }
 
+// `ranking standing`, `ranking board`, `ranking take-part <country|-> <name>`
+// and `ranking stop`, as the Rankings screen sends them (EMBER_LIBRARY.md
+// section 28): the runtime asks the trusted service for SFV's standing and
+// board, and takes part (listed under that name and flag) or stops.
+std::string Ranking(const std::string& args)
+{
+	const std::string bridge = BridgeId();
+	if (bridge.empty()) return "error trust a service first (`bridge <origin>`, then `trust`)";
+	const auto space = args.find(' ');
+	const std::string verb = args.substr(0, space), rest = space == std::string::npos ? std::string() : args.substr(space + 1);
+	facade::RuntimeCommand command;
+	command.command.generation = facade::GetRuntimeSnapshotShared()->session.generation;
+	Command& request = command.tournament;
+	request.bridgeId = bridge;
+	if (verb == "standing" && rest.empty()) request.op = Command::Op::RankingStanding;
+	else if (verb == "board" && rest.empty()) request.op = Command::Op::RankingBoard;
+	else if (verb == "stop" && rest.empty()) {
+		request.op = Command::Op::RankingChoose;
+		request.ranked = false;
+		request.request = ++s_request;
+	} else if (verb == "take-part") {
+		const auto gap = rest.find(' ');
+		const std::string country = rest.substr(0, gap), name = gap == std::string::npos ? std::string() : rest.substr(gap + 1);
+		if ((country != "-" && !sf4e::CountryCode::Parsed(country).Present()) || !sf4e::netplay::rankings::IsListingName(name))
+			return "error usage: ranking take-part <country code or -> <name of 1 to 32 bytes>";
+		request.op = Command::Op::RankingChoose;
+		request.ranked = true;
+		request.listingName = name;
+		if (country != "-") request.listingCountry = country;
+		request.request = ++s_request;
+	} else return "error usage: ranking standing | ranking board | ranking take-part <country|-> <name> | ranking stop";
+	const std::string answer = Submit(std::move(command));
+	if (answer.rfind("ok", 0) != 0) return answer;
+	return request.request ? "ok " + std::to_string(request.request) : answer;
+}
+
+nlohmann::json BadgeJson(const sf4e::SkillBadge& badge)
+{
+	static const char* const kinds[] = {"none", "placing", "class", "developer"};
+	return {{"kind", kinds[(int)badge.kind]}, {"band", badge.band}, {"settled", badge.settled},
+		{"name", badge.HasClass() ? sf4e::ui::ClassName(badge.band) : std::string()}};
+}
+
+// The status field `ranking`: the runtime's standing, board and last choice
+// (netplay::rankings::Status), each member's mark in the room, and this
+// copy's own online record (Profile's).
+std::string RankingStatus()
+{
+	using Kind = sf4e::netplay::rankings::Standing::Kind;
+	const auto snapshot = facade::GetRuntimeSnapshotShared();
+	const auto& rankings = snapshot->rankings;
+	const auto& standing = rankings.standing;
+	static const char* const kinds[] = {"no_account", "opted_out", "ranked"};
+	nlohmann::json board = nlohmann::json::array();
+	if (rankings.board.value) {
+		for (const auto& entry : *rankings.board.value)
+			board.push_back({{"name", entry.listing.name}, {"country", entry.listing.country.ToString()}, {"band", entry.band},
+				{"class", sf4e::ui::ClassName(entry.band)}, {"own", entry.own}});
+	}
+	nlohmann::json members = nlohmann::json::array();
+	for (const auto& member : snapshot->Room().members) members.push_back({{"name", member.name}, {"badge", BadgeJson(member.badge)}});
+	const auto& record = snapshot->preferences.record;
+	nlohmann::json status = {
+		{"bridge", rankings.bridge},
+		{"emberId", rankings.emberId},
+		{"standing", {
+			{"loaded", standing.loaded}, {"loading", standing.loading}, {"error", standing.error}, {"revision", standing.revision},
+			{"kind", kinds[(int)standing.value.kind]}, {"classesShown", standing.value.classesShown},
+			{"badge", BadgeJson(standing.value.badge)}, {"listed", standing.value.listed},
+			{"name", standing.value.listing.name}, {"country", standing.value.listing.country.ToString()},
+			{"changeIn", standing.value.changeIn},
+			{"ranked", standing.value.kind == Kind::Ranked},
+		}},
+		{"board", {{"loaded", rankings.board.loaded}, {"loading", rankings.board.loading}, {"error", rankings.board.error},
+			{"revision", rankings.board.revision}, {"players", std::move(board)}}},
+		{"choosing", rankings.choosing},
+		{"chose", rankings.chose},
+		{"choiceFailure", rankings.choiceFailure},
+		{"members", std::move(members)},
+		{"record", {{"available", record.available}, {"wins", record.wins}, {"losses", record.losses}, {"recent", record.recent.size()}}},
+	};
+	return status.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+}
+
 // `catalog-export <path>`: writes the catalog's pick space and build as SFV's
 // room host takes it (EMBER_LIBRARY.md section 24).
 std::string CatalogExport(const std::string& path)
@@ -208,8 +296,10 @@ void RegisterPublicCommands()
 	mod::RegisterCommand("bridge", Bridge);
 	mod::RegisterCommand("trust", Trust);
 	mod::RegisterCommand("public", Public);
+	mod::RegisterCommand("ranking", Ranking);
 	mod::RegisterCommand("catalog-export", CatalogExport);
 	mod::RegisterStatus("public", Status);
+	mod::RegisterStatus("ranking", RankingStatus);
 }
 
 } // namespace sfve::adapter

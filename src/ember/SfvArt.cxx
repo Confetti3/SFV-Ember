@@ -7,6 +7,8 @@
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
 
+#include "common/ProductIdentity.hxx"
+
 #include <d3d11.h>
 
 #include <deque>
@@ -181,6 +183,14 @@ sf4e::ui::SelectionImage StageImage(int stage)
 {
 	const std::string code = StageCode(stage);
 	return Image(code.empty() ? std::wstring() : AssetPath(L"Stage/" + Wide(code) + L"/UI", L"StageSelectBG"));
+}
+
+sf4e::ui::SelectionImage LeagueImage(const std::string& name)
+{
+	const ember::RankingClass* ranks = ember::Product().branding.rankingClasses;
+	bool known = false;
+	for (int band = 0; ranks && band < ember::RankingClassCount; band++) known = known || name == ranks[band].emblem;
+	return Image(known ? AssetPath(L"CommonAsset/LeagueIcon", Wide(name).c_str()) : std::wstring());
 }
 
 std::optional<std::pair<std::uint32_t, std::uint32_t>> Swatch(int fighter, int costume, int colour)

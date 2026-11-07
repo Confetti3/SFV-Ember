@@ -13,9 +13,16 @@
 //                             Instant rematch
 //   public join <room id>     take a ticket for a listed room
 //   public enter              join with the last create's or ticket's admission
+//   ranking standing          read this player's SFV standing (Rankings)
+//   ranking board             read SFV's board of classes
+//   ranking take-part <country|-> <name>
+//                             take part, listed under that flag and name
+//   ranking stop              stop taking part
 //   catalog-export <path>     write the pick space SFV's room host judges by
 // The status field `public` reports the identity, the service, the list and
-// the last admission. Registered with the room commands (-sfve_room=1).
+// the last admission; `ranking` the standing, the board, the last choice, each
+// room member's mark and this copy's online record (EMBER_LIBRARY.md section
+// 28). Registered with the room commands (-sfve_room=1).
 
 namespace sfve::adapter {
 
