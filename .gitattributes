@@ -1,0 +1,2 @@
+# Shell scripts run on Linux (scripts/build-room-host-linux.sh) from Windows checkouts and archives.
+*.sh text eol=lf
