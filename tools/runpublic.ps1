@@ -70,7 +70,8 @@ $space = Get-Content data\pick-space.json -Raw | ConvertFrom-Json
 $build = $space.build
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
 New-Item -ItemType Directory -Force $work, "$work\bridge", "$work\ember0", "$work\ember1" | Out-Null
-$helper = 'G:\SteamLibrary\steamapps\common\StreetFighterV\StreetFighterV\Binaries\Win64\sf4-net.exe'
+$gameDir = if ($env:SFVE_GAME_DIR) { $env:SFVE_GAME_DIR } else { 'G:\SteamLibrary\steamapps\common\StreetFighterV\StreetFighterV\Binaries\Win64' }
+$helper = Join-Path $gameDir 'sf4-net.exe'
 $origin = "http://127.0.0.1:$port"
 $roomsPort = $port + 10
 $secret = -join ((1..48) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })

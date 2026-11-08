@@ -4,7 +4,7 @@ param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash 
 # to -distance, from seed -schedule; 0 for the fixed schedule), learning
 # (every differing region is tallied, the battle goes on; -learn 0 stops at
 # the first difference instead). Prints the report and the differences.
-Set-Location C:\Users\user\Desktop\sf4\sfv-ember
+Set-Location (Split-Path -Parent $PSScriptRoot)
 python -I tools\sfve.py kill | Out-Null
 python -I tools\sfve.py launch 0 --mode synctest -- '-sfve_pads=01' '-sfve_background=1' "-sfve_mash=$mash" "-sfve_mash_from=$mashFrom" "-sfve_distance=$distance" '-sfve_perturb=1' "-sfve_learn=$learn" "-sfve_schedule=$schedule" | Out-Null
 for ($k = 0; $k -lt 60; $k++) { Start-Sleep 2; if ((python -I tools\sfve.py ctl 0 status) -match '"scene":"0x2D98660"') { break } }
