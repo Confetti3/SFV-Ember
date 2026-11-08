@@ -116,7 +116,9 @@ add_executable(sfve_ember_tests
     tests/BattleIdentityTests.cxx
     tests/HudLayoutTests.cxx
     tests/SfvReplaysTests.cxx
+    tests/CrashRecordTests.cxx
     src/mod/ControlPipe.cxx
+    src/mod/CrashRecord.cxx
     src/mod/GameArt.cxx
     src/mod/GameContent.cxx
     src/mod/GameExit.cxx
@@ -133,7 +135,7 @@ add_executable(sfve_ember_tests
     src/mod/SfvRegionNames.cxx
     src/mod/VersusLaunch.cxx
     src/mod/VirtualPads.cxx)
-target_link_libraries(sfve_ember_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest)
+target_link_libraries(sfve_ember_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
 
 # The in-game mod. Loads inert: it blocks every non-loopback connection first,
 # then does nothing else unless the exe is the exact build it was made for.
@@ -147,6 +149,7 @@ add_library(sfv_ember SHARED
     src/mod/MatchResult.cxx
     src/mod/ModConfig.cxx
     src/mod/ControlPipe.cxx
+    src/mod/CrashRecord.cxx
     src/mod/VersusLaunch.cxx
     src/mod/VirtualPads.cxx
     src/mod/NetGuard.cxx
@@ -172,7 +175,7 @@ add_library(sfv_ember SHARED
     src/mod/GameContent.cxx
     src/mod/GameExit.cxx
     src/mod/HudText.cxx)
-target_link_libraries(sfv_ember PRIVATE sfve_ember)
+target_link_libraries(sfv_ember PRIVATE sfve_ember dbghelp)
 target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")
 # Ember's own pictures the shell draws beside the mod (overlay/Overlay.hxx):
 # the button prompts and the flags, and SFV Ember's own menu backdrop

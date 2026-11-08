@@ -7,7 +7,8 @@
 //
 // SFV Ember has no replays, no Discord companion and no game language of its
 // own yet, so those steps do nothing. The mod starts Ember's networking
-// helper itself (ember/EmberHost.cxx), so the launcher hands it none.
+// helper itself (ember/EmberHost.cxx), so the launcher hands it none. It
+// hands it the crash dump channel (InheritedDumpChannel below).
 //
 // Test copies: --instance N (1-3) starts copy N of a two-copy test, with its
 // own launcher log (launcher.instanceN.log; launcher.N.log are the log's own
@@ -18,6 +19,7 @@
 
 #include "launcher/LaunchSteps.hxx"
 
+#include "common/CrashDump.hxx"
 #include "common/ProductIdentity.hxx"
 #include "launcher/netplay/netplay_persist.hxx"
 #include "platform/Utf8.hxx"
@@ -74,6 +76,69 @@ bool AllowedGameOption(const std::string& option)
 	}
 	return false;
 }
+
+// The launcher's crash dump channel (common/CrashDump.hxx) as the game gets
+// it: inheritable copies of its two events and its mailbox, handed to the
+// game alone through the start's handle list and named on its command line
+// (-sfve_dump_channel, the mod's CrashRecord). The copies close when the
+// start is over; the launcher's own handles stay uninheritable, so nothing
+// else it starts gets them. Not Ready without an open channel or when a
+// step fails: the game then writes its own dump.
+class InheritedDumpChannel {
+public:
+	explicit InheritedDumpChannel(const sf4e::crash::DumpChannel* channel)
+	{
+		if (!channel || !channel->view) return;
+		const HANDLE sources[] = {channel->request, channel->done, channel->mailbox};
+		for (int i = 0; i < 3; i++) {
+			if (!DuplicateHandle(GetCurrentProcess(), sources[i], GetCurrentProcess(), &handles_[i], 0, TRUE, DUPLICATE_SAME_ACCESS)) {
+				spdlog::warn("Could not pass the crash dump channel to the game (Win32 {}); it writes its own dumps", GetLastError());
+				return;
+			}
+		}
+		SIZE_T size = 0;
+		InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
+		attributeBytes_.resize(size);
+		auto* list = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attributeBytes_.data());
+		if (!size || !InitializeProcThreadAttributeList(list, 1, 0, &size)) {
+			spdlog::warn("Could not pass the crash dump channel to the game (Win32 {}); it writes its own dumps", GetLastError());
+			return;
+		}
+		attributes_ = list;
+		if (!UpdateProcThreadAttribute(list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles_, sizeof(handles_), nullptr, nullptr)) {
+			spdlog::warn("Could not pass the crash dump channel to the game (Win32 {}); it writes its own dumps", GetLastError());
+			return;
+		}
+		ready_ = true;
+	}
+	~InheritedDumpChannel()
+	{
+		if (attributes_) DeleteProcThreadAttributeList(attributes_);
+		for (HANDLE handle : handles_) {
+			if (handle) CloseHandle(handle);
+		}
+	}
+	InheritedDumpChannel(const InheritedDumpChannel&) = delete;
+	InheritedDumpChannel& operator=(const InheritedDumpChannel&) = delete;
+
+	bool Ready() const { return ready_; }
+	LPPROC_THREAD_ATTRIBUTE_LIST Attributes() const { return ready_ ? attributes_ : nullptr; }
+	// "R:D:M": the handles' values, which the game's inherited handles share.
+	std::wstring Option() const
+	{
+		wchar_t text[64] = {};
+		swprintf_s(text, L"%llx:%llx:%llx", static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(handles_[0])),
+			static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(handles_[1])),
+			static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(handles_[2])));
+		return text;
+	}
+
+private:
+	HANDLE handles_[3] = {};
+	std::vector<unsigned char> attributeBytes_;
+	LPPROC_THREAD_ATTRIBUTE_LIST attributes_ = nullptr;
+	bool ready_ = false;
+};
 
 } // namespace
 
@@ -137,16 +202,20 @@ HANDLE StartGame(const StartRequest& request, DWORD& startError)
 	for (const std::string& option : s_gameOptions) commandLine += L" " + sf4e::platform::Utf8ToWide(option.c_str());
 	commandLine += L" -sfve_loader=launcher -sfve_mode=netplay -sfve_room=1";
 	if (s_instance != 0) commandLine += L" -sfve_instance=" + std::to_wstring(s_instance);
+	InheritedDumpChannel dumps(request.dumps);
+	if (dumps.Ready()) commandLine += L" -sfve_dump_channel=" + dumps.Option();
 	spdlog::info(L"Starting {} with {}: {}", request.executable, request.module, commandLine);
 
-	STARTUPINFOW startup{};
-	startup.cb = sizeof(startup);
+	STARTUPINFOEXW startup{};
+	startup.StartupInfo.cb = sizeof(startup);
+	startup.lpAttributeList = dumps.Attributes();
 	PROCESS_INFORMATION process{};
 	LPCSTR modules[] = {request.moduleAnsi.c_str()};
 	SetLastError(0);
-	if (!DetourCreateProcessWithDllsW(request.executable.c_str(), commandLine.data(), nullptr, nullptr, FALSE,
-			CREATE_DEFAULT_ERROR_MODE | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT, nullptr,
-			request.gameDirectory.c_str(), &startup, &process, 1, modules, nullptr)) {
+	const DWORD flags = CREATE_DEFAULT_ERROR_MODE | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT |
+		(dumps.Ready() ? EXTENDED_STARTUPINFO_PRESENT : 0);
+	if (!DetourCreateProcessWithDllsW(request.executable.c_str(), commandLine.data(), nullptr, nullptr, dumps.Ready(), flags,
+			nullptr, request.gameDirectory.c_str(), &startup.StartupInfo, &process, 1, modules, nullptr)) {
 		startError = GetLastError();
 		spdlog::error("Could not start the game with {} (Win32 {})", sf4e::platform::WideToUtf8(Product().gameModule), startError);
 		return nullptr;

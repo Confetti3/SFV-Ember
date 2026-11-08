@@ -34,6 +34,10 @@
 //                        ownership check (default off; a room's never does)
 //   -sfve_dialogs=N      offline start-up dialogs hidden: 0 none, 1 download errors,
 //                        2 those and the offline notice (default)
+//   -sfve_dump_channel=R:D:M  the launcher's crash dump channel: the request
+//                        and done events and the mailbox, as this process's
+//                        handle values in hex (SfvLaunch.cxx; CrashRecord.hxx)
+//   -sfve_crash_command=1  test: the pipe's "crash game|thread" faults on purpose
 
 #include <stdint.h>
 
@@ -50,6 +54,15 @@ struct UnownedContent {
 	std::string fighter; // the game's code
 	int costume = -1;
 	int colour = -1;
+};
+
+// The launcher's crash dump channel (common/CrashDump.hxx) as this process's
+// handles to it, -sfve_dump_channel. All zero: no launcher.
+struct DumpChannelHandles {
+	uint64_t request = 0;
+	uint64_t done = 0;
+	uint64_t mailbox = 0;
+	bool Present() const { return request && done && mailbox; }
 };
 
 struct ModConfig {
@@ -83,6 +96,10 @@ struct ModConfig {
 	// A launch that is not a room's runs the game's own check (the battle
 	// jump's, VersusLaunch). A room's launch never does.
 	bool gameOwnershipCheck = false;
+	// The launcher's crash dump channel; none under the proxy.
+	DumpChannelHandles dumpChannel;
+	// Test only: the pipe may be asked to crash the game.
+	bool crashCommand = false;
 };
 
 const ModConfig& Config();

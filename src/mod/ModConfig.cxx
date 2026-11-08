@@ -55,6 +55,21 @@ bool Variant(const std::wstring& text, int* value)
 	return *value <= 0xFF;
 }
 
+// "R:D:M", three nonzero hex handle values; all zero (no channel) when the
+// text is anything else.
+DumpChannelHandles ParseDumpChannel(const wchar_t* text)
+{
+	uint64_t values[3] = {};
+	const wchar_t* p = text;
+	for (int i = 0; i < 3; i++) {
+		wchar_t* end = nullptr;
+		values[i] = wcstoull(p, &end, 16);
+		if (end == p || !values[i] || *end != (i < 2 ? L':' : L'\0')) return {};
+		p = end + 1;
+	}
+	return {values[0], values[1], values[2]};
+}
+
 // "CODE[:costume[:colour]]": a code of 1 to 8 capital letters or digits.
 bool ParseUnowned(const std::wstring& entry, UnownedContent* out)
 {
@@ -109,6 +124,9 @@ void LoadConfigFromCommandLine(const wchar_t* line)
 	c.offlineDialogs = (int)Number(line, L"sfve_dialogs", 2);
 	c.ownershipGate = Number(line, L"sfve_ownership", 1) != 0;
 	c.gameOwnershipCheck = Number(line, L"sfve_game_ownership", 0) != 0;
+	c.crashCommand = Number(line, L"sfve_crash_command", 0) != 0;
+	wchar_t channel[64];
+	if (Find(line, L"sfve_dump_channel", channel, 64)) c.dumpChannel = ParseDumpChannel(channel);
 	s_unownedProblem.clear();
 	wchar_t unowned[512];
 	if (Find(line, L"sfve_unowned", unowned, 512)) {

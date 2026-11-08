@@ -12,6 +12,10 @@ namespace sfve::mod {
 void OpenLog(int instance);
 void Log(const char* fmt, ...);
 void LogLine(const char* line);
+// LogLine unless another thread is writing the log at that moment (then the
+// line is dropped): for a crash handler, whose fault may have come from
+// inside a write. Allocates nothing.
+void TryLogLine(const char* line);
 // The folder the mod was loaded from: the package folder beside Launcher.exe,
 // or the game's Win64 folder under the xinput1_3.dll proxy. Its helper
 // (sf4-net.exe) and its pictures (assets) are there.

@@ -60,18 +60,43 @@ void OpenLog(int instance)
 		OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 }
 
-void LogLine(const char* line)
+namespace {
+
+// The line as the log writes it, with its time and thread; its length, or 0.
+int FormatLine(char (&text)[1200], const char* line)
 {
 	SYSTEMTIME t;
 	GetLocalTime(&t);
-	char text[1200];
 	const int n = snprintf(text, sizeof(text), "%04d-%02d-%02d %02d:%02d:%02d.%03d [%lu] %s\r\n", t.wYear, t.wMonth,
 		t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds, GetCurrentThreadId(), line);
-	if (n <= 0) return;
-	std::lock_guard lock(s_mutex);
+	return n <= 0 ? 0 : n < (int)sizeof(text) ? n : (int)sizeof(text) - 1;
+}
+
+void WriteLine(const char* text, int length)
+{
 	if (s_file == INVALID_HANDLE_VALUE) return;
 	DWORD written = 0;
-	WriteFile(s_file, text, (DWORD)(n < (int)sizeof(text) ? n : (int)sizeof(text) - 1), &written, nullptr);
+	WriteFile(s_file, text, (DWORD)length, &written, nullptr);
+}
+
+} // namespace
+
+void LogLine(const char* line)
+{
+	char text[1200];
+	const int n = FormatLine(text, line);
+	if (!n) return;
+	std::lock_guard lock(s_mutex);
+	WriteLine(text, n);
+}
+
+void TryLogLine(const char* line)
+{
+	char text[1200];
+	const int n = FormatLine(text, line);
+	if (!n) return;
+	std::unique_lock lock(s_mutex, std::try_to_lock);
+	if (lock.owns_lock()) WriteLine(text, n);
 }
 
 void Log(const char* fmt, ...)

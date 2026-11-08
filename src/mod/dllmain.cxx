@@ -7,13 +7,15 @@
 //      copy of the mod in the same game stays inert and says why;
 //   2. the network guard; if it cannot be installed the process ends here and
 //      the game never runs with network access;
-//   3. the build check; on anything but a verified build the mod stays inert.
+//   3. the crash record (it hooks the game's own dump writer);
+//   4. the build check; on anything but a verified build the mod stays inert.
 
 #include "core/CoreLog.hxx"
 #include "mod/BackgroundPlay.hxx"
 #include "mod/BattleDriver.hxx"
 #include "mod/BuildCheck.hxx"
 #include "mod/ControlPipe.hxx"
+#include "mod/CrashRecord.hxx"
 #include "mod/EarlyStart.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/GameExit.hxx"
@@ -125,6 +127,10 @@ extern "C" int SfveStart(int beforeGameCode)
 		return 0;
 	}
 
+	// After the guard, whose start initialized MinHook: the record hooks the
+	// game's dump writer, inert or not.
+	InstallCrashRecord({LogFolder(), Config().dumpChannel, true});
+	RegisterCrashCommand();
 	StartGuardedLagSim(Config().lagMs);
 	RegisterStatus("guardRefusals", [] { return std::to_string(NetGuardRefusals()); });
 	RegisterStatus("mode", [] { return JsonString(ModeName(Config().mode)); });
