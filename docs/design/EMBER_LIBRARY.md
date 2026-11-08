@@ -1908,5 +1908,36 @@ Seen in passing, not SFV's: the room's title "PRIVATE ROOM" stays English in eve
 - Russian `screen.game`: the shared Russian catalog gives "Главное меню" (main menu) where the English is the game's short name ("SF4"), so SF4's footer reads "Вернуться: Главное меню", a fair rendering of a button that returns to the game's menu; SFV's catalog follows the English ("Вернуться: SFV"). Which one Russian should use is the translator's call.
 - Seen on screen: Japanese, Russian and English only. The other eleven are checked for characters (they draw) but not for fit; German and Polish have the longest Latin labels. The launcher's recovery words (`launcher.game_runs_as_admin` is the longest entry) were not shown in any language (`Launcher.exe --locale <tag> --recovery` shows them).
 - The drafting brief and scripts (`D:\sfv-re\i18n` on the desktop) were one-off; the method is in `locales/README.md`.
+
+## 31. Tournaments and Discord (plan, 2026-11-08)
+
+The maintainer: "Yes, start it" (Discord + tournaments, the last item of the parity queue). Mapped from the library (two read-only agents, then checked by hand):
+
+**What already holds for SFV**
+- **One Ember ID per player across products.** The helper keeps it in `%LOCALAPPDATA%\Ember\Identity\v1` (`rust/sf4-net/src/identity/platform.rs`), no product's folder, so SF4 Ember and SFV Ember are the same Ember ID and the same Discord link (`discord_accounts`: one account per Ember ID, migration 008). Connect Discord is the bridge's browser sign-in (`/v1/discord/start`, `/callback`), not the Discord companion, and is game-neutral.
+- **A match's result.** A tournament game is a room match on the tournament table; its report is the runtime's confirmed capture (`ObserveTournamentTerminal` reads `resultOutbox`), which SFV's room battle already fills (`RoomBattle` calls `NotifyRuntimeMatchResult`). No SFV result feed is needed.
+- **A match's room.** One fighter's own game hosts it under the bridge's lease; the bridge requires both claims to name the same build (`play/mod.rs:221`) and checks a build id only for ASCII and length (SFV's `sfv-ember/13173604/0.2/...` passes). No room host or supervisor.
+- **Picks.** The match path validates none (`character_policy` unrestricted); report facts take 3-letter codes.
+
+**What ties organised matches to USF4**
+1. The protocol's one game check, `check_provider_head` (`protocol/src/matches.rs:145`), refuses any game but `usf4` for matches, lobbies and tournaments; `edition_policy` must be `ultra_only` (a USF4 rule).
+2. The bridge's capabilities list `games: ["usf4"]` (`routes/discovery.rs:72`).
+3. `matches`, `lobbies` and `tournaments` have no `game` column; the player record (`/v1/players/{id}/record`) and lobby standings count every match, so SFV sets would be counted into USF4's record.
+4. `/v1/assignments` (a player's matches) names no game, so a player's list can hold both games' matches and neither product can tell them apart: SFV Ember would offer a USF4 match (and fail at the claim) and the reverse.
+5. The brackets service creates every set as `usf4` (`brackets/src/bracket/start.rs:321`).
+6. The website's match page and home copy name USF4 only (`ember-short/deploy/site`).
+
+**Plan, in order**
+- **A. Bridge and protocol** (library, Rust; a deploy, the maintainer's yes): `check_provider_head` takes the games of `rooms::GAMES`; `edition_policy` stays required for `usf4` and is not asked of others; capabilities list both games; migration 059 adds `game TEXT NOT NULL DEFAULT 'usf4'` to `matches`, `lobbies` and `tournaments` (key-neutral, unlike 058: the old binary keeps working on it); a match stores its game; `/v1/assignments` rows carry `game`; the player record and lobby standings take `?game=` defaulting to `usf4`, so every existing response (BluMint contract v2 reads the record) is unchanged; tests pin that.
+- **B. Helper and shared client:** the assignment row's game reaches the client; each product lists and plays only its own game's matches (`ProductIdentity::roomGame`), and a match link for another game says which game it is for. Shared C++, so the library's x86 (SF4) build and tests are owed before any SF4 release takes it.
+- **C. SFV:** an end-to-end test on a local stack (`tools/runmatch.ps1`, `runpublic`'s bridge): an organiser creates an SFV match for two Ember IDs, both copies see it, claim, play, report, and the bridge completes it; plus `ember-sfv://tournament/open` handed to a running copy.
+- **D. Brackets service:** a bracket's game from its connector or event config, `usf4` when unset.
+- **E. Discord presence and invites:** a per-product Discord application id (`ProductIdentity`; the plan's `discordAppId` was never added) and image key; the mod starts the companion as `EmberHost` starts the helper (SFV's launcher hands the game nothing); Settings › Discord hidden when the product has no companion; package inventory. **Blocked on the maintainer** for the companion itself: the id is built in, and SFV Ember needs a Discord application of its own (or SF4's, which would show "SF4 Ember" as the game).
+
+**The maintainer's calls, with the default used until she says otherwise**
+- SFV Ember's Discord application: needed for presence and invites (default: none; presence and invites off on SFV, the Settings screen hidden).
+- Deploy order: bridge 059 (backup first) → brackets → site → an SFV release; nothing deployed by this work.
+- How a partner names a bracket's game (BluMint, Challonge, start.gg): default `usf4` for every existing connection; SFV only where a connection or event says so.
+- Website copy for SFV matches: drafted with the change, published only with her yes.
 - Polish, Czech and Russian decline or transliterate "Anthony Danducci" in `about.ember_detail`, as their shared catalogs do.
 - The words for "fighters and stages" in `runtime.build_mismatch` and `runtime.invite_other_build`, and the new SFV sentences (`replays.row_detail`, `replays.watch_detail`, `replays.not_added`, `inputs.unreadable_detail`, `home.replays_detail`, `home.training_detail`, `selection.not_owned`), have no shared wording to follow.
