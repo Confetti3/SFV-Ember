@@ -115,7 +115,7 @@ TEST_CASE("SFV Ember's words are in every language the library declares")
 		REQUIRE(overlays.count(tag) == 1);
 		const loc::Catalog& catalog = overlays.at(tag);
 		CHECK(catalog.size() == english.size());
-		int translated = 0;
+		std::set<std::string> same;
 		for (const auto& [id, source] : english) {
 			INFO(id);
 			REQUIRE(catalog.count(id) == 1);
@@ -129,10 +129,17 @@ TEST_CASE("SFV Ember's words are in every language the library declares")
 			for (const char* sf4 : {"SF4", "sf4e", "SSFIV", "USF4", "Ultra Street Fighter IV", "Battle Log", "Sidecar"}) {
 				CHECK(scrubbed.find(sf4) == std::string::npos);
 			}
-			translated += text != source;
+			if (text == source) same.insert(id);
 		}
-		// Names (SFV Ember, SFV) stay as they are; nearly everything else differs.
-		if (tag != "en") CHECK(translated >= static_cast<int>(english.size()) - 6);
+		// Only the entries that are names read the same as English; any other
+		// is an untranslated entry. A new name-only msgid joins this list.
+		const std::set<std::string> names = {"app.name", "shell.home_title", "screen.game", "about.version_line"};
+		if (tag != "en") {
+			for (const std::string& id : same) {
+				INFO(id << " reads as English's");
+				CHECK(names.count(id) == 1);
+			}
+		}
 	}
 }
 
@@ -141,6 +148,12 @@ TEST_CASE("each language takes SFV Ember's words over the shared ones")
 	const std::map<std::string, loc::Catalog> overlays = Overlays();
 	std::string error;
 	REQUIRE(loc::testing::LayerOverlays(ember::Product().localeOverlays, error));
+	// The active language is the process's: put back whatever was active,
+	// however this case ends.
+	struct KeepActive {
+		loc::Locale was = loc::Active();
+		~KeepActive() { loc::SetActive(was); }
+	} keep;
 	for (std::size_t i = 0; i < static_cast<std::size_t>(loc::Locale::Count); ++i) {
 		const loc::Locale locale = static_cast<loc::Locale>(i);
 		INFO(loc::Tag(locale));
@@ -148,10 +161,10 @@ TEST_CASE("each language takes SFV Ember's words over the shared ones")
 		const loc::Catalog& catalog = overlays.at(loc::Tag(locale));
 		loc::SetActive(locale);
 		for (const char* id : {"app.name", "launcher.game_not_found", "selection.not_owned", "home.training_detail"}) {
+			REQUIRE(catalog.count(id) == 1);
 			CHECK(std::string(loc::T(id)) == catalog.at(id));
 		}
 	}
-	loc::SetActive(loc::Locale::En);
 }
 
 TEST_CASE("the interface's fonts draw every character of SFV Ember's words")

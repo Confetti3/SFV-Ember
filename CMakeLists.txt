@@ -128,6 +128,11 @@ foreach(index RANGE ${sfve_locale_last})
     file(READ "${catalog}" text)
     # A checkout may give the file CRLF line ends.
     string(REPLACE "\r\n" "\n" text "${text}")
+    # The text goes into a raw literal through file(GENERATE): one that ends
+    # the literal or reads as a generator expression would change it.
+    if(text MATCHES "\\)po\"" OR text MATCHES "\\$<")
+        message(FATAL_ERROR "locales/${tag}.po holds )po\" or $<, which the embedded catalog cannot carry")
+    endif()
     # One raw literal per entry, concatenated: MSVC takes at most about 16 KB
     # in one literal, which a whole Cyrillic or CJK catalog can pass.
     string(REPLACE "\n\nmsgid " "\n\n)po\"\n    R\"po(msgid " text "${text}")
@@ -138,6 +143,11 @@ endforeach()
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/locales/SfvLocaleOverlays.inc" CONTENT
     "// Generated from locales/*.po by CMakeLists.txt (sfve_product).\n${sfve_locale_texts}\nconst ember::LocaleOverlay LocaleOverlays[] = {\n${sfve_locale_rows}    {nullptr, nullptr}};\n")
 target_include_directories(sfve_product PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/locales")
+unset(text)
+unset(tag)
+unset(name)
+unset(catalog)
+unset(index)
 sf4e_embed_brand_mark(sfve_product "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
 target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
 
