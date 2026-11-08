@@ -1380,9 +1380,9 @@ The maintainer: "make the launcher (same as sf4 ember) ... up to parity with usf
 - An installer: the library's `scripts/installer/ember-setup.iss` and `package-installer.ps1` are SF4 Ember's (its AppId, name, x86 runtime and LICENSE). It needs the product's AppId, name, licence and the x64 runtime as defines, and its test a product too. Not built.
 - Code signing: Launcher.exe, Updater.exe and sfv_ember.dll are unsigned (`sign-release-binaries.ps1` is SF4's).
 - SFV Ember's own licence: the package carries Ember's (`notices\Ember-LICENSE.txt`, `Ember-ATTRIBUTION.md`).
-- The crash dump channel: the launcher creates and serves it (freeze dumps of the published window), but the mod has no crash handler that asks for a dump, and UE4 handles the game's own crashes; the mod's side is next.
-- The settings copy did not run on this PC: `%APPDATA%\SFVEmber\settings.json` from 2026-11-05 was already there, so by design nothing was copied. A room link handed to a running game (`ember-sfv://`, registered per user) was not exercised.
-- The CLI's `--join-link` help names `ember://`, the shared text.
+- The crash dump channel: the launcher creates and serves it (freeze dumps of the published window), but the mod has no crash handler that asks for a dump, and UE4 handles the game's own crashes; the mod's side is next. **Done in section 29.**
+- The settings copy did not run on this PC: `%APPDATA%\SFVEmber\settings.json` from 2026-11-05 was already there, so by design nothing was copied. A room link handed to a running game (`ember-sfv://`, registered per user) was not exercised. **Exercised in section 29.**
+- The CLI's `--join-link` help names `ember://`, the shared text. **Fixed in section 29.**
 - The other agent's proxy-era files stay in the game folder as they were; once its branch merges, `SFVE_VIA=launcher` can become the tools' default and the proxy can go.
 
 ## 23. Ownership: each player picks what their own copy allows (2026-11-06)
@@ -1842,3 +1842,47 @@ In this order: the bridge (058), then nginx and the site, then SFV's room host a
 2. **nginx and the website**, after the bridge: the `/rankings-sfv.json` location, `rankings.html`, `assets/rankings.js` and `assets/site.css` (setup.sh's check list names the new path). Checked locally against fixed boards, not with `nginx -t`.
 3. **SFV's room host** (Linux, as section 24's steps 3-4): `CatalogFaces` is compiled in, so the faces change needs the new host. SF4's room host (`sf4e-room-host`) is rebuilt only with the next SF4 release (its listing is unchanged).
 4. **SFV Ember's release** with this build and its helper. Against a bridge without `ranking_games` its Rankings says the service does not offer rankings, so the release cannot write to USF4's ranking whatever the order; the bridge still goes first.
+
+## 29. Crash records and dumps; room links into a running game (2026-11-08)
+
+The maintainer chose "Crash dumps + join link" from section 22's leftovers: the mod had no crash handler, a room link handed to a running SFV Ember was never tried, and `--join-link`'s help named `ember://`. Built on the desktop, built and run on the maintainer's laptop (`ssh director`; the desktop was in use). Library `feat/ember-library` 2e0dae10d; sfv-ember `main` d0eab3a..f0b346e.
+
+### How SFV handles its own crashes
+
+SFV's crash reporter is Unreal's: the exe imports `dbghelp!MiniDumpWriteDump` and formats `%sDump%d.dmp`, which is the `Dump-1053984112.dmp` style files in `%LOCALAPPDATA%\StreetFighterV\Saved\Logs` (a negative `%d`). The engine's guarded main loop and its threads' guards end each crash they catch in that one call, with the fault's `MINIDUMP_EXCEPTION_INFORMATION`. No `CrashReportClient.exe` is installed. Found from the exe's import table and strings; the IDA database was not needed.
+
+Seen on the laptop before the mod ended the game itself: after the dump the reporter does not exit (the game was still running 60 s after the fault; presumably an error box), and a fault on a thread the engine did not start (the mod's) ends the process with 0xC0000005 and no dump or record of any kind.
+
+### What the mod does (`src/mod/CrashRecord`)
+
+- **The hook.** MinHook on `dbghelp!MiniDumpWriteDump` (installed after the network guard, inert or not). A call for this process whose exception code ends the game is a crash: 0xC..., an uncaught C++ exception, a breakpoint, or 1, which the engine raises for its own fatal errors (its other use, `ensure`, is compiled out of this build: the exe has "Assertion failed", "Fatal error" and "LowLevelFatalError" and none of ensure's texts). Anything else passes straight through. For a crash it: writes the record; asks the launcher for the dump, naming the faulting thread from the call (`DumpClient::Request(pointers, threadId)`, new in the library); without a launcher writes that dump itself through the trampoline (`WriteDump(..., writer)`, new); lets the game's own call go on; then, **with a launcher only**, ends the game with the fault's code (3 when the launcher would not read the code as a crash), so the launcher shows its crash window at once. Under the proxy nothing else would show the crash, so the reporter's own handling goes on.
+- **Two faults at once**: the first records; a second, on another thread, waits for that record and dump (at most the launcher's 30 s and 5 more) before going on, so ending the game cannot cut them off.
+- **The record**: `Product().crashLog` (`sfv_ember-crash.log`) in `%APPDATA%\SFVEmber\logs`, one `FormatCrashHeader` line (kind, code, address, module+offset, thread, the faulting access), from static buffers, one per process. The mod's log gets the same line only when no other thread holds the log (`TryLogLine`); the log is written synchronously, so its tail is already on disk and the record carries no ring of last lines (SF4's does, its log is asynchronous).
+- **Threads the engine does not guard**: an unhandled-exception filter, set at the start and taken back at the game's first frame (the engine sets one of its own in between; ours chains to it). A per-thread guard stops a filter that chains back to ours from looping.
+- **Heap corruption** (a vectored handler asks the launcher first, as SF4's does), the mod's own CRT faults (pure call, invalid parameter, `std::terminate` on the installing thread) and GGPO assertions are recorded. The invalid-parameter handler is the shared UCRT's, so every module that uses it gets ours: after the record it ends the process with 0xC0000417, as the default does. The game's own C runtime (MSVCR120) is not hooked.
+- **Review** (Opus, read-only, of d0eab3a^..f0b346e): no P1. Its P2s are fixed as above (second fault, filter loop, invalid parameter, ending the game only with a launcher, code 1). Its P3s: the launcher refuses `-sfve_dump_channel` as a test option and the parser refuses a sign or `0x`; runcrash reads the launcher's log by bytes. Left: without a logs folder the launcher closes the channel after the start, so a crash waits the full 30 s before the mod dumps itself; a freeze dump can replace a crash dump when the game's own dump takes over 10 s.
+- **The channel**: the launcher (`SfvLaunch.cxx`, `InheritedDumpChannel`) duplicates the channel's two events and mailbox as inheritable copies for the start only, gives the game just those through `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`, and names them on the command line, `-sfve_dump_channel=R:D:M` (hex). The mod clears their inherit flag, so the helper it starts gets none.
+- **Status and test hook**: the pipe's status has `crashRecord` (`installed`, `dumpWriterHooked`, `launcherChannel`); `-sfve_crash_command=1` adds the pipe's `crash game|thread` (a write to 0x10 on the game thread, or on a thread of the mod's).
+
+### Room links
+
+The launcher already had everything: `RegisterJoinScheme` registers `Product().urlScheme` (`ember-sfv`) per user, a second launcher hands the link to the running game through the per-product mailbox (`platform/JoinLinkMailbox.hxx`), and a first start passes it in `SF4E_JOIN_LINK`, which the shared runtime reads. The help text now builds its examples from `ember::SchemeLink` (SF4 Ember's text is unchanged: its scheme is `ember`).
+
+### Tests and evidence (laptop, 2026-11-08 16:30-16:33)
+
+- `tests/CrashRecordTests.cxx` (in `sfve_ember_tests`): the channel's option parses (and five malformed ones do not); a real access violation's record plus the launcher side's `DumpChannel::Serve` on a thread writes the dump, and a second crash leaves the record as it was. Build ctest 5/5.
+- `tools/runcrash.py` (`--where game|thread`; refuses to run while Send problem reports is on; deletes the dumps it caused unless `--keep`):
+  - through Launcher.exe, game thread: PASS. Record `kind=unhandled_exception code=0xC0000005 ... module=sfv_ember.dll+0x32BD0 ... write of 0x0000000000000010`; the launcher wrote `sfv_ember-crash-*.dmp` (49 MB) and `*-report.dmp` (441 KB); the game's own `Dump-*.dmp` (503 KB) written; launcher: "Game exited with code 0xc0000005 (access violation)".
+  - through Launcher.exe, a mod thread: PASS, the same through the filter; exit 0xC0000005.
+  - under the proxy (no launcher): PASS; the mod wrote the 49 MB dump itself, and the game ended with the code.
+- `tools/runlink.py`: PASS. `--help` names `ember-sfv://join/...` and no `ember://`; copy 0 started by Launcher.exe hosts a private room; `Launcher.exe --join-link ember-sfv://join/7Q4M-2KXD-9FNB` logs "Started with a room link" and "Handed the room link to the running game" and exits 0; the runtime logs "Room: a room link arrived from the browser" and copy 0 stays in its room (the made-up code is never looked up). Shot `D:\sfv-re\shots\link\link-arrived-0.png` on the laptop.
+- `runroom -presses 10 -games 2 -lag 30` on the final build: PASS, 154 checkpoints compared, 0 differing.
+- Both new tools start their copy as the other runs do (`-sfve_pads=0`, `-sfve_background=1`; without them an unfocused SFV never leaves its title) and leave its window where it is (`boot_to_menu(..., bring_to_front=False)`: Windows refuses the foreground on a locked desktop, which the laptop's was).
+
+### Left
+
+- A link on a **first start** (no game running) and a real room's link (a short code a bridge resolves) were not run: the first would look up the made-up code on the production bridge. Worth one run against `runpublic`'s local bridge.
+- The crash window's **Send this report**: never pressed (production bridge; whether it takes SFV's reports is untested). Small dump preview untested on SFV.
+- SF4's record (`sf4e__CrashDiagnostics.cxx`) has the same two patterns the review found here: its invalid-parameter handler returns (the CRT then hands EINVAL back instead of ending the process), and `NoteMatchBoundary` re-takes the filter with no loop guard. Not changed here (SF4 behaviour); worth a look in SF4's next review.
+- Ending the game after its own dump skips whatever the reporter would have shown (presumably an error box) and the engine's error lines after the dump; its own dump is still written.
+- One record per process: a second fault is waited for, not recorded.

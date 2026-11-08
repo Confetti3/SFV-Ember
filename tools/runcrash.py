@@ -12,8 +12,10 @@ MiniDumpWriteDump the mod hooks (mod/CrashRecord). Then:
   access violation, a write of 0x10;
 - a new sfv_ember-crash-*.dmp must be in the logs folder: written by the
   launcher (the mod's log says so) or, under the proxy, by the game;
-- through the launcher, its log must say it wrote the dump and give the
-  game's exit code, which the launcher must take for a crash (IsCrashExit).
+- through the launcher, the mod ends the game after the game's own dump, and
+  the launcher's log must say it wrote the dump and give the game's exit
+  code, which it must take for a crash (IsCrashExit). Under the proxy the
+  game's reporter goes on as it would, and the copy is killed.
 The launcher then shows its crash window; this script never touches it and
 kills it. Refuses to run while %APPDATA%\\SFVEmber\\settings.json has Send
 problem reports on, which would send the test's report without asking.
@@ -115,12 +117,21 @@ def main(argv: list[str]) -> int:
         if via_launcher and not record_state.get("launcherChannel"):
             failures.append("the launcher's dump channel did not reach the mod")
         print(f"asked: {lib.request(0, 'crash ' + a.where)}")
-        code = wait_exit(inst.pid)
-        if code is None:
-            failures.append(f"the game was still running {EXIT_LIMIT_S:.0f} s after the fault")
+        if via_launcher:
+            # The mod ends the game once its dump is written.
+            code = wait_exit(inst.pid)
+            if code is None:
+                failures.append(f"the game was still running {EXIT_LIMIT_S:.0f} s after the fault")
+            else:
+                print(f"game exit code: 0x{code:08X}")
+            time.sleep(2)  # the launcher logs the exit and prunes after the game is gone
         else:
-            print(f"game exit code: 0x{code:08X}")
-        time.sleep(2)  # the launcher logs the exit and prunes after the game is gone
+            # Without a launcher the game's reporter goes on as it would
+            # (its error box); the record and the dump are what count.
+            deadline = time.monotonic() + EXIT_LIMIT_S
+            while time.monotonic() < deadline and lib.count_log(0, "crash: wrote the dump in the game") == 0:
+                time.sleep(1)
+            time.sleep(2)  # the game's own dump, after ours
     except (lib.SfveError, TimeoutError) as error:
         failures.append(str(error))
 
@@ -147,8 +158,9 @@ def main(argv: list[str]) -> int:
     if not [d for d in new_ours if not d.name.endswith("-report.dmp")]:
         failures.append("no new sfv_ember-crash-*.dmp in the logs folder")
     if via_launcher:
-        text = launcher_log.read_text(errors="replace") if launcher_log.exists() else ""
-        text = text[launcher_from:] if len(text) >= launcher_from else text
+        raw = launcher_log.read_bytes() if launcher_log.exists() else b""
+        # From where this run began, unless the log was rotated meanwhile.
+        text = (raw[launcher_from:] if len(raw) >= launcher_from else raw).decode(errors="replace")
         for line in text.splitlines():
             if re.search(r"crash dump|exited with code|dump channel", line):
                 print(f"launcher: {line}")

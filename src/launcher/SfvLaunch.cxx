@@ -65,6 +65,9 @@ int InstanceFromCommandLine()
 bool AllowedGameOption(const std::string& option)
 {
 	if (option.empty() || option.find_first_of(" \t\"") != std::string::npos) return false;
+	// The dump channel is the launcher's own to name (InheritedDumpChannel);
+	// the mod reads the first of each option, so a test's would win.
+	if (option.rfind("-sfve_dump_channel", 0) == 0) return false;
 	if (option.rfind("-sfve_", 0) == 0) return true;
 	if (option == "-windowed") return true;
 	for (const char* size : {"-ResX=", "-ResY="}) {

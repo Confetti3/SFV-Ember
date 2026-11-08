@@ -33,6 +33,11 @@ DumpWriter s_originalWriter = nullptr; // MinHook's trampoline once hooked
 LPTOP_LEVEL_EXCEPTION_FILTER s_previousFilter = nullptr;
 sf4e::crash::DumpClient s_dumpClient;
 std::atomic<bool> s_recording(false);
+// Set once the first crash's record and dump are done; a second fault waits
+// for it (at most kSecondFaultWaitMs, the launcher's whole budget and a bit).
+HANDLE s_recorded = nullptr;
+DWORD s_recordingThread = 0;
+constexpr DWORD kSecondFaultWaitMs = sf4e::crash::DumpRequestWaitMs + 5000;
 // Static, so a record needs neither the heap nor much stack.
 wchar_t s_recordPath[MAX_PATH] = {};
 wchar_t s_logsFolder[MAX_PATH] = {};
@@ -41,6 +46,8 @@ char s_header[1024];
 char s_module[MAX_PATH];
 char s_detail[96];
 char s_line[1200];
+
+void RecordFirstCrash(const char* kind, EXCEPTION_POINTERS* pointers, const char* message, DWORD threadId);
 
 DumpWriter Writer()
 {
@@ -92,9 +99,11 @@ void WriteText(HANDLE file, const char* text, size_t length)
 }
 
 // The code of a fault that ends the game, which the game's reporter is
-// dumping: an error (0xC...), a C++ exception nothing caught, or a
-// breakpoint. 0 for anything else (a warning code the game raised and
-// carries on after), which is not a crash.
+// dumping: an error (0xC...), a C++ exception nothing caught, a breakpoint,
+// or 1, which the engine raises for its own fatal errors (an assertion,
+// LowLevelFatalError, a fatal log line). Its other use, ensure, is compiled
+// out of this shipping build: the exe has the fatal paths' texts and none of
+// ensure's. 0 for anything else, which is not a crash.
 DWORD FatalCode(const MINIDUMP_EXCEPTION_INFORMATION* exception)
 {
 	if (!exception || !exception->ExceptionPointers) return 0;
@@ -115,7 +124,7 @@ DWORD FatalCode(const MINIDUMP_EXCEPTION_INFORMATION* exception)
 		return 0;
 	}
 	const DWORD code = record.ExceptionCode;
-	return (code & 0xC0000000u) == 0xC0000000u || code == 0xE06D7363u || code == EXCEPTION_BREAKPOINT ? code : 0;
+	return (code & 0xC0000000u) == 0xC0000000u || code == 0xE06D7363u || code == EXCEPTION_BREAKPOINT || code == 1 ? code : 0;
 }
 
 // The game's MiniDumpWriteDump: every crash its reporter handles comes here
@@ -128,6 +137,9 @@ BOOL WINAPI OnMiniDumpWriteDump(HANDLE process, DWORD processId, HANDLE file, MI
 	if (!code) return s_originalWriter(process, processId, file, type, exception, user, callback);
 	RecordCrash("unhandled_exception", exception->ExceptionPointers, "the game's crash reporter", exception->ThreadId);
 	const BOOL written = s_originalWriter(process, processId, file, type, exception, user, callback);
+	// Without a launcher (the proxy's starts) nothing else would show the
+	// crash: the reporter's own handling goes on.
+	if (!s_state.launcherChannel) return written;
 	// After its dump the reporter waits on an error box of its own, and the
 	// launcher, which has the dump already, waits on the game. End it here so
 	// the launcher sees the crash at once and offers its report: with the
@@ -145,8 +157,15 @@ BOOL WINAPI OnMiniDumpWriteDump(HANDLE process, DWORD processId, HANDLE file, MI
 // are not guarded by its reporter: a fault there reaches this filter.
 LONG WINAPI OnUnhandledException(EXCEPTION_POINTERS* pointers)
 {
+	// A filter that chains back to this one (it was set over ours, and ours
+	// was then taken back over it) would otherwise call it forever.
+	thread_local bool inside = false;
+	if (inside) return EXCEPTION_CONTINUE_SEARCH;
+	inside = true;
 	RecordCrash("unhandled_exception", pointers, nullptr, GetCurrentThreadId());
-	return s_previousFilter ? s_previousFilter(pointers) : EXCEPTION_CONTINUE_SEARCH;
+	const LONG result = s_previousFilter ? s_previousFilter(pointers) : EXCEPTION_CONTINUE_SEARCH;
+	inside = false;
+	return result;
 }
 
 // The filter is the process's last one set; the engine may set its own
@@ -179,9 +198,13 @@ void OnPureCall()
 	RecordCrash("purecall", nullptr, "pure virtual call", GetCurrentThreadId());
 }
 
+// The handler is the shared C runtime's (ucrtbase), so every module of the
+// process that uses it gets it. The default ends the process; so does this,
+// after the record, with the status the default reports.
 void OnInvalidParameter(const wchar_t*, const wchar_t*, const wchar_t*, unsigned, uintptr_t)
 {
 	RecordCrash("invalid_parameter", nullptr, "invalid CRT parameter", GetCurrentThreadId());
+	TerminateProcess(GetCurrentProcess(), STATUS_INVALID_CRUNTIME_PARAMETER);
 }
 
 // GGPO exits the process after an assertion; the record says which.
@@ -220,7 +243,22 @@ DWORD WINAPI FaultThread(void*)
 
 void RecordCrash(const char* kind, EXCEPTION_POINTERS* pointers, const char* message, DWORD threadId)
 {
-	if (s_recording.exchange(true)) return;
+	if (s_recording.exchange(true)) {
+		// A second fault while the first is recorded (another thread): wait
+		// for its record and dump, so whatever ends the process next does not
+		// cut them off.
+		if (s_recorded && GetCurrentThreadId() != s_recordingThread) WaitForSingleObject(s_recorded, kSecondFaultWaitMs);
+		return;
+	}
+	s_recordingThread = GetCurrentThreadId();
+	RecordFirstCrash(kind, pointers, message, threadId);
+	if (s_recorded) SetEvent(s_recorded);
+}
+
+namespace {
+
+void RecordFirstCrash(const char* kind, EXCEPTION_POINTERS* pointers, const char* message, DWORD threadId)
+{
 	// With the heap corrupt, anything that allocates may fault again and end
 	// the process before the dump, so the launcher is asked first; the
 	// request allocates nothing.
@@ -251,9 +289,12 @@ void RecordCrash(const char* kind, EXCEPTION_POINTERS* pointers, const char* mes
 	TryLogLine(written ? "crash: wrote the dump in the game (no launcher)" : "crash: no dump was written");
 }
 
+} // namespace
+
 CrashRecordState InstallCrashRecord(const CrashRecordSetup& setup)
 {
 	if (s_state.installed) return s_state;
+	s_recorded = CreateEventW(nullptr, TRUE, FALSE, nullptr);
 	if (!setup.logsFolder.empty()) {
 		wcsncpy_s(s_logsFolder, setup.logsFolder.c_str(), _TRUNCATE);
 		swprintf_s(s_recordPath, L"%s\\%s", s_logsFolder, ember::Product().crashLog);

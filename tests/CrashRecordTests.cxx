@@ -62,7 +62,8 @@ TEST_CASE("the launcher's dump channel reaches the mod as three hex handle value
 	CHECK(Config().dumpChannel.done == 0x1b0);
 	CHECK(Config().dumpChannel.mailbox == 0x2c8);
 	for (const wchar_t* line : {L"x -sfve_dump_channel=1a4:1b0", L"x -sfve_dump_channel=1a4:0:2c8", L"x -sfve_dump_channel=1a4:1b0:2c8:9",
-			 L"x -sfve_dump_channel=zz:1b0:2c8", L"x"}) {
+			 L"x -sfve_dump_channel=zz:1b0:2c8", L"x -sfve_dump_channel=-1:1b0:2c8", L"x -sfve_dump_channel=0x1a4:1b0:2c8",
+			 L"x -sfve_dump_channel=1a4: 1b0:2c8", L"x"}) {
 		LoadConfigFromCommandLine(line);
 		CHECK_FALSE(Config().dumpChannel.Present());
 	}

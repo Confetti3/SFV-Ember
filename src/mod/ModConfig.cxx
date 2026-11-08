@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <wchar.h>
+#include <wctype.h>
 
 #include <string>
 
@@ -55,13 +56,14 @@ bool Variant(const std::wstring& text, int* value)
 	return *value <= 0xFF;
 }
 
-// "R:D:M", three nonzero hex handle values; all zero (no channel) when the
-// text is anything else.
+// "R:D:M", three nonzero hex handle values, digits only (no sign, no 0x);
+// all zero (no channel) when the text is anything else.
 DumpChannelHandles ParseDumpChannel(const wchar_t* text)
 {
 	uint64_t values[3] = {};
 	const wchar_t* p = text;
 	for (int i = 0; i < 3; i++) {
+		if (!iswxdigit(p[0]) || (p[0] == L'0' && (p[1] == L'x' || p[1] == L'X'))) return {};
 		wchar_t* end = nullptr;
 		values[i] = wcstoull(p, &end, 16);
 		if (end == p || !values[i] || *end != (i < 2 ? L':' : L'\0')) return {};
