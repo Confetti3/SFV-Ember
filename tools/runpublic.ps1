@@ -2,7 +2,7 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 	[Parameter(Mandatory)][string]$bridgeExe, [Parameter(Mandatory)][string]$roomsExe, [string]$roomHost = $(if ($env:SFVE_BUILD_DIR) { Join-Path $env:SFVE_BUILD_DIR 'sfve-room-host.exe' } else { 'D:\sfv-ember-build\sfve-room-host.exe' }),
 	[string]$work = 'D:\sfv-re\scratch\public', [int]$port = 18797, [int]$roomPorts = 52100, [switch]$shellJoin, [switch]$ranked, [switch]$keep)
 # Two copies play Ember's public room (EMBER_LIBRARY.md section 24) on a local
-# stack: an Ember bridge on http://127.0.0.1:$port, an ember-rooms supervisor
+# stack (tools/localstack.ps1): an Ember bridge on http://127.0.0.1:$port, an ember-rooms supervisor
 # beside it, and SFV's room host (sfve-room-host) as the room's authority,
 # configured for this build and the game "sfv". Each copy makes an Ember ID of
 # its own in $work\ember<N> (the helper must be built with -Features selftest,
@@ -36,24 +36,7 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # Everything this starts stops at the end (-keep leaves the copies running);
 # $work is left for its logs: bridge.log, rooms.log (the room host's log is the
 # supervisor's stderr).
-$ErrorActionPreference = 'Stop'
-Set-Location (Split-Path -Parent $PSScriptRoot)
-# The mod logs under %APPDATA%\SFVEmber\logs (mod/Log.cxx), as tools/runroom.ps1 reads them.
-$logs = Join-Path $env:APPDATA 'SFVEmber\logs'
-$logOf = @("$logs\sfv_ember.log", "$logs\sfv_ember.1.log")
-function Ctl([int]$i, [string]$line) { python -I tools\sfve.py ctl $i $line }
-function Status([int]$i) { (Ctl $i status).Substring(3) | ConvertFrom-Json }
-function WaitFor([string]$what, [int]$timeout, [scriptblock]$done) {
-	$deadline = (Get-Date).AddSeconds($timeout)
-	while ((Get-Date) -lt $deadline) { if (& $done) { return }; Start-Sleep 1 }
-	throw "timed out waiting for $what"
-}
-function Count([int]$i, [string]$pattern) { @(Select-String -Path $logOf[$i] -Pattern $pattern).Count }
-function Shot([string]$name) {
-	if (!$shots) { return }
-	foreach ($i in 0, 1) { python -I tools\sfve.py shot $i "$shots\$name-$i.png" | Out-Null }
-}
-function Answer([string]$reply) { if ($reply -notlike 'ok*') { throw $reply }; $reply.Substring(3) }
+. (Join-Path $PSScriptRoot 'localstack.ps1')
 function Press([int]$i, [string]$button) { Ctl $i "pad 0 ${button}:120 -:250" | Out-Null; Start-Sleep -Milliseconds 600; (Status $i).shell }
 # Presses $moves in turn until the shell's focus is $focus.
 function Seek([int]$i, [string]$focus, [string[]]$moves, [int]$limit = 12) {
@@ -69,8 +52,7 @@ foreach ($exe in $bridgeExe, $roomsExe, $roomHost) { if (!(Test-Path $exe)) { th
 $space = Get-Content data\pick-space.json -Raw | ConvertFrom-Json
 $build = $space.build
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
-New-Item -ItemType Directory -Force $work, "$work\bridge", "$work\ember0", "$work\ember1" | Out-Null
-$gameDir = if ($env:SFVE_GAME_DIR) { $env:SFVE_GAME_DIR } else { 'G:\SteamLibrary\steamapps\common\StreetFighterV\StreetFighterV\Binaries\Win64' }
+New-Item -ItemType Directory -Force $work, "$work\bridge" | Out-Null
 $helper = Join-Path $gameDir 'sf4-net.exe'
 $origin = "http://127.0.0.1:$port"
 $roomsPort = $port + 10
@@ -87,41 +69,18 @@ try {
 	$processes += Start-Process $roomsExe -ArgumentList "`"$work\rooms.json`"" -PassThru -WindowStyle Hidden -RedirectStandardError "$work\rooms.log" -RedirectStandardOutput "$work\rooms.out"
 	WaitFor 'the supervisor' 15 { try { (Invoke-RestMethod "http://127.0.0.1:$roomsPort/health") -eq 'ok' } catch { $false } }
 	# The bridge, with public rooms on that supervisor.
-	& $bridgeExe init "$work\bridge" | Out-Null
-	$config = Get-Content "$work\bridge\bridge.json" -Raw | ConvertFrom-Json
-	$config.listen = "127.0.0.1:$port"
-	$config.origin = $origin
-	$config | Add-Member -Force integration_secrets "$work\bridge\integration-secrets.json"
-	$config | Add-Member -Force rooms @{ supervisor_url = "http://127.0.0.1:$roomsPort"; skill_badges = [bool]$ranked }
-	$config | ConvertTo-Json -Depth 20 | Set-Content "$work\bridge\bridge.json"
+	$config = Initialize-TestBridge $bridgeExe "$work\bridge" $port @{
+		integration_secrets = "$work\bridge\integration-secrets.json"
+		rooms = @{ supervisor_url = "http://127.0.0.1:$roomsPort"; skill_badges = [bool]$ranked }
+	}
 	@{ format = 'ember-bridge-integrations'; version = 1; rooms_supervisor_secret = $secret } | ConvertTo-Json | Set-Content "$work\bridge\integration-secrets.json"
-	$processes += Start-Process $bridgeExe -ArgumentList 'serve', "`"$work\bridge\bridge.json`"" -PassThru -WindowStyle Hidden -RedirectStandardError "$work\bridge.log" -RedirectStandardOutput "$work\bridge.out"
-	WaitFor 'the bridge' 30 { try { (Invoke-RestMethod "$origin/.well-known/ember-bridge.json").bridge_id } catch { $null } }
+	$processes += Start-TestBridge $bridgeExe $config $work
 	"bridge $origin; supervisor 127.0.0.1:$roomsPort; build $build"
 
-	python -I tools\sfve.py kill | Out-Null
-	$seeds = @($seed0, $seed1)
-	foreach ($i in 0, 1) {
-		$env:SF4E_SELFTEST_EMBER_DIR = "$work\ember$i"
-		python -I tools\sfve.py launch $i --mode netplay -- '-sfve_pads=01' '-sfve_background=1' '-sfve_room=1' "-sfve_mash=$($seeds[$i])" "-sfve_mash_from=$mashFrom" "-sfve_lag=$lag" | Out-Null
-	}
-	Remove-Item Env:\SF4E_SELFTEST_EMBER_DIR
-	WaitFor 'the runtime on both copies' 120 { (Status 0).ember.host -eq 'running' -and (Status 1).ember.host -eq 'running' }
-
+	Start-Copies $work @($seed0, $seed1) $mashFrom $lag
 	# An Ember ID of each copy's own, and the bridge trusted.
-	WaitFor 'an Ember ID on both copies' 90 {
-		foreach ($i in 0, 1) { if ((Status $i).public.identity -ne 'ready') { Ctl $i 'ember-id' | Out-Null } }
-		(Status 0).public.identity -eq 'ready' -and (Status 1).public.identity -eq 'ready'
-	}
-	$ids = foreach ($i in 0, 1) { (Status $i).public.emberId }
+	$ids = Connect-Copies $origin
 	"Ember IDs: $($ids -join ', ')"
-	if ($ids[0] -eq $ids[1]) { throw 'both copies have the same Ember ID: the helper is not reading SF4E_SELFTEST_EMBER_DIR' }
-	foreach ($i in 0, 1) {
-		Answer (Ctl $i "bridge $origin") | Out-Null
-		WaitFor "copy $i's lookup" 30 { (Status $i).public.inspected -like 'brg_*' }
-		$ticket = Answer (Ctl $i 'trust')
-		WaitFor "copy $i's trust" 30 { $p = (Status $i).public; "$($p.identityTicket)" -eq $ticket -and $p.identityOk }
-	}
 
 	$db = "$work\bridge\bridge.sqlite3"
 	function Rows([string]$sql) { $text = python -I tools\bridgedb.py rows $db $sql; if ($LASTEXITCODE) { throw "bridgedb: $text" }; @($text | ConvertFrom-Json) }
@@ -165,13 +124,13 @@ try {
 		WaitFor 'the room on copy 1''s Public rooms screen' 60 { @((Status 1).public.rooms | Where-Object { $_.id -eq $room }).Count -eq 1 }
 		Start-Sleep 2
 		"copy 1's shell: " + ((Status 1).shell | ConvertTo-Json -Compress)
-		Shot 'public-list'
+		Shot $shots 'public-list'
 		Seek 1 "pr-room:$room" @('DOWN') 16
-		Shot 'public-list-focus'
+		Shot $shots 'public-list-focus'
 		Press 1 'A' | Out-Null
 		WaitFor 'both copies in the room' 90 { $s0 = Status 0; $s1 = Status 1; $s0.room.room -eq 'joined' -and $s1.room.room -eq 'joined' -and $s0.room.members -eq 2 -and $s1.room.members -eq 2 }
 		Start-Sleep 2
-		Shot 'public-room-shell'
+		Shot $shots 'public-room-shell'
 		Press 1 'B' | Out-Null
 	}
 	# Copy 1 finds it in the list and takes a ticket.
@@ -209,7 +168,7 @@ try {
 			# The room as copy 1's shell shows it, the marks beside the names.
 			if (!(Status 1).shell.shown) { Press 1 'START' | Out-Null }
 			Start-Sleep 3
-			Shot 'ranked-room'
+			Shot $shots 'ranked-room'
 			Press 1 'B' | Out-Null
 		}
 	}
@@ -229,11 +188,11 @@ try {
 			(Count 0 'netplay: room match as P') -gt $starts[0] -and (Count 1 'netplay: room match as P') -gt $starts[1]
 		}
 		Start-Sleep 20
-		Shot "game$game-fight"
+		Shot $shots "game$game-fight"
 		WaitFor "game $game's result on both copies" $gameSeconds { (Count 0 'netplay: match result') -gt $results[0] -and (Count 1 'netplay: match result') -gt $results[1] }
 		WaitFor "both copies back in the room after game $game" 90 { (Count 0 'battle closed at its match') -gt $closes[0] -and (Count 1 'battle closed at its match') -gt $closes[1] -and (Status 0).room.room -eq 'joined' -and (Status 1).room.room -eq 'joined' }
 		Start-Sleep 3
-		Shot "game$game-room"
+		Shot $shots "game$game-room"
 		foreach ($i in 0, 1) {
 			$mode = (Status $i).battle.mode
 			"copy ${i}: " + (Select-String -Path $logOf[$i] -Pattern 'netplay: match result' | Select-Object -Last 1).Line.Substring(24) + " rollbacks $($mode.rollbacks), longest $($mode.longestRollback)"
@@ -314,42 +273,22 @@ try {
 				Start-Sleep 3
 				"copy ${i}'s shell: " + ((Status $i).shell | ConvertTo-Json -Compress)
 			}
-			Shot 'ranked-rankings'
+			Shot $shots 'ranked-rankings'
 			# Both turn to the board's page (RB).
 			foreach ($i in 0, 1) { Press $i 'RB' | Out-Null }
 			WaitFor 'the boards' 30 { (Status 0).ranking.board.loaded -and (Status 1).ranking.board.loaded }
 			Start-Sleep 3
-			Shot 'ranked-board'
+			Shot $shots 'ranked-board'
 		}
 	}
 } catch {
 	$failure = $_.Exception.Message
 }
+# SFV's league icons as the game loaded them, or why not, and its league
+# names as the game gave them (SfvArt).
 foreach ($i in 0, 1) {
-	try { "copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress) } catch { "copy $i is not answering" }
-	# SFV's league icons as the game loaded them, or why not, and its league
-	# names as the game gave them (SfvArt).
 	if ($ranked -and (Test-Path $logOf[$i])) { Select-String -Path $logOf[$i] -Pattern "art: /Game/CommonAsset/LeagueIcon/|ranks: SFV's leagues" | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
-	if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern 'desync|mismatch' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
 }
-if (!$keep) { python -I tools\sfve.py kill | Out-Null }
-foreach ($process in $processes) { if (!$process.HasExited) { Stop-Process -Id $process.Id -Force } }
+Complete-Run $failure $processes $keep.IsPresent "$games game(s) in a public room, no desync"
 # Room hosts the supervisor started outlive it when it is killed: end ours.
 Get-Process sfve-room-host -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $roomHost } | Stop-Process -Force
-function Checkpoints([int]$i) {
-	$hashes = @{}; $game = 0; $previous = -1
-	if (!(Test-Path $logOf[$i])) { return $hashes }
-	foreach ($m in Select-String -Path $logOf[$i] -Pattern 'checkpoint: frame (\d+) hash (\w+)') {
-		$frame = [int]$m.Matches[0].Groups[1].Value
-		if ($frame -lt $previous - 600) { $game++ }
-		$previous = $frame; $hashes["$game/$frame"] = $m.Matches[0].Groups[2].Value
-	}
-	$hashes
-}
-$h0 = Checkpoints 0; $h1 = Checkpoints 1
-$common = @($h0.Keys | Where-Object { $h1.ContainsKey($_) })
-$differing = @($common | Where-Object { $h0[$_] -ne $h1[$_] })
-"checkpoints: $($common.Count) compared, $($differing.Count) differing"
-$desyncs = $differing.Count
-foreach ($i in 0, 1) { if (Test-Path $logOf[$i]) { $desyncs += Count $i 'desync|mismatch' } }
-if ($failure) { "FAIL: $failure" } elseif ($desyncs) { "FAIL: $desyncs desync line(s)" } elseif ($common.Count -eq 0) { 'FAIL: no checkpoints compared' } else { "PASS: $games game(s) in a public room, no desync" }
