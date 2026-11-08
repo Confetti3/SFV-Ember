@@ -58,13 +58,15 @@ def expect(index: int, screen: str, focus: str | None = None) -> None:
         raise lib.SfveError(f"copy {index}: expected {screen}/{focus}, shell is at {s['screen']}/{s['focus']}")
 
 
-def seek(index: int, focus: str, moves: list[str], limit: int = 12) -> None:
-    """Presses `moves` in turn, round and round, until the focus is `focus`."""
+def seek(index: int, focus: str | tuple[str, ...], moves: list[str], limit: int = 12) -> None:
+    """Presses `moves` in turn, round and round, until the focus is `focus`
+    (or any of them)."""
+    wanted = (focus,) if isinstance(focus, str) else focus
     for step in range(limit):
-        if shell(index)["focus"] == focus:
+        if shell(index)["focus"] in wanted:
             return
         press(index, moves[step % len(moves)])
-    if shell(index)["focus"] != focus:
+    if shell(index)["focus"] not in wanted:
         raise lib.SfveError(f"copy {index}: could not reach {focus} (at {shell(index)['focus']})")
 
 
@@ -107,9 +109,11 @@ def create_room(shots: Path | None) -> None:
 
 
 def copy_invitation(shots: Path | None) -> None:
-    # The room's bar (copy, copy-short, room-more, leave) is below its tables.
-    seek(0, "room-more", ["DOWN"], 20)
-    seek(0, "copy", ["LEFT"], 4)
+    # The room's bar (copy, copy-short, room-more, leave) is below its tables:
+    # one row, or two where a language's labels are longer (Russian). Copy is
+    # its first: left along the row, then up a row and left again.
+    seek(0, ("copy", "copy-short", "room-more", "leave"), ["DOWN"], 20)
+    seek(0, "copy", ["LEFT", "LEFT", "LEFT", "UP", "LEFT", "LEFT", "LEFT"], 7)
     press(0, "A")
     shot(shots, "3-room-invitation", 0)
 
