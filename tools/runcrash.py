@@ -101,7 +101,6 @@ def main(argv: list[str]) -> int:
     (lib.LOG_DIR / CRASH_LOG).unlink(missing_ok=True)
     ours_before = files(lib.LOG_DIR, f"{DUMP_PREFIX}*.dmp")
     game_before = files(GAME_DUMPS, "Dump*.dmp")
-    launcher_from = launcher_log.stat().st_size if via_launcher and launcher_log.exists() else 0
     failures: list[str] = []
     try:
         lib.kill_all()
@@ -158,9 +157,9 @@ def main(argv: list[str]) -> int:
     if not [d for d in new_ours if not d.name.endswith("-report.dmp")]:
         failures.append("no new sfv_ember-crash-*.dmp in the logs folder")
     if via_launcher:
-        raw = launcher_log.read_bytes() if launcher_log.exists() else b""
-        # From where this run began, unless the log was rotated meanwhile.
-        text = (raw[launcher_from:] if len(raw) >= launcher_from else raw).decode(errors="replace")
+        # Each launcher start rotates the log and opens a fresh launcher.log,
+        # so the whole file is this run's launcher.
+        text = launcher_log.read_bytes().decode(errors="replace") if launcher_log.exists() else ""
         for line in text.splitlines():
             if re.search(r"crash dump|exited with code|dump channel", line):
                 print(f"launcher: {line}")
