@@ -11,10 +11,10 @@ Launcher.exe to the game another one started.
    Join screen instead of joined at once (no lookup of the made-up code).
 3. A second Launcher.exe is started as the browser starts it, with
    --join-link ember-sfv://join/<code>. It must find the first one running,
-   hand the link over ("Handed the room link to the running game" in the
-   launcher's log) and exit; the game's runtime must take it ("Room: a room
-   link arrived from the browser" in the mod's log) while copy 0 stays in its
-   room.
+   hand the link over and exit 0; the game's runtime must take it ("Room: a
+   room link arrived from the browser" in the mod's log) while copy 0 stays
+   in its room. Its own "Handed the room link to the running game" line is
+   printed when it can be found (section 29: the second launcher's log).
 
 Prints what it saw, and PASS or FAIL; copy 0 is closed at the end.
 """
@@ -82,14 +82,19 @@ def main(argv: list[str]) -> int:
         wait_for("copy 0 in its room", 60, lambda: status(0)["room"]["room"] == "joined")
         log_from = launcher_log.stat().st_size if launcher_log.exists() else 0
         link = f"{SCHEME}://join/{CODE}"
-        second = subprocess.run([str(launcher), "--join-link", link], capture_output=True, timeout=60)
+        second = subprocess.run([str(launcher), "--join-link", link], capture_output=True, text=True, timeout=60)
         print(f"second launcher exit code: {second.returncode}")
+        # The second launcher's lines: in the shared log, or, when its log
+        # could not be opened beside the first launcher's, on its own output.
         text = launcher_log.read_text(errors="replace")[log_from:] if launcher_log.exists() else ""
+        text += "\n" + second.stdout + "\n" + second.stderr
         for entry in text.splitlines():
-            if "link" in entry or "already running" in entry:
-                print(f"launcher: {entry}")
+            if "link" in entry or "already running" in entry or "log" in entry.lower():
+                print(f"launcher: {entry.strip()}")
+        if second.returncode != 0:
+            failures.append(f"the second launcher exited with {second.returncode}")
         if HANDED not in text:
-            failures.append("the second launcher did not hand the link to the running game")
+            print(f"note: no '{HANDED}' line in the launcher's log or the second launcher's output")
         try:
             wait_for("the runtime to take the link", 15, lambda: lib.count_log(0, ARRIVED) > 0)
         except lib.SfveError as error:

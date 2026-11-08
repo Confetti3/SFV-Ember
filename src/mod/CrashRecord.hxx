@@ -15,7 +15,14 @@
 //      heap, as Product().crashDumpPrefix + time + pid in the logs folder;
 //   3. without a launcher (the proxy's starts, tests) writes that dump
 //      itself, through the original MiniDumpWriteDump;
-//   4. lets the game's own call go on, so its Dump<n>.dmp is written as before.
+//   4. lets the game's own call go on, so its Dump<n>.dmp is written as before;
+//   5. ends the game with the fault's code. The reporter would otherwise wait
+//      on an error box of its own, and the launcher on the game, so the
+//      player saw no crash window until they closed that box.
+// Threads the game did not start (the mod's own among them) are not guarded
+// by its reporter: the mod's unhandled-exception filter records a fault
+// there and chains to the filter it replaced. It is set at the start and
+// taken back at the game's first frame, in case the engine set its own.
 // Heap corruption ends the process without reaching any filter; ntdll raises
 // it once, so a vectored handler asks the launcher first, then records it.
 // The mod's own C runtime faults (a pure call, an invalid parameter,

@@ -30,6 +30,7 @@ using DumpWriter = sf4e::crash::DumpWriter;
 
 CrashRecordState s_state;
 DumpWriter s_originalWriter = nullptr; // MinHook's trampoline once hooked
+LPTOP_LEVEL_EXCEPTION_FILTER s_previousFilter = nullptr;
 sf4e::crash::DumpClient s_dumpClient;
 std::atomic<bool> s_recording(false);
 // Static, so a record needs neither the heap nor much stack.
@@ -90,12 +91,13 @@ void WriteText(HANDLE file, const char* text, size_t length)
 	WriteFile(file, text, static_cast<DWORD>(length), &written, nullptr);
 }
 
-// A dump the game's reporter takes for a fault that ends it: an error
-// (0xC...), a C++ exception nothing caught, or a breakpoint. Anything else
-// (a warning code the game raised and carries on after) is not a crash.
-bool EndsTheGame(const MINIDUMP_EXCEPTION_INFORMATION* exception)
+// The code of a fault that ends the game, which the game's reporter is
+// dumping: an error (0xC...), a C++ exception nothing caught, or a
+// breakpoint. 0 for anything else (a warning code the game raised and
+// carries on after), which is not a crash.
+DWORD FatalCode(const MINIDUMP_EXCEPTION_INFORMATION* exception)
 {
-	if (!exception || !exception->ExceptionPointers) return false;
+	if (!exception || !exception->ExceptionPointers) return 0;
 	EXCEPTION_RECORD record = {};
 	if (exception->ClientPointers) {
 		// The pointers are in this process anyway (the game reports itself);
@@ -105,15 +107,15 @@ bool EndsTheGame(const MINIDUMP_EXCEPTION_INFORMATION* exception)
 		if (!ReadProcessMemory(GetCurrentProcess(), exception->ExceptionPointers, &pointers, sizeof(pointers), &read) ||
 			!pointers.ExceptionRecord ||
 			!ReadProcessMemory(GetCurrentProcess(), pointers.ExceptionRecord, &record, sizeof(record), &read)) {
-			return false;
+			return 0;
 		}
 	} else if (exception->ExceptionPointers->ExceptionRecord) {
 		record = *exception->ExceptionPointers->ExceptionRecord;
 	} else {
-		return false;
+		return 0;
 	}
 	const DWORD code = record.ExceptionCode;
-	return (code & 0xC0000000u) == 0xC0000000u || code == 0xE06D7363u || code == EXCEPTION_BREAKPOINT;
+	return (code & 0xC0000000u) == 0xC0000000u || code == 0xE06D7363u || code == EXCEPTION_BREAKPOINT ? code : 0;
 }
 
 // The game's MiniDumpWriteDump: every crash its reporter handles comes here
@@ -122,10 +124,40 @@ BOOL WINAPI OnMiniDumpWriteDump(HANDLE process, DWORD processId, HANDLE file, MI
 	PMINIDUMP_EXCEPTION_INFORMATION exception, PMINIDUMP_USER_STREAM_INFORMATION user,
 	PMINIDUMP_CALLBACK_INFORMATION callback)
 {
-	if (processId == GetCurrentProcessId() && EndsTheGame(exception)) {
-		RecordCrash("unhandled_exception", exception->ExceptionPointers, "the game's crash reporter", exception->ThreadId);
-	}
-	return s_originalWriter(process, processId, file, type, exception, user, callback);
+	const DWORD code = processId == GetCurrentProcessId() ? FatalCode(exception) : 0;
+	if (!code) return s_originalWriter(process, processId, file, type, exception, user, callback);
+	RecordCrash("unhandled_exception", exception->ExceptionPointers, "the game's crash reporter", exception->ThreadId);
+	const BOOL written = s_originalWriter(process, processId, file, type, exception, user, callback);
+	// After its dump the reporter waits on an error box of its own, and the
+	// launcher, which has the dump already, waits on the game. End it here so
+	// the launcher sees the crash at once and offers its report: with the
+	// fault's code when the launcher reads that as a crash, else with 3 (an
+	// abort's).
+	const UINT exitCode = sf4e::crash::IsCrashExit(code) ? code : 3;
+	snprintf(s_line, sizeof(s_line), "crash: the game's own dump %s; ending the game with code 0x%08X",
+		written ? "written" : "not written", exitCode);
+	TryLogLine(s_line);
+	TerminateProcess(GetCurrentProcess(), exitCode);
+	return written;
+}
+
+// Threads the game did not start (the mod's, the helper link's, a driver's)
+// are not guarded by its reporter: a fault there reaches this filter.
+LONG WINAPI OnUnhandledException(EXCEPTION_POINTERS* pointers)
+{
+	RecordCrash("unhandled_exception", pointers, nullptr, GetCurrentThreadId());
+	return s_previousFilter ? s_previousFilter(pointers) : EXCEPTION_CONTINUE_SEARCH;
+}
+
+// The filter is the process's last one set; the engine may set its own
+// after the mod starts. Taken back (chaining to the engine's) once its
+// first frame runs.
+void TakeFilter(const char* when)
+{
+	const LPTOP_LEVEL_EXCEPTION_FILTER current = SetUnhandledExceptionFilter(&OnUnhandledException);
+	if (current == &OnUnhandledException) return;
+	if (current) s_previousFilter = current;
+	Log("crash record: the unhandled-exception filter %s%s", when, current ? ", chaining to the one that was set" : "");
 }
 
 // Heap corruption ends the process without reaching the reporter; ntdll
@@ -242,6 +274,8 @@ CrashRecordState InstallCrashRecord(const CrashRecordSetup& setup)
 		ULONG reserve = 16 * 1024;
 		SetThreadStackGuarantee(&reserve);
 		AddVectoredExceptionHandler(1, OnVectoredException);
+		TakeFilter("is set at the start");
+		RunOnGameThread([] { TakeFilter("is taken back at the game's first frame"); });
 		std::set_terminate(OnTerminate);
 		_set_purecall_handler(OnPureCall);
 		_set_invalid_parameter_handler(OnInvalidParameter);
