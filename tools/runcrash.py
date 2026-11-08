@@ -103,7 +103,8 @@ def main(argv: list[str]) -> int:
     failures: list[str] = []
     try:
         lib.kill_all()
-        inst = lib.launch(0, "netplay", ["-sfve_crash_command=1"])
+        # Background play: an unfocused SFV draws nothing and never leaves its title.
+        inst = lib.launch(0, "netplay", ["-sfve_background=1", "-sfve_crash_command=1"])
         lib.boot_to_menu(0)
         status = json.loads(lib.request(0, "status")[3:])
         print(f"crash record before: {json.dumps(status.get('crashRecord'))}")

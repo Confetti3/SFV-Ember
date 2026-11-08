@@ -74,7 +74,8 @@ def main(argv: list[str]) -> int:
 
     try:
         lib.kill_all()
-        lib.launch(0, "netplay")
+        # Background play: an unfocused SFV draws nothing and never leaves its title.
+        lib.launch(0, "netplay", ["-sfve_background=1"])
         lib.boot_to_menu(0)
         wait_for("the room", 30, lambda: lib.request(0, "room 1 30").startswith("ok"))
         wait_for("copy 0 in its room", 60, lambda: status(0)["room"]["room"] == "joined")
