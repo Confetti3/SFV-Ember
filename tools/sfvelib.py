@@ -317,9 +317,10 @@ def scene(index: int) -> str:
         return ""
 
 
-def boot_to_menu(index: int, timeout: float = 90.0) -> None:
+def boot_to_menu(index: int, timeout: float = 90.0, shot_on_timeout: Path | None = None) -> None:
     """From a fresh launch to the main menu. The mod hides the offline start-up
-    dialogs and leaves the title by itself, so this only waits."""
+    dialogs and leaves the title by itself, so this only waits. On a timeout
+    the copy's window is saved to `shot_on_timeout`, when given."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if scene(index) == MAIN_MENU_SCENE:
@@ -327,6 +328,12 @@ def boot_to_menu(index: int, timeout: float = 90.0) -> None:
             focus(status_pid(index))
             return
         time.sleep(1)
+    if shot_on_timeout:
+        try:
+            shot_on_timeout.parent.mkdir(parents=True, exist_ok=True)
+            screenshot(status_pid(index), shot_on_timeout)
+        except (SfveError, OSError):
+            pass
     raise TimeoutError(f"instance {index} did not reach the main menu in {timeout:.0f} s")
 
 
