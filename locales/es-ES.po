@@ -1,0 +1,160 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: es-ES\n"
+
+msgid "app.name"
+msgstr "SFV Ember"
+
+msgid "shell.home_title"
+msgstr "SFV EMBER"
+
+msgid "screen.game"
+msgstr "SFV"
+
+msgid "about.version_line"
+msgstr "SFV Ember {0} · {1}"
+
+msgid "brand.subtitle"
+msgstr "SFV  /  SALAS Y ROLLBACK NETPLAY"
+
+msgid "about.ember_detail"
+msgstr "Mod no oficial de Street Fighter V, creado sobre Ember (basado en sf4e de Anthony Danducci). Iroh / QUIC, GGPO, Dear ImGui y tipografía Inter. Versión: {0}"
+
+msgid "runtime.open_shortcut"
+msgstr "SFV Ember  /  F10 o Start"
+
+msgid "runtime.build_mismatch"
+msgstr "Las versiones no coinciden. Ambos jugadores deben usar la misma compilación de SFV Ember y los mismos luchadores y escenarios instalados."
+
+msgid "runtime.room_join_failed"
+msgstr "No se pudo entrar a la sala. Revisa la invitación y que ambos jugadores usen la misma compilación de SFV Ember."
+
+msgid "selection.not_owned"
+msgstr "No lo tienes en esta copia de Street Fighter V."
+
+msgid "runtime.invite_other_build"
+msgstr "El anfitrión usa otra compilación de SFV Ember o tiene instalados otros luchadores y escenarios. Ambos jugadores necesitan los mismos."
+
+msgid "launcher.update_failed"
+msgstr "No se pudo instalar la actualización. Cierra el juego y el iniciador anterior antes de volver a intentarlo. Consulta %TEMP%\\sfv-ember-update.log; las copias conservadas están en .ember-update-backups."
+
+msgid "launcher.recovery_opened"
+msgstr "La red no estaba disponible, así que Street Fighter V se cerró para la recuperación. Reintentar lo abre de nuevo."
+
+msgid "launcher.game_not_found"
+msgstr "No se encontró Street Fighter V."
+
+msgid "launcher.sidecar_missing"
+msgstr "Falta sfv_ember.dll o el inyector no puede usar su ruta. Extrae el paquete completo en una ruta local sencilla."
+
+msgid "launcher.runtime_outdated"
+msgstr "La versión de Microsoft Visual C++ instalada está obsoleta y el juego fallaría al arrancar. Instala la última versión de Visual C++ Redistributable (x64) y vuelve a iniciar SFV Ember.\n\n¿Abrir ahora la página de descarga?"
+
+msgid "launcher.already_running"
+msgstr "SFV Ember ya se está ejecutando. Si no lo ves, cierra Launcher.exe y StreetFighterV.exe en el Administrador de tareas y vuelve a iniciar SFV Ember."
+
+msgid "launcher.start_failed"
+msgstr "Falló el inicio o la inyección. Consulta el registro del lanzador en %APPDATA%\\SFVEmber\\logs\\launcher.log y reintenta."
+
+msgid "launcher.game_runs_as_admin"
+msgstr "StreetFighterV.exe está configurado para ejecutarse como administrador, así que SFV Ember no puede iniciarlo. Haz clic derecho en StreetFighterV.exe en la carpeta StreetFighterV\\Binaries\\Win64 del juego, abre Propiedades y luego Compatibilidad, y desmarca \"Ejecutar este programa como administrador\", también en \"Cambiar la configuración para todos los usuarios\". Luego vuelve a intentarlo."
+
+msgid "launcher.game_error"
+msgstr "El juego se cerró con un error. Consulta el registro del lanzador en %APPDATA%\\SFVEmber\\logs\\launcher.log y vuelve a intentarlo."
+
+msgid "launcher.game_crashed"
+msgstr "El juego se ha bloqueado. Para ayudar a corregirlo, elige Enviar este informe abajo. O envía tú los archivos de %APPDATA%\\SFVEmber\\logs."
+
+msgid "launcher.game_wrong_dll"
+msgstr "El juego se cerró antes de iniciar SFV Ember porque falta una función en una DLL cargada. Envía el registro del lanzador (%APPDATA%\\SFVEmber\\logs\\launcher.log)."
+
+msgid "launcher.game_crashed_files"
+msgstr "El juego se ha bloqueado. Envía al equipo de SFV Ember los archivos de %APPDATA%\\SFVEmber\\logs (sfv_ember.log y launcher.log, y sfv_ember-crash-*.dmp si hay uno) y vuelve a intentarlo."
+
+msgid "launcher.game_crashed_sending"
+msgstr "El juego se ha bloqueado. Enviar informes de problemas está activado, así que se está enviando su informe, con el volcado pequeño si el fallo lo generó. Los archivos también están en %APPDATA%\\SFVEmber\\logs."
+
+msgid "recovery.d3d_failed"
+msgstr "No se pudo iniciar la interfaz de recuperación con Direct3D 9. Consulta %APPDATA%\\SFVEmber\\logs\\launcher.log."
+
+msgid "recovery.choose_folder_title"
+msgstr "Selecciona la carpeta que contiene StreetFighterV.exe (StreetFighterV\\Binaries\\Win64)"
+
+msgid "recovery.folder_invalid"
+msgstr "Esa carpeta no contiene StreetFighterV.exe. Elige la carpeta StreetFighterV\\Binaries\\Win64 del juego."
+
+msgid "recovery.choose_folder_detail"
+msgstr "Selecciona la carpeta de instalación de Street Fighter V que contiene StreetFighterV.exe: StreetFighterV\\Binaries\\Win64 dentro de la carpeta del juego. Los archivos del juego no se incluyen en este paquete."
+
+msgid "recovery.close_detail"
+msgstr "Cierra la recuperación sin iniciar Street Fighter V. Se cancelarán las operaciones en curso."
+
+msgid "updates.install_detail"
+msgstr "Cierra Street Fighter V antes de instalar. El paquete se verifica antes de la instalación. Se conservarán tus ajustes personales."
+
+msgid "updates.close_detail"
+msgstr "Cierra el actualizador sin iniciar Street Fighter V. Se cancelarán las operaciones en curso."
+
+msgid "updates.start_game"
+msgstr "Iniciar Street Fighter V"
+
+msgid "updates.start_game_detail"
+msgstr "Cierra el actualizador e inicia Street Fighter V con SFV Ember."
+
+msgid "services.diagnostics_saved"
+msgstr "Guardado: %APPDATA%\\SFVEmber\\diagnostics\\ember-diagnostics.txt"
+
+msgid "services.update_prepared"
+msgstr "Actualización preparada. Reiniciando SFV Ember..."
+
+msgid "update.no_zip_asset"
+msgstr "La versión más reciente no tiene un ZIP de SFV Ember."
+
+msgid "update.close_sf4"
+msgstr "Cierra Street Fighter V antes de instalar una actualización."
+
+msgid "update.download_failed"
+msgstr "Falló la descarga ({0}). Descarga manual: {1} (detalles en %TEMP%\\sfv-ember-update.log)"
+
+msgid "update.missing_binaries"
+msgstr "Falta Launcher.exe o sfv_ember.dll en el paquete descargado."
+
+msgid "update.notice.waiting_launcher"
+msgstr "Esperando a que se cierre SFV Ember..."
+
+msgid "update.notice.reopens"
+msgstr "SFV Ember se abrirá de nuevo al terminar."
+
+msgid "reports.payload"
+msgstr "Los informes van a embernetplay.link. Cada uno incluye la versión y la compilación de SFV Ember, la versión de Windows, los datos del bloqueo, el final censurado de sfv_ember.log, launcher.log y sf4-net.log, y el volcado pequeño si el bloqueo generó uno."
+
+msgid "reports.history_unreadable_detail"
+msgstr "No se puede leer sent-reports.json en %APPDATA%\\SFVEmber, así que no se envía ningún informe sin preguntar. Borra el archivo para empezar un historial nuevo."
+
+msgid "home.replays_detail"
+msgstr "Tus partidas de sala, guardadas al terminar cada combate. Míralas de nuevo en Street Fighter V."
+
+msgid "replays.empty_detail"
+msgstr "Una partida de sala se guarda aquí cuando termina su combate."
+
+msgid "replays.watch_detail"
+msgstr "Reproduce su combate de nuevo en Street Fighter V, desde el principio."
+
+msgid "replays.row_detail"
+msgstr "Selecciona para verla, conservarla o mostrar su archivo."
+
+msgid "replays.open_folder_detail"
+msgstr "Abre la carpeta de repeticiones en el Explorador."
+
+msgid "inputs.unreadable_detail"
+msgstr "Esta repetición no se puede reproducir: su archivo está dañado o la creó otra compilación de SFV Ember. El registro indica el motivo."
+
+msgid "replays.not_added"
+msgstr "Esta repetición no se reprodujo hasta el final. El registro indica el motivo."
+
+msgid "home.training_detail"
+msgstr "Entra en el modo Entrenamiento de Street Fighter V con tu luchador, contra el muñeco que elijas."
+
+msgid "room.practice.detail"
+msgstr "Cada partida de la sala es una partida de práctica: la salud y las barras se rellenan, nadie queda fuera de combate y no hay límite de tiempo. Esto se mantiene mientras la sala esté abierta. Para jugar partidas normales, cierra la sala y crea una nueva."

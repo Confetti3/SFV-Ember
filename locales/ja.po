@@ -1,0 +1,160 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: ja\n"
+
+msgid "app.name"
+msgstr "SFV Ember"
+
+msgid "shell.home_title"
+msgstr "SFV EMBER"
+
+msgid "screen.game"
+msgstr "SFV"
+
+msgid "about.version_line"
+msgstr "SFV Ember {0} · {1}"
+
+msgid "brand.subtitle"
+msgstr "SFV  /  ルームとロールバック対戦"
+
+msgid "about.ember_detail"
+msgstr "Emberで構築された非公式のStreet Fighter V用MOD（Anthony Danducciのsf4eがベース）。Iroh / QUIC、GGPO、Dear ImGui、Interフォントを使用。ビルド：{0}"
+
+msgid "runtime.open_shortcut"
+msgstr "SFV Ember / F10またはStart"
+
+msgid "runtime.build_mismatch"
+msgstr "ビルドが一致しません。両プレイヤーは同じSFV Emberビルドと、同じインストール済みのファイターおよびステージを使用してください。"
+
+msgid "runtime.room_join_failed"
+msgstr "ルームに参加できませんでした。招待と、両者が同じSFV Emberビルドを使用しているか確認してください。"
+
+msgid "selection.not_owned"
+msgstr "お使いのStreet Fighter Vでは所有していません。"
+
+msgid "runtime.invite_other_build"
+msgstr "ホストは別のSFV Emberビルドを使っているか、別のファイターやステージをインストールしています。両プレイヤーが同じものを使う必要があります。"
+
+msgid "launcher.update_failed"
+msgstr "アップデートをインストールできませんでした。ゲームと前のランチャーを閉じて再試行してください。%TEMP%\\sfv-ember-update.logを確認してください。製品のバックアップは.ember-update-backupsにあります。"
+
+msgid "launcher.recovery_opened"
+msgstr "ネットワークが使えなかったため、Street Fighter Vを復旧のために閉じました。「起動を再試行」でもう一度起動できます。"
+
+msgid "launcher.game_not_found"
+msgstr "Street Fighter Vが見つかりません。"
+
+msgid "launcher.sidecar_missing"
+msgstr "sfv_ember.dllが見つからないか、インジェクターがそのパスを使用できません。パッケージ全体を単純なローカルパスに展開してください。"
+
+msgid "launcher.runtime_outdated"
+msgstr "Microsoft Visual C++ランタイムが古いため、ゲームが起動時にクラッシュします。最新版のVisual C++ Redistributable (x64)をインストールしてから、SFV Emberを再起動してください。\n\nダウンロードページを開きますか？"
+
+msgid "launcher.already_running"
+msgstr "SFV Emberはすでに起動しています。画面に見えない場合は、タスクマネージャーでLauncher.exeとStreetFighterV.exeを終了してからSFV Emberを再起動してください。"
+
+msgid "launcher.start_failed"
+msgstr "ゲームの起動または組み込みに失敗しました。ランチャーのログ（%APPDATA%\\SFVEmber\\logs\\launcher.log）を確認して再試行してください。"
+
+msgid "launcher.game_runs_as_admin"
+msgstr "StreetFighterV.exeが管理者として実行する設定になっているため、SFV Emberから起動できません。ゲームのStreetFighterV\\Binaries\\Win64フォルダーにあるStreetFighterV.exeを右クリックして「プロパティ」の「互換性」を開き、「管理者としてこのプログラムを実行する」をオフにしてください（「全ユーザーの設定を変更」の中も同様です）。その後、再試行してください。"
+
+msgid "launcher.game_error"
+msgstr "ゲームがエラーで終了しました。ランチャーのログ（%APPDATA%\\SFVEmber\\logs\\launcher.log）を確認して再試行してください。"
+
+msgid "launcher.game_crashed"
+msgstr "ゲームがクラッシュしました。修正に協力いただける場合は、下の「このレポートを送信」を選んでください。%APPDATA%\\SFVEmber\\logs のファイルを自分で送ることもできます。"
+
+msgid "launcher.game_wrong_dll"
+msgstr "読み込んだDLLに必要な関数がないため、SFV Emberの起動前にゲームが停止しました。ランチャーのログ（%APPDATA%\\SFVEmber\\logs\\launcher.log）を送ってください。"
+
+msgid "launcher.game_crashed_files"
+msgstr "ゲームがクラッシュしました。%APPDATA%\\SFVEmber\\logs 内のファイル（sfv_ember.logとlauncher.log、あればsfv_ember-crash-*.dmp）を SFV Ember チームに送ってから再試行してください。"
+
+msgid "launcher.game_crashed_sending"
+msgstr "ゲームがクラッシュしました。「問題レポートを送信」がオンなので、レポートを送信しています（小さなダンプがある場合は含めます）。ファイルは %APPDATA%\\SFVEmber\\logs にもあります。"
+
+msgid "recovery.d3d_failed"
+msgstr "復旧画面でDirect3D 9を初期化できませんでした。%APPDATA%\\SFVEmber\\logs\\launcher.logを確認してください。"
+
+msgid "recovery.choose_folder_title"
+msgstr "StreetFighterV.exeがあるフォルダー（StreetFighterV\\Binaries\\Win64）を選択"
+
+msgid "recovery.folder_invalid"
+msgstr "このフォルダーにStreetFighterV.exeはありません。ゲームのStreetFighterV\\Binaries\\Win64フォルダーを選んでください。"
+
+msgid "recovery.choose_folder_detail"
+msgstr "StreetFighterV.exeがあるStreet Fighter Vのインストール先（ゲームフォルダー内のStreetFighterV\\Binaries\\Win64）を選択してください。このパッケージにゲーム本体は含まれません。"
+
+msgid "recovery.close_detail"
+msgstr "Street Fighter Vを起動せずに復旧画面を閉じます。実行中の操作はキャンセルされます。"
+
+msgid "updates.install_detail"
+msgstr "インストール前にStreet Fighter Vを閉じてください。パッケージはインストール前に検証され、個人設定は保持されます。"
+
+msgid "updates.close_detail"
+msgstr "Street Fighter Vを起動せずにアップデーターを閉じます。実行中の操作はキャンセルされます。"
+
+msgid "updates.start_game"
+msgstr "Street Fighter Vを起動"
+
+msgid "updates.start_game_detail"
+msgstr "アップデーターを閉じて、SFV EmberでStreet Fighter Vを起動します。"
+
+msgid "services.diagnostics_saved"
+msgstr "%APPDATA%\\SFVEmber\\diagnostics\\ember-diagnostics.txtに保存しました"
+
+msgid "services.update_prepared"
+msgstr "アップデートの準備ができました。SFV Emberを再起動中..."
+
+msgid "update.no_zip_asset"
+msgstr "最新リリースにSFV EmberのZIPファイルがありません。"
+
+msgid "update.close_sf4"
+msgstr "更新をインストールする前にStreet Fighter Vを閉じてください。"
+
+msgid "update.download_failed"
+msgstr "ダウンロードに失敗しました（{0}）。手動ダウンロード：{1}。詳細は%TEMP%\\sfv-ember-update.logを確認してください。"
+
+msgid "update.missing_binaries"
+msgstr "ダウンロードしたパッケージにLauncher.exeまたはsfv_ember.dllがありません。"
+
+msgid "update.notice.waiting_launcher"
+msgstr "SFV Ember の終了を待っています..."
+
+msgid "update.notice.reopens"
+msgstr "完了すると SFV Ember がもう一度開きます。"
+
+msgid "reports.payload"
+msgstr "レポートはembernetplay.linkに送られます。各レポートには、SFV Emberのバージョンとビルド、Windowsのバージョン、クラッシュの情報、個人情報を除いたsfv_ember.log・launcher.log・sf4-net.logの最後の部分に加え、小さなダンプがある場合はそのダンプが含まれます。"
+
+msgid "reports.history_unreadable_detail"
+msgstr "%APPDATA%\\SFVEmber の sent-reports.json を読み取れないため、確認なしで送信されるレポートはありません。ファイルを削除すると新しい記録が始まります。"
+
+msgid "home.replays_detail"
+msgstr "ルームでの対戦が、終了のたびに保存されます。Street Fighter Vでもう一度再生できます。"
+
+msgid "replays.empty_detail"
+msgstr "ルームでの対戦が終わるとここに保存されます。"
+
+msgid "replays.watch_detail"
+msgstr "Street Fighter Vで、対戦を最初から再生します。"
+
+msgid "replays.row_detail"
+msgstr "選択すると、再生、保存、ファイルの表示を選べます。"
+
+msgid "replays.open_folder_detail"
+msgstr "リプレイのフォルダーをエクスプローラーで開きます。"
+
+msgid "inputs.unreadable_detail"
+msgstr "このリプレイは再生できません。ファイルが壊れているか、別のSFV Emberビルドで作成されたものです。理由はログに記録されています。"
+
+msgid "replays.not_added"
+msgstr "このリプレイは最後まで再生されませんでした。理由はログに記録されています。"
+
+msgid "home.training_detail"
+msgstr "Street Fighter Vのトレーニングモードに、自分のファイターで、選んだダミーを相手に入ります。"
+
+msgid "room.practice.detail"
+msgstr "ルーム内の対戦はすべて練習対戦です。体力とゲージが回復し、KOは発生せず、タイムは無制限です。ルームが開いている間は変わりません。通常の対戦をするには、ルームを閉じて新しく作成してください。"

@@ -1,0 +1,160 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: cs\n"
+
+msgid "app.name"
+msgstr "SFV Ember"
+
+msgid "shell.home_title"
+msgstr "SFV EMBER"
+
+msgid "screen.game"
+msgstr "SFV"
+
+msgid "about.version_line"
+msgstr "SFV Ember {0} · {1}"
+
+msgid "brand.subtitle"
+msgstr "SFV  /  MÍSTNOSTI A ROLLBACK NETPLAY"
+
+msgid "about.ember_detail"
+msgstr "Neoficiální mod pro Street Fighter V, postavený na Emberu (založený na sf4e od Anthonyho Danducciho). Iroh / QUIC, GGPO, Dear ImGui a písmo Inter. Sestavení: {0}"
+
+msgid "runtime.open_shortcut"
+msgstr "SFV Ember  /  F10 nebo Start"
+
+msgid "runtime.build_mismatch"
+msgstr "Neshodují se verze. Oba hráči musí mít stejné sestavení SFV Ember a stejné nainstalované bojovníky a arény."
+
+msgid "runtime.room_join_failed"
+msgstr "K místnosti se nepodařilo připojit. Zkontrolujte pozvánku a zda mají oba hráči stejné sestavení SFV Ember."
+
+msgid "selection.not_owned"
+msgstr "V této kopii Street Fighter V nevlastníte."
+
+msgid "runtime.invite_other_build"
+msgstr "Hostitel používá jiné sestavení SFV Ember nebo má nainstalované jiné bojovníky a arény. Oba hráči potřebují totéž."
+
+msgid "launcher.update_failed"
+msgstr "Aktualizaci se nepodařilo nainstalovat. Zavřete hru a předchozí spouštěč a zkuste to znovu. Viz %TEMP%\\sfv-ember-update.log; záložní kopie jsou v .ember-update-backups."
+
+msgid "launcher.recovery_opened"
+msgstr "Síť nebyla dostupná, a proto se Street Fighter V zavřelo kvůli obnovení. Spustit znovu hru spustí znovu."
+
+msgid "launcher.game_not_found"
+msgstr "Street Fighter V se nepodařilo najít."
+
+msgid "launcher.sidecar_missing"
+msgstr "Soubor sfv_ember.dll chybí nebo jeho cestu nemůže injektor použít. Rozbalte celý balíček do jednoduché místní cesty."
+
+msgid "launcher.runtime_outdated"
+msgstr "Vaše knihovny Microsoft Visual C++ jsou zastaralé a hra by při spuštění spadla. Nainstalujte nejnovější Visual C++ Redistributable (x64) a znovu spusťte SFV Ember.\n\nOtevřít stránku ke stažení?"
+
+msgid "launcher.already_running"
+msgstr "SFV Ember už běží. Pokud jej nevidíte, ukončete Launcher.exe a StreetFighterV.exe ve Správci úloh a znovu spusťte SFV Ember."
+
+msgid "launcher.start_failed"
+msgstr "Spuštění hry nebo injekce selhala. Zkontrolujte protokol spouštěče v %APPDATA%\\SFVEmber\\logs\\launcher.log a zkuste to znovu."
+
+msgid "launcher.game_runs_as_admin"
+msgstr "StreetFighterV.exe má nastavené spouštění jako správce, proto ho SFV Ember nemůže spustit. Ve složce hry StreetFighterV\\Binaries\\Win64 klikněte pravým tlačítkem na StreetFighterV.exe, otevřete Vlastnosti a potom Kompatibilita a zrušte \"Spustit tento program jako správce\", také v \"Změnit nastavení pro všechny uživatele\". Pak to zkuste znovu."
+
+msgid "launcher.game_error"
+msgstr "Hra skončila s chybou. Zkontrolujte protokol spouštěče v %APPDATA%\\SFVEmber\\logs\\launcher.log a zkuste to znovu."
+
+msgid "launcher.game_crashed"
+msgstr "Hra spadla. Chcete-li pomoci s opravou, zvolte níže Odeslat toto hlášení. Nebo pošlete soubory ze složky %APPDATA%\\SFVEmber\\logs sami."
+
+msgid "launcher.game_wrong_dll"
+msgstr "Hra se zastavila před spuštěním SFV Ember, protože načtené DLL chybí funkce. Pošlete protokol spouštěče (%APPDATA%\\SFVEmber\\logs\\launcher.log)."
+
+msgid "launcher.game_crashed_files"
+msgstr "Hra spadla. Pošlete prosím týmu SFV Ember soubory ze složky %APPDATA%\\SFVEmber\\logs (sfv_ember.log a launcher.log, a sfv_ember-crash-*.dmp, pokud existuje) a zkuste to znovu."
+
+msgid "launcher.game_crashed_sending"
+msgstr "Hra spadla. Odesílání hlášení problémů je zapnuté, proto se odesílá hlášení s malým výpisem, pokud ho pád zapsal. Soubory jsou také ve složce %APPDATA%\\SFVEmber\\logs."
+
+msgid "recovery.d3d_failed"
+msgstr "Rozhraní pro obnovení nedokázalo inicializovat Direct3D 9. Viz %APPDATA%\\SFVEmber\\logs\\launcher.log."
+
+msgid "recovery.choose_folder_title"
+msgstr "Vyberte složku se souborem StreetFighterV.exe (StreetFighterV\\Binaries\\Win64)"
+
+msgid "recovery.folder_invalid"
+msgstr "V této složce není StreetFighterV.exe. Vyberte složku hry StreetFighterV\\Binaries\\Win64."
+
+msgid "recovery.choose_folder_detail"
+msgstr "Vyberte složku nainstalované hry Street Fighter V se souborem StreetFighterV.exe: StreetFighterV\\Binaries\\Win64 ve složce hry. Soubory hry nejsou součástí balíčku."
+
+msgid "recovery.close_detail"
+msgstr "Zavřít obnovení bez spuštění Street Fighter V. Probíhající operace se zruší."
+
+msgid "updates.install_detail"
+msgstr "Před instalací zavřete Street Fighter V. Balíček se před instalací ověří. Vaše osobní nastavení zůstanou zachována."
+
+msgid "updates.close_detail"
+msgstr "Zavřít aktualizace bez spuštění Street Fighter V. Probíhající operace se zruší."
+
+msgid "updates.start_game"
+msgstr "Spustit Street Fighter V"
+
+msgid "updates.start_game_detail"
+msgstr "Zavřít aktualizace a spustit Street Fighter V se SFV Ember."
+
+msgid "services.diagnostics_saved"
+msgstr "Uloženo do %APPDATA%\\SFVEmber\\diagnostics\\ember-diagnostics.txt"
+
+msgid "services.update_prepared"
+msgstr "Aktualizace připravena. Restartuje se SFV Ember..."
+
+msgid "update.no_zip_asset"
+msgstr "Nejnovější vydání nemá ZIP balíček SFV Ember."
+
+msgid "update.close_sf4"
+msgstr "Před instalací aktualizace zavřete Street Fighter V."
+
+msgid "update.download_failed"
+msgstr "Stažení selhalo ({0}). Ruční stažení: {1} (podrobnosti v %TEMP%\\sfv-ember-update.log)"
+
+msgid "update.missing_binaries"
+msgstr "Ve staženém balíčku chybí Launcher.exe nebo sfv_ember.dll."
+
+msgid "update.notice.waiting_launcher"
+msgstr "Čekání na zavření SFV Ember..."
+
+msgid "update.notice.reopens"
+msgstr "Po dokončení se SFV Ember znovu otevře."
+
+msgid "reports.payload"
+msgstr "Hlášení jdou na embernetplay.link. Každé obsahuje verzi a sestavení SFV Ember, verzi Windows, údaje o pádu, upravený konec souborů sfv_ember.log, launcher.log a sf4-net.log a malý výpis, pokud ho pád zapsal."
+
+msgid "reports.history_unreadable_detail"
+msgstr "Soubor sent-reports.json ve složce %APPDATA%\\SFVEmber nelze přečíst, proto se žádné hlášení neodešle bez ptaní. Smažte soubor a začne se nový záznam."
+
+msgid "home.replays_detail"
+msgstr "Tvé zápasy z místností, uložené po skončení každého souboje. Přehraj si je znovu ve Street Fighter V."
+
+msgid "replays.empty_detail"
+msgstr "Zápas z místnosti se sem uloží, když skončí souboj."
+
+msgid "replays.watch_detail"
+msgstr "Přehraje tento souboj znovu ve Street Fighter V, od začátku."
+
+msgid "replays.row_detail"
+msgstr "Vyber pro přehrání, uložení nebo zobrazení souboru."
+
+msgid "replays.open_folder_detail"
+msgstr "Otevře složku se záznamy v Průzkumníku."
+
+msgid "inputs.unreadable_detail"
+msgstr "Tento záznam nelze přehrát: jeho soubor je poškozený, nebo ho vytvořilo jiné sestavení SFV Ember. Důvod je v protokolu."
+
+msgid "replays.not_added"
+msgstr "Tento záznam se nepřehrál až do konce. Důvod je v protokolu."
+
+msgid "home.training_detail"
+msgstr "Přejít do režimu Trénink ve Street Fighter V se svým bojovníkem, proti figuríně, kterou si vybereš."
+
+msgid "room.practice.detail"
+msgstr "Každá hra v místnosti je cvičný zápas: zdraví a ukazatele se doplňují, nikdo není vyřazen a čas není omezený. Platí to, dokud je místnost otevřená. Chcete-li hrát běžné zápasy, zavřete místnost a vytvořte novou."

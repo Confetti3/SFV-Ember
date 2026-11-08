@@ -685,8 +685,7 @@ TEST_CASE("the product is SFV Ember, with names of its own")
 	// SFV Ember's English over the shared words that name SF4 Ember on the
 	// screens SFV shows; the catalog takes them.
 	REQUIRE(product.localeOverlays[0].tag != nullptr);
-	CHECK(std::string(product.localeOverlays[0].tag) == "en");
-	CHECK(product.localeOverlays[1].tag == nullptr);
+	CHECK(std::string(product.localeOverlays[0].tag) == "en"); // and every other language (LocaleOverlayTests)
 	std::string error;
 	CHECK(sf4e::loc::testing::LayerOverlays(product.localeOverlays, error));
 	CHECK(error.empty());

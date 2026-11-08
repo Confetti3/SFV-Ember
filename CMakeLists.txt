@@ -105,6 +105,38 @@ add_library(sfve_ember STATIC
 include("${SFVE_EMBER_SOURCE_ROOT}/cmake/sf4e_embed.cmake")
 add_library(sfve_product STATIC src/ember/SfvProduct.cxx)
 target_include_directories(sfve_product PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src")
+# SFV Ember's own words over the shared catalogs (locales/<tag>.po), one
+# catalog for every language the library declares in its locales.json: a
+# language without one stops the configure. Each is embedded as a raw string
+# (SfvLocaleOverlays.inc), so the product's overlay table stays
+# constant-initialized.
+set(sfve_locale_registry "${SFVE_EMBER_SOURCE_ROOT}/locales/locales.json")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${sfve_locale_registry}")
+file(READ "${sfve_locale_registry}" sfve_locale_json)
+string(JSON sfve_locale_count LENGTH "${sfve_locale_json}" locales)
+math(EXPR sfve_locale_last "${sfve_locale_count} - 1")
+set(sfve_locale_texts "")
+set(sfve_locale_rows "")
+foreach(index RANGE ${sfve_locale_last})
+    string(JSON tag GET "${sfve_locale_json}" locales ${index} tag)
+    set(catalog "${CMAKE_CURRENT_SOURCE_DIR}/locales/${tag}.po")
+    if(NOT EXISTS "${catalog}")
+        message(FATAL_ERROR "SFV Ember has no catalog for ${tag}, a language the Ember library declares: add locales/${tag}.po")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${catalog}")
+    file(READ "${catalog}" text)
+    # A checkout may give the file CRLF line ends.
+    string(REPLACE "\r\n" "\n" text "${text}")
+    # One raw literal per entry, concatenated: MSVC takes at most about 16 KB
+    # in one literal, which a whole Cyrillic or CJK catalog can pass.
+    string(REPLACE "\n\nmsgid " "\n\n)po\"\n    R\"po(msgid " text "${text}")
+    string(MAKE_C_IDENTIFIER "${tag}" name)
+    string(APPEND sfve_locale_texts "const char kOverlay_${name}[] = R\"po(${text})po\";\n")
+    string(APPEND sfve_locale_rows "    {\"${tag}\", kOverlay_${name}},\n")
+endforeach()
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/locales/SfvLocaleOverlays.inc" CONTENT
+    "// Generated from locales/*.po by CMakeLists.txt (sfve_product).\n${sfve_locale_texts}\nconst ember::LocaleOverlay LocaleOverlays[] = {\n${sfve_locale_rows}    {nullptr, nullptr}};\n")
+target_include_directories(sfve_product PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/locales")
 sf4e_embed_brand_mark(sfve_product "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
 target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
 
@@ -117,6 +149,7 @@ add_executable(sfve_ember_tests
     tests/HudLayoutTests.cxx
     tests/SfvReplaysTests.cxx
     tests/CrashRecordTests.cxx
+    tests/LocaleOverlayTests.cxx
     src/mod/ControlPipe.cxx
     src/mod/CrashRecord.cxx
     src/mod/GameArt.cxx
@@ -136,6 +169,9 @@ add_executable(sfve_ember_tests
     src/mod/VersusLaunch.cxx
     src/mod/VirtualPads.cxx)
 target_link_libraries(sfve_ember_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
+# LocaleOverlayTests reads the library's fonts and locales.json from its checkout.
+file(TO_CMAKE_PATH "${SFVE_EMBER_SOURCE_ROOT}" sfve_ember_root_forward)
+target_compile_definitions(sfve_ember_tests PRIVATE SFVE_EMBER_SOURCE_ROOT="${sfve_ember_root_forward}")
 
 # The in-game mod. Loads inert: it blocks every non-loopback connection first,
 # then does nothing else unless the exe is the exact build it was made for.

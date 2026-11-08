@@ -1,0 +1,160 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: zh-Hans\n"
+
+msgid "app.name"
+msgstr "SFV Ember"
+
+msgid "shell.home_title"
+msgstr "SFV EMBER"
+
+msgid "screen.game"
+msgstr "SFV"
+
+msgid "about.version_line"
+msgstr "SFV Ember {0} · {1}"
+
+msgid "brand.subtitle"
+msgstr "SFV  /  房间与回滚联机"
+
+msgid "about.ember_detail"
+msgstr "基于 Ember 开发的非官方《街头霸王V》模组（源自 Anthony Danducci 的 sf4e）。使用 Iroh / QUIC、GGPO、Dear ImGui 和 Inter 字体。构建版本：{0}"
+
+msgid "runtime.open_shortcut"
+msgstr "SFV Ember／F10 或 Start"
+
+msgid "runtime.build_mismatch"
+msgstr "构建版本不匹配。双方必须使用同一 SFV Ember 构建版本，并安装相同的角色和场景。"
+
+msgid "runtime.room_join_failed"
+msgstr "无法加入房间。请检查邀请，并确认双方使用同一 SFV Ember 构建版本。"
+
+msgid "selection.not_owned"
+msgstr "此《街头霸王V》副本中未拥有。"
+
+msgid "runtime.invite_other_build"
+msgstr "房主使用的是另一个 SFV Ember 构建版本，或安装了不同的角色和场景。双方需要保持一致。"
+
+msgid "launcher.update_failed"
+msgstr "无法安装更新。请关闭游戏和之前的启动器后重试。详见 %TEMP%\\sfv-ember-update.log；原文件备份位于 .ember-update-backups。"
+
+msgid "launcher.recovery_opened"
+msgstr "网络不可用，因此《街头霸王V》已关闭以进行恢复。点击“重试启动”可再次启动。"
+
+msgid "launcher.game_not_found"
+msgstr "未找到《街头霸王V》。"
+
+msgid "launcher.sidecar_missing"
+msgstr "缺少 sfv_ember.dll，或注入器无法使用其路径。请将完整压缩包解压到简单的本地路径。"
+
+msgid "launcher.runtime_outdated"
+msgstr "Microsoft Visual C++ 运行库版本过旧，游戏启动时会崩溃。请安装最新版 Visual C++ Redistributable (x64)，然后重启 SFV Ember。\n\n现在打开下载页面？"
+
+msgid "launcher.already_running"
+msgstr "SFV Ember 已在运行。如找不到窗口，请在任务管理器中结束 Launcher.exe 和 StreetFighterV.exe，再启动 SFV Ember。"
+
+msgid "launcher.start_failed"
+msgstr "游戏启动或注入失败。请查看启动器日志（%APPDATA%\\SFVEmber\\logs\\launcher.log）后重试。"
+
+msgid "launcher.game_runs_as_admin"
+msgstr "StreetFighterV.exe 被设置为以管理员身份运行，因此 SFV Ember 无法启动它。请在游戏的 StreetFighterV\\Binaries\\Win64 文件夹中右键单击 StreetFighterV.exe，打开“属性”中的“兼容性”，取消勾选“以管理员身份运行此程序”，“更改所有用户的设置”中也要取消。然后重试。"
+
+msgid "launcher.game_error"
+msgstr "游戏异常退出。请查看启动器日志（%APPDATA%\\SFVEmber\\logs\\launcher.log）后重试。"
+
+msgid "launcher.game_crashed"
+msgstr "游戏崩溃了。如愿协助修复，请选择下方的“发送此报告”。也可以自己发送 %APPDATA%\\SFVEmber\\logs 中的文件。"
+
+msgid "launcher.game_wrong_dll"
+msgstr "游戏在 SFV Ember 启动前停止，因为加载的某个 DLL 缺少函数。请发送启动器日志（%APPDATA%\\SFVEmber\\logs\\launcher.log）。"
+
+msgid "launcher.game_crashed_files"
+msgstr "游戏崩溃了。请将 %APPDATA%\\SFVEmber\\logs 中的文件（sfv_ember.log 和 launcher.log，如有 sfv_ember-crash-*.dmp 也一并发送）发送给 SFV Ember 团队，然后重试。"
+
+msgid "launcher.game_crashed_sending"
+msgstr "游戏崩溃了。“发送问题报告”已打开，因此正在发送报告，有小型转储时一并发送。文件也位于 %APPDATA%\\SFVEmber\\logs。"
+
+msgid "recovery.d3d_failed"
+msgstr "恢复界面无法初始化 Direct3D 9。详见 %APPDATA%\\SFVEmber\\logs\\launcher.log。"
+
+msgid "recovery.choose_folder_title"
+msgstr "选择包含 StreetFighterV.exe 的文件夹（StreetFighterV\\Binaries\\Win64）"
+
+msgid "recovery.folder_invalid"
+msgstr "该文件夹不含 StreetFighterV.exe。请选择游戏的 StreetFighterV\\Binaries\\Win64 文件夹。"
+
+msgid "recovery.choose_folder_detail"
+msgstr "请选择包含 StreetFighterV.exe 的《街头霸王V》安装文件夹：游戏文件夹内的 StreetFighterV\\Binaries\\Win64。本压缩包不含游戏文件。"
+
+msgid "recovery.close_detail"
+msgstr "关闭恢复界面，不启动《街头霸王V》。正在进行的操作将取消。"
+
+msgid "updates.install_detail"
+msgstr "安装前请关闭《街头霸王V》。安装包会先经过验证，个人设置将保留。"
+
+msgid "updates.close_detail"
+msgstr "关闭更新程序，不启动《街头霸王V》。正在进行的操作将取消。"
+
+msgid "updates.start_game"
+msgstr "启动《街头霸王V》"
+
+msgid "updates.start_game_detail"
+msgstr "关闭更新程序，并通过 SFV Ember 启动《街头霸王V》。"
+
+msgid "services.diagnostics_saved"
+msgstr "已保存 %APPDATA%\\SFVEmber\\diagnostics\\ember-diagnostics.txt"
+
+msgid "services.update_prepared"
+msgstr "更新已准备就绪，正在重启 SFV Ember..."
+
+msgid "update.no_zip_asset"
+msgstr "最新发行版没有 SFV Ember ZIP 文件。"
+
+msgid "update.close_sf4"
+msgstr "安装更新前请关闭《街头霸王V》。"
+
+msgid "update.download_failed"
+msgstr "下载失败（{0}）。手动下载：{1}－详情见 %TEMP%\\sfv-ember-update.log"
+
+msgid "update.missing_binaries"
+msgstr "下载包缺少 Launcher.exe 或 sfv_ember.dll。"
+
+msgid "update.notice.waiting_launcher"
+msgstr "正在等待 SFV Ember 关闭..."
+
+msgid "update.notice.reopens"
+msgstr "完成后 SFV Ember 会再次打开。"
+
+msgid "reports.payload"
+msgstr "报告会发送到 embernetplay.link。每份报告包含 SFV Ember 版本和构建号、Windows 版本、崩溃信息，以及已去除隐私信息的 sfv_ember.log、launcher.log 和 sf4-net.log 的末尾部分，有小型转储时也会包含它。"
+
+msgid "reports.history_unreadable_detail"
+msgstr "无法读取 %APPDATA%\\SFVEmber 中的 sent-reports.json，因此不会未经询问发送任何报告。删除该文件可开始新的记录。"
+
+msgid "home.replays_detail"
+msgstr "你在房间中的对战，每场结束时自动保存。可在《街头霸王V》中再次观看。"
+
+msgid "replays.empty_detail"
+msgstr "房间对战结束后会保存到这里。"
+
+msgid "replays.watch_detail"
+msgstr "在《街头霸王V》中从头重新播放这场对战。"
+
+msgid "replays.row_detail"
+msgstr "选择以观看、保留或显示其文件。"
+
+msgid "replays.open_folder_detail"
+msgstr "在资源管理器中打开录像文件夹。"
+
+msgid "inputs.unreadable_detail"
+msgstr "无法播放此回放：文件已损坏，或由其他 SFV Ember 构建版本生成。原因见日志。"
+
+msgid "replays.not_added"
+msgstr "此回放未能播放到结尾。原因见日志。"
+
+msgid "home.training_detail"
+msgstr "用你的角色进入《街头霸王V》的训练模式，对手是你选择的陪练。"
+
+msgid "room.practice.detail"
+msgstr "房间内的每场对战都是练习对战：体力和能量槽会恢复，双方都不会被击倒，没有时间限制。房间开启期间不会改变。要进行普通对战，请关闭房间并重新创建。"
