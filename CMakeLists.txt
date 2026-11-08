@@ -110,8 +110,9 @@ target_include_directories(sfve_product PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src")
 # language without one stops the configure. Each is embedded as a raw string
 # (SfvLocaleOverlays.inc), so the product's overlay table stays
 # constant-initialized.
+# (The library's own cmake/sf4e_locales.cmake already re-runs the configure
+# when locales.json changes; naming it here too makes ninja refuse it.)
 set(sfve_locale_registry "${SFVE_EMBER_SOURCE_ROOT}/locales/locales.json")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${sfve_locale_registry}")
 file(READ "${sfve_locale_registry}" sfve_locale_json)
 string(JSON sfve_locale_count LENGTH "${sfve_locale_json}" locales)
 math(EXPR sfve_locale_last "${sfve_locale_count} - 1")
