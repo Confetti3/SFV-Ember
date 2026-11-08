@@ -77,7 +77,7 @@ def main(argv: list[str]) -> int:
         # As every run starts its copies: a virtual pad on slot 0 and background
         # play (an unfocused SFV draws nothing and never leaves its title).
         lib.launch(0, "netplay", ["-sfve_pads=0", "-sfve_background=1"])
-        lib.boot_to_menu(0, shot_on_timeout=Path(r"D:\sfv-re\shots\runlink-boot.png"))
+        lib.boot_to_menu(0, shot_on_timeout=Path(r"D:\sfv-re\shots\runlink-boot.png"), bring_to_front=False)
         wait_for("the room", 30, lambda: lib.request(0, "room 1 30").startswith("ok"))
         wait_for("copy 0 in its room", 60, lambda: status(0)["room"]["room"] == "joined")
         log_from = launcher_log.stat().st_size if launcher_log.exists() else 0

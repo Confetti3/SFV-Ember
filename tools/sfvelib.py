@@ -317,15 +317,18 @@ def scene(index: int) -> str:
         return ""
 
 
-def boot_to_menu(index: int, timeout: float = 90.0, shot_on_timeout: Path | None = None) -> None:
+def boot_to_menu(index: int, timeout: float = 90.0, shot_on_timeout: Path | None = None, bring_to_front: bool = True) -> None:
     """From a fresh launch to the main menu. The mod hides the offline start-up
     dialogs and leaves the title by itself, so this only waits. On a timeout
-    the copy's window is saved to `shot_on_timeout`, when given."""
+    the copy's window is saved to `shot_on_timeout`, when given. A run whose
+    copies play in the background (-sfve_background=1) may leave the window
+    where it is (bring_to_front=False): Windows refuses it on a locked desktop."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if scene(index) == MAIN_MENU_SCENE:
             time.sleep(1)  # the menu's own intro
-            focus(status_pid(index))
+            if bring_to_front:
+                focus(status_pid(index))
             return
         time.sleep(1)
     if shot_on_timeout:
