@@ -30,7 +30,6 @@ def main(argv: list[str]) -> int:
     launch = sub.add_parser("launch")
     launch.add_argument("index", type=int)
     launch.add_argument("--mode", default="probe")
-    launch.add_argument("extra", nargs="*")
     ctl = sub.add_parser("ctl")
     ctl.add_argument("index", type=int)
     ctl.add_argument("line")
@@ -53,7 +52,15 @@ def main(argv: list[str]) -> int:
     mash.add_argument("seed", type=int, nargs="?", default=1)
     sub.add_parser("ps")
     sub.add_parser("kill")
+    # The game's own arguments follow "--" and are split off here: argparse
+    # before Python 3.12 leaves "--" unconsumed after a nargs="*" positional.
+    game_args: list[str] = []
+    if "--" in argv:
+        cut = argv.index("--")
+        argv, game_args = argv[:cut], argv[cut + 1:]
     a = p.parse_args(argv)
+    if game_args and a.cmd != "launch":
+        p.error('only "launch" takes game arguments after "--"')
 
     try:
         if a.cmd == "deploy":
@@ -61,7 +68,7 @@ def main(argv: list[str]) -> int:
         elif a.cmd == "undeploy":
             print("removed:", lib.undeploy())
         elif a.cmd == "launch":
-            inst = lib.launch(a.index, a.mode, a.extra)
+            inst = lib.launch(a.index, a.mode, game_args)
             print(f"instance {inst.index} pid {inst.pid}: guard confirmed")
         elif a.cmd == "ctl":
             print(lib.request(a.index, a.line))
