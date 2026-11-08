@@ -20,6 +20,9 @@
 //                             for the host (P1)
 //   ready                     Ready with the pick
 //   delay N                   the input delay this player readies with
+//   rules <rounds> <seconds>  the table rules saved in Settings, which a room
+//                             this player opens plays (an organised match's
+//                             room too); at the main menu only
 //   leave                     leave the room
 //
 // Status field "room": the room and match phase, this player's seat, the

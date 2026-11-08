@@ -16,10 +16,13 @@
 
 #include <atomic>
 #include <cstdio>
+#include <ctime>
 #include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace sfve::adapter {
 
@@ -50,20 +53,36 @@ std::string Submit(facade::RuntimeCommand command)
 	return "ok submitted";
 }
 
-std::string Ask(IdentityOp op)
+// An identity request to the service looked up and trusted (its other fields
+// are the caller's), answered "ok <ticket>": the status's identityTicket and
+// identityOk say when it was answered and how.
+std::string Ask(IdentityRequest request)
 {
-	IdentityRequest request;
-	request.op = op;
 	{
 		std::lock_guard<std::mutex> lock(s_mutex);
 		request.origin = s_origin;
 		request.bridge = s_bridge;
 	}
-	request.ticket = ++s_ticket;
+	const std::uint64_t ticket = ++s_ticket;
+	request.ticket = ticket;
 	facade::RuntimeCommand command;
 	command.identity = std::move(request);
 	const std::string answer = Submit(std::move(command));
-	return answer.rfind("ok", 0) == 0 ? "ok " + std::to_string(s_ticket.load()) : answer;
+	return answer.rfind("ok", 0) == 0 ? "ok " + std::to_string(ticket) : answer;
+}
+
+std::string Ask(IdentityOp op)
+{
+	IdentityRequest request;
+	request.op = op;
+	return Ask(std::move(request));
+}
+
+// A command's verb and the rest of its line.
+std::pair<std::string, std::string> Verb(const std::string& args)
+{
+	const auto space = args.find(' ');
+	return {args.substr(0, space), space == std::string::npos ? std::string() : args.substr(space + 1)};
 }
 
 // `ember-id`: makes this copy's Ember ID if it has none (the Ember ID screen's
@@ -105,6 +124,8 @@ std::string BridgeId()
 	return s_bridge;
 }
 
+const char* const kTrustFirst = "error trust a service first (`bridge <origin>`, then `trust`)";
+
 // `public list`, `public create <rounds> <seconds> <name>`, `public join <room
 // id>` (a ticket), as the Public rooms screen sends them; `public enter` joins
 // with the last create's or ticket's admission, as that screen does once it is
@@ -113,9 +134,8 @@ std::string BridgeId()
 std::string Public(const std::string& args)
 {
 	const std::string bridge = BridgeId();
-	if (bridge.empty()) return "error trust a service first (`bridge <origin>`, then `trust`)";
-	const auto space = args.find(' ');
-	const std::string verb = args.substr(0, space), rest = space == std::string::npos ? std::string() : args.substr(space + 1);
+	if (bridge.empty()) return kTrustFirst;
+	const auto [verb, rest] = Verb(args);
 	facade::RuntimeCommand command;
 	command.command.generation = facade::GetRuntimeSnapshotShared()->session.generation;
 	Command& request = command.tournament;
@@ -170,9 +190,8 @@ std::string Public(const std::string& args)
 std::string Ranking(const std::string& args)
 {
 	const std::string bridge = BridgeId();
-	if (bridge.empty()) return "error trust a service first (`bridge <origin>`, then `trust`)";
-	const auto space = args.find(' ');
-	const std::string verb = args.substr(0, space), rest = space == std::string::npos ? std::string() : args.substr(space + 1);
+	if (bridge.empty()) return kTrustFirst;
+	const auto [verb, rest] = Verb(args);
 	facade::RuntimeCommand command;
 	command.command.generation = facade::GetRuntimeSnapshotShared()->session.generation;
 	Command& request = command.tournament;
@@ -197,6 +216,99 @@ std::string Ranking(const std::string& args)
 	const std::string answer = Submit(std::move(command));
 	if (answer.rfind("ok", 0) != 0) return answer;
 	return request.request ? "ok " + std::to_string(request.request) : answer;
+}
+
+// `link <connection> <code>` and `links`, as Linked accounts' Link account
+// and its list send them (EMBER_LIBRARY.md section 32): the code a provider's
+// link intent gave its player, claimed on the trusted service's connection;
+// the provider then compares the claim's fingerprint (the status's
+// `match.claimFingerprint`) and approves it, and the link shows in `links`.
+std::string Link(const std::string& args)
+{
+	if (BridgeId().empty()) return kTrustFirst;
+	const auto [connection, code] = Verb(args);
+	if (connection.empty() || code.empty() || code.find(' ') != std::string::npos) return "error usage: link <connection> <code>";
+	IdentityRequest request;
+	request.op = IdentityOp::LinkClaim;
+	request.connection = connection;
+	request.code = code;
+	return Ask(std::move(request));
+}
+
+std::string Links(const std::string& args)
+{
+	if (!args.empty()) return "error usage: links";
+	if (BridgeId().empty()) return kTrustFirst;
+	return Ask(IdentityOp::LinkList);
+}
+
+// `match refresh`, `match play <match id>` and `match stop`, as the Matches
+// screen's Refresh, a match's Play and Stop send them (section 32). From Play
+// on, the runtime's own tournament play claims the match, opens or joins its
+// room, binds it and reports each game; nothing here steps it.
+std::string Match(const std::string& args)
+{
+	const std::string bridge = BridgeId();
+	if (bridge.empty()) return kTrustFirst;
+	const auto [verb, rest] = Verb(args);
+	facade::RuntimeCommand command;
+	Command& request = command.tournament;
+	if (verb == "refresh" && rest.empty()) {
+		request.op = Command::Op::Refresh;
+		request.bridgeId = bridge;
+	} else if (verb == "play" && !rest.empty() && rest.find(' ') == std::string::npos && rest.size() <= Command::MaxField) {
+		request.op = Command::Op::Play;
+		request.bridgeId = bridge;
+		request.matchId = rest;
+	} else if (verb == "stop" && rest.empty()) request.op = Command::Op::Stop;
+	else return "error usage: match refresh | match play <match id> | match stop";
+	return Submit(std::move(command));
+}
+
+// The status field `match`: the organised match being played, the
+// assignment list of the last refresh (only SFV's matches: the runtime keeps
+// the product's game's, DecodeAssignments), the trusted service's links and
+// claims, and the table rules a match's room is opened with.
+std::string MatchStatus()
+{
+	using sf4e::netplay::tournament::Phase;
+	static const char* const phases[] = {"idle", "claiming", "opening", "in_room", "finished", "failed"};
+	static_assert(sizeof(phases) / sizeof(*phases) == (int)Phase::Failed + 1, "a name for each phase");
+	const auto snapshot = facade::GetRuntimeSnapshotShared();
+	const auto& play = snapshot->tournament;
+	const auto& identity = snapshot->identity;
+	const auto unixNow = (std::uint64_t)std::time(nullptr);
+	nlohmann::json matches = nlohmann::json::array();
+	for (const auto& match : play.list.items) {
+		matches.push_back({{"matchId", match.matchId}, {"state", match.state}, {"game", match.game}, {"slot", match.slot},
+			{"gamesToWin", match.gamesToWin}, {"wins", {match.wins[0], match.wins[1]}}, {"profile", match.profile},
+			{"playable", match.Playable(unixNow)}});
+	}
+	const auto linkRows = [](const std::vector<sf4e::netplay::IdentityLink>& list) {
+		nlohmann::json out = nlohmann::json::array();
+		for (const auto& link : list) out.push_back({{"id", link.id}, {"connection", link.connection}, {"account", link.account}});
+		return out;
+	};
+	nlohmann::json connections = nlohmann::json::array();
+	for (const auto& connection : identity.connections) connections.push_back(connection.id);
+	const auto& rules = snapshot->preferences.tableRules;
+	nlohmann::json status = {
+		{"build", MatchBuildId()},
+		{"phase", phases[(int)play.phase]},
+		{"bridge", play.bridgeId},
+		{"matchId", play.matchId},
+		{"reason", play.reason},
+		{"waitingForOpponent", play.waitingForOpponent},
+		{"waitingForPermit", play.waitingForPermit},
+		{"list", {{"bridge", play.list.bridge}, {"loading", play.list.loading}, {"error", play.list.error},
+			{"finished", play.list.finished}, {"matches", std::move(matches)}}},
+		{"connections", std::move(connections)},
+		{"links", linkRows(identity.links)},
+		{"pending", linkRows(identity.pending)},
+		{"claimFingerprint", identity.claimFingerprint},
+		{"rules", {{"rounds", rules.roundCount}, {"seconds", rules.roundTime}}},
+	};
+	return status.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
 nlohmann::json BadgeJson(const sf4e::SkillBadge& badge)
@@ -297,9 +409,13 @@ void RegisterPublicCommands()
 	mod::RegisterCommand("trust", Trust);
 	mod::RegisterCommand("public", Public);
 	mod::RegisterCommand("ranking", Ranking);
+	mod::RegisterCommand("link", Link);
+	mod::RegisterCommand("links", Links);
+	mod::RegisterCommand("match", Match);
 	mod::RegisterCommand("catalog-export", CatalogExport);
 	mod::RegisterStatus("public", Status);
 	mod::RegisterStatus("ranking", RankingStatus);
+	mod::RegisterStatus("match", MatchStatus);
 }
 
 } // namespace sfve::adapter

@@ -46,20 +46,14 @@ std::string Submit(facade::RuntimeCommand command)
 	return "ok submitted (the room's answer shows in the status's \"room\")";
 }
 
-std::string Host(const std::string& args)
+// A command carrying the player's settings with these table rules, as the
+// Create room page and Settings write them: an error when SFV cannot play
+// them (the catalog's rules) or the settings would not be valid.
+std::optional<std::string> WithTableRules(facade::RuntimeCommand& command, int rounds, int seconds, int rematch, int firstTo)
 {
-	int rounds = 3, seconds = 99, rematch = 0, firstTo = 0;
-	std::istringstream in(args);
-	const char* usage = "error usage: room [rounds] [seconds] [instant rematch 0|1] [first to N, 0 unlimited]";
-	if (!args.empty() && !(in >> rounds >> seconds)) return usage;
-	if (!in.eof() && !(in >> rematch)) return usage;
-	if (!in.eof() && !(in >> firstTo)) return usage;
-	if (rematch < 0 || rematch > 1) return usage;
 	if (!sf4e::room::ValidSetFormat(firstTo)) return "error the set is first to 1-10 games, or 0 for unlimited";
-	// A table rule Ember offers and SFV plays (the catalog's).
 	if (!ember::PlayableRoundCount(rounds)) return "error SFV plays 1, 3, 5 or 7 rounds";
 	if (!ember::PlayableRoundTime(seconds)) return "error SFV rooms play rounds of 30, 60, 99 or 300 s";
-	facade::RuntimeCommand command = CommandFor(CommandKind::HostRoom);
 	command.preferences = facade::GetRuntimeSnapshotShared()->preferences;
 	sf4e::room::Rules& rules = command.preferences.tableRules;
 	rules.roundCount = (std::uint8_t)rounds;
@@ -73,6 +67,36 @@ std::string Host(const std::string& args)
 	command.preferences.lobby.roundTime = seconds;
 	command.preferences.lobby.editionSelect = false;
 	if (!command.preferences.Valid()) return "error the room's settings are not valid";
+	return std::nullopt;
+}
+
+std::string Host(const std::string& args)
+{
+	int rounds = 3, seconds = 99, rematch = 0, firstTo = 0;
+	std::istringstream in(args);
+	const char* usage = "error usage: room [rounds] [seconds] [instant rematch 0|1] [first to N, 0 unlimited]";
+	if (!args.empty() && !(in >> rounds >> seconds)) return usage;
+	if (!in.eof() && !(in >> rematch)) return usage;
+	if (!in.eof() && !(in >> firstTo)) return usage;
+	if (rematch < 0 || rematch > 1) return usage;
+	facade::RuntimeCommand command = CommandFor(CommandKind::HostRoom);
+	if (const auto refused = WithTableRules(command, rounds, seconds, rematch, firstTo)) return *refused;
+	return Submit(std::move(command));
+}
+
+// `rules <rounds> <seconds>`: the table rules saved in the player's settings,
+// as Settings saves them. A room this player opens later plays them, an
+// organised match's room among them (the runtime opens that room from the
+// saved settings; EMBER_LIBRARY.md section 32). Only at the main menu with
+// no room, as Settings allows.
+std::string SaveRules(const std::string& args)
+{
+	int rounds = 0, seconds = 0;
+	std::istringstream in(args);
+	if (!(in >> rounds >> seconds) || !(in >> std::ws).eof()) return "error usage: rules <rounds> <seconds>";
+	facade::RuntimeCommand command = CommandFor(CommandKind::SavePreferences);
+	if (const auto refused = WithTableRules(command, rounds, seconds, 0, 0)) return *refused;
+	command.displayName = command.preferences.displayName;
 	return Submit(std::move(command));
 }
 
@@ -273,6 +297,7 @@ void RegisterRoomCommands()
 	mod::RegisterCommand("ready", [](const std::string&) { return Ready(); });
 	mod::RegisterCommand("rematch", Rematch);
 	mod::RegisterCommand("delay", Delay);
+	mod::RegisterCommand("rules", SaveRules);
 	mod::RegisterCommand("leave", [](const std::string&) { return Submit(CommandFor(CommandKind::LeaveRoom)); });
 	mod::RegisterStatus("room", Status);
 	RegisterPublicCommands();
