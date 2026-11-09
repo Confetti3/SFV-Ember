@@ -129,7 +129,10 @@ TEST_CASE("SFV's room host takes only the room of the build its pick space makes
 	for (std::int64_t stage = 0; stage < (std::int64_t)space.stages.size(); stage++) CHECK(catalog.validStage(stage));
 	CHECK_FALSE(catalog.validStage((std::int64_t)space.stages.size()));
 	CHECK(catalog.randomStage == sfve::picks::kRandomStage);
+	CHECK(sfve::picks::kRandomStage == sf4e::selection::RandomStageId);
 	CHECK_FALSE(catalog.validStage(sfve::picks::kRandomStage));
+	// SFV's copies can lack stages, so a member's list of them is kept.
+	CHECK(catalog.stagesCanBeMissing);
 	// A host never resolves Random: it only ever sees stages P1 resolved.
 	CHECK(catalog.resolveStage(1, 7, sf4e::selection::RandomPool(), nullptr, {}) == 1);
 	// A member's missing stages keep only the universe's.

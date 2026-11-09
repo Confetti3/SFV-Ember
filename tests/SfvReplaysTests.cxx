@@ -127,8 +127,8 @@ TEST_CASE("the Replays screen lists the saved battles, keeps the player's mark a
 	CHECK(older.summary->frames == 250u); // the frames that read inputs
 	CHECK(older.summary->players[1].color == 2);
 	// Each side's Ultra is its loadout's number (section 40).
-	CHECK(older.summary->players[0].ultra == picks::LoadoutIndex({picks::VSkill::I, picks::VTrigger::I}));
-	CHECK(older.summary->players[1].ultra == picks::LoadoutIndex({picks::VSkill::II, picks::VTrigger::I}));
+	CHECK(older.summary->players[0].ultra == picks::LoadoutIndex(*picks::LoadoutOfNumbers(0, 0)));
+	CHECK(older.summary->players[1].ultra == picks::LoadoutIndex(*picks::LoadoutOfNumbers(1, 0)));
 	// Two games in place: the games' score.
 	REQUIRE(newest.summary);
 	CHECK(newest.summary->scored);

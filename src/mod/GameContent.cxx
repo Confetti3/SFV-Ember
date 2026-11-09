@@ -1,5 +1,6 @@
 #include "mod/GameContent.hxx"
 
+#include "ember/SfvPickSpace.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -165,34 +166,65 @@ std::wstring_view TextOf(const GameString& s)
 	return s.data && s.count > 0 ? std::wstring_view(s.data, wcsnlen(s.data, (size_t)s.count)) : std::wstring_view();
 }
 
-// The fighter table's first entry `matches` accepts; null for none.
-template <typename Match>
-uint8_t* FindEntry(uint8_t* charaAsset, Match&& matches)
+// Two codes are the same as the game compares its FStrings: ignoring case.
+bool SameCode(std::wstring_view a, std::wstring_view b)
 {
-	uint8_t* entries = Field<uint8_t*>(charaAsset, sfv::content::kCharaEntries);
-	const int count = Field<int32_t>(charaAsset, sfv::content::kCharaCount);
-	for (int i = 0; entries && i < count; i++) {
-		uint8_t* entry = entries + (size_t)sfv::content::kCharaStride * i;
-		if (matches(entry)) return entry;
+	return a.size() == b.size() && _wcsnicmp(a.data(), b.data(), a.size()) == 0;
+}
+
+// The code a record starts with (its +0 FString) is `code`.
+bool HasCode(uint8_t* record, std::wstring_view code)
+{
+	return SameCode(TextOf(Field<GameString>(record, 0)), code);
+}
+
+// One of the game's arrays of fixed-size records: a TArray's data and count,
+// read from the object that holds it, the records `stride` bytes apart.
+struct Records {
+	uint8_t* data = nullptr;
+	int count = 0;
+	uint32_t stride = 0;
+
+	Records(uint8_t* object, uint32_t dataOffset, uint32_t countOffset, uint32_t recordStride)
+		: data(Field<uint8_t*>(object, dataOffset)), count(Field<int32_t>(object, countOffset)), stride(recordStride)
+	{
 	}
-	return nullptr;
+	// Each record, in order; none for a null array or a count below one.
+	template <typename Visit>
+	void ForEach(Visit&& visit) const
+	{
+		for (int i = 0; data && i < count; i++) visit(data + (size_t)stride * (size_t)i);
+	}
+};
+
+// The first record `matches` accepts; null for none.
+template <typename Match>
+uint8_t* FindEntry(const Records& records, Match&& matches)
+{
+	uint8_t* found = nullptr;
+	records.ForEach([&](uint8_t* record) {
+		if (!found && matches(record)) found = record;
+	});
+	return found;
+}
+
+// The fighter table (sfv::content::kCharaAsset's records).
+Records CharaRecords(uint8_t* charaAsset)
+{
+	return {charaAsset, sfv::content::kCharaEntries, sfv::content::kCharaCount, sfv::content::kCharaStride};
 }
 
 // The fighter table's entry with the spec's id for it; null for none.
 uint8_t* EntryWithId(uint8_t* charaAsset, int32_t uniqueId)
 {
-	return FindEntry(charaAsset,
+	return FindEntry(CharaRecords(charaAsset),
 		[uniqueId](uint8_t* entry) { return Field<int32_t>(entry, sfv::content::kCharaUniqueId) == uniqueId; });
 }
 
-// The fighter table's entry with the code, compared as the game compares its
-// FStrings (ignoring case); null for none.
+// The fighter table's entry with the code; null for none.
 uint8_t* EntryWithCode(uint8_t* charaAsset, std::wstring_view code)
 {
-	return FindEntry(charaAsset, [code](uint8_t* entry) {
-		const std::wstring_view own = TextOf(Field<GameString>(entry, 0));
-		return own.size() == code.size() && _wcsnicmp(own.data(), code.data(), code.size()) == 0;
-	});
+	return FindEntry(CharaRecords(charaAsset), [code](uint8_t* entry) { return HasCode(entry, code); });
 }
 
 // The fighter's name in the game's language, from its PersonalData (loaded
@@ -311,26 +343,38 @@ uint8_t* BattleSetup()
 	return LoadAsset(sfv::kBattleSetupClass, kBattleSetupPath);
 }
 
-// The names a choice name asset gives the fighter `code`, in order, as the
-// game's lookup collects them (rva 0x567EA0): those of every entry with that
-// code, compared ignoring case. Read in place: the game's lookup would copy
-// the texts and free the code it is given.
-std::vector<std::string> ChoiceNames(uint8_t* asset, std::wstring_view code)
+// The names a choice name asset (`part`, "V-Skill", for the log) gives the
+// fighter `code`, in order: those of every entry with that code (sfv::choices
+// says how much of the game's lookup is known). Read in place: the game's
+// lookup would copy the texts and free the code it is given. The layout is
+// known only from reading the exe, so an asset with more entries than
+// sfv::choices::kMaxEntries, or an entry with more names than kMaxNames,
+// reads as not there (none), logged once, rather than being walked.
+std::optional<std::vector<std::string>> ChoiceNames(uint8_t* asset, const char* part, std::wstring_view code)
 {
+	static bool logged = false;
+	const auto refuse = [part](const char* what, int count) -> std::optional<std::vector<std::string>> {
+		if (!logged) Log("content: the %s name asset has %d %s, past what Ember reads; read as not there", part, count, what);
+		logged = true;
+		return std::nullopt;
+	};
+	const Records entries(asset, sfv::choices::kEntries, sfv::choices::kCount, sfv::choices::kEntryStride);
+	if (entries.count > sfv::choices::kMaxEntries) return refuse("entries", entries.count);
 	std::vector<std::string> names;
-	uint8_t* entries = Field<uint8_t*>(asset, sfv::choices::kEntries);
-	const int count = Field<int32_t>(asset, sfv::choices::kCount);
-	for (int i = 0; entries && i < count; i++) {
-		uint8_t* entry = entries + (size_t)sfv::choices::kEntryStride * i;
-		const std::wstring_view own = TextOf(Field<GameString>(entry, 0));
-		if (own.size() != code.size() || _wcsnicmp(own.data(), code.data(), code.size()) != 0) continue;
-		uint8_t* texts = Field<uint8_t*>(entry, sfv::choices::kNames);
-		const int textCount = Field<int32_t>(entry, sfv::choices::kNameCount);
-		for (int t = 0; texts && t < textCount; t++) {
-			const GameString* name = At<TextToStringFn>(sfv::kTextToString)(texts + (size_t)sfv::choices::kNameStride * t);
-			names.push_back(name ? Utf8(*name) : std::string());
+	int pastLimit = 0; // an entry's name count past kMaxNames, once one is found
+	entries.ForEach([&](uint8_t* entry) {
+		if (pastLimit || !HasCode(entry, code)) return;
+		const Records texts(entry, sfv::choices::kNames, sfv::choices::kNameCount, sfv::choices::kNameStride);
+		if (texts.count > sfv::choices::kMaxNames) {
+			pastLimit = texts.count;
+			return;
 		}
-	}
+		texts.ForEach([&](uint8_t* text) {
+			const GameString* name = At<TextToStringFn>(sfv::kTextToString)(text);
+			names.push_back(name ? Utf8(*name) : std::string());
+		});
+	});
+	if (pastLimit) return refuse("names for one fighter", pastLimit);
 	return names;
 }
 
@@ -352,15 +396,32 @@ size_t FittedCount(size_t given)
 // the lists wait for it rather than give every fighter one of each.
 bool ReadChoices(std::vector<FighterContent>& fighters)
 {
-	const auto [vSkills, vTriggers] = ChoiceAssets();
-	if (!vSkills || !vTriggers) return false;
-	for (FighterContent& fighter : fighters) {
-		const std::wstring code(fighter.code.begin(), fighter.code.end());
-		fighter.vSkills = FitChoices(ChoiceNames(vSkills, code), "V-Skill", fighter.code);
-		fighter.vTriggers = FitChoices(ChoiceNames(vTriggers, code), "V-Trigger", fighter.code);
+	const auto [vSkillAsset, vTriggerAsset] = ChoiceAssets();
+	if (!vSkillAsset || !vTriggerAsset) return false;
+	std::vector<std::pair<std::vector<std::string>, std::vector<std::string>>> read;
+	for (const FighterContent& fighter : fighters) {
+		const CodeView code(fighter.code);
+		std::optional<std::vector<std::string>> vSkills = ChoiceNames(vSkillAsset, "V-Skill", code.wide);
+		std::optional<std::vector<std::string>> vTriggers = ChoiceNames(vTriggerAsset, "V-Trigger", code.wide);
+		if (!vSkills || !vTriggers) return false;
+		read.emplace_back(FitChoices(std::move(*vSkills), "V-Skill", fighter.code),
+			FitChoices(std::move(*vTriggers), "V-Trigger", fighter.code));
+	}
+	for (size_t i = 0; i < fighters.size(); i++) {
+		fighters[i].vSkills = std::move(read[i].first);
+		fighters[i].vTriggers = std::move(read[i].second);
 	}
 	return true;
 }
+
+ChoiceCounts CountsOf(const FighterContent& fighter)
+{
+	return {(int)fighter.vSkills.size(), (int)fighter.vTriggers.size()};
+}
+
+// Game thread: each fighter's counts by its code, as ReadContentLists last
+// read them (FighterChoiceCounts); empty before any read.
+std::vector<std::pair<std::wstring, ChoiceCounts>> s_choiceCounts;
 
 // What the game lets this copy's player pick, as its menus and the battle
 // jump's check ask it (sfv::kOwnedFighters and the rest), into `lists`.
@@ -437,6 +498,8 @@ ContentLists ReadContentLists()
 		logged = true;
 		return {};
 	}
+	s_choiceCounts.clear();
+	for (const FighterContent& fighter : lists.fighters) s_choiceCounts.emplace_back(CodeView(fighter.code).wide, CountsOf(fighter));
 
 	// The names only once both lists are there: each may load a stage's data,
 	// so only an installed stage's is asked for (one this copy lacks is never
@@ -469,14 +532,18 @@ std::string ChoicesText(const FighterContent& fighter)
 	return list("V-Skills", fighter.vSkills) + ", " + list("V-Triggers", fighter.vTriggers);
 }
 
-bool HasLoadout(std::wstring_view code, picks::Loadout loadout)
+std::optional<ChoiceCounts> FighterChoiceCounts(std::wstring_view code)
 {
-	const auto [vSkills, vTriggers] = ChoiceAssets();
-	if (!vSkills || !vTriggers) return false;
-	picks::Fighter counts;
-	counts.vSkills = (int)FittedCount(ChoiceNames(vSkills, code).size());
-	counts.vTriggers = (int)FittedCount(ChoiceNames(vTriggers, code).size());
-	return picks::HasLoadout(counts, loadout);
+	if (!s_choiceCounts.empty()) {
+		for (const auto& [own, counts] : s_choiceCounts) {
+			if (SameCode(own, code)) return counts;
+		}
+		return std::nullopt;
+	}
+	std::vector<FighterContent> fighter(1);
+	for (wchar_t c : code) fighter[0].code += (char)c;
+	if (!ReadChoices(fighter)) return std::nullopt;
+	return CountsOf(fighter[0]);
 }
 
 int MarkUninstalled(ContentLists& lists, const std::vector<std::string>& codes)

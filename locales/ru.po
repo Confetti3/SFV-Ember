@@ -158,3 +158,45 @@ msgstr "Перейти в режим тренировки Street Fighter V со 
 
 msgid "room.practice.detail"
 msgstr "Каждая игра в лобби является тренировочным матчем: здоровье и шкалы пополняются, нокаутов нет, а время раунда не ограничено. Так будет, пока лобби открыто. Чтобы играть обычные матчи, закройте лобби и создайте новое."
+
+msgid "selection.ultra_combo"
+msgstr "V-Skill и V-Trigger"
+
+msgid "selection.ultra_combo_title"
+msgstr "V-SKILL И V-TRIGGER"
+
+msgid "selection.ultra_row.detail"
+msgstr "Влево и вправо меняют здесь V-Skill и V-Trigger. Выбор показывает каждый вариант с его приёмом."
+
+msgid "room.ultra.detail"
+msgstr "Выберите V-Skill и V-Trigger для следующей игры здесь, не открывая настройки ячейки."
+
+msgid "room.ultra.single"
+msgstr "У этого бойца один V-Skill и один V-Trigger."
+
+msgid "postmatch.ultra.detail"
+msgstr "Влево и вправо меняют V-Skill и V-Trigger для следующей игры. С новым выбором следующая игра сначала загрузится."
+
+msgid "postmatch.ultra.set"
+msgstr "V-Skill и V-Trigger для следующей игры выбраны."
+
+msgid "room.opponent_changed_fighter"
+msgstr "Соперник сменил бойца на {0}. Проверьте свои V-Skill и V-Trigger, прежде чем нажать «Готов»."
+
+msgid "room.change_fighter.detail"
+msgstr "Выберите бойца, затем его V-Skill и V-Trigger. Вернитесь сюда и нажмите «Готов»."
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "Этот выбор бойца недоступен. Выберите доступные костюм, цвет, V-Skill и V-Trigger."
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "Эта комбинация не допускается правилами лобби. Выберите другого бойца, костюм или цвет."
+
+msgid "selection.winner_keeps_fighter"
+msgstr "Вы выиграли последний сет, поэтому остаётесь с этим бойцом. V-Skill, V-Trigger, костюм и цвет по-прежнему можно менять."
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "Как в настоящем игровом зале, победитель сета остаётся с бойцом, которым победил. Менять можно только V-Skill, V-Trigger, костюм и цвет."
+
+msgid "menu.hint.save_ultra"
+msgstr "Сохранить V-Skill и V-Trigger"

@@ -37,14 +37,14 @@ TEST_CASE("the pick labels are the game's names, from the catalog")
 	CHECK(ColourName(100) == "EX01");
 	CHECK(ColourName(127) == "EX28");
 	// The Ultra number is the loadout (section 40), named in the game's words
-	// once it gives them, in English until then (no game runs in a test).
-	CHECK(std::string(UltraLabel(0)) == "V-Skill I \xC2\xB7 V-Trigger I");
-	CHECK(std::string(UltraLabel(2)) == "V-Skill II \xC2\xB7 V-Trigger I");
+	// once it gives them, in the game's English until then (no game runs in a test).
+	CHECK(std::string(UltraLabel(0)) == "V-SKILL I \xC2\xB7 V-TRIGGER I");
+	CHECK(std::string(UltraLabel(2)) == "V-SKILL II \xC2\xB7 V-TRIGGER I");
 	CHECK(std::string(ShortUltraLabel(1)) == "I/II");
 	CHECK(std::string(UltraLabel(4)).empty());
 	CHECK(std::string(ShortUltraLabel(-1)).empty());
 	CHECK(UltraMove(0, 3) == "Skill Two \xC2\xB7 Trigger Two");
-	CHECK(UltraMove(4, 1) == "V-Skill I \xC2\xB7 V-Trigger II"); // BSN's are unnamed
+	CHECK(UltraMove(4, 1) == "V-SKILL I \xC2\xB7 V-TRIGGER II"); // BSN's are unnamed
 	CHECK(UltraMove(0, 4).empty());
 	CHECK(UltraMove(5, 0).empty()); // not a fighter of the catalog
 }

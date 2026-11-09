@@ -158,3 +158,45 @@ msgstr "Przejdź do trybu Trening w Street Fighter V swoją postacią, przeciwko
 
 msgid "room.practice.detail"
 msgstr "Każda gra w pokoju to mecz treningowy: zdrowie i paski się odnawiają, nikt nie zostaje znokautowany, a czas nie jest ograniczony. Tak pozostaje, dopóki pokój jest otwarty. Aby grać zwykłe mecze, zamknij pokój i utwórz nowy."
+
+msgid "selection.ultra_combo"
+msgstr "V-Skill i V-Trigger"
+
+msgid "selection.ultra_combo_title"
+msgstr "V-SKILL I V-TRIGGER"
+
+msgid "selection.ultra_row.detail"
+msgstr "Lewo i Prawo zmieniają tu V-Skill i V-Trigger. Wybór pokazuje każdą opcję z jej ruchem."
+
+msgid "room.ultra.detail"
+msgstr "Wybierz tu swój V-Skill i V-Trigger na następną grę, bez otwierania Opcji stołu."
+
+msgid "room.ultra.single"
+msgstr "Ta postać ma tylko jeden V-Skill i jeden V-Trigger."
+
+msgid "postmatch.ultra.detail"
+msgstr "Lewo i Prawo zmieniają twój V-Skill i V-Trigger na następną grę. Z nowym wyborem następna gra najpierw się wczyta."
+
+msgid "postmatch.ultra.set"
+msgstr "Twój V-Skill i V-Trigger na następną grę są ustawione."
+
+msgid "room.opponent_changed_fighter"
+msgstr "Przeciwnik zmienił postać na {0}. Sprawdź swój V-Skill i V-Trigger, zanim zgłosisz gotowość."
+
+msgid "room.change_fighter.detail"
+msgstr "Wybierz postać, a potem jej V-Skill i V-Trigger. Wróć tutaj i zgłoś gotowość."
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "Ten wybór postaci jest niedostępny. Wybierz dostępny strój, kolor, V-Skill i V-Trigger."
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "Ta kombinacja jest niedostępna przy zasadach pokoju. Wybierz inną postać, strój lub kolor."
+
+msgid "selection.winner_keeps_fighter"
+msgstr "Wygrana w ostatnim secie: zostajesz przy tej postaci. Nadal możesz zmienić V-Skill, V-Trigger, kostium i kolor."
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "Jak w prawdziwym salonie gier zwycięzca seta zostaje przy postaci, którą wygrał. Zmienić można tylko V-Skill, V-Trigger, kostium i kolor."
+
+msgid "menu.hint.save_ultra"
+msgstr "Zapisz V-Skill i V-Trigger"

@@ -194,13 +194,15 @@ std::string Pick(const std::string& args)
 	pick.pick.fighter = *id;
 	pick.pick.costume = fighter.costume < 0 ? 0 : fighter.costume;
 	pick.pick.color = fighter.colour < 0 ? 0 : fighter.colour;
-	picks::SetLoadout(pick.pick, fighter.loadout);
+	// ParseSetup takes only 1 or 2 for each, so the numbers make a loadout.
+	const picks::Loadout loadout = *picks::LoadoutOfNumbers(fighter.vSkill, fighter.vTrigger);
+	picks::SetLoadout(pick.pick, loadout);
 	// The store fits the pick to the catalog, as for the shell's picks: a
 	// V-Skill or V-Trigger the fighter does not have becomes I.
 	const PlayerPick asked = pick;
 	pick = SetPick(pick);
 	const bool fitted = pick.pick.costume != asked.pick.costume || pick.pick.color != asked.pick.color ||
-		picks::LoadoutOf(pick.pick) != fighter.loadout;
+		picks::LoadoutOf(pick.pick) != loadout;
 	if (fitted) mod::Log("room: pick %s fitted to %s", PickText(asked).c_str(), PickText(pick).c_str());
 	return "ok " + PickText(pick) + (fitted ? " (fitted)" : "");
 }

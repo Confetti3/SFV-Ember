@@ -24,10 +24,14 @@
 // (the loadout) it starts on the V-Skill row. A fighter with one V-Skill or
 // one V-Trigger shows that row, but it cannot change.
 //
+// The shell's other way to change the pick, the table page's Ultra and
+// Appearance rows and the post-match prompt's Ultra, is StepTableSelection.
+//
 // Render thread, inside the shell's frame.
 
 #include "ember/SfvPick.hxx"
 
+#include "ui/ApplicationShell.hxx"
 #include "ui/GameMenu.hxx"
 
 #include <cstdint>
@@ -51,12 +55,17 @@ public:
 	// changed pick back to SfvPick.
 	void Draw(bool editable, bool stageEditable, const std::string& error, const std::vector<std::int64_t>& unavailableStages);
 
-private:
-	std::vector<sf4e::ui::MenuEntry> Rows(const PlayerPick& pick, bool editable, bool stageEditable,
-		const std::vector<int>& stageChoices) const;
+	// What Draw shows and does, without drawing, so the pick screen's
+	// journeys can be walked without a frame. The rows for `pick`, with the
+	// stage row (`withStage`, the player's screen; the dummy's has none)
+	// offering `stageChoices`.
+	static std::vector<sf4e::ui::MenuEntry> Rows(const PlayerPick& pick, bool editable, bool withStage, bool stageEditable,
+		const std::vector<int>& stageChoices);
 	// The pick with the row's change made; false when the action changes
 	// nothing. A stage is one of `stageChoices`.
 	static bool Apply(const sf4e::ui::MenuAction& action, PlayerPick& pick, const std::vector<int>& stageChoices);
+
+private:
 	// The pane beside the rows, for the focused row, with `note` (why the
 	// focused choice of an open choice cannot be chosen) under it.
 	static void DrawPreview(const PlayerPick& pick, const std::string& focus, const std::string& note);
@@ -71,5 +80,14 @@ private:
 	// empty: a choice made on that row closes the screen again.
 	std::string openOn_;
 };
+
+// The table page's Ultra and Appearance rows, and the post-match prompt's
+// Ultra, step this player's stored pick (SfvPick) by `step.delta`: the Ultra
+// through the fighter's own loadouts in Ultra number order (LoadoutIndices),
+// while the runtime lets it change (canChangeUltra, which holds over the WIN
+// until the prompt is answered); the colour through the costume's colours
+// this player can ready, while the pick may change (canEditSelection). False,
+// and nothing stored, for a field that cannot change now.
+bool StepTableSelection(const sf4e::ui::ShellAction::SelectionStep& step, bool canEditSelection, bool canChangeUltra);
 
 } // namespace sfve::adapter

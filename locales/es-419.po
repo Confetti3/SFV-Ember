@@ -158,3 +158,45 @@ msgstr "Entra al modo Entrenamiento de Street Fighter V con tu luchador, contra 
 
 msgid "room.practice.detail"
 msgstr "Cada partida de la sala es una partida de práctica: la salud y las barras se rellenan, nadie queda fuera de combate y no hay límite de tiempo. Esto se mantiene mientras la sala esté abierta. Para jugar partidas normales, cierra la sala y crea una nueva."
+
+msgid "selection.ultra_combo"
+msgstr "V-Skill y V-Trigger"
+
+msgid "selection.ultra_combo_title"
+msgstr "V-SKILL Y V-TRIGGER"
+
+msgid "selection.ultra_row.detail"
+msgstr "Izquierda y Derecha cambian aquí V-Skill y V-Trigger. Seleccionar muestra cada opción con su técnica."
+
+msgid "room.ultra.detail"
+msgstr "Elige aquí tu V-Skill y tu V-Trigger para la siguiente partida, sin abrir las Opciones de la mesa."
+
+msgid "room.ultra.single"
+msgstr "Este luchador solo tiene una opción de V-Skill y una de V-Trigger."
+
+msgid "postmatch.ultra.detail"
+msgstr "Izquierda y Derecha cambian tu V-Skill y tu V-Trigger para la siguiente partida. Con una opción nueva, la siguiente partida carga primero."
+
+msgid "postmatch.ultra.set"
+msgstr "Ya elegiste tu V-Skill y tu V-Trigger para la siguiente partida."
+
+msgid "room.opponent_changed_fighter"
+msgstr "Tu oponente cambió a {0}. Revisa tu V-Skill y tu V-Trigger antes de marcar Listo."
+
+msgid "room.change_fighter.detail"
+msgstr "Elige un luchador y luego su V-Skill y su V-Trigger. Vuelve y marca Listo."
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "Esta selección de luchador no está disponible. Elige un traje, color, V-Skill y V-Trigger disponibles."
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "Esta combinación no está disponible con las reglas de la sala. Elige otro luchador, traje o color."
+
+msgid "selection.winner_keeps_fighter"
+msgstr "Ganaste el último set, así que conservas este luchador. Todavía puedes cambiar V-Skill, V-Trigger, traje y color."
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "Como en un arcade de verdad, quien gana el set sigue con el luchador con el que ganó. Solo pueden cambiar V-Skill, V-Trigger, traje y color."
+
+msgid "menu.hint.save_ultra"
+msgstr "Guardar V-Skill y V-Trigger"

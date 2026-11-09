@@ -161,6 +161,12 @@ TEST_CASE("which stages this copy has installed is its own: the room hears them,
 	CHECK_FALSE(StageInstalled(picks::kRandomStage));
 	CHECK(MissingStages() == std::vector<std::int64_t>{kUninstalledStage});
 	CHECK(ember::game::Game().state.MissingStages() == MissingStages());
+	// The library takes the list as the game gives it: ascending ids, each
+	// once. And SFV's copies can lack stages, so the room carries the list.
+	const std::vector<std::int64_t> missing = ember::game::Game().state.MissingStages();
+	CHECK(std::is_sorted(missing.begin(), missing.end()));
+	CHECK(std::adjacent_find(missing.begin(), missing.end()) == missing.end());
+	CHECK(ember::Catalog().stagesCanBeMissing);
 	// The stage row: Random, then the universe less what the runtime says is
 	// unavailable (this copy's own missing stages, and at a table the
 	// opponent's as well).
@@ -174,7 +180,7 @@ TEST_CASE("a room's match launches its fighters, stage, rounds and time by the g
 	FillTestCatalog();
 	RoomMatch match = MatchOf(2, 0, 1, 5, 60);
 	match.picks[1] = PickOf(0, 4, 101); // RYU's EX02 in costume 4
-	const std::optional<mod::MatchPicks> picks = LaunchPicks(match);
+	const std::optional<mod::MatchPicks> picks = LaunchPicks(match).picks;
 	REQUIRE(picks);
 	CHECK(picks->target == mod::LaunchTarget::Versus);
 	CHECK(picks->players[0].fighter == L"KEN");
@@ -188,31 +194,31 @@ TEST_CASE("a room's match launches its fighters, stage, rounds and time by the g
 	CHECK(picks->rules.timeFrames == 60 * 60);
 
 	match.picks[1] = PickOf(0, 4, 2);
-	CHECK_FALSE(LaunchPicks(match));                // a colour the costume lacks
+	CHECK_FALSE(LaunchPicks(match).picks);                // a colour the costume lacks
 	match.picks[1] = PickOf(5);
-	CHECK_FALSE(LaunchPicks(match));                // a fighter outside the roster
-	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 4)));     // a stage outside the list
-	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, picks::kRandomStage))); // Random is resolved before it travels
-	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 99))); // a room's endless rounds
-	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, 9998))); // longer than SFV's clock holds
+	CHECK_FALSE(LaunchPicks(match).picks);                // a fighter outside the roster
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 4)).picks);     // a stage outside the list
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, picks::kRandomStage)).picks); // Random is resolved before it travels
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 99)).picks); // a room's endless rounds
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, 9998)).picks); // longer than SFV's clock holds
 	// The room's longest time is the game's no time limit, and a Practice
 	// room's match says it is one.
-	const std::optional<mod::MatchPicks> endless = LaunchPicks(MatchOf(0, 0, 0, 3, 9999));
+	const std::optional<mod::MatchPicks> endless = LaunchPicks(MatchOf(0, 0, 0, 3, 9999)).picks;
 	REQUIRE(endless);
 	CHECK(endless->rules.timeFrames == mod::MatchRules::kNoTimeLimit);
 	CHECK_FALSE(endless->practice);
 	RoomMatch practice = MatchOf(0, 0, 0, 1, sf4e::room::PracticeRoundTime);
 	practice.practice = true;
-	const std::optional<mod::MatchPicks> practised = LaunchPicks(practice);
+	const std::optional<mod::MatchPicks> practised = LaunchPicks(practice).picks;
 	REQUIRE(practised);
 	CHECK(practised->practice);
 	CHECK(practised->rules.timeFrames == mod::MatchRules::kNoTimeLimit);
-	CHECK(LaunchPicks(MatchOf(0, 0, 0, 7, 300)));
-	CHECK(LaunchPicks(MatchOf(0, 0, 0, 1, 30)));
-	CHECK(LaunchPicks(MatchOf(0, 0, 0, 3, 546)));
-	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 2)));       // an even round count
-	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, 29)));   // shorter than SFV's shortest round
-	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, -1)));   // no time SFV plays
+	CHECK(LaunchPicks(MatchOf(0, 0, 0, 7, 300)).picks);
+	CHECK(LaunchPicks(MatchOf(0, 0, 0, 1, 30)).picks);
+	CHECK(LaunchPicks(MatchOf(0, 0, 0, 3, 546)).picks);
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 2)).picks);       // an even round count
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, 29)).picks);   // shorter than SFV's shortest round
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, -1)).picks);   // no time SFV plays
 }
 
 TEST_CASE("a room's match never launches a stage, fighter or costume this copy has not installed")
@@ -220,23 +226,34 @@ TEST_CASE("a room's match never launches a stage, fighter or costume this copy h
 	FillTestCatalog();
 	// The spec has them all, so they are valid on the wire; this copy lacks
 	// their packages, so it refuses to launch them and says which.
-	const RoomMatch onMissingStage = MatchOf(0, 1, kUninstalledStage);
-	CHECK_FALSE(LaunchPicks(onMissingStage));
-	CHECK(LaunchRefusal(onMissingStage) == "stage S26 is not installed here");
+	using ember::game::EntryRefusal;
+	const MatchLaunch onMissingStage = LaunchPicks(MatchOf(0, 1, kUninstalledStage));
+	CHECK_FALSE(onMissingStage.picks);
+	CHECK(onMissingStage.refusal.reason == EntryRefusal::StageNotInstalled);
+	CHECK(onMissingStage.refusal.log == "stage S26 is not installed here");
 	RoomMatch missingFighter = MatchOf(0, 1, 0);
 	missingFighter.picks[1] = PickOf(3, 3, 5); // CMY
-	CHECK_FALSE(LaunchPicks(missingFighter));
-	CHECK(LaunchRefusal(missingFighter) == "P2's fighter CMY is not installed here");
+	const MatchLaunch withoutFighter = LaunchPicks(missingFighter);
+	CHECK_FALSE(withoutFighter.picks);
+	CHECK(withoutFighter.refusal.reason == EntryRefusal::UnsupportedMatch);
+	CHECK(withoutFighter.refusal.log == "P2's fighter CMY is not installed here");
 	RoomMatch missingCostume = MatchOf(0, 1, 0);
 	missingCostume.picks[0] = PickOf(4, 1, 0); // BSN's costume 1
-	CHECK_FALSE(LaunchPicks(missingCostume));
-	CHECK(LaunchRefusal(missingCostume) == "P1's BSN costume 1 is not installed here");
+	const MatchLaunch withoutCostume = LaunchPicks(missingCostume);
+	CHECK_FALSE(withoutCostume.picks);
+	CHECK(withoutCostume.refusal.reason == EntryRefusal::UnsupportedMatch);
+	CHECK(withoutCostume.refusal.log == "P1's BSN costume 1 is not installed here");
+	// A stage outside the universe is not the game's at all, and rounds SFV
+	// cannot play are no match it plays.
+	CHECK(LaunchPicks(MatchOf(0, 1, 4)).refusal.reason == EntryRefusal::UnsupportedStage);
+	CHECK(LaunchPicks(MatchOf(0, 1, 2, 2)).refusal.reason == EntryRefusal::UnsupportedMatch);
 	// The same match on an installed stage, in installed looks, launches.
-	CHECK(LaunchRefusal(MatchOf(0, 1, 2)).empty());
-	CHECK(LaunchPicks(MatchOf(0, 1, 2)));
+	const MatchLaunch installed = LaunchPicks(MatchOf(0, 1, 2));
+	CHECK(installed.picks);
+	CHECK(installed.refusal.log.empty());
 	RoomMatch installedLooks = MatchOf(0, 1, 2);
 	installedLooks.picks[0] = PickOf(4, 0, 1);
-	CHECK(LaunchPicks(installedLooks));
+	CHECK(LaunchPicks(installedLooks).picks);
 }
 
 TEST_CASE("the build a room checks carries a fingerprint of the game's content lists")

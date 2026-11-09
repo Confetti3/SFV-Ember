@@ -125,12 +125,12 @@ TEST_CASE("Random rolls only stages both seated players have, each as likely, an
 	random.pick = PickOf(0);
 	random.stage = picks::kRandomStage;
 	for (int i = 0; i < 200; i++) {
-		const std::string code = OfflineStageCode(random);
+		const std::string code = OfflineStageCode(random.stage);
 		CHECK((code == "S01" || code == "S02" || code == "S25"));
 	}
 	PlayerPick chosen = random;
 	chosen.stage = 2;
-	CHECK(OfflineStageCode(chosen) == "S25");
+	CHECK(OfflineStageCode(chosen.stage) == "S25");
 }
 
 TEST_CASE("this player's stored stage is Random or one this copy has installed")
@@ -201,7 +201,7 @@ TEST_CASE("this player readies only what the game lets them pick; the opponent's
 	// KEN against RYU's EX02 in costume 4 launches as picked.
 	RoomMatch match = MatchOf(2, 0, 0);
 	match.picks[1] = PickOf(0, 4, 101);
-	const std::optional<mod::MatchPicks> picks = LaunchPicks(match);
+	const std::optional<mod::MatchPicks> picks = LaunchPicks(match).picks;
 	REQUIRE(picks);
 	CHECK(picks->players[0].fighter == L"KEN");
 	CHECK(picks->players[1].fighter == L"RYU");

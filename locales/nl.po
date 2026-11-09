@@ -158,3 +158,45 @@ msgstr "Ga naar de Training-modus van Street Fighter V met je personage, tegen d
 
 msgid "room.practice.detail"
 msgstr "Elk spel in de kamer is een oefenwedstrijd: gezondheid en meters vullen zich aan, niemand gaat knock-out en er is geen tijdslimiet. Dat blijft zo zolang de kamer open is. Sluit de kamer en maak een nieuwe om normale wedstrijden te spelen."
+
+msgid "selection.ultra_combo"
+msgstr "V-Skill en V-Trigger"
+
+msgid "selection.ultra_combo_title"
+msgstr "V-SKILL EN V-TRIGGER"
+
+msgid "selection.ultra_row.detail"
+msgstr "Links en Rechts wisselen hier V-Skill en V-Trigger. Selecteren toont elke keuze met zijn move."
+
+msgid "room.ultra.detail"
+msgstr "Kies hier je V-Skill en V-Trigger voor het volgende potje, zonder de Tafelopties te openen."
+
+msgid "room.ultra.single"
+msgstr "Deze vechter heeft één V-Skill en één V-Trigger."
+
+msgid "postmatch.ultra.detail"
+msgstr "Links en Rechts wisselen je V-Skill en V-Trigger voor het volgende potje. Met een nieuwe keuze laadt het volgende potje eerst."
+
+msgid "postmatch.ultra.set"
+msgstr "Je V-Skill en V-Trigger voor het volgende potje staan vast."
+
+msgid "room.opponent_changed_fighter"
+msgstr "De tegenstander koos {0}. Controleer je V-Skill en V-Trigger voordat je klaar meldt."
+
+msgid "room.change_fighter.detail"
+msgstr "Kies een personage en daarna zijn V-Skill en V-Trigger. Kom hier terug en kies Klaar melden."
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "Deze personagekeuze is niet beschikbaar. Kies een beschikbare outfit, kleur, V-Skill en V-Trigger."
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "Deze combinatie is niet beschikbaar met de kamerregels. Kies een ander personage, een andere outfit of kleur."
+
+msgid "selection.winner_keeps_fighter"
+msgstr "Je hebt de laatste set gewonnen, dus je houdt deze vechter. V-Skill, V-Trigger, kostuum en kleur kun je nog wel veranderen."
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "Zoals in een echte speelhal blijft de winnaar van een set bij de vechter waarmee hij won. Alleen V-Skill, V-Trigger, kostuum en kleur kunnen veranderen."
+
+msgid "menu.hint.save_ultra"
+msgstr "V-Skill en V-Trigger opslaan"

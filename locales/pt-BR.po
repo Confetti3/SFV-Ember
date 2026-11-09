@@ -158,3 +158,45 @@ msgstr "Ir para o modo Treino do Street Fighter V com seu lutador, contra o dumm
 
 msgid "room.practice.detail"
 msgstr "Toda partida da sala é uma partida de prática: a vida e as barras se enchem, ninguém sofre nocaute e não há limite de tempo. Isso vale enquanto a sala estiver aberta. Para jogar partidas normais, feche a sala e crie uma nova."
+
+msgid "selection.ultra_combo"
+msgstr "V-Skill e V-Trigger"
+
+msgid "selection.ultra_combo_title"
+msgstr "V-SKILL E V-TRIGGER"
+
+msgid "selection.ultra_row.detail"
+msgstr "Esquerda e Direita trocam aqui V-Skill e V-Trigger. Selecionar mostra cada opção com seu golpe."
+
+msgid "room.ultra.detail"
+msgstr "Escolha aqui V-Skill e V-Trigger para a próxima partida, sem abrir as Opções da mesa."
+
+msgid "room.ultra.single"
+msgstr "Este lutador tem uma só opção de V-Skill e de V-Trigger."
+
+msgid "postmatch.ultra.detail"
+msgstr "Esquerda e Direita trocam V-Skill e V-Trigger para a próxima partida. Com uma opção nova, a próxima partida carrega antes."
+
+msgid "postmatch.ultra.set"
+msgstr "V-Skill e V-Trigger para a próxima partida estão definidos."
+
+msgid "room.opponent_changed_fighter"
+msgstr "O oponente trocou para {0}. Confira V-Skill e V-Trigger antes de marcar Pronto."
+
+msgid "room.change_fighter.detail"
+msgstr "Escolha um lutador e depois V-Skill e V-Trigger. Volte e marque Pronto."
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "Esta seleção de lutador não está disponível. Escolha um traje, cor, V-Skill e V-Trigger disponíveis."
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "Esta combinação não está disponível pelas regras da sala. Escolha outro lutador, traje ou cor."
+
+msgid "selection.winner_keeps_fighter"
+msgstr "Você venceu o último set, então mantém este lutador. Ainda pode mudar V-Skill, V-Trigger, traje e cor."
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "Como num fliperama de verdade, quem vence o set continua com o lutador com que venceu. Só V-Skill, V-Trigger, traje e cor podem mudar."
+
+msgid "menu.hint.save_ultra"
+msgstr "Salvar V-Skill e V-Trigger"

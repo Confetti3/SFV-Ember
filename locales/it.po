@@ -158,3 +158,45 @@ msgstr "Entra nella modalità Allenamento di Street Fighter V con il tuo lottato
 
 msgid "room.practice.detail"
 msgstr "Ogni partita nella sala è una partita di pratica: salute e barre si ricaricano, nessuno va K.O. e non c'è limite di tempo. Resta così finché la sala è aperta. Per giocare partite normali, chiudi la sala e creane una nuova."
+
+msgid "selection.ultra_combo"
+msgstr "V-Skill e V-Trigger"
+
+msgid "selection.ultra_combo_title"
+msgstr "V-SKILL E V-TRIGGER"
+
+msgid "selection.ultra_row.detail"
+msgstr "Sinistra e Destra cambiano qui V-Skill e V-Trigger. Seleziona mostra ogni scelta con la sua mossa."
+
+msgid "room.ultra.detail"
+msgstr "Scegli qui V-Skill e V-Trigger per la prossima partita, senza aprire le Opzioni del tavolo."
+
+msgid "room.ultra.single"
+msgstr "Questo lottatore ha una sola scelta di V-Skill e di V-Trigger."
+
+msgid "postmatch.ultra.detail"
+msgstr "Sinistra e Destra cambiano V-Skill e V-Trigger per la prossima partita. Con una nuova scelta, la prossima partita si carica prima."
+
+msgid "postmatch.ultra.set"
+msgstr "V-Skill e V-Trigger per la prossima partita sono scelti."
+
+msgid "room.opponent_changed_fighter"
+msgstr "L'avversario è passato a {0}. Controlla V-Skill e V-Trigger prima di metterti pronto."
+
+msgid "room.change_fighter.detail"
+msgstr "Scegli un personaggio, poi V-Skill e V-Trigger. Torna qui e seleziona Mettiti pronto."
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "Selezione personaggio non disponibile. Scegli costume, colore, V-Skill e V-Trigger disponibili."
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "Combinazione non disponibile con le regole della sala. Scegli un altro personaggio, costume o colore."
+
+msgid "selection.winner_keeps_fighter"
+msgstr "Hai vinto l'ultimo set, quindi tieni questo lottatore. Puoi ancora cambiare V-Skill, V-Trigger, costume e colore."
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "Come in una vera sala giochi, chi vince il set resta con il lottatore con cui ha vinto. Possono cambiare solo V-Skill, V-Trigger, costume e colore."
+
+msgid "menu.hint.save_ultra"
+msgstr "Salva V-Skill e V-Trigger"

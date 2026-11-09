@@ -114,11 +114,11 @@ inline sf4e::selection::Pick PickOf(int fighter, int costume = 0, int color = 0,
 	return pick;
 }
 
-// The loadouts by their parts' numerals.
-constexpr picks::Loadout kOneOne{picks::VSkill::I, picks::VTrigger::I};
-constexpr picks::Loadout kOneTwo{picks::VSkill::I, picks::VTrigger::II};
-constexpr picks::Loadout kTwoOne{picks::VSkill::II, picks::VTrigger::I};
-constexpr picks::Loadout kTwoTwo{picks::VSkill::II, picks::VTrigger::II};
+// The loadouts by their parts' numerals: V-Skill, then V-Trigger.
+constexpr picks::Loadout kOneOne{{0, 0}};
+constexpr picks::Loadout kOneTwo{{0, 1}};
+constexpr picks::Loadout kTwoOne{{1, 0}};
+constexpr picks::Loadout kTwoTwo{{1, 1}};
 
 // A match of the fighters in their first costume and colour.
 inline adapter::RoomMatch MatchOf(int p1, int p2, std::int64_t stage, int rounds = 3, int seconds = 99)

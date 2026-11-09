@@ -158,3 +158,45 @@ msgstr "用你的角色进入《街头霸王V》的训练模式，对手是你�
 
 msgid "room.practice.detail"
 msgstr "房间内的每场对战都是练习对战：体力和能量槽会恢复，双方都不会被击倒，没有时间限制。房间开启期间不会改变。要进行普通对战，请关闭房间并重新创建。"
+
+msgid "selection.ultra_combo"
+msgstr "V技能与V触发"
+
+msgid "selection.ultra_combo_title"
+msgstr "V技能与V触发"
+
+msgid "selection.ultra_row.detail"
+msgstr "左右键在这里切换V技能和V触发。选择会显示每个选项及其招式名称。"
+
+msgid "room.ultra.detail"
+msgstr "在这里选择下一局的V技能和V触发，不用打开对战席选项。"
+
+msgid "room.ultra.single"
+msgstr "该角色只有一个V技能和一个V触发。"
+
+msgid "postmatch.ultra.detail"
+msgstr "左右键切换下一局的V技能和V触发。换了新的选择，下一局会先加载。"
+
+msgid "postmatch.ultra.set"
+msgstr "下一局的V技能和V触发已选定。"
+
+msgid "room.opponent_changed_fighter"
+msgstr "对手换成了{0}。准备前请检查你的V技能和V触发。"
+
+msgid "room.change_fighter.detail"
+msgstr "选择角色，然后选择V技能和V触发。返回此处并选择准备。"
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "此角色选择不可用。请选择可用的服装、颜色、V技能和V触发。"
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "此组合不符合房间规则。请选择其他角色、服装或颜色。"
+
+msgid "selection.winner_keeps_fighter"
+msgstr "你赢了上一局，因此保留这个角色。仍可更改V技能、V触发、服装和颜色。"
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "就像真正的街机厅，一局的胜者继续使用获胜的角色，只能更改V技能、V触发、服装和颜色。"
+
+msgid "menu.hint.save_ultra"
+msgstr "保存V技能和V触发"

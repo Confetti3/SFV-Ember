@@ -5,8 +5,8 @@
 // fighter has, as the game's name assets list them (mod/GameContent's pick
 // space, without names, installs or ownership), and SFV's rules over it. A
 // pick's V-Skill and V-Trigger are its Loadout, which travels in the shared
-// pick's `ultra` slot; LoadoutOf and SetLoadout are the only code that reads
-// or writes that slot (EMBER_LIBRARY.md section 40). Every copy of the
+// pick's `ultra` slot; LoadoutIn, LoadoutOf and SetLoadout are the only code
+// that reads or writes that slot (EMBER_LIBRARY.md section 40). Every copy of the
 // same game data has the same pick space, and the build a room checks carries
 // its fingerprint, so two programs that hold it judge a pick alike: the game
 // (SfvCatalog, which adds this copy's installs and ownership) and SFV's room
@@ -16,7 +16,9 @@
 // No game code: the room host builds it on Linux with g++ alone (C++17).
 
 #include "common/SelectionPick.hxx"
+#include "common/StageCatalog.hxx"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -35,38 +37,40 @@ namespace sfve::picks {
 constexpr const char* kMatchBuild = "sfv-ember/13173604/0.5";
 
 // The stage choice that stands for Random (GameCatalog::randomStage): the
-// library's selection::RandomStageId, never a stage on the wire. P1's copy
-// turns it into a stage both players have before it is sent.
-constexpr int kRandomStage = 255;
+// library's own selection::RandomStageId, never a stage on the wire. P1's
+// copy turns it into a stage both players have before it is sent.
+constexpr int kRandomStage = sf4e::selection::RandomStageId;
 
-// A fighter's V-Skill and V-Trigger choices, numbered as the game numbers
-// them in its per-fighter record (VersusLaunch's CharPkg, +56 and +48): I is
-// 0 and II is 1. The game holds no third of either (its select screen keeps
-// V-Trigger below 2, rva 0x59300D).
-enum class VSkill : std::uint8_t { I, II };
-enum class VTrigger : std::uint8_t { I, II };
-constexpr int kPartChoices = 2;
-
-// What a player takes into the battle besides their look.
-struct Loadout {
-	VSkill vSkill = VSkill::I;
-	VTrigger vTrigger = VTrigger::I;
-};
-constexpr bool operator==(Loadout a, Loadout b) { return a.vSkill == b.vSkill && a.vTrigger == b.vTrigger; }
-constexpr bool operator!=(Loadout a, Loadout b) { return !(a == b); }
-
-// The two parts, for code that treats them alike (a pick screen row each, a
-// fitting each), in SFV's own order: V-Skill, then V-Trigger.
-enum class LoadoutPart { VSkill, VTrigger };
+// The two parts of a loadout, in SFV's own order: V-Skill, then V-Trigger.
+// Each indexes a Loadout's choices, so code that treats the parts alike (a
+// pick screen row each, a fitting each) walks kLoadoutParts.
+enum LoadoutPart : std::uint8_t { VSkill, VTrigger };
 constexpr LoadoutPart kLoadoutParts[] = {LoadoutPart::VSkill, LoadoutPart::VTrigger};
 
-// A part's number in the loadout (0 or 1), and the loadout with that part
-// set to `number`; none for a number that is no choice.
-int PartNumber(Loadout loadout, LoadoutPart part);
-std::optional<Loadout> WithPart(Loadout loadout, LoadoutPart part, int number);
-// The loadout of two part numbers (the launch's and a replay's form); none
-// when either is no choice.
+// A part has at most two choices, numbered as the game numbers them in its
+// per-fighter record (VersusLaunch's CharPkg, +56 and +48): I is 0 and II
+// is 1. The game holds no third of either (its select screen keeps V-Trigger
+// below 2, rva 0x59300D).
+constexpr int kPartChoices = 2;
+
+// What a player takes into the battle besides their look: the choice number
+// of each part, by LoadoutPart.
+struct Loadout {
+	std::array<std::uint8_t, 2> choice{};
+};
+// Element by element: std::array's own comparison is not constexpr before
+// C++20, and the room host builds this header as C++17.
+constexpr bool operator==(Loadout a, Loadout b)
+{
+	return a.choice[VSkill] == b.choice[VSkill] && a.choice[VTrigger] == b.choice[VTrigger];
+}
+constexpr bool operator!=(Loadout a, Loadout b) { return !(a == b); }
+
+// The loadout of two choice numbers (the launch's, the pipe's and a replay's
+// form); none when either is no choice.
 std::optional<Loadout> LoadoutOfNumbers(int vSkill, int vTrigger);
+// "I" or "II", for choice number 0 or 1; empty for any other.
+const char* Numeral(int number);
 
 // The loadout's place in the shared pick's `ultra` slot, 0 to 3 (V-Skill
 // times two, plus V-Trigger): the catalog's ultraChoices is kLoadoutChoices.
@@ -74,7 +78,7 @@ std::optional<Loadout> LoadoutOfNumbers(int vSkill, int vTrigger);
 constexpr int kLoadoutChoices = kPartChoices * kPartChoices;
 int LoadoutIndex(Loadout loadout);
 std::optional<Loadout> LoadoutAt(int index);
-// The one reader and the one writer of the pick's `ultra` slot. LoadoutIn
+// The two readers and the one writer of the pick's `ultra` slot. LoadoutIn
 // is none for a slot that holds no loadout (ValidPick's question);
 // LoadoutOf reads such a slot as V-Skill I and V-Trigger I, which is what
 // FitPick makes of it.

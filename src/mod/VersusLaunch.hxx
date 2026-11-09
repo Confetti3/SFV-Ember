@@ -17,8 +17,6 @@
 //     into that data object through its own setters.
 // The game then loads the stage and fighters and enters the battle itself.
 
-#include "ember/SfvPickSpace.hxx"
-
 #include <stdint.h>
 
 #include <functional>
@@ -35,19 +33,22 @@ enum class LaunchTarget {
 
 // An empty fighter, a negative costume or colour, or an empty stage keeps
 // what the mode's data object already holds (the profile's defaults). The
-// loadout never does: every launch writes both players' V-Skill and
-// V-Trigger, so no battle inherits them from an earlier one.
+// V-Skill and V-Trigger never do: every launch writes both players' choices,
+// so no battle inherits them from an earlier one.
 struct FighterPick {
 	std::wstring fighter; // the game's three-letter code, e.g. L"KEN"
 	int costume = -1;
 	int colour = -1;
-	picks::Loadout loadout{};
+	// The game's numbers for the V-Skill and V-Trigger: 0 is I, 1 is II
+	// (SfvCatalog's FighterPickOf makes them from a pick's loadout).
+	int vSkill = 0;
+	int vTrigger = 0;
 };
 
-// The pick's costume and colour (where given) and its loadout, into the
-// game's per-fighter record (a CharPkg, sfv::jump::kCharPkgSize bytes): the
-// fields WriteFighter sets besides the code, which the game's own setters
-// then copy. No game code.
+// The pick's costume and colour (where given), its V-Skill and its
+// V-Trigger, into the game's per-fighter record (a CharPkg,
+// sfv::jump::kCharPkgSize bytes): the fields WriteFighter sets besides the
+// code, which the game's own setters then copy. No game code.
 void FillCharPkg(uint8_t* chara, const FighterPick& pick);
 
 // The match's rules, as the versus battle settings offer them; negative

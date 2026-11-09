@@ -125,7 +125,7 @@ public:
 			return;
 		}
 		const PlayerPick player = CurrentPick();
-		LaunchTraining(FighterPickOf(player.pick), FighterPickOf(CurrentDummy().pick), Wide(OfflineStageCode(player)),
+		LaunchTraining(FighterPickOf(player.pick), FighterPickOf(CurrentDummy().pick), Wide(OfflineStageCode(player.stage)),
 			"a room's Wait in Training", "room.training.unavailable");
 	}
 	bool ControlsAvailable() override { return ReadTrainingView().available; }
@@ -201,8 +201,9 @@ void LaunchTraining(const mod::FighterPick& player, const mod::FighterPick& dumm
 	picks.players[0] = player;
 	picks.players[1] = dummy;
 	picks.rules.stage = stage;
-	mod::Log("training: %s: %ls (%s) vs %ls (%s) on %ls", why, player.fighter.c_str(), sfve::picks::LoadoutText(player.loadout).c_str(),
-		dummy.fighter.c_str(), sfve::picks::LoadoutText(dummy.loadout).c_str(), stage.c_str());
+	// The V-Skill and V-Trigger as the pipe names them, 1 for I and 2 for II.
+	mod::Log("training: %s: %ls (vskill %d vtrigger %d) vs %ls (vskill %d vtrigger %d) on %ls", why, player.fighter.c_str(),
+		player.vSkill + 1, player.vTrigger + 1, dummy.fighter.c_str(), dummy.vSkill + 1, dummy.vTrigger + 1, stage.c_str());
 	mod::QueueLaunch(picks, [notice](const std::string& failure) {
 		mod::Log("training: the Training battle could not be loaded: %s", failure.c_str());
 		facade::PushAlert(sf4e::loc::T(notice), sf4e::NoticeSeverity::Warning);

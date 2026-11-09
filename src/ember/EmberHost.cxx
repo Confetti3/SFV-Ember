@@ -36,6 +36,9 @@ enum class HostState { WaitingForMenu, WaitingForContent, Running, Refused, Stop
 std::atomic<HostState> s_state{HostState::WaitingForMenu};
 std::string s_refusal; // why the runtime did not start; written before Refused is published
 
+// A wait for the content lists at the main menu longer than this is logged.
+constexpr ULONGLONG kLongContentWaitMs = 60 * 1000;
+
 const char* StateName(HostState state)
 {
 	switch (state) {
@@ -184,7 +187,20 @@ bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 	mod::MarkUnowned(lists, settings.unowned);
 	const int marked = mod::MarkUninstalled(lists, settings.uninstalled);
 	if (lists.fighters.empty() || lists.stages.empty()) {
-		if (s_state != HostState::WaitingForContent) mod::Log("ember: waiting for the game's content lists");
+		// The wait has no end (an asset may yet load), but a long one is
+		// said once, so a log shows the runtime never started and why
+		// (GameContent's lines name the missing table or asset).
+		static ULONGLONG waitingSince = 0;
+		static bool waitLogged = false;
+		if (s_state != HostState::WaitingForContent) {
+			mod::Log("ember: waiting for the game's content lists");
+			waitingSince = readStarted;
+		}
+		if (!waitLogged && readStarted - waitingSince >= kLongContentWaitMs) {
+			mod::Log("ember: still waiting for the game's content lists after %llu s at the main menu; Ember's runtime starts "
+				"once they come", (readStarted - waitingSince) / 1000);
+			waitLogged = true;
+		}
 		s_state = HostState::WaitingForContent;
 		return true;
 	}

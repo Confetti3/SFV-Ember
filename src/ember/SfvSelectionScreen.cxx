@@ -116,13 +116,15 @@ std::vector<int> PartNumbers(std::int64_t fighter, picks::LoadoutPart part)
 // game's name for its move; one the fighter has only one of cannot change.
 MenuEntry PartRow(const LoadoutRow& row, const sf4e::selection::Pick& pick, bool editable, const char* adjusts)
 {
-	const int chosen = picks::PartNumber(picks::LoadoutOf(pick), row.part);
+	const int chosen = picks::LoadoutOf(pick).choice[row.part];
 	const std::vector<int> numbers = PartNumbers(pick.fighter, row.part);
 	std::vector<MenuChoice> choices;
 	for (int number : numbers) {
-		choices.push_back({OptionId(number), Numeral(number), ChoiceText(number, MoveName(pick.fighter, row.part, number)), editable});
+		choices.push_back(
+			{OptionId(number), picks::Numeral(number), ChoiceText(number, MoveName(pick.fighter, row.part, number)), editable});
 	}
-	MenuEntry entry = sf4e::ui::Value(row.id, PartLabel(row.part), Numeral(chosen), loc::T(adjusts), editable && numbers.size() > 1);
+	MenuEntry entry =
+		sf4e::ui::Value(row.id, PartLabel(row.part), picks::Numeral(chosen), loc::T(adjusts), editable && numbers.size() > 1);
 	entry.choices = std::move(choices);
 	entry.chosen = OptionId(chosen);
 	return entry;
@@ -134,16 +136,35 @@ bool ApplyPart(const MenuAction& action, picks::LoadoutPart part, sf4e::selectio
 {
 	const picks::Loadout before = picks::LoadoutOf(pick);
 	const std::vector<int> numbers = PartNumbers(pick.fighter, part);
-	int number = picks::PartNumber(before, part);
+	int number = before.choice[part];
 	if (action.kind == MenuAction::Adjust) sf4e::ui::Step(number, numbers, action.delta);
 	else if (action.kind == MenuAction::Chosen) {
 		const std::optional<int> option = OptionOf(action.text);
 		if (option && Contains(numbers, *option)) number = *option;
 	}
-	const picks::Loadout after = *picks::WithPart(before, part, number);
+	picks::Loadout after = before;
+	after.choice[part] = (std::uint8_t)number;
 	picks::SetLoadout(pick, after);
 	return after != before;
 }
+
+// Where the screen starts for each way the shell opens it, and whether a
+// choice made on that row closes it again. The room's Fighter and Stage rows
+// and the costume shortcut open it for that one change; the room's Ultra (the
+// loadout) and a winner's look and loadout are more than one row's change,
+// so it stays open until Done or Back.
+struct Opening {
+	sf4e::ui::SelectionStart start;
+	const char* row;
+	bool closesOnChoice;
+};
+constexpr Opening kOpenings[] = {
+	{sf4e::ui::SelectionStart::Roster, kFighter, true},
+	{sf4e::ui::SelectionStart::Stage, kStage, true},
+	{sf4e::ui::SelectionStart::Costumes, kCostume, true},
+	{sf4e::ui::SelectionStart::Ultras, kVSkill, false},
+	{sf4e::ui::SelectionStart::LookUltra, kCostume, false},
+};
 
 ImU32 Rgb(std::uint32_t rgb)
 {
@@ -166,8 +187,31 @@ float DrawPicture(ImDrawList* draw, const sf4e::ui::SelectionImage& image, ImVec
 
 } // namespace
 
-std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool editable, bool stageEditable,
-	const std::vector<int>& stageChoices) const
+bool StepTableSelection(const sf4e::ui::ShellAction::SelectionStep& step, bool canEditSelection, bool canChangeUltra)
+{
+	using Field = sf4e::ui::ShellAction::SelectionStep::Field;
+	PlayerPick pick = CurrentPick();
+	switch (step.field) {
+	case Field::Ultra: {
+		if (!canChangeUltra) return false;
+		int index = picks::LoadoutIndex(picks::LoadoutOf(pick.pick));
+		sf4e::ui::Step(index, LoadoutIndices(pick.pick.fighter), step.delta);
+		picks::SetLoadout(pick.pick, *picks::LoadoutAt(index));
+		break;
+	}
+	case Field::Color:
+		if (!canEditSelection) return false;
+		sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), step.delta);
+		break;
+	case Field::None:
+		return false;
+	}
+	SetPick(pick);
+	return true;
+}
+
+std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool editable, bool withStage, bool stageEditable,
+	const std::vector<int>& stageChoices)
 {
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const char* adjusts = editable ? "selection.adjust_saves" : "selection.locked_detail";
@@ -205,7 +249,7 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 	rows.push_back(StepRow(kColour, "selection.color_row", ColourName(pick.pick.color), adjusts, editable, std::move(colours),
 		pick.pick.color));
 	for (const LoadoutRow& row : kLoadoutRows) rows.push_back(PartRow(row, pick.pick, editable, adjusts));
-	if (!dummy_) {
+	if (withStage) {
 		rows.push_back(StepRow(kStage, "selection.stage", sf4e::ui::StageLabel(pick.stage),
 			!editable ? "selection.locked_detail" : stageEditable ? "selection.p1_stage" : "selection.only_p1_stage",
 			editable && stageEditable, std::move(stages), pick.stage));
@@ -257,20 +301,12 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	const sf4e::ui::EmbeddedReturn& embedded = sf4e::ui::EmbeddedReturnContext();
 	if (sf4e::ui::TakeEmbeddedFresh()) {
 		nav.Home();
-		using sf4e::ui::SelectionStart;
-		const SelectionStart openOn = embedded.openOn;
-		openOn_ = openOn == SelectionStart::Roster ? kFighter
-			: openOn == SelectionStart::Stage      ? kStage
-			: openOn == SelectionStart::Costumes   ? kCostume
-												   : "";
-		// The room's Ultra (the loadout) and a winner's look and loadout are
-		// more than one row's change: the screen starts on the first of them
-		// and stays open until Done or Back.
-		const char* first = !openOn_.empty()            ? openOn_.c_str()
-			: openOn == SelectionStart::Ultras    ? kVSkill
-			: openOn == SelectionStart::LookUltra ? kCostume
-												  : nullptr;
-		if (first) nav.Prefer(first);
+		openOn_.clear();
+		for (const Opening& opening : kOpenings) {
+			if (opening.start != embedded.openOn) continue;
+			nav.Prefer(opening.row);
+			if (opening.closesOnChoice) openOn_ = opening.row;
+		}
 	}
 	const char* title = loc::T(dummy_ ? "training.dummy" : "screen.selection");
 	menu_.rootName = title;
@@ -278,7 +314,7 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	menu_.shortcutHints = embedded.shortcutHints;
 	PlayerPick pick = dummy_ ? CurrentDummy() : CurrentPick();
 	const std::vector<int> stageChoices = StageChoices(unavailableStages);
-	const std::vector<MenuEntry> rows = Rows(pick, editable, stageEditable && !dummy_, stageChoices);
+	const std::vector<MenuEntry> rows = Rows(pick, editable, !dummy_, stageEditable && !dummy_, stageChoices);
 	const char* status = loc::T(editable ? "selection.status_adjust" : "selection.locked_detail");
 	// The pane beside the rows is the pick's preview, as wide as the fighter's
 	// banner. The choice dialog draws an option's detail under its list,
@@ -346,7 +382,7 @@ void SfvSelectionScreen::DrawPreview(const PlayerPick& pick, const std::string& 
 	const picks::Loadout loadout = picks::LoadoutOf(pick.pick);
 	for (const LoadoutRow& row : kLoadoutRows) {
 		at.y += line;
-		const int number = picks::PartNumber(loadout, row.part);
+		const int number = loadout.choice[row.part];
 		const std::string text =
 			std::string(PartLabel(row.part)) + " " + ChoiceText(number, MoveName(pick.pick.fighter, row.part, number));
 		draw->AddText(at, colors.muted, text.c_str());

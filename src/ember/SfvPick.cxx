@@ -3,8 +3,6 @@
 #include "ember/SfvCatalog.hxx"
 
 #include "common/GameCatalog.hxx"
-#include "common/StageCatalog.hxx"
-#include "sf4e/sf4e__GameAdapter.hxx"
 
 #include <mutex>
 #include <optional>
@@ -83,16 +81,6 @@ std::string PickText(const PlayerPick& pick)
 	return FighterCode(pick.pick.fighter) + " costume " + std::to_string(pick.pick.costume) + " colour " +
 		std::to_string(pick.pick.color) + " " + picks::LoadoutText(picks::LoadoutOf(pick.pick)) + " stage " +
 		(pick.stage == picks::kRandomStage ? "random" : StageCode(pick.stage));
-}
-
-std::string OfflineStageCode(const PlayerPick& pick)
-{
-	// The roll is the game state's (SfvGame's system generator), as P1's
-	// Ready rolls a room's Random.
-	const ember::GameCatalog& catalog = ember::Catalog();
-	const int stage =
-		catalog.resolveStage(pick.stage, ember::game::Game().state.Random(), sf4e::selection::RandomPool(), nullptr, MissingStages());
-	return StageCode(stage);
 }
 
 } // namespace sfve::adapter

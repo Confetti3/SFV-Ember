@@ -133,17 +133,18 @@ public:
 	Entry Enter() override
 	{
 		const std::optional<RoomMatch> now = RoomMatchNow();
-		if (!now) return Entry::Deferred;
+		if (!now) return Entry::Deferred();
 		const RoomMatch& room = *now;
-		std::optional<mod::MatchPicks> picks = LaunchPicks(room);
-		if (!picks) {
-			// The runtime ends this copy's part in the game and says why
-			// (a stage this copy lacks has its own notice).
+		MatchLaunch launch = LaunchPicks(room);
+		if (!launch.picks) {
+			// The runtime ends this copy's part in the game and tells the
+			// player why, from the refusal's reason.
 			mod::Log("ember: the room's match is not one this copy can launch: %s (fighters %d/%d, stage %lld, %d rounds of %d s)",
-				LaunchRefusal(room).c_str(), room.picks[0].fighter, room.picks[1].fighter, (long long)room.stage, room.rounds,
+				launch.refusal.log.c_str(), room.picks[0].fighter, room.picks[1].fighter, (long long)room.stage, room.rounds,
 				room.roundSeconds);
-			return Entry::Rejected;
+			return Entry::Rejected(launch.refusal.reason);
 		}
+		std::optional<mod::MatchPicks>& picks = launch.picks;
 		mod::Log("ember: entering the room's match: %s vs %s on %s, %d rounds of %d s%s", FighterCode(room.picks[0].fighter).c_str(),
 			FighterCode(room.picks[1].fighter).c_str(), StageCode(room.stage).c_str(), room.rounds, room.roundSeconds,
 			room.practice ? ", a Practice match" : "");
@@ -160,7 +161,7 @@ public:
 				sf4e::NetplayFacade::PushAlert(sf4e::loc::T("runtime.authorized_connection_unavailable"));
 				sf4e::NetplayFacade::NotifyRuntimeBattleClosedWithoutSession();
 			});
-		return Entry::Entered;
+		return Entry::Entered();
 	}
 	void OnSessionSynced() override
 	{

@@ -3,6 +3,8 @@
 #include "mod/Log.hxx"
 
 #include "common/GameCatalog.hxx"
+#include "common/StageCatalog.hxx"
+#include "sf4e/sf4e__GameAdapter.hxx"
 
 #include <algorithm>
 #include <iterator>
@@ -185,21 +187,29 @@ bool NormalizePick(sf4e::selection::Pick& pick, bool, const sf4e::selection::Ava
 	return !picks::SameFitting(pick, before);
 }
 
-// Random (kRandomStage) becomes a stage of the universe that is not
-// `unavailable`, each as likely (the roll modulo their count: a 32-bit roll
-// over at most a few dozen stages is even to within one part in 10^7). The
-// runtime's set already holds this copy's own missing stages, so nothing else
-// is asked. With no stage left, Random stays as it is, unresolved, and the
-// runtime's Ready check refuses it. Any other choice is a stage of the
-// universe, else the first. SF4's RandomPool and custom stages are not SFV's.
+// The universe's stages less `unavailable`, in the universe's order: what the
+// stage row offers after Random, and what Random rolls over.
+std::vector<int> PlayableStages(const std::vector<std::int64_t>& unavailable)
+{
+	std::vector<int> stages;
+	for (int id = 0; id < (int)s_lists.stages.size(); id++) {
+		if (std::find(unavailable.begin(), unavailable.end(), id) == unavailable.end()) stages.push_back(id);
+	}
+	return stages;
+}
+
+// Random (kRandomStage) becomes one of the PlayableStages, each as likely
+// (the roll modulo their count: a 32-bit roll over at most a few dozen stages
+// is even to within one part in 10^7). The runtime's set already holds this
+// copy's own missing stages, so nothing else is asked. With no stage left,
+// Random stays as it is, unresolved, and the runtime's Ready check refuses
+// it. Any other choice is a stage of the universe, else the first. SF4's
+// RandomPool and custom stages are not SFV's.
 int ResolveStage(int choice, std::uint32_t roll, const sf4e::selection::RandomPool&, const sf4e::selection::InstalledContent*,
 	const std::vector<std::int64_t>& unavailable)
 {
 	if (choice != picks::kRandomStage) return ValidStage(choice) ? choice : 0;
-	std::vector<int> candidates;
-	for (int id = 0; id < (int)s_lists.stages.size(); id++) {
-		if (std::find(unavailable.begin(), unavailable.end(), id) == unavailable.end()) candidates.push_back(id);
-	}
+	const std::vector<int> candidates = PlayableStages(unavailable);
 	return candidates.empty() ? choice : candidates[roll % candidates.size()];
 }
 
@@ -226,7 +236,7 @@ int CostumeCount(int fighter)
 // four fighters of the roster. The Ultra numbers are the loadouts.
 constinit ember::GameCatalog s_catalog = {0, 0, 0, picks::kLoadoutChoices, &ValidPick, &ValidStage, {0, 1, 2, 3}, picks::kRandomStage, &FighterLocked,
 	&AvailablePick, &NormalizePick, &ResolveStage, &FighterName, &CostumeCount, nullptr, nullptr, 0, nullptr, 0, false,
-	true};
+	true, true};
 
 // The room's round counts and times SFV plays, so a table offers no other.
 void FillRules()
@@ -359,10 +369,16 @@ std::vector<std::int64_t> MissingStages()
 std::vector<int> StageChoices(const std::vector<std::int64_t>& unavailable)
 {
 	std::vector<int> stages{picks::kRandomStage};
-	for (int id = 0; id < StageCount(); id++) {
-		if (std::find(unavailable.begin(), unavailable.end(), id) == unavailable.end()) stages.push_back(id);
-	}
+	const std::vector<int> playable = PlayableStages(unavailable);
+	stages.insert(stages.end(), playable.begin(), playable.end());
 	return stages;
+}
+
+std::string OfflineStageCode(int stage)
+{
+	// The roll is the game state's (SfvGame's system generator), as P1's
+	// Ready rolls a room's Random.
+	return StageCode(ResolveStage(stage, ember::game::Game().state.Random(), sf4e::selection::RandomPool(), nullptr, MissingStages()));
 }
 
 std::vector<int> CostumeIds(std::int64_t fighter, bool pickableOnly)
@@ -456,7 +472,9 @@ std::vector<int> LoadoutIndices(std::int64_t fighter)
 
 mod::FighterPick FighterPickOf(const sf4e::selection::Pick& pick)
 {
-	return {WideCode(FighterCode(pick.fighter)), pick.costume, pick.color, picks::LoadoutOf(pick)};
+	const picks::Loadout loadout = picks::LoadoutOf(pick);
+	return {WideCode(FighterCode(pick.fighter)), pick.costume, pick.color, loadout.choice[picks::VSkill],
+		loadout.choice[picks::VTrigger]};
 }
 
 std::optional<int> FighterId(const std::wstring& code)
@@ -475,41 +493,51 @@ std::optional<int> StageId(const std::wstring& code)
 	return std::nullopt;
 }
 
-std::string LaunchRefusal(const RoomMatch& match)
+namespace {
+
+// Why this copy cannot launch the match; none when it can.
+std::optional<MatchRefusal> Refusal(const RoomMatch& match)
 {
+	using ember::game::EntryRefusal;
+	const auto refuse = [](EntryRefusal reason, std::string log) { return MatchRefusal{reason, std::move(log)}; };
 	for (int side = 0; side < 2; side++) {
 		const sf4e::selection::Pick& pick = match.picks[side];
 		const std::string who = "P" + std::to_string(side + 1) + "'s ";
-		if (!ValidPick(pick, false)) return who + "pick is not one of the game's";
+		if (!ValidPick(pick, false)) return refuse(EntryRefusal::UnsupportedMatch, who + "pick is not one of the game's");
 		// The spec has it; this copy must have its package too, or the battle
 		// would load nothing sensible.
 		const mod::FighterContent& fighter = *FighterAt(pick.fighter);
-		if (!fighter.installed) return who + "fighter " + fighter.code + " is not installed here";
+		if (!fighter.installed) return refuse(EntryRefusal::UnsupportedMatch, who + "fighter " + fighter.code + " is not installed here");
 		if (!CostumeAt(pick.fighter, pick.costume)->installed) {
-			return who + fighter.code + " costume " + std::to_string(pick.costume) + " is not installed here";
+			return refuse(EntryRefusal::UnsupportedMatch,
+				who + fighter.code + " costume " + std::to_string(pick.costume) + " is not installed here");
 		}
 	}
-	if (!ValidStage(match.stage)) return "the stage is not one of the game's";
-	if (!StageInstalled(match.stage)) return "stage " + StageCode(match.stage) + " is not installed here";
+	if (!ValidStage(match.stage)) return refuse(EntryRefusal::UnsupportedStage, "the stage is not one of the game's");
+	if (!StageInstalled(match.stage)) {
+		return refuse(EntryRefusal::StageNotInstalled, "stage " + StageCode(match.stage) + " is not installed here");
+	}
 	// A Practice room projects the longest round time (room::MatchRoundTime),
 	// which SFV plays as no time limit (RoomClockFrames).
 	if (!mod::PlayableRounds(match.rounds) || !mod::RoomClockFrames(match.roundSeconds)) {
-		return "SFV cannot play " + std::to_string(match.rounds) + " rounds of " + std::to_string(match.roundSeconds) + " s";
+		return refuse(EntryRefusal::UnsupportedMatch,
+			"SFV cannot play " + std::to_string(match.rounds) + " rounds of " + std::to_string(match.roundSeconds) + " s");
 	}
-	return {};
+	return std::nullopt;
 }
 
-std::optional<mod::MatchPicks> LaunchPicks(const RoomMatch& match)
+} // namespace
+
+MatchLaunch LaunchPicks(const RoomMatch& match)
 {
-	if (!LaunchRefusal(match).empty()) return std::nullopt;
-	const int clock = *mod::RoomClockFrames(match.roundSeconds);
+	if (std::optional<MatchRefusal> refusal = Refusal(match)) return {std::nullopt, std::move(*refusal)};
 	mod::MatchPicks picks;
 	for (int side = 0; side < 2; side++) picks.players[side] = FighterPickOf(match.picks[side]);
 	picks.rules.stage = WideCode(StageCode(match.stage));
 	picks.rules.rounds = match.rounds;
-	picks.rules.timeFrames = clock;
+	picks.rules.timeFrames = *mod::RoomClockFrames(match.roundSeconds);
 	picks.practice = match.practice;
-	return picks;
+	return {std::move(picks), {}};
 }
 
 } // namespace sfve::adapter

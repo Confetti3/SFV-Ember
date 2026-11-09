@@ -79,7 +79,7 @@ int CostumeCount(int fighter)
 
 ember::GameCatalog s_catalog = {0, 0, 0, sfve::picks::kLoadoutChoices, &ValidPick, &ValidStage, {0, 1, 2, 3},
 	sfve::picks::kRandomStage, &FighterLocked, &AvailablePick, &NormalizePick, &ResolveStage, &FighterName, &CostumeCount, nullptr, sfve::picks::kRoundCounts,
-	(int)std::size(sfve::picks::kRoundCounts), sfve::picks::kRoundTimes, (int)std::size(sfve::picks::kRoundTimes), false, true};
+	(int)std::size(sfve::picks::kRoundCounts), sfve::picks::kRoundTimes, (int)std::size(sfve::picks::kRoundTimes), false, true, true};
 
 } // namespace
 

@@ -24,11 +24,11 @@
 // the game's name assets (sfv::choices), as its select and VS screens count
 // and name them; the count is part of the pick space (section 40).
 
-#include "ember/SfvPickSpace.hxx"
 #include "mod/ModConfig.hxx"
 
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -101,7 +101,9 @@ struct ContentLists {
 // setup asset and its V-Trigger and V-Skill name assets are loaded, and
 // while the spec's stage universe is empty or this copy has none of its
 // stages installed. Those assets are found, or loaded, with
-// StaticLoadObject, so call it at the main menu (never in a battle).
+// StaticLoadObject, so call it at the main menu (never in a battle). A name
+// asset whose counts are past any the game could hold (sfv::choices'
+// limits) reads as not there, logged once.
 ContentLists ReadContentLists();
 
 // A fighter's V-Skill or V-Trigger names as the game's name asset gave them,
@@ -114,11 +116,19 @@ std::vector<std::string> FitChoices(std::vector<std::string> names, const char* 
 // For the log: `V-Skills 2 ("A", "B"), V-Triggers 1 ("C")`.
 std::string ChoicesText(const FighterContent& fighter);
 
-// Whether the fighter `code` names has both parts of the loadout, counted
-// from the game's name assets as ReadContentLists counts them, so the pipe's
-// launch cannot load a choice the game would show as "noname". False while
-// either asset is not there. Game thread, at the main menu.
-bool HasLoadout(std::wstring_view code, picks::Loadout loadout);
+// How many V-Skills and V-Triggers a fighter has, as FitChoices makes them.
+struct ChoiceCounts {
+	int vSkills = 0;
+	int vTriggers = 0;
+};
+// The fighter `code` names, compared as the game compares codes (ignoring
+// case): its counts from ReadContentLists' last read of the name assets, so
+// the pipe's launch cannot load a choice the game would show as "noname".
+// Before any such read (a launch with Ember's catalog never filled, as the
+// synctest mode's) the counts are read for this fighter alone, the same way.
+// None while either name asset is not there, and for a fighter the last read
+// did not list. Game thread, at the main menu.
+std::optional<ChoiceCounts> FighterChoiceCounts(std::wstring_view code);
 
 // Whether a battle can load the fighter `code` names: the game's fighter
 // table (`charaAsset`, the game data's CharaAsset, sfv::content::kCharaAsset)

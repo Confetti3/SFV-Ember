@@ -71,7 +71,7 @@ TEST_CASE("the game offers watching, replays and Training, and answers as no bat
 	CHECK(game.state.Language().empty());
 	CHECK_FALSE(game.state.MainMenuInFront()); // no scene manager seen
 	CHECK(game.state.ForegroundScreen().empty());
-	CHECK(game.battle.Enter() == ember::game::Battle::Entry::Deferred); // no room
+	CHECK(game.battle.Enter().outcome == ember::game::Battle::Entry::Outcome::Deferred); // no room
 	CHECK_FALSE(game.battle.Live());
 	CHECK_FALSE(game.battle.ResultHeld());
 	CHECK(game.battle.GameResult() == sf4e::room::MatchResult::Abort); // no match end taken

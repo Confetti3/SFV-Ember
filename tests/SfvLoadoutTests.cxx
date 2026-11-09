@@ -70,13 +70,16 @@ TEST_CASE("a loadout and its Ultra number are one codec, and nothing else is a l
 	CHECK(picks::LoadoutOf(stray) == kOneOne);
 	CHECK_FALSE(picks::LoadoutIn(stray));
 	// The parts, as the game numbers them.
-	CHECK(picks::PartNumber(kTwoOne, picks::LoadoutPart::VSkill) == 1);
-	CHECK(picks::PartNumber(kTwoOne, picks::LoadoutPart::VTrigger) == 0);
-	CHECK(picks::WithPart(kOneOne, picks::LoadoutPart::VTrigger, 1) == kOneTwo);
-	CHECK_FALSE(picks::WithPart(kOneOne, picks::LoadoutPart::VSkill, 2));
+	CHECK(kTwoOne.choice[picks::LoadoutPart::VSkill] == 1);
+	CHECK(kTwoOne.choice[picks::LoadoutPart::VTrigger] == 0);
 	CHECK(picks::LoadoutOfNumbers(1, 1) == kTwoTwo);
+	CHECK(picks::LoadoutOfNumbers(0, 1) == kOneTwo);
 	CHECK_FALSE(picks::LoadoutOfNumbers(0, -1));
+	CHECK_FALSE(picks::LoadoutOfNumbers(2, 0));
 	CHECK(picks::LoadoutText(kTwoOne) == "vskill II vtrigger I");
+	CHECK(std::string(picks::Numeral(0)) == "I");
+	CHECK(std::string(picks::Numeral(1)) == "II");
+	CHECK(std::string(picks::Numeral(2)).empty());
 	// The catalog's Ultra numbers are the loadouts, and this build's match
 	// version is the one that launches them.
 	CHECK(picks::kLoadoutChoices == 4);
@@ -222,16 +225,23 @@ TEST_CASE("a room's match launches both players' loadouts")
 	RoomMatch match = MatchOf(0, 1, 2);
 	picks::SetLoadout(match.picks[0], kTwoTwo);
 	picks::SetLoadout(match.picks[1], kTwoOne);
-	const std::optional<mod::MatchPicks> launched = LaunchPicks(match);
+	const std::optional<mod::MatchPicks> launched = LaunchPicks(match).picks;
 	REQUIRE(launched);
-	CHECK(launched->players[0].loadout == kTwoTwo);
-	CHECK(launched->players[1].loadout == kTwoOne);
-	CHECK(FighterPickOf(match.picks[1]).loadout == kTwoOne);
-	CHECK(FighterPickOf(match.picks[1]).fighter == L"CNL");
+	CHECK(launched->players[0].vSkill == 1);
+	CHECK(launched->players[0].vTrigger == 1);
+	CHECK(launched->players[1].vSkill == 1);
+	CHECK(launched->players[1].vTrigger == 0);
+	// The one place a pick's loadout becomes the launch's two numbers.
+	const mod::FighterPick cnl = FighterPickOf(match.picks[1]);
+	CHECK(cnl.fighter == L"CNL");
+	CHECK(cnl.vSkill == 1);
+	CHECK(cnl.vTrigger == 0);
 	// One the fighter lacks never launches: CNL has one V-Trigger.
 	picks::SetLoadout(match.picks[1], kOneTwo);
-	CHECK_FALSE(LaunchPicks(match));
-	CHECK_FALSE(LaunchRefusal(match).empty());
+	const MatchLaunch refused = LaunchPicks(match);
+	CHECK_FALSE(refused.picks);
+	CHECK(refused.refusal.reason == ember::game::EntryRefusal::UnsupportedMatch);
+	CHECK_FALSE(refused.refusal.log.empty());
 }
 
 TEST_CASE("the pipe names a V-Skill and a V-Trigger as the game does, 1 and 2")
@@ -242,11 +252,14 @@ TEST_CASE("the pipe names a V-Skill and a V-Trigger as the game does, 1 and 2")
 	CHECK(pick.fighter == L"RYU");
 	CHECK(pick.costume == 0);
 	CHECK(pick.colour == 1);
-	CHECK(pick.loadout == kTwoOne);
+	CHECK(pick.vSkill == 1);
+	CHECK(pick.vTrigger == 0);
 	REQUIRE(mod::ParseSetup("KEN:0:2:-:2", &pick, &rules));
-	CHECK(pick.loadout == kOneTwo);
+	CHECK(pick.vSkill == 0);
+	CHECK(pick.vTrigger == 1);
 	REQUIRE(mod::ParseSetup("KEN:0:2", &pick, &rules));
-	CHECK(pick.loadout == kOneOne); // a launch always writes both: I unless named
+	CHECK(pick.vSkill == 0); // a launch always writes both: I unless named
+	CHECK(pick.vTrigger == 0);
 	CHECK_FALSE(mod::ParseSetup("RYU:0:1:3", &pick, &rules));
 	CHECK_FALSE(mod::ParseSetup("RYU:0:1:0", &pick, &rules));
 	CHECK_FALSE(mod::ParseSetup("RYU:0:1:1:0", &pick, &rules));
@@ -262,7 +275,8 @@ TEST_CASE("the launch writes the loadout into the game's per-fighter record at +
 	mod::FighterPick pick;
 	pick.costume = 3;
 	pick.colour = 101;
-	pick.loadout = kTwoOne;
+	pick.vSkill = 1;
+	pick.vTrigger = 0;
 	mod::FillCharPkg(chara, pick);
 	CHECK(mod::Field<std::int32_t>(chara, 16) == 3);
 	CHECK(mod::Field<std::int32_t>(chara, 20) == 101);
@@ -291,15 +305,17 @@ TEST_CASE("a choice is worded by the game's pattern for it, with the move's name
 	CHECK(FormatChoice("", "II", "Axe Kick") == "II Axe Kick");     // the game has no pattern
 	CHECK(FormatChoice("Second", "II", "Axe Kick") == "Second Axe Kick"); // one without the argument
 	CHECK(FormatChoice("I: {common1}", "I", "") == "I");             // no name
-	CHECK(std::string(Numeral(0)) == "I");
-	CHECK(std::string(Numeral(1)) == "II");
-	CHECK(std::string(Numeral(2)).empty());
-	// Until the game gives its words (no game runs in a test), English.
-	CHECK(std::string(PartLabel(picks::LoadoutPart::VSkill)) == "V-Skill");
-	CHECK(std::string(PartLabel(picks::LoadoutPart::VTrigger)) == "V-Trigger");
+	// An argument Ember does not fill never reaches the screen.
+	CHECK(FormatChoice("{common1} {common2}", "II", "Axe Kick") == "II Axe Kick");
+	CHECK(FormatChoice("{0}: {common1}", "I", "Mind's Eye") == "I Mind's Eye");
+	// Until the game gives its words (no game runs in a test), the game's
+	// English, in its casing, so nothing changes case when its words arrive.
+	CHECK(std::string(PartLabel(picks::LoadoutPart::VSkill)) == "V-SKILL");
+	CHECK(std::string(PartLabel(picks::LoadoutPart::VTrigger)) == "V-TRIGGER");
 	CHECK(ChoiceText(1, "Axe Kick") == "II Axe Kick");
 	FillTestCatalog();
-	CHECK(LoadoutName(0, kTwoOne) == "V-Skill II \xC2\xB7 V-Trigger I: Skill Two \xC2\xB7 Trigger One");
-	CHECK(LoadoutName(4, kTwoOne) == "V-Skill II \xC2\xB7 V-Trigger I"); // BSN's are unnamed
+	CHECK(LoadoutName(0, kTwoOne) == "V-SKILL II \xC2\xB7 V-TRIGGER I: Skill Two \xC2\xB7 Trigger One");
+	CHECK(LoadoutName(4, kTwoOne) == "V-SKILL II \xC2\xB7 V-TRIGGER I"); // BSN's are unnamed
 	CHECK(LoadoutMoves(1, kTwoOne) == "Skill Two \xC2\xB7 Trigger One");
+	CHECK(LoadoutMoves(4, kOneTwo) == "V-SKILL I \xC2\xB7 V-TRIGGER II");
 }

@@ -115,26 +115,13 @@ public:
 		if (!PickAvailable(dummy, snapshot)) view.dummyError = loc::T("runtime.selection_unavailable");
 	}
 
-	// The table page's Appearance row steps the colour, through the costume's
-	// own colours this player can ready; its Ultra row, and the post-match
-	// prompt's, step the loadout through the fighter's own, in Ultra number
-	// order. Like SF4's, the Ultra also changes over the WIN until the
-	// prompt is answered (canChangeUltra).
+	// The table page's Appearance and Ultra rows, and the post-match
+	// prompt's Ultra: SfvSelectionScreen's StepTableSelection. Like SF4's,
+	// the Ultra also changes over the WIN until the prompt is answered
+	// (canChangeUltra).
 	bool StepSelection(const sf4e::ui::ShellAction::SelectionStep& step, const RuntimeSnapshot& snapshot) override
 	{
-		using Field = sf4e::ui::ShellAction::SelectionStep::Field;
-		const bool loadout = step.field == Field::Ultra;
-		if (!(loadout ? snapshot.canChangeUltra : snapshot.canEditSelection) || (!loadout && step.field != Field::Color)) return false;
-		PlayerPick pick = CurrentPick();
-		if (loadout) {
-			int index = picks::LoadoutIndex(picks::LoadoutOf(pick.pick));
-			sf4e::ui::Step(index, LoadoutIndices(pick.pick.fighter), step.delta);
-			picks::SetLoadout(pick.pick, *picks::LoadoutAt(index));
-		} else {
-			sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), step.delta);
-		}
-		SetPick(pick);
-		return true;
+		return StepTableSelection(step, snapshot.canEditSelection, snapshot.canChangeUltra);
 	}
 
 	// Training select's Start at the idle main menu (the host checks it):
@@ -143,7 +130,7 @@ public:
 	void StartTraining(const RuntimeSnapshot&) override
 	{
 		const PlayerPick player = CurrentPick();
-		const std::string stage = OfflineStageCode(player);
+		const std::string stage = OfflineStageCode(player.stage);
 		LaunchTraining(FighterPickOf(player.pick), FighterPickOf(CurrentDummy().pick), std::wstring(stage.begin(), stage.end()),
 			"Training select's Start", "home.training_unavailable");
 	}

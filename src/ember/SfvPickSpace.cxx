@@ -13,28 +13,21 @@
 
 namespace sfve::picks {
 
-int PartNumber(Loadout loadout, LoadoutPart part)
-{
-	return part == LoadoutPart::VSkill ? (int)loadout.vSkill : (int)loadout.vTrigger;
-}
-
-std::optional<Loadout> WithPart(Loadout loadout, LoadoutPart part, int number)
-{
-	if (number < 0 || number >= kPartChoices) return std::nullopt;
-	if (part == LoadoutPart::VSkill) loadout.vSkill = (VSkill)number;
-	else loadout.vTrigger = (VTrigger)number;
-	return loadout;
-}
-
 std::optional<Loadout> LoadoutOfNumbers(int vSkill, int vTrigger)
 {
-	const std::optional<Loadout> withSkill = WithPart({}, LoadoutPart::VSkill, vSkill);
-	return withSkill ? WithPart(*withSkill, LoadoutPart::VTrigger, vTrigger) : std::nullopt;
+	const auto choice = [](int number) { return number >= 0 && number < kPartChoices; };
+	if (!choice(vSkill) || !choice(vTrigger)) return std::nullopt;
+	return Loadout{{(std::uint8_t)vSkill, (std::uint8_t)vTrigger}};
+}
+
+const char* Numeral(int number)
+{
+	return number == 0 ? "I" : number == 1 ? "II" : "";
 }
 
 int LoadoutIndex(Loadout loadout)
 {
-	return PartNumber(loadout, LoadoutPart::VSkill) * kPartChoices + PartNumber(loadout, LoadoutPart::VTrigger);
+	return loadout.choice[VSkill] * kPartChoices + loadout.choice[VTrigger];
 }
 
 std::optional<Loadout> LoadoutAt(int index)
@@ -66,8 +59,7 @@ bool SameFitting(const sf4e::selection::Pick& a, const sf4e::selection::Pick& b)
 
 std::string LoadoutText(Loadout loadout)
 {
-	const auto numeral = [&](LoadoutPart part) { return PartNumber(loadout, part) == 0 ? "I" : "II"; };
-	return std::string("vskill ") + numeral(LoadoutPart::VSkill) + " vtrigger " + numeral(LoadoutPart::VTrigger);
+	return std::string("vskill ") + Numeral(loadout.choice[VSkill]) + " vtrigger " + Numeral(loadout.choice[VTrigger]);
 }
 
 int PartChoices(const Fighter& fighter, LoadoutPart part)
@@ -78,7 +70,7 @@ int PartChoices(const Fighter& fighter, LoadoutPart part)
 bool HasLoadout(const Fighter& fighter, Loadout loadout)
 {
 	for (LoadoutPart part : kLoadoutParts) {
-		if (PartNumber(loadout, part) >= PartChoices(fighter, part)) return false;
+		if (loadout.choice[part] >= PartChoices(fighter, part)) return false;
 	}
 	return true;
 }
@@ -86,7 +78,7 @@ bool HasLoadout(const Fighter& fighter, Loadout loadout)
 Loadout FitLoadout(const Fighter& fighter, Loadout loadout)
 {
 	for (LoadoutPart part : kLoadoutParts) {
-		if (PartNumber(loadout, part) >= PartChoices(fighter, part)) loadout = *WithPart(loadout, part, 0);
+		if (loadout.choice[part] >= PartChoices(fighter, part)) loadout.choice[part] = 0;
 	}
 	return loadout;
 }

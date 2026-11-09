@@ -54,10 +54,4 @@ void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command);
 // codes, for the status and the logs ("stage random" for Random).
 std::string PickText(const PlayerPick& pick);
 
-// The stage code a launch that is not a room's (Training) plays the pick on:
-// its stage, or for Random one this copy has installed, rolled through the
-// catalog's resolveStage with this copy's missing stages as the unavailable
-// ones, as a room's Random is. A launch never sees Random itself.
-std::string OfflineStageCode(const PlayerPick& pick);
-
 } // namespace sfve::adapter

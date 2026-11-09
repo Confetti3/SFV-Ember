@@ -158,3 +158,45 @@ msgstr "Aller dans le mode Entraînement de Street Fighter V avec votre combatta
 
 msgid "room.practice.detail"
 msgstr "Chaque partie du salon est un match d'entraînement : la vie et les jauges se remplissent, personne ne subit de K.-O. et il n'y a pas de limite de temps. Cela reste ainsi tant que le salon est ouvert. Pour jouer des matchs normaux, fermez le salon et créez-en un nouveau."
+
+msgid "selection.ultra_combo"
+msgstr "V-Skill et V-Trigger"
+
+msgid "selection.ultra_combo_title"
+msgstr "V-SKILL ET V-TRIGGER"
+
+msgid "selection.ultra_row.detail"
+msgstr "Gauche et Droite changent le V-Skill et le V-Trigger ici. Sélectionner montre chaque choix avec sa technique."
+
+msgid "room.ultra.detail"
+msgstr "Choisissez votre V-Skill et votre V-Trigger pour la partie suivante ici, sans ouvrir les Options de la table."
+
+msgid "room.ultra.single"
+msgstr "Ce combattant n'a qu'un V-Skill et qu'un V-Trigger."
+
+msgid "postmatch.ultra.detail"
+msgstr "Gauche et Droite changent votre V-Skill et votre V-Trigger pour la partie suivante. Avec un nouveau choix, la partie suivante se charge d'abord."
+
+msgid "postmatch.ultra.set"
+msgstr "Votre V-Skill et votre V-Trigger pour la partie suivante sont choisis."
+
+msgid "room.opponent_changed_fighter"
+msgstr "L'adversaire a pris {0}. Vérifiez votre V-Skill et votre V-Trigger avant de passer à Prêt."
+
+msgid "room.change_fighter.detail"
+msgstr "Choisissez un personnage, puis son V-Skill et son V-Trigger. Revenez ici et passez à Prêt."
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "Ce choix de personnage est indisponible. Choisissez un costume, une couleur, un V-Skill et un V-Trigger disponibles."
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "Cette combinaison est interdite par les règles du salon. Choisissez un autre personnage, costume ou couleur."
+
+msgid "selection.winner_keeps_fighter"
+msgstr "Vous avez gagné le dernier set : vous gardez ce combattant. Vous pouvez encore changer le V-Skill, le V-Trigger, le costume et la couleur."
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "Comme dans une vraie salle d'arcade, le vainqueur d'un set garde le combattant avec lequel il a gagné. Seuls le V-Skill, le V-Trigger, le costume et la couleur peuvent changer."
+
+msgid "menu.hint.save_ultra"
+msgstr "Enregistrer V-Skill et V-Trigger"

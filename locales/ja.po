@@ -158,3 +158,45 @@ msgstr "Street Fighter Vのトレーニングモードに、自分のファイ�
 
 msgid "room.practice.detail"
 msgstr "ルーム内の対戦はすべて練習対戦です。体力とゲージが回復し、KOは発生せず、タイムは無制限です。ルームが開いている間は変わりません。通常の対戦をするには、ルームを閉じて新しく作成してください。"
+
+msgid "selection.ultra_combo"
+msgstr "Vスキル・Vトリガー"
+
+msgid "selection.ultra_combo_title"
+msgstr "Vスキル・Vトリガー"
+
+msgid "selection.ultra_row.detail"
+msgstr "左右でここのVスキルとVトリガーを変更します。決定で各選択肢を技の名前と一緒に表示します。"
+
+msgid "room.ultra.detail"
+msgstr "対戦席の設定を開かずに、次の試合のVスキルとVトリガーをここで選びます。"
+
+msgid "room.ultra.single"
+msgstr "このキャラはVスキルとVトリガーが一つずつです。"
+
+msgid "postmatch.ultra.detail"
+msgstr "左右で次の試合のVスキルとVトリガーを変更します。新しい組み合わせにすると、次の試合は読み込んでから始まります。"
+
+msgid "postmatch.ultra.set"
+msgstr "次の試合のVスキルとVトリガーは決まりました。"
+
+msgid "room.opponent_changed_fighter"
+msgstr "相手が{0}に変更しました。準備完了の前にVスキルとVトリガーを確認してください。"
+
+msgid "room.change_fighter.detail"
+msgstr "キャラを選び、次にVスキルとVトリガーを選びます。戻って準備完了にしてください。"
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "このキャラ選択は使用できません。使用可能なコスチューム、カラー、Vスキル、Vトリガーを選んでください。"
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "この組み合わせはルームのルールで使用できません。別のキャラ、コスチューム、カラーを選んでください。"
+
+msgid "selection.winner_keeps_fighter"
+msgstr "前のセットに勝ったので、このキャラクターのまま続けます。Vスキル、Vトリガー、コスチューム、カラーは変更できます。"
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "本物のゲームセンターのように、セットの勝者は勝ったキャラクターのまま続けます。変更できるのはVスキル、Vトリガー、コスチューム、カラーだけです。"
+
+msgid "menu.hint.save_ultra"
+msgstr "VスキルとVトリガーを保存"

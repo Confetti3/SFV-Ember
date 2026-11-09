@@ -279,9 +279,12 @@ std::optional<mod::MatchPicks> PicksOf(const replay::Header& h)
 		picks.players[side].fighter = sf4e::platform::Utf8ToWide(p.code.c_str());
 		picks.players[side].costume = p.launchCostume;
 		picks.players[side].colour = p.launchColour;
-		const std::optional<sfve::picks::Loadout> loadout = sfve::picks::LoadoutOfNumbers(p.vSkill, p.vTrigger);
-		if (!FighterId(picks.players[side].fighter) || p.launchCostume < 0 || p.launchColour < 0 || !loadout) return std::nullopt;
-		picks.players[side].loadout = *loadout;
+		if (!FighterId(picks.players[side].fighter) || p.launchCostume < 0 || p.launchColour < 0 ||
+			!sfve::picks::LoadoutOfNumbers(p.vSkill, p.vTrigger)) {
+			return std::nullopt;
+		}
+		picks.players[side].vSkill = p.vSkill;
+		picks.players[side].vTrigger = p.vTrigger;
 	}
 	picks.rules.stage = sf4e::platform::Utf8ToWide(h.stageCode.c_str());
 	const std::optional<int> stage = StageId(picks.rules.stage);
@@ -524,7 +527,7 @@ bool RecordingHeader(int slot, std::uint32_t seed, int delay, replay::Header* ou
 {
 	const auto& netplay = ember::RuntimeSession::netplay;
 	const std::optional<RoomMatch> room = RoomMatchNow();
-	const std::optional<mod::MatchPicks> picks = room ? LaunchPicks(*room) : std::nullopt;
+	const std::optional<mod::MatchPicks> picks = room ? LaunchPicks(*room).picks : std::nullopt;
 	if (!netplay || !room || !picks) return false;
 	replay::Header h;
 	h.product = "SFV Ember";
@@ -540,9 +543,8 @@ bool RecordingHeader(int slot, std::uint32_t seed, int delay, replay::Header* ou
 		p.code = sf4e::platform::WideToUtf8(picks->players[side].fighter);
 		p.launchCostume = picks->players[side].costume;
 		p.launchColour = picks->players[side].colour;
-		const sfve::picks::Loadout loadout = picks->players[side].loadout;
-		p.vSkill = sfve::picks::PartNumber(loadout, sfve::picks::LoadoutPart::VSkill);
-		p.vTrigger = sfve::picks::PartNumber(loadout, sfve::picks::LoadoutPart::VTrigger);
+		p.vSkill = picks->players[side].vSkill;
+		p.vTrigger = picks->players[side].vTrigger;
 	}
 	h.stage = room->stage;
 	h.stageCode = sf4e::platform::WideToUtf8(picks->rules.stage);

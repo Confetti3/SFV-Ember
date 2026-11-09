@@ -39,7 +39,7 @@
 // A pick's V-Skill and V-Trigger are its loadout (SfvPickSpace's Loadout),
 // which travels in the shared pick's Ultra slot as one of four numbers
 // (ultraChoices): the library sees an Ultra numbered below that, and SFV's
-// codec (picks::LoadoutOf, SetLoadout) alone gives it meaning. A fighter has
+// codec (picks::LoadoutIn, LoadoutOf, SetLoadout) alone gives it meaning. A fighter has
 // one or two of each, as the game's name assets list them (GameContent), and
 // a pick holds only parts its fighter has. Shared screens name the loadout as
 // one value (SfvLoadoutText); SFV's pick screen has a row for each part.
@@ -59,6 +59,7 @@
 #include "mod/VersusLaunch.hxx"
 
 #include "common/SelectionPick.hxx"
+#include "sf4e/sf4e__GameAdapter.hxx"
 
 #include <cstdint>
 #include <optional>
@@ -123,9 +124,15 @@ bool StageInstalled(std::int64_t stage);
 std::vector<std::int64_t> MissingStages();
 // What the pick screen's stage row offers: Random (picks::kRandomStage)
 // first, then the universe's stages less `unavailable`, in the universe's
-// order. `unavailable` is the runtime's unavailableStages: this copy's
+// order: the stages the catalog's resolveStage rolls Random over, by the same
+// filter. `unavailable` is the runtime's unavailableStages: this copy's
 // missing stages, and at a table the opponent's as well.
 std::vector<int> StageChoices(const std::vector<std::int64_t>& unavailable);
+// The stage code a launch that is not a room's (Training) plays the stage
+// choice on: the stage, or for Random one this copy has installed, rolled by
+// the catalog's own resolveStage with this copy's missing stages as the
+// unavailable ones, as a room's Random is. A launch never sees Random itself.
+std::string OfflineStageCode(int stage);
 
 // The fighter's costume numbers in the game's order, and a costume's colour
 // numbers. Availability is of a whole look, a costume in one colour: with
@@ -189,15 +196,28 @@ struct RoomMatch {
 	bool practice = false; // a Practice room's (the lobby's trainingMode)
 };
 
+// Why this copy cannot launch a room's match: the reason the runtime words
+// for the player (SfvGame's Battle::Enter returns it), and what the log says.
+struct MatchRefusal {
+	ember::game::EntryRefusal reason = ember::game::EntryRefusal::UnsupportedMatch;
+	std::string log;
+};
+
+// A room's match as this copy launches it: the battle, or why not.
+struct MatchLaunch {
+	std::optional<mod::MatchPicks> picks; // none when refused
+	MatchRefusal refusal;                 // when refused
+};
+
 // The battle to launch for a room's match: both picks and the stage by their
-// codes and numbers, and the room's rounds and time. Empty when the catalog
-// refuses a pick or the stage, this copy lacks a fighter, costume or the
-// stage (a battle would load nothing sensible), or SFV cannot play the rounds
-// or the time (VersusLaunch's PlayableRounds and RoundClockFrames): this is
-// the backstop that keeps a copy from launching content it does not have. The
-// match's end is not part of it (MatchEnd's choice).
-std::optional<mod::MatchPicks> LaunchPicks(const RoomMatch& match);
-// Why LaunchPicks refuses the match, for the log; empty when it launches.
-std::string LaunchRefusal(const RoomMatch& match);
+// codes and numbers, and the room's rounds and time. Refused when the catalog
+// refuses a pick (UnsupportedMatch) or the stage (UnsupportedStage), this
+// copy lacks a fighter or costume (UnsupportedMatch) or the stage
+// (StageNotInstalled), since a battle would load nothing sensible, or SFV
+// cannot play the rounds or the time (VersusLaunch's PlayableRounds and
+// RoundClockFrames; UnsupportedMatch): this is the backstop that keeps a copy
+// from launching content it does not have. The match's end is not part of it
+// (MatchEnd's choice).
+MatchLaunch LaunchPicks(const RoomMatch& match);
 
 } // namespace sfve::adapter

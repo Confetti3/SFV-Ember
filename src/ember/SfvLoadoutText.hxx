@@ -7,8 +7,10 @@
 // argument "common1"), which its select and VS screens build (rva 0x6D3130,
 // 0x76AFD0, 0x72E960). Ember reads them once at the main menu
 // (ReadLoadoutWords), as it reads the league names (EMBER_LIBRARY.md section
-// 28); until then, and for a key the game has no text for, the words are
-// English. The move names are the catalog's (SfvCatalog's MoveName).
+// 28); until then, and for a key the game has no text for, the words are the
+// game's English ones, in its casing, so every screen names the parts as the
+// game does and nothing changes case when its words arrive. The move names
+// are the catalog's (SfvCatalog's MoveName).
 //
 // The library has no words of its own for these, and SFV may overlay only
 // the library's own messages, so the pick screen's rows and the shared
@@ -28,27 +30,28 @@ void ReadLoadoutWords();
 
 // The game's label for the part ("V-SKILL", "V-TRIGGER" in English).
 const char* PartLabel(picks::LoadoutPart part);
-// "I" or "II", for choice number 0 or 1; empty for any other.
-const char* Numeral(int number);
 // A choice as the game's select screen words it: its pattern for that
-// number with the move's name (FormatChoice).
+// number with the move's name (FormatChoice), the numeral picks::Numeral.
 std::string ChoiceText(int number, const std::string& move);
 // The pattern with "{common1}" made `move`; without that argument, the
-// pattern (or the numeral, for no pattern) and the move after it; the
-// numeral alone where there is no move.
+// pattern (or the numeral, for no pattern) and the move after it. Where
+// there is no move, the numeral alone: the pattern would show its argument's
+// place empty. A pattern with any other argument left once "{common1}" is
+// filled is not shown either: the numeral and the move are, and the pattern
+// is logged once.
 std::string FormatChoice(const std::string& pattern, const char* numeral, const std::string& move);
 
 // The loadout at an Ultra number (picks::LoadoutAt) as the shared screens
-// name it, "V-Skill II · V-Trigger I", and Home's short form, "II/I"; empty
+// name it, "V-SKILL II · V-TRIGGER I", and Home's short form, "II/I"; empty
 // for a number that is no loadout. Any thread; each text lives for the
 // process's life.
 const char* LoadoutLabel(int index);
 const char* ShortLoadoutLabel(int index);
 // The fighter's moves for the loadout, "Mind's Eye · Kakko Fuden"; a part
-// the game gave no name is its label and numeral ("V-Trigger II").
+// the game gave no name is its label and numeral ("V-TRIGGER II").
 std::string LoadoutMoves(std::int64_t fighter, picks::Loadout loadout);
 // The table page's value: LoadoutLabel, then the moves where the game named
-// any: "V-Skill II · V-Trigger I: Mind's Eye · Kakko Fuden".
+// any: "V-SKILL II · V-TRIGGER I: Mind's Eye · Kakko Fuden".
 std::string LoadoutName(std::int64_t fighter, picks::Loadout loadout);
 
 } // namespace sfve::adapter
