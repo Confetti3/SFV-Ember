@@ -215,3 +215,6 @@ msgstr "关闭 Ember。如 SFV 暂停菜单仍打开，请将其关闭以继续�
 
 msgid "controllers.detail_steam"
 msgstr "Steam Input 正在处理此控制器，因此按钮遵循你的 Steam 设置。要让 Ember 处理它，请在 Steam 外启动 Ember，或在 Steam 中关闭 Street Fighter V 的 Steam Input。"
+
+msgid "home.offline_detail"
+msgstr "训练、对战、街机等游戏原有的离线模式。"

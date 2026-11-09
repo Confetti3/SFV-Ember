@@ -215,3 +215,6 @@ msgstr "Fermez Ember, puis le menu pause de SFV s'il est ouvert pour reprendre."
 
 msgid "controllers.detail_steam"
 msgstr "Steam Input gère cette manette, donc ses boutons suivent vos paramètres Steam. Pour laisser Ember la gérer, lancez Ember hors de Steam ou désactivez Steam Input pour Street Fighter V dans Steam."
+
+msgid "home.offline_detail"
+msgstr "Entraînement, Versus, Arcade et les autres modes hors ligne du jeu."

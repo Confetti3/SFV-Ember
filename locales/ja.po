@@ -215,3 +215,6 @@ msgstr "Emberを閉じ、SFVのポーズメニューが開いていたら閉じ�
 
 msgid "controllers.detail_steam"
 msgstr "Steam Inputがこのコントローラーを扱うため、ボタンはSteamの設定に従います。Emberに扱わせるには、Steamの外からEmberを起動するか、SteamでStreet Fighter VのSteam Inputをオフにしてください。"
+
+msgid "home.offline_detail"
+msgstr "トレーニング、対戦、アーケードなど、ゲーム本体のオフラインモードです。"

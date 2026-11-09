@@ -215,3 +215,6 @@ msgstr "Close Ember, then close SFV's pause menu to resume if it is open."
 
 msgid "controllers.detail_steam"
 msgstr "Steam Input handles this controller, so its buttons follow your Steam settings. To let Ember handle it, start Ember outside Steam, or turn off Steam Input for Street Fighter V in Steam."
+
+msgid "home.offline_detail"
+msgstr "Training, Versus, Arcade and the game's other offline modes."

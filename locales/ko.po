@@ -215,3 +215,6 @@ msgstr "Ember를 닫고, SFV 일시정지 메뉴가 열려 있다면 닫아 재�
 
 msgid "controllers.detail_steam"
 msgstr "Steam Input이 이 컨트롤러를 처리하므로 버튼은 Steam 설정을 따릅니다. Ember가 처리하게 하려면 Steam 밖에서 Ember를 실행하거나 Steam에서 Street Fighter V의 Steam Input을 끄세요."
+
+msgid "home.offline_detail"
+msgstr "트레이닝, 대전, 아케이드 등 게임의 오프라인 모드입니다."
