@@ -301,7 +301,14 @@ constexpr uint32_t kNodeFunction = 0x30;
 // actor, reconciled after a restore by rva 0x482D10, so a replay can differ
 // in the actor pointer and a frame counter), and a fighter's material part
 // (CharaMaterialPart+0xD8 and +0x3B0: shader and material instances
-// recreated by its post-restore callback rva 0x3587D0).
+// recreated by its post-restore callback rva 0x3587D0), and its visual part
+// (CharaVisualPart+0x6D8, 392 bytes, registered at rva 0x395320): +0x6D8
+// drives the fighter's UE actor (rva 0x3A06C0: 1 start, 3 and 4 stop, 5
+// re-sync, each then 0 or 2), and its post-restore callback (rva 0x3999B0)
+// turns a playing 2 into 5, so a restored fighter re-syncs its actor where
+// one that played straight on keeps 2; the floats after it drift on replay
+// too (2026-11-09 sweep: one fighter's V-Trigger II, 313 replays differing
+// there alone).
 //
 // Bone positions inside fight state, masked: a fighter's bone 28 in world
 // space (CharaUnit+1984, read in Chara PreInput rva 0x37D250 from its visual
@@ -360,6 +367,7 @@ constexpr RunRule kRunRules[] = {
 	{"CameraUnit", 0x550, ".presentation"},
 	{"CharaManagerUnit", 0x1C0, "", 16, 32},
 	{"CharaMaterialPart", 0xD8, ".presentation"},
+	{"CharaVisualPart", 0x6D8, ".presentation"},
 	{"CharaMaterialPart", 0x3B0, ".presentation"},
 	{"ProjectileVisualPart", 0xC0, ".presentation"},
 	{"ProjectileVisualPart", 0xF0, ".presentation"},
