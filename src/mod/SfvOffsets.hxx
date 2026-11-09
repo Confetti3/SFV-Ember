@@ -212,14 +212,32 @@ constexpr CodeSite kRestartBattle{"RestartBattle", 0x684760,
 
 // Content lists (GameContent): the singleton's spec data ("SpecDataAsset"),
 // and bool List(SpecData** spec, TArray<FString>* out, bool includeRandom)
-// for the selectable, installed fighters and the spec's stages (spec flags,
-// no ownership).
+// for the selectable, installed fighters, and for the spec's stages less
+// those whose package this copy lacks (no ownership). kSpecStages keeps the
+// order of kSpecStageIds' list and only the stages also in a second walk of
+// the spec's stage map (rva 0x559540), which keeps an entry whose flag at
+// +11 says it needs no package, the code RND, or one whose package the
+// StageAsset entry's +16 path names exists on this install (rva 0x549500,
+// then the package test at rva 0x11EE840). So two installs of the same
+// build can list different stages: what this copy has installed, never what
+// every copy shares (EMBER_LIBRARY.md section 38).
 constexpr CodeSite kSpecData{"SpecData", 0x68E7E0,
 	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x33, 0xDB, 0x48, 0x8B, 0xF9, 0x33}};
 constexpr CodeSite kSelectableFighters{"SelectableFighters", 0x566FC0,
 	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x83, 0x7A, 0x0C, 0x00, 0x48, 0x8B, 0x1A, 0x48, 0x89, 0x6C}};
 constexpr CodeSite kSpecStages{"SpecStages", 0x5672D0,
 	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x83, 0x7A, 0x0C, 0x00, 0x48, 0x8B, 0x1A, 0x48, 0x89, 0x6C}};
+// bool SpecStageIds(SpecData** spec, TArray<int>* out): the stages the spec
+// lets players select, with no package check: it walks the spec's stage map
+// (spec+408, 48-byte elements, the StageAsset index at +0) in its order and
+// keeps each entry whose flag at +10 is set, once; then, only while the
+// online identity is logged in (rva 0x57F1A0, which asks kLoggedIn first), it
+// appends index 50. Each value is an index into the StageAsset table
+// (content::kStageEntries), whose entry's code kSpecStages turns it into
+// (rva 0x547510). The same on every install of the build: Ember's stage
+// universe, which the build id fingerprints.
+constexpr CodeSite kSpecStageIds{"SpecStageIds", 0x567B20,
+	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x48}};
 
 // UClass* MainMenuState(package): the main menu's class (scene vtable
 // kMainMenuVtable); the results menu's "Exit" changes scene to it (rva
@@ -414,7 +432,7 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
 	kSpecStages, kMainMenuClass, kSetPlayerParam, kRequestExit, kStageName, kSpecFighters, kSpecCostumes, kPlayableCostumes,
 	kSpecColours, kCostumeName, kTextToString, kCreateText, kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke,
-	kBattleSetupClass, kOwnedFighters, kOwnedCostumes, kOwnedColours, kOwnedStages, kLoggedIn};
+	kBattleSetupClass, kOwnedFighters, kOwnedCostumes, kOwnedColours, kOwnedStages, kLoggedIn, kSpecStageIds};
 
 namespace versus {
 

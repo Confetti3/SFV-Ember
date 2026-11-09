@@ -7,7 +7,9 @@
 // everything as the game does (SfvCatalog), and the pane beside them shows
 // the game's own pictures of the pick (SfvArt): the fighter's select-screen
 // banner, the costume and colour by name with the colour's swatch, and the
-// stage's picture while the stage row has the focus.
+// stage's picture while the stage row has the focus. The stage row offers
+// Random and the stages both seated players have (EMBER_LIBRARY.md section
+// 38).
 //
 // Left and Right step a row and keep the change at once; Select on any row
 // opens every choice. Every fighter, costume and colour the game has is a
@@ -24,6 +26,7 @@
 
 #include "ui/GameMenu.hxx"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -39,13 +42,17 @@ public:
 	// One frame. `editable`: the pick may change now (the runtime's
 	// canEditSelection); `stageEditable`: and so may the stage this player
 	// offers (out of a room, or as P1). `error` says why the pick cannot be
-	// readied, if it cannot. Writes a changed pick back to SfvPick.
-	void Draw(bool editable, bool stageEditable, const std::string& error);
+	// readied, if it cannot. `unavailableStages` (the runtime's): the stages
+	// the stage row leaves out, which offers Random and the rest. Writes a
+	// changed pick back to SfvPick.
+	void Draw(bool editable, bool stageEditable, const std::string& error, const std::vector<std::int64_t>& unavailableStages);
 
 private:
-	std::vector<sf4e::ui::MenuEntry> Rows(const PlayerPick& pick, bool editable, bool stageEditable) const;
-	// The pick with the row's change made; false when the action changes nothing.
-	static bool Apply(const sf4e::ui::MenuAction& action, PlayerPick& pick);
+	std::vector<sf4e::ui::MenuEntry> Rows(const PlayerPick& pick, bool editable, bool stageEditable,
+		const std::vector<int>& stageChoices) const;
+	// The pick with the row's change made; false when the action changes
+	// nothing. A stage is one of `stageChoices`.
+	static bool Apply(const sf4e::ui::MenuAction& action, PlayerPick& pick, const std::vector<int>& stageChoices);
 	// The pane beside the rows, for the focused row, with `note` (why the
 	// focused choice of an open choice cannot be chosen) under it.
 	static void DrawPreview(const PlayerPick& pick, const std::string& focus, const std::string& note);

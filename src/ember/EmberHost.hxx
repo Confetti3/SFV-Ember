@@ -25,6 +25,7 @@
 
 #include "sf4e/sf4e__RuntimeTick.hxx"
 
+#include <string>
 #include <vector>
 
 namespace sfve::adapter {
@@ -38,6 +39,9 @@ struct HostSettings {
 	// game's answer (-sfve_unowned). SfvCatalog, EMBER_LIBRARY.md section 23.
 	bool ownershipGate = true;
 	std::vector<mod::UnownedContent> unowned;
+	// Stage codes treated as not installed on this copy (-sfve_uninstalled,
+	// development; EMBER_LIBRARY.md section 38).
+	std::vector<std::string> uninstalled;
 };
 
 // Registers the tick; `battle` must outlive the process (the battle mode).

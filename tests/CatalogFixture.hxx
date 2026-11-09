@@ -41,6 +41,13 @@ inline mod::FighterContent Fighter(const char* code, std::vector<mod::CostumeCon
 	return {code, std::move(costumes), name, installed, owned};
 }
 
+// A stage of the spec's universe, installed here and the game's to choose
+// unless said otherwise.
+inline mod::StageContent Stage(const char* code, const char* name = "", bool installed = true, bool owned = true)
+{
+	return {code, name, installed, owned};
+}
+
 // A content list shaped as the game's: fighters in the game's order with
 // their costume numbers (with gaps, as the spec leaves some out) and each
 // costume's colours (EX colours from 100); names where the game gives one;
@@ -49,7 +56,8 @@ inline mod::FighterContent Fighter(const char* code, std::vector<mod::CostumeCon
 // (KEN; CNL's costume 2; RYU's EX colours of costume 4); a costume the game
 // lets them pick in none of its colours (RYU's costume 1, as -sfve_unowned
 // marks of each of its colours make it), so no look of it is theirs; the
-// stages' names where the game gives one (none for the second).
+// stages' names where the game gives one (none for the second), and a fourth
+// stage of the universe this copy has not installed (S26, id 3).
 inline mod::ContentLists TestContent()
 {
 	return {{Fighter("RYU",
@@ -61,15 +69,19 @@ inline mod::ContentLists TestContent()
 				Fighter("KEN", {Costume(0, {0})}, "Ken", true, false),
 				Fighter("CMY", {Costume(3, {5, 6})}, "", false),
 				Fighter("BSN", {Costume(0, {0, 1}), Costume(1, {0, 1}, "", false)}, "M. Bison")},
-		{"S01", "S02", "S25"}, {"Stage One", "", "Stage Twenty-five"}};
+		{Stage("S01", "Stage One"), Stage("S02"), Stage("S25", "Stage Twenty-five"), Stage("S26", "", false)}};
 }
 
-// Lists with only the codes given, each fighter in one costume and colour.
+// The id of TestContent's stage this copy has not installed.
+constexpr std::int64_t kUninstalledStage = 3;
+
+// Lists with only the codes given, each fighter in one costume and colour,
+// every stage installed.
 inline mod::ContentLists CodesOnly(std::vector<std::string> fighters, std::vector<std::string> stages)
 {
 	mod::ContentLists lists;
 	for (const std::string& code : fighters) lists.fighters.push_back(Fighter(code.c_str(), {Costume(0, {0})}));
-	lists.stages = std::move(stages);
+	for (const std::string& code : stages) lists.stages.push_back(Stage(code.c_str()));
 	return lists;
 }
 

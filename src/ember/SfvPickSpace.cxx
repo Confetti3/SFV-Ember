@@ -30,11 +30,13 @@ std::string Problem(const PickSpace& space)
 	return {};
 }
 
-std::string Fingerprint(const PickSpace& space)
+namespace {
+
+// Every list by its length and every code by its length, so no two pick
+// spaces read alike: the fighters, each with its costumes' numbers and each
+// costume's colours.
+std::string FightersText(const PickSpace& space)
 {
-	// Every list by its length and every code by its length, so no two pick
-	// spaces read alike: the fighters, each with its costumes' numbers and
-	// each costume's colours; then the stages.
 	std::string text = std::to_string(space.fighters.size()) + ";";
 	for (const Fighter& fighter : space.fighters) {
 		text += std::to_string(fighter.code.size()) + ":" + fighter.code + std::to_string(fighter.costumes.size()) + "(";
@@ -45,16 +47,39 @@ std::string Fingerprint(const PickSpace& space)
 		}
 		text += ")";
 	}
-	text += std::to_string(space.stages.size()) + ";";
+	return text;
+}
+
+// The stages, by the same rule.
+std::string StagesText(const PickSpace& space)
+{
+	std::string text = std::to_string(space.stages.size()) + ";";
 	for (const std::string& code : space.stages) text += std::to_string(code.size()) + ":" + code;
+	return text;
+}
+
+std::string Hash(const std::string& text)
+{
 	char hex[17];
 	std::snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)XXH3_64bits(text.data(), text.size()));
 	return hex;
 }
 
+} // namespace
+
+std::string Fingerprint(const PickSpace& space)
+{
+	return Hash(FightersText(space) + StagesText(space));
+}
+
 std::string BuildId(const PickSpace& space)
 {
 	return std::string(kMatchBuild) + "/" + Fingerprint(space);
+}
+
+std::string PartFingerprints(const PickSpace& space)
+{
+	return "picks " + Hash(FightersText(space)) + ", stages " + Hash(StagesText(space));
 }
 
 const Fighter* FighterAt(const PickSpace& space, std::int64_t fighter)

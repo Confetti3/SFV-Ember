@@ -6,6 +6,7 @@
 
 #include <doctest/doctest.h>
 
+#include "CatalogFixture.hxx"
 #include "TestInputs.hxx"
 #include "core/ReplayFile.hxx"
 #include "ember/SfvCatalog.hxx"
@@ -197,6 +198,38 @@ TEST_CASE("the Replays screen lists the saved battles, keeps the player's mark a
 	CHECK(replays.Status().step == sf4e::replaystore::Step::Idle);
 	CHECK_FALSE(fs::exists(folder));
 
+	SetEnvironmentVariableW(L"SFVE_REPLAY_DIR", nullptr);
+}
+
+TEST_CASE("Watch now refuses a replay of this build whose stage this copy has not installed")
+{
+	// A room's battle records the room's stage, which this copy may lack
+	// (EMBER_LIBRARY.md section 38). Everything else about this replay is one
+	// this copy plays: its build, fighters, rounds and frames.
+	catalog_fixture::FillTestCatalog();
+	wchar_t temp[MAX_PATH];
+	REQUIRE(GetTempPathW(MAX_PATH, temp) > 0);
+	const fs::path folder = fs::path(temp) / (L"sfve-replays-stage-test-" + std::to_wstring(GetCurrentProcessId()));
+	std::error_code ignored;
+	fs::remove_all(folder, ignored);
+	REQUIRE(SetEnvironmentVariableW(L"SFVE_REPLAY_DIR", folder.c_str()));
+	replay::Replay battle = Battle(1'762'501'200, 0, {{true, 1, {1, 2}, 3, 3, 380}});
+	battle.header.build = adapter::MatchBuildId();
+	battle.header.stage = catalog_fixture::kUninstalledStage;
+	battle.header.stageCode = "S26";
+	const fs::path file = adapter::SaveReplay(battle);
+	REQUIRE(fs::exists(file));
+	ember::game::Replays& replays = adapter::SfvReplays();
+	sf4e::replay::Request watch;
+	watch.mode = sf4e::replay::Mode::Watch;
+	watch.path = sf4e::platform::WideToUtf8(file.wstring());
+	replays.Start(watch, true, true);
+	CHECK(replays.Status().notice == sf4e::loc::T("inputs.unreadable_detail"));
+	CHECK(replays.Status().noticeError);
+	CHECK(replays.Status().step == sf4e::replaystore::Step::Idle);
+	CHECK_FALSE(replays.Playback().playback);
+	replays.StopListing();
+	fs::remove_all(folder, ignored);
 	SetEnvironmentVariableW(L"SFVE_REPLAY_DIR", nullptr);
 }
 

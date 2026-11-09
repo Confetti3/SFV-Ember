@@ -34,7 +34,7 @@ msgid "selection.not_owned"
 msgstr "Non possédé dans cette copie de Street Fighter V."
 
 msgid "runtime.invite_other_build"
-msgstr "L'hôte utilise une autre version de SFV Ember ou a installé d'autres combattants et stages. Les deux joueurs doivent avoir les mêmes."
+msgstr "L'hôte utilise une autre version de SFV Ember. Les deux joueurs doivent avoir la même version."
 
 msgid "launcher.update_failed"
 msgstr "Impossible d'installer la mise à jour. Fermez le jeu et l'ancien lanceur avant de réessayer. Voir %TEMP%\\sfv-ember-update.log ; les copies conservées sont dans .ember-update-backups."

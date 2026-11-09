@@ -6,6 +6,7 @@
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "ui/MenuRows.hxx"
+#include "ui/SelectionLabels.hxx"
 #include "ui/Theme.hxx"
 #include "ui/V2.hxx"
 
@@ -73,13 +74,6 @@ std::vector<int> PlayableRoster()
 	return playable;
 }
 
-std::vector<int> Stages()
-{
-	std::vector<int> stages((size_t)StageCount());
-	for (int id = 0; id < StageCount(); id++) stages[(size_t)id] = id;
-	return stages;
-}
-
 // A value row Left and Right step; with `choices`, Select opens them all.
 MenuEntry StepRow(const char* id, const char* label, std::string value, const char* detail, bool enabled,
 	std::vector<MenuChoice> choices = {}, int chosen = -1)
@@ -111,7 +105,8 @@ float DrawPicture(ImDrawList* draw, const sf4e::ui::SelectionImage& image, ImVec
 
 } // namespace
 
-std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool editable, bool stageEditable) const
+std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool editable, bool stageEditable,
+	const std::vector<int>& stageChoices) const
 {
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const char* adjusts = editable ? "selection.adjust_saves" : "selection.locked_detail";
@@ -140,7 +135,7 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 			editable && Contains(readyColours, id)});
 	}
 	std::vector<MenuChoice> stages;
-	for (int id : Stages()) stages.push_back({OptionId(id), StageName(id), {}, editable && stageEditable});
+	for (int id : stageChoices) stages.push_back({OptionId(id), sf4e::ui::StageLabel(id), {}, editable && stageEditable});
 	std::vector<MenuEntry> rows;
 	rows.push_back(StepRow(kFighter, "selection.fighter", catalog.fighterName(pick.pick.fighter),
 		editable ? "selection.select_saves" : "selection.locked_detail", editable, std::move(fighters), pick.pick.fighter));
@@ -149,7 +144,7 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 	rows.push_back(StepRow(kColour, "selection.color_row", ColourName(pick.pick.color), adjusts, editable, std::move(colours),
 		pick.pick.color));
 	if (!dummy_) {
-		rows.push_back(StepRow(kStage, "selection.stage", StageName(pick.stage),
+		rows.push_back(StepRow(kStage, "selection.stage", sf4e::ui::StageLabel(pick.stage),
 			!editable ? "selection.locked_detail" : stageEditable ? "selection.p1_stage" : "selection.only_p1_stage",
 			editable && stageEditable, std::move(stages), pick.stage));
 	}
@@ -157,7 +152,7 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 	return rows;
 }
 
-bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick)
+bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const std::vector<int>& stageChoices)
 {
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const PlayerPick before = pick;
@@ -172,7 +167,7 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick)
 		else if (action.id == kCostume) sf4e::ui::Step(pick.pick.costume, CostumeIds(pick.pick.fighter, true), action.delta);
 		else if (action.id == kColour) {
 			sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), action.delta);
-		} else if (action.id == kStage) sf4e::ui::Step(pick.stage, Stages(), action.delta);
+		} else if (action.id == kStage) sf4e::ui::Step(pick.stage, stageChoices, action.delta);
 	} else if (action.kind == MenuAction::Chosen) {
 		const std::optional<int> option = OptionOf(action.text);
 		const auto pickable = [&option](const std::vector<int>& ids) { return option && Contains(ids, *option); };
@@ -182,13 +177,14 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick)
 			pick.pick.costume = *option;
 		} else if (action.id == kColour && pickable(ColourIds(pick.pick.fighter, pick.pick.costume, true))) {
 			pick.pick.color = *option;
-		} else if (option && action.id == kStage && catalog.validStage(*option)) pick.stage = *option;
+		} else if (action.id == kStage && pickable(stageChoices)) pick.stage = *option;
 	}
 	return pick.pick.fighter != before.pick.fighter || pick.pick.costume != before.pick.costume ||
 		pick.pick.color != before.pick.color || pick.stage != before.stage;
 }
 
-void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::string& error)
+void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::string& error,
+	const std::vector<std::int64_t>& unavailableStages)
 {
 	auto& nav = menu_.navigation;
 	// The shell says where Back goes and which of its shortcuts this screen
@@ -210,7 +206,8 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	menu_.exitName = embedded.exitName;
 	menu_.shortcutHints = embedded.shortcutHints;
 	PlayerPick pick = dummy_ ? CurrentDummy() : CurrentPick();
-	const std::vector<MenuEntry> rows = Rows(pick, editable, stageEditable && !dummy_);
+	const std::vector<int> stageChoices = StageChoices(unavailableStages);
+	const std::vector<MenuEntry> rows = Rows(pick, editable, stageEditable && !dummy_, stageChoices);
 	const char* status = loc::T(editable ? "selection.status_adjust" : "selection.locked_detail");
 	// The pane beside the rows is the pick's preview, as wide as the fighter's
 	// banner. The choice dialog draws an option's detail under its list,
@@ -224,7 +221,7 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 		{}, {}, false, 100, error.empty() ? sf4e::ui::Tone::Neutral : sf4e::ui::Tone::Error);
 	if (action.kind == MenuAction::Close || action.kind == MenuAction::Shortcut) sf4e::ui::ForwardMenuAction(action);
 	if (action.kind == MenuAction::Activate && action.id == kDone) sf4e::ui::ForwardMenuAction({MenuAction::Close});
-	if (!editable || (action.id == kStage && (!stageEditable || dummy_)) || !Apply(action, pick)) return;
+	if (!editable || (action.id == kStage && (!stageEditable || dummy_)) || !Apply(action, pick, stageChoices)) return;
 	if (dummy_) SetDummy(pick);
 	else SetPick(pick);
 	// Opened for this one change, a choice made is it: back where it came from.
@@ -252,8 +249,9 @@ void SfvSelectionScreen::DrawPreview(const PlayerPick& pick, const std::string& 
 		at.y += sf4e::ui::v2::Paragraph(draw, at, width, note, ImGui::GetFontSize(), colors.danger) + gap;
 	}
 	if (focus == kStage) {
+		// Random has no picture: StageImage reports it missing.
 		at.y += DrawPicture(draw, StageImage(pick.stage), at, width, kStageShape) + gap;
-		draw->AddText(at, colors.text, StageName(pick.stage).c_str());
+		draw->AddText(at, colors.text, sf4e::ui::StageLabel(pick.stage).c_str());
 		return;
 	}
 	at.y += DrawPicture(draw, FighterImage(pick.pick.fighter, FighterPicture::Banner), at, width, kBannerShape) + gap;

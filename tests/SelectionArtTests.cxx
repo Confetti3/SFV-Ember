@@ -9,6 +9,7 @@
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 
+#include "common/Localization.hxx"
 #include "ui/SelectionArt.hxx"
 #include "ui/SelectionLabels.hxx"
 
@@ -26,6 +27,7 @@ TEST_CASE("the pick labels are the game's names, from the catalog")
 	CHECK(StageLabel(1) == "S02"); // the game gave no name
 	CHECK(StageLabel(2) == "Stage Twenty-five");
 	CHECK(StageLabel(9) == "9");
+	CHECK(StageLabel(sfve::picks::kRandomStage) == sf4e::loc::T("selection.random"));
 	CHECK(CostumeLabel(PickOf(0, 4)) == "Nostalgia");
 	CHECK(CostumeLabel(PickOf(0, 1)) == "1"); // the game gave no name
 	CHECK(ShortCostumeLabel(PickOf(0, 4)) == "Nostalgia");
@@ -56,7 +58,9 @@ TEST_CASE("the game's pictures are its fighters' faces and its stages', and the 
 	CHECK(art.Portrait(0).texture == 0);
 	CHECK_FALSE(art.Stage(2).missing);
 	CHECK(art.Portrait(5).missing); // not a fighter of the catalog
-	CHECK(art.Stage(3).missing);
+	CHECK_FALSE(art.Stage(3).missing); // the universe's, whether or not this copy has it
+	CHECK(art.Stage(4).missing);
+	CHECK(art.Stage(sfve::picks::kRandomStage).missing); // Random has no picture, and none is asked for
 	// The game has no picture of a fighter in a costume or colour.
 	CHECK(art.Character(0, 0, 0).missing);
 	CHECK(art.Appearance(0, 0, 0).missing);

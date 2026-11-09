@@ -34,7 +34,7 @@ msgid "selection.not_owned"
 msgstr "이 Street Fighter V에서는 보유하지 않았습니다."
 
 msgid "runtime.invite_other_build"
-msgstr "호스트가 다른 SFV Ember 빌드를 사용 중이거나 다른 파이터와 스테이지가 설치되어 있습니다. 두 플레이어 모두 같아야 합니다."
+msgstr "호스트가 다른 SFV Ember 빌드를 사용 중입니다. 두 플레이어 모두 같은 버전이 필요합니다."
 
 msgid "launcher.update_failed"
 msgstr "업데이트를 설치하지 못했습니다. 게임과 이전 런처를 닫고 다시 시도하세요. %TEMP%\\sfv-ember-update.log를 확인하세요. 보존된 제품 사본은 .ember-update-backups에 있습니다."

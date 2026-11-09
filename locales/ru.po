@@ -34,7 +34,7 @@ msgid "selection.not_owned"
 msgstr "Не куплено в этой копии Street Fighter V."
 
 msgid "runtime.invite_other_build"
-msgstr "У хоста другая сборка SFV Ember или установлены другие бойцы и арены. Обоим игрокам нужно одно и то же."
+msgstr "У хоста другая сборка SFV Ember. Обоим игрокам нужна одна и та же версия."
 
 msgid "launcher.update_failed"
 msgstr "Не удалось установить обновление. Закройте игру и прежний лаунчер, затем повторите попытку. См. %TEMP%\\sfv-ember-update.log; резервные копии находятся в .ember-update-backups."

@@ -8,12 +8,12 @@
 //
 // Two kinds of fact, kept apart because two copies of the game must agree on
 // the first and need not on the second:
-// - The pick space: which fighters, costumes and colours exist. It comes from
-//   the game's spec data (DA_Spec) and fighter table (DA_CharaEntry), never
-//   from what this copy has installed or owns (sfv::kSpecFighters,
-//   kSpecCostumes, kSpecColours).
-// - This copy's own: whether its install has a fighter's or a costume's
-//   package (`installed`), what the game lets this copy's player pick
+// - The pick space: which fighters, costumes, colours and stages exist. It
+//   comes from the game's spec data (DA_Spec) and fighter table
+//   (DA_CharaEntry), never from what this copy has installed or owns
+//   (sfv::kSpecFighters, kSpecCostumes, kSpecColours, kSpecStageIds).
+// - This copy's own: whether its install has a fighter's, a costume's or a
+//   stage's package (`installed`), what the game lets this copy's player pick
 //   (`owned`, sfv::kOwnedFighters and the rest), and the names, in the game's language.
 //
 // Stage names are the stage's data asset's FText (sfv::kStageName); fighter
@@ -66,21 +66,31 @@ struct OwnershipSource {
 	int markedUnowned = 0;
 };
 
+// One stage of the spec's universe (sfv::kSpecStageIds): every copy of the
+// build lists the same stages in the same order, whatever it has installed.
+struct StageContent {
+	std::string code;       // "S01"
+	std::string name;       // UTF-8, display only; empty where the game has none
+	bool installed = false; // in sfv::kSpecStages: this copy has the stage's package
+	// The game lets this copy's player choose it (sfv::kOwnedStages); logged,
+	// not gated (a room's stage is P1's choice and the battle jump runs no
+	// check in a room).
+	bool owned = false;
+};
+
 struct ContentLists {
 	std::vector<FighterContent> fighters; // in the order of the game's select screen
-	std::vector<std::string> stages;      // playable ones (not random, not those without stage data)
-	// UTF-8, one per stage in `stages`' order; empty where the game has none.
-	std::vector<std::string> stageNames;
-	// The stages of `stages` the game lets this copy's player choose
-	// (sfv::kOwnedStages), in the same order; logged, not gated (a room's
-	// stage is P1's choice and the battle jump runs no check in a room).
-	std::vector<std::string> ownedStages;
+	// The universe, in the spec's order: playable ones (not random, not those
+	// without stage data), installed here or not.
+	std::vector<StageContent> stages;
 	OwnershipSource ownership;
 };
 
 // Game thread. Empty lists until the game's content tables and its battle
-// setup asset are loaded. The setup asset is found, or loaded, with
-// StaticLoadObject, so call it at the main menu (never in a battle).
+// setup asset are loaded, and while the spec's stage universe is empty or
+// this copy has none of its stages installed. The setup asset is found, or
+// loaded, with StaticLoadObject, so call it at the main menu (never in a
+// battle).
 ContentLists ReadContentLists();
 
 // Whether a battle can load the fighter `code` names: the game's fighter
@@ -103,6 +113,14 @@ bool BattleFighter(uint8_t* charaAsset, std::wstring_view code);
 // an account that owns everything. Never the other way: nothing the game
 // does not allow becomes owned. Counted in `ownership.markedUnowned`.
 void MarkUnowned(ContentLists& lists, const std::vector<UnownedContent>& marks);
+
+// Development (-sfve_uninstalled, ModConfig): each code takes a stage of the
+// universe from this copy's install, so one full install can play a copy
+// that lacks stages. It only ever clears `installed`: the universe, and so
+// the build id, stay as they are. A code outside the universe changes
+// nothing, and so does one that would leave no stage installed. Returns how
+// many stages it cleared.
+int MarkUninstalled(ContentLists& lists, const std::vector<std::string>& codes);
 
 // Game thread, at the main menu. A text the game's own localization data
 // holds, by namespace and key (sfv::kCreateText, as the game builds its

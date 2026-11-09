@@ -25,7 +25,16 @@
 // fighter with no costume and colour left to ready is locked too: each
 // player may ready only what their own copy lets them pick, and the
 // opponent's pick plays as picked, whatever this copy owns (LaunchPicks
-// checks the spec alone). EMBER_LIBRARY.md section 23.
+// checks the spec, and only that this copy has the content installed).
+// EMBER_LIBRARY.md section 23.
+//
+// Stages are the spec's universe (GameContent's StageContent), the same on
+// every install, and a stage id is its place there. Which of them this copy
+// has installed is per copy (StageInstalled), never part of the build id:
+// two copies that lack different stages still meet, the room carries what
+// each lacks (MissingStages, the library's GameState::MissingStages), and
+// the stage row and Random offer only stages both seated players have.
+// EMBER_LIBRARY.md section 38.
 //
 // What SFV has no use for: Ultras (one choice, 0), editions (a room's
 // edition rule is ignored), personal actions and win quotes (SF4's; the wire
@@ -86,14 +95,28 @@ picks::PickSpace PickSpaceOf(const mod::ContentLists& lists);
 std::string PickSpaceJson();
 
 // The game's code of a fighter or a stage ("RYU", "S01"); empty for an id
-// outside the lists.
+// outside the lists (Random's kRandomStage among them).
 std::string FighterCode(std::int64_t fighter);
 std::string StageCode(std::int64_t stage);
 // A stage as the shell names it: the game's own name for it, or its code
 // where the game gave none (and empty for an id outside the list).
 std::string StageName(std::int64_t stage);
-// How many stages the catalog lists (0 before FillCatalog); ids run from 0.
+// How many stages the universe has (0 before FillCatalog); ids run from 0.
 int StageCount();
+// This copy has the stage's package: the one per-copy stage rule. A launch
+// (LaunchPicks), a replay's playback and the fitting of this player's own
+// stored stage ask it, whatever the room says; false for an id outside the
+// universe.
+bool StageInstalled(std::int64_t stage);
+// The universe's stages this copy has not installed, by id, ascending: what
+// the room hears this copy lacks (SfvGame's GameState::MissingStages). Fixed
+// once the catalog is filled.
+std::vector<std::int64_t> MissingStages();
+// What the pick screen's stage row offers: Random (picks::kRandomStage)
+// first, then the universe's stages less `unavailable`, in the universe's
+// order. `unavailable` is the runtime's unavailableStages: this copy's
+// missing stages, and at a table the opponent's as well.
+std::vector<int> StageChoices(const std::vector<std::int64_t>& unavailable);
 
 // The fighter's costume numbers in the game's order, and a costume's colour
 // numbers. Availability is of a whole look, a costume in one colour: with
@@ -146,9 +169,13 @@ struct RoomMatch {
 
 // The battle to launch for a room's match: both picks and the stage by their
 // codes and numbers, and the room's rounds and time. Empty when the catalog
-// refuses a pick or the stage, or SFV cannot play the rounds or the time
-// (VersusLaunch's PlayableRounds and RoundClockFrames). The match's end is
-// not part of it (MatchEnd's choice).
+// refuses a pick or the stage, this copy lacks a fighter, costume or the
+// stage (a battle would load nothing sensible), or SFV cannot play the rounds
+// or the time (VersusLaunch's PlayableRounds and RoundClockFrames): this is
+// the backstop that keeps a copy from launching content it does not have. The
+// match's end is not part of it (MatchEnd's choice).
 std::optional<mod::MatchPicks> LaunchPicks(const RoomMatch& match);
+// Why LaunchPicks refuses the match, for the log; empty when it launches.
+std::string LaunchRefusal(const RoomMatch& match);
 
 } // namespace sfve::adapter

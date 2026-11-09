@@ -3,7 +3,7 @@
 // (common/SelectionAssetPath.hxx): none, as SFV Ember installs no updates yet.
 // The labels are the game's: a stage and a costume by the game's own names
 // for them (their code or number where the game has none; SfvCatalog's
-// StageName and CostumeName), a colour as the game's costume menu labels it
+// StageName and CostumeName; Random as the shared "Random"), a colour as the game's costume menu labels it
 // ("01", "EX01"; ColourName). SFV has no Ultra, so its label is empty.
 //
 // The pictures are the game's own (SfvArt): a fighter's portrait is the
@@ -35,6 +35,7 @@ namespace sf4e::ui {
 
 std::string StageLabel(int stageId, const selection::InstalledContent*)
 {
+	if (stageId == sfve::picks::kRandomStage) return loc::T("selection.random");
 	const std::string name = sfve::adapter::StageName(stageId);
 	return name.empty() ? std::to_string(stageId) : name;
 }

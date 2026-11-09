@@ -13,6 +13,7 @@ namespace {
 ModConfig s_config;
 const char* s_ignored = nullptr;
 std::string s_unownedProblem;
+std::string s_uninstalledProblem;
 
 // The value of `-name=value` in the command line, or nullptr.
 const wchar_t* Find(const wchar_t* line, const wchar_t* name, wchar_t* out, size_t outLen)
@@ -72,7 +73,19 @@ DumpChannelHandles ParseDumpChannel(const wchar_t* text)
 	return {values[0], values[1], values[2]};
 }
 
-// "CODE[:costume[:colour]]": a code of 1 to 8 capital letters or digits.
+// A game code: 1 to 8 capital letters or digits.
+bool ParseCode(const std::wstring& text, std::string* out)
+{
+	if (text.empty() || text.size() > 8) return false;
+	for (wchar_t c : text) {
+		if (!((c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9'))) return false;
+	}
+	out->clear();
+	for (wchar_t c : text) *out += (char)c; // capitals and digits only
+	return true;
+}
+
+// "CODE[:costume[:colour]]".
 bool ParseUnowned(const std::wstring& entry, UnownedContent* out)
 {
 	std::vector<std::wstring> parts(1);
@@ -80,14 +93,31 @@ bool ParseUnowned(const std::wstring& entry, UnownedContent* out)
 		if (c == L':') parts.emplace_back();
 		else parts.back() += c;
 	}
-	const std::wstring& code = parts[0];
-	if (parts.size() > 3 || code.empty() || code.size() > 8) return false;
-	for (wchar_t c : code) {
-		if (!((c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9'))) return false;
+	return parts.size() <= 3 && ParseCode(parts[0], &out->fighter) &&
+		(parts.size() < 2 || Variant(parts[1], &out->costume)) && (parts.size() < 3 || Variant(parts[2], &out->colour));
+}
+
+// The comma-separated entries of `-name=...`, each parsed into `out`. An
+// entry that does not parse is left out, and `problem` is then the whole
+// value as the command line gave it (for the log); otherwise empty.
+template <typename Entry, typename Parse>
+void ReadEntries(const wchar_t* line, const wchar_t* name, Parse parse, std::vector<Entry>& out, std::string& problem)
+{
+	problem.clear();
+	wchar_t value[512];
+	if (!Find(line, name, value, 512)) return;
+	std::wstring entry;
+	for (const wchar_t* p = value;; p++) {
+		if (*p && *p != L',') {
+			entry += *p;
+			continue;
+		}
+		Entry parsed;
+		if (parse(entry, &parsed)) out.push_back(parsed);
+		else problem = Narrow(value);
+		entry.clear();
+		if (!*p) break;
 	}
-	out->fighter.clear();
-	for (wchar_t c : code) out->fighter += (char)c; // capitals and digits only
-	return (parts.size() < 2 || Variant(parts[1], &out->costume)) && (parts.size() < 3 || Variant(parts[2], &out->colour));
 }
 
 } // namespace
@@ -129,22 +159,8 @@ void LoadConfigFromCommandLine(const wchar_t* line)
 	c.crashCommand = Number(line, L"sfve_crash_command", 0) != 0;
 	wchar_t channel[64];
 	if (Find(line, L"sfve_dump_channel", channel, 64)) c.dumpChannel = ParseDumpChannel(channel);
-	s_unownedProblem.clear();
-	wchar_t unowned[512];
-	if (Find(line, L"sfve_unowned", unowned, 512)) {
-		std::wstring entry;
-		for (const wchar_t* p = unowned;; p++) {
-			if (*p && *p != L',') {
-				entry += *p;
-				continue;
-			}
-			UnownedContent mark;
-			if (ParseUnowned(entry, &mark)) c.unowned.push_back(mark);
-			else s_unownedProblem = Narrow(unowned);
-			entry.clear();
-			if (!*p) break;
-		}
-	}
+	ReadEntries(line, L"sfve_unowned", &ParseUnowned, c.unowned, s_unownedProblem);
+	ReadEntries(line, L"sfve_uninstalled", &ParseCode, c.uninstalled, s_uninstalledProblem);
 	wchar_t pads[32];
 	if (Find(line, L"sfve_pads", pads, 32)) {
 		for (const wchar_t* p = pads; *p; p++) {
@@ -167,6 +183,11 @@ const char* IgnoredSetting()
 const std::string& UnownedProblem()
 {
 	return s_unownedProblem;
+}
+
+const std::string& UninstalledProblem()
+{
+	return s_uninstalledProblem;
 }
 
 const char* ModeName(ModMode mode)

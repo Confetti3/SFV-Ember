@@ -34,7 +34,7 @@ msgid "selection.not_owned"
 msgstr "此《街头霸王V》副本中未拥有。"
 
 msgid "runtime.invite_other_build"
-msgstr "房主使用的是另一个 SFV Ember 构建版本，或安装了不同的角色和场景。双方需要保持一致。"
+msgstr "房主使用的是另一个 SFV Ember 构建版本。双方需要使用相同版本。"
 
 msgid "launcher.update_failed"
 msgstr "无法安装更新。请关闭游戏和之前的启动器后重试。详见 %TEMP%\\sfv-ember-update.log；原文件备份位于 .ember-update-backups。"

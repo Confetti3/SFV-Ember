@@ -27,6 +27,7 @@ using GameDataFn = uint8_t* (*)();
 using SpecDataFn = uint8_t* (*)(uint8_t* singleton);
 using CodeListFn = bool (*)(uint8_t** spec, GameArray<GameString>* out, bool includeRandom);
 using FighterIdsFn = bool (*)(uint8_t** spec, GameArray<int32_t>* out);
+using StageIdsFn = bool (*)(uint8_t** spec, GameArray<int32_t>* out);
 using CostumeIdsFn = bool (*)(uint8_t** spec, int32_t uniqueId, GameArray<int32_t>* out);
 using ColourIdsFn = bool (*)(uint8_t** spec, int32_t uniqueId, int32_t costume, GameArray<int32_t>* out);
 using CostumeNameFn = GameString* (*)(void* unused, GameString* out, const GameString* code, int32_t costume);
@@ -254,6 +255,43 @@ bool Contains(const std::vector<std::string>& list, const std::string& value)
 	return std::find(list.begin(), list.end(), value) != list.end();
 }
 
+// The code of the StageAsset table's entry `index` (content::kStageEntries);
+// empty for an index outside the table.
+std::string StageCodeAt(uint8_t* stageAsset, int32_t index)
+{
+	uint8_t* entries = Field<uint8_t*>(stageAsset, sfv::content::kStageEntries);
+	const int count = Field<int32_t>(stageAsset, sfv::content::kStageCount);
+	if (!entries || index < 0 || index >= count) return {};
+	return Narrow(Field<GameString>(entries + (size_t)sfv::content::kStageStride * index, 0));
+}
+
+// The spec's stage universe (sfv::kSpecStageIds) in its order, less Random
+// and the stages without stage data, each marked installed when this copy's
+// kSpecStages lists it. A code kSpecStages gives outside the universe cannot
+// come from the game's code (it filters the same map); it is logged once and
+// left out.
+std::vector<StageContent> ReadStages(uint8_t* singleton, uint8_t* spec)
+{
+	uint8_t* stageAsset = Field<uint8_t*>(singleton, sfv::content::kStageAsset);
+	if (!stageAsset) return {};
+	std::vector<StageContent> stages;
+	for (int index : ReadNumbers([&](GameArray<int32_t>* out) { return At<StageIdsFn>(sfv::kSpecStageIds)(&spec, out); })) {
+		std::string code = StageCodeAt(stageAsset, index);
+		if (Unplayable(code)) continue;
+		stages.push_back({std::move(code)});
+	}
+	static bool loggedStray = false;
+	for (const std::string& installed : ReadCodes(sfv::kSpecStages, spec)) {
+		const auto stage = std::find_if(stages.begin(), stages.end(), [&](const StageContent& s) { return s.code == installed; });
+		if (stage != stages.end()) stage->installed = true;
+		else if (!Unplayable(installed) && !loggedStray) {
+			Log("content: installed stage %s is not in the spec's stage list; left out", installed.c_str());
+			loggedStray = true;
+		}
+	}
+	return stages;
+}
+
 // The battle setup asset, found or loaded; null when the game has no such
 // object (the class or the asset is missing).
 uint8_t* BattleSetup()
@@ -298,9 +336,7 @@ bool ReadOwnership(ContentLists& lists)
 	}
 	const std::vector<std::string> stages =
 		TakeCodes([&](GameArray<GameString>* out) { At<OwnedStagesFn>(sfv::kOwnedStages)(setup, out, false); });
-	for (const std::string& stage : lists.stages) {
-		if (Contains(stages, stage)) lists.ownedStages.push_back(stage);
-	}
+	for (StageContent& stage : lists.stages) stage.owned = Contains(stages, stage.code);
 	return true;
 }
 
@@ -321,10 +357,10 @@ ContentLists ReadContentLists()
 	uint8_t* spec = singleton ? At<SpecDataFn>(sfv::kSpecData)(singleton) : nullptr;
 	if (!spec) return lists;
 	lists.fighters = ReadFighters(singleton, spec);
-	for (std::string& stage : ReadCodes(sfv::kSpecStages, spec)) {
-		if (!Unplayable(stage)) lists.stages.push_back(std::move(stage));
-	}
-	if (lists.fighters.empty() || lists.stages.empty()) return {};
+	lists.stages = ReadStages(singleton, spec);
+	const bool anyInstalled =
+		std::any_of(lists.stages.begin(), lists.stages.end(), [](const StageContent& stage) { return stage.installed; });
+	if (lists.fighters.empty() || !anyInstalled) return {};
 	// Without the battle setup asset there is no answer to what this copy's
 	// player may pick: no lists at all, rather than lists that say nothing is
 	// owned or everything is.
@@ -335,11 +371,29 @@ ContentLists ReadContentLists()
 		return {};
 	}
 
-	// The names only once both lists are there: each may load a stage's data.
+	// The names only once both lists are there: each may load a stage's data,
+	// so only an installed stage's is asked for (one this copy lacks is never
+	// shown, and its data asset may be in the package it lacks).
 	uint8_t* stageAsset = Field<uint8_t*>(singleton, sfv::content::kStageAsset);
-	if (lists.fighters.empty() || lists.stages.empty() || !stageAsset) return lists;
-	for (const std::string& stage : lists.stages) lists.stageNames.push_back(StageName(stageAsset, stage));
+	if (!stageAsset) return lists;
+	for (StageContent& stage : lists.stages) {
+		if (stage.installed) stage.name = StageName(stageAsset, stage.code);
+	}
 	return lists;
+}
+
+int MarkUninstalled(ContentLists& lists, const std::vector<std::string>& codes)
+{
+	int cleared = 0;
+	for (const std::string& code : codes) {
+		const auto installed = [](const StageContent& stage) { return stage.installed; };
+		const auto stage = std::find_if(lists.stages.begin(), lists.stages.end(),
+			[&](const StageContent& s) { return s.code == code && s.installed; });
+		if (stage == lists.stages.end() || std::count_if(lists.stages.begin(), lists.stages.end(), installed) < 2) continue;
+		stage->installed = false;
+		cleared++;
+	}
+	return cleared;
 }
 
 void MarkUnowned(ContentLists& lists, const std::vector<UnownedContent>& marks)

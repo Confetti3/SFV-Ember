@@ -34,7 +34,7 @@ msgid "selection.not_owned"
 msgstr "お使いのStreet Fighter Vでは所有していません。"
 
 msgid "runtime.invite_other_build"
-msgstr "ホストは別のSFV Emberビルドを使っているか、別のファイターやステージをインストールしています。両プレイヤーが同じものを使う必要があります。"
+msgstr "ホストは別のSFV Emberビルドを使っています。両プレイヤーが同じバージョンを使う必要があります。"
 
 msgid "launcher.update_failed"
 msgstr "アップデートをインストールできませんでした。ゲームと前のランチャーを閉じて再試行してください。%TEMP%\\sfv-ember-update.logを確認してください。製品のバックアップは.ember-update-backupsにあります。"

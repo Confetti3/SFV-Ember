@@ -34,7 +34,7 @@ msgid "selection.not_owned"
 msgstr "Nie posiadasz w tej kopii Street Fighter V."
 
 msgid "runtime.invite_other_build"
-msgstr "Gospodarz używa innej wersji SFV Ember lub ma zainstalowane inne postacie i areny. Obaj gracze potrzebują tego samego."
+msgstr "Gospodarz używa innej wersji SFV Ember. Obaj gracze potrzebują tej samej wersji."
 
 msgid "launcher.update_failed"
 msgstr "Nie udało się zainstalować aktualizacji. Zamknij grę i poprzedni launcher, a potem spróbuj ponownie. Szczegóły: %TEMP%\\sfv-ember-update.log; kopie zapasowe produktu są w .ember-update-backups."

@@ -85,10 +85,90 @@ TEST_CASE("a pick is fitted to the spec: the fighter's first costume, then that 
 	// What this copy has not installed is not the spec's business.
 	Pick uninstalled = PickOf(4, 1, 1);
 	CHECK_FALSE(catalog.normalizePick(uninstalled, false, nullptr, nullptr));
-	CHECK(catalog.randomStage == -1);
+	CHECK(catalog.randomStage == picks::kRandomStage);
 	const sf4e::selection::RandomPool pool; // the facade carries SF4's pool type; SFV reads none
-	CHECK(catalog.resolveStage(2, 7, pool, nullptr) == 2);
-	CHECK(catalog.resolveStage(255, 7, pool, nullptr) == 0);
+	CHECK(catalog.resolveStage(2, 7, pool, nullptr, {}) == 2);
+	CHECK(catalog.resolveStage(9, 7, pool, nullptr, {}) == 0); // not a stage of the universe
+	// A chosen stage stays as chosen whatever is unavailable: the Ready
+	// check, not the resolution, refuses it.
+	CHECK(catalog.resolveStage(2, 7, pool, nullptr, {2}) == 2);
+}
+
+TEST_CASE("Random rolls only stages both seated players have, each as likely, and only the rolled stage travels")
+{
+	FillTestCatalog();
+	const ember::GameCatalog& catalog = ember::Catalog();
+	const sf4e::selection::RandomPool pool;
+	// This copy lacks S26 (id 3); the opponent lacks S02 (id 1): the runtime's
+	// unavailable set at the table is both.
+	const std::vector<std::int64_t> unavailable = {1, kUninstalledStage};
+	std::vector<int> landed(4, 0);
+	for (std::uint32_t roll = 0; roll < 10000; roll++) {
+		const int stage = catalog.resolveStage(picks::kRandomStage, roll * 2654435761u, pool, nullptr, unavailable);
+		REQUIRE(catalog.validStage(stage)); // never Random itself on the wire
+		CHECK(StageInstalled(stage));
+		CHECK(std::find(unavailable.begin(), unavailable.end(), stage) == unavailable.end());
+		landed[(size_t)stage]++;
+	}
+	// Every playable stage is reached, about as often as the other.
+	CHECK(landed[0] > 4500);
+	CHECK(landed[2] > 4500);
+	CHECK(landed[1] == 0);
+	CHECK(landed[3] == 0);
+	// With no stage left, Random stays unresolved, which the runtime's Ready
+	// check refuses (runtime.ready.stage_unavailable).
+	CHECK(catalog.resolveStage(picks::kRandomStage, 5, pool, nullptr, {0, 1, 2, 3}) == picks::kRandomStage);
+	CHECK_FALSE(catalog.validStage(catalog.resolveStage(picks::kRandomStage, 5, pool, nullptr, {0, 1, 2, 3})));
+	// A launch that is not a room's (Training) rolls over this copy's own
+	// missing stages, so it never sees Random or a stage this copy lacks.
+	PlayerPick random;
+	random.pick = PickOf(0);
+	random.stage = picks::kRandomStage;
+	for (int i = 0; i < 200; i++) {
+		const std::string code = OfflineStageCode(random);
+		CHECK((code == "S01" || code == "S02" || code == "S25"));
+	}
+	PlayerPick chosen = random;
+	chosen.stage = 2;
+	CHECK(OfflineStageCode(chosen) == "S25");
+}
+
+TEST_CASE("this player's stored stage is Random or one this copy has installed")
+{
+	FillTestCatalog();
+	PlayerPick pick = CurrentPick();
+	pick.stage = picks::kRandomStage;
+	CHECK(SetPick(pick).stage == picks::kRandomStage);
+	CHECK(PickText(CurrentPick()).find("stage random") != std::string::npos);
+	pick.stage = 1;
+	CHECK(SetPick(pick).stage == 1);
+	// A stage this copy lacks, or none of the universe's, becomes the first
+	// installed stage.
+	pick.stage = (int)kUninstalledStage;
+	CHECK(SetPick(pick).stage == 0);
+	pick.stage = 9;
+	CHECK(SetPick(pick).stage == 0);
+}
+
+TEST_CASE("the command line takes stages from this copy's install, never from the universe")
+{
+	mod::LoadConfigFromCommandLine(L"game.exe -sfve_mode=netplay -sfve_uninstalled=S01,s02,S25,TOOLONGCODE");
+	REQUIRE(mod::Config().uninstalled == std::vector<std::string>{"S01", "S25"});
+	CHECK(mod::UninstalledProblem() == "S01,s02,S25,TOOLONGCODE");
+	mod::ContentLists lists = TestContent();
+	const std::string fingerprint = ContentFingerprint(lists);
+	// S01 and S25 go; S02 stays, the last installed stage, whatever else is asked.
+	CHECK(mod::MarkUninstalled(lists, {"S01", "S25", "S02", "ZZZ"}) == 2);
+	CHECK_FALSE(lists.stages[0].installed);
+	CHECK(lists.stages[1].installed);
+	CHECK_FALSE(lists.stages[2].installed);
+	CHECK_FALSE(lists.stages[3].installed);
+	REQUIRE(lists.stages.size() == 4); // the universe stays
+	CHECK(ContentFingerprint(lists) == fingerprint);
+	mod::LoadConfigFromCommandLine(L"game.exe");
+	CHECK(mod::Config().uninstalled.empty());
+	CHECK(mod::UninstalledProblem().empty());
+	mod::LoadConfigFromCommandLine(L"");
 }
 
 TEST_CASE("this player readies only what the game lets them pick; the opponent's pick plays as picked")

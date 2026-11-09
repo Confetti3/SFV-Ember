@@ -34,7 +34,7 @@ msgid "selection.not_owned"
 msgstr "V této kopii Street Fighter V nevlastníte."
 
 msgid "runtime.invite_other_build"
-msgstr "Hostitel používá jiné sestavení SFV Ember nebo má nainstalované jiné bojovníky a arény. Oba hráči potřebují totéž."
+msgstr "Hostitel používá jiné sestavení SFV Ember. Oba hráči potřebují stejnou verzi."
 
 msgid "launcher.update_failed"
 msgstr "Aktualizaci se nepodařilo nainstalovat. Zavřete hru a předchozí spouštěč a zkuste to znovu. Viz %TEMP%\\sfv-ember-update.log; záložní kopie jsou v .ember-update-backups."

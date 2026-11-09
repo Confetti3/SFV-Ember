@@ -21,8 +21,16 @@ namespace sfve::picks {
 
 // The game build a room's matches are played on: the exe's build (BuildCheck's
 // verified one) and the mod's match version. A room's build id adds the pick
-// space's Fingerprint.
-constexpr const char* kMatchBuild = "sfv-ember/13173604/0.2";
+// space's Fingerprint. 0.4: stage ids are positions in the spec's stage
+// universe rather than in this copy's installed stages, and a room's members
+// carry the stages their copies lack (EMBER_LIBRARY.md section 38); no
+// earlier copy may meet one of these.
+constexpr const char* kMatchBuild = "sfv-ember/13173604/0.4";
+
+// The stage choice that stands for Random (GameCatalog::randomStage): the
+// library's selection::RandomStageId, never a stage on the wire. P1's copy
+// turns it into a stage both players have before it is sent.
+constexpr int kRandomStage = 255;
 
 struct Costume {
 	int id = 0;               // the game's costume number
@@ -36,7 +44,9 @@ struct Fighter {
 
 struct PickSpace {
 	std::vector<Fighter> fighters;   // ids are positions here
-	std::vector<std::string> stages; // codes; ids are positions here
+	// The spec's stage universe, as codes, installed on a copy or not; ids
+	// are positions here.
+	std::vector<std::string> stages;
 };
 
 // The table rules SFV plays: the room's round counts and times that
@@ -60,6 +70,12 @@ std::string Fingerprint(const PickSpace& space);
 
 // kMatchBuild, "/", and the Fingerprint: the build id a room's members share.
 std::string BuildId(const PickSpace& space);
+
+// For the log only, never the build id: "picks <hex>, stages <hex>", a hash
+// of the fighters with their costumes and colours, and one of the stages,
+// made as Fingerprint makes the whole. Two copies' logs then show which part
+// of their pick spaces differs.
+std::string PartFingerprints(const PickSpace& space);
 
 const Fighter* FighterAt(const PickSpace& space, std::int64_t fighter);
 const Costume* CostumeAt(const PickSpace& space, std::int64_t fighter, int costume);

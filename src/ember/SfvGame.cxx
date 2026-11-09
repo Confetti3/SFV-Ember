@@ -110,6 +110,10 @@ public:
 	{
 		return OwnedAvailability(fighter);
 	}
+	// The universe's stages this copy has not installed (SfvCatalog's
+	// MissingStages): the room hears them, and no table offers them to this
+	// copy's opponent (EMBER_LIBRARY.md section 38).
+	std::vector<std::int64_t> MissingStages() const override { return adapter::MissingStages(); }
 	// The host's match seed and its Random rolls. No reader of the game's own
 	// generator yet, so the system's serves.
 	std::uint32_t Random() override
@@ -133,8 +137,11 @@ public:
 		const RoomMatch& room = *now;
 		std::optional<mod::MatchPicks> picks = LaunchPicks(room);
 		if (!picks) {
-			mod::Log("ember: the room's match is not one SFV can launch (fighters %d/%d, stage %lld, %d rounds of %d s)",
-				room.picks[0].fighter, room.picks[1].fighter, (long long)room.stage, room.rounds, room.roundSeconds);
+			// The runtime ends this copy's part in the game and says why
+			// (a stage this copy lacks has its own notice).
+			mod::Log("ember: the room's match is not one this copy can launch: %s (fighters %d/%d, stage %lld, %d rounds of %d s)",
+				LaunchRefusal(room).c_str(), room.picks[0].fighter, room.picks[1].fighter, (long long)room.stage, room.rounds,
+				room.roundSeconds);
 			return Entry::Rejected;
 		}
 		mod::Log("ember: entering the room's match: %s vs %s on %s, %d rounds of %d s%s", FighterCode(room.picks[0].fighter).c_str(),

@@ -57,15 +57,21 @@ TEST_CASE("the catalog holds the game's fighters, costumes, colours and stages, 
 	CHECK(FighterCode(5).empty());
 	CHECK(FighterCode(-1).empty());
 	CHECK(StageCode(2) == "S25");
-	CHECK(StageCode(3).empty());
+	// The universe holds a stage this copy has not installed; Random is no stage.
+	CHECK(StageCount() == 4);
+	CHECK(StageCode(3) == "S26");
+	CHECK(StageCode(4).empty());
+	CHECK(StageCode(picks::kRandomStage).empty());
 	// The shell names a stage by the game's name, by its code where it has none.
 	CHECK(StageName(0) == "Stage One");
 	CHECK(StageName(1) == "S02");
 	CHECK(StageName(2) == "Stage Twenty-five");
-	CHECK(StageName(3).empty());
+	CHECK(StageName(3) == "S26");
+	CHECK(StageName(4).empty());
 	CHECK(FighterId(L"KEN") == 2);
 	CHECK_FALSE(FighterId(L"ZZZ").has_value());
 	CHECK(StageId(L"S25") == 2);
+	CHECK(StageId(L"S26") == 3);
 	CHECK_FALSE(StageId(L"RYU").has_value());
 	// Each fighter's costumes in the game's order, and each costume's colours.
 	CHECK(CostumeIds(0, false) == std::vector<int>{0, 1, 4});
@@ -130,8 +136,28 @@ TEST_CASE("a stage is one of the game's stages, by its place in the list")
 	const auto valid = ember::Catalog().validStage;
 	CHECK(valid(0));
 	CHECK(valid(2));
-	CHECK_FALSE(valid(3));
+	CHECK(valid(3)); // the universe's, though this copy lacks it
+	CHECK_FALSE(valid(4));
 	CHECK_FALSE(valid(-1));
+	CHECK_FALSE(valid(picks::kRandomStage)); // never a stage on the wire
+}
+
+TEST_CASE("which stages this copy has installed is its own: the room hears them, and the stage row offers the rest")
+{
+	FillTestCatalog();
+	CHECK(StageInstalled(0));
+	CHECK(StageInstalled(2));
+	CHECK_FALSE(StageInstalled(kUninstalledStage));
+	CHECK_FALSE(StageInstalled(4));
+	CHECK_FALSE(StageInstalled(picks::kRandomStage));
+	CHECK(MissingStages() == std::vector<std::int64_t>{kUninstalledStage});
+	CHECK(ember::game::Game().state.MissingStages() == MissingStages());
+	// The stage row: Random, then the universe less what the runtime says is
+	// unavailable (this copy's own missing stages, and at a table the
+	// opponent's as well).
+	CHECK(StageChoices(MissingStages()) == std::vector<int>{picks::kRandomStage, 0, 1, 2});
+	CHECK(StageChoices({1, kUninstalledStage}) == std::vector<int>{picks::kRandomStage, 0, 2});
+	CHECK(StageChoices({}) == std::vector<int>{picks::kRandomStage, 0, 1, 2, 3});
 }
 
 TEST_CASE("a room's match launches its fighters, stage, rounds and time by the game's codes")
@@ -156,7 +182,8 @@ TEST_CASE("a room's match launches its fighters, stage, rounds and time by the g
 	CHECK_FALSE(LaunchPicks(match));                // a colour the costume lacks
 	match.picks[1] = PickOf(5);
 	CHECK_FALSE(LaunchPicks(match));                // a fighter outside the roster
-	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 3)));     // a stage outside the list
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 4)));     // a stage outside the list
+	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, picks::kRandomStage))); // Random is resolved before it travels
 	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 99))); // a room's endless rounds
 	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, 9998))); // longer than SFV's clock holds
 	// The room's longest time is the game's no time limit, and a Practice
@@ -179,6 +206,30 @@ TEST_CASE("a room's match launches its fighters, stage, rounds and time by the g
 	CHECK_FALSE(LaunchPicks(MatchOf(0, 0, 0, 3, -1)));   // no time SFV plays
 }
 
+TEST_CASE("a room's match never launches a stage, fighter or costume this copy has not installed")
+{
+	FillTestCatalog();
+	// The spec has them all, so they are valid on the wire; this copy lacks
+	// their packages, so it refuses to launch them and says which.
+	const RoomMatch onMissingStage = MatchOf(0, 1, kUninstalledStage);
+	CHECK_FALSE(LaunchPicks(onMissingStage));
+	CHECK(LaunchRefusal(onMissingStage) == "stage S26 is not installed here");
+	RoomMatch missingFighter = MatchOf(0, 1, 0);
+	missingFighter.picks[1] = PickOf(3, 3, 5); // CMY
+	CHECK_FALSE(LaunchPicks(missingFighter));
+	CHECK(LaunchRefusal(missingFighter) == "P2's fighter CMY is not installed here");
+	RoomMatch missingCostume = MatchOf(0, 1, 0);
+	missingCostume.picks[0] = PickOf(4, 1, 0); // BSN's costume 1
+	CHECK_FALSE(LaunchPicks(missingCostume));
+	CHECK(LaunchRefusal(missingCostume) == "P1's BSN costume 1 is not installed here");
+	// The same match on an installed stage, in installed looks, launches.
+	CHECK(LaunchRefusal(MatchOf(0, 1, 2)).empty());
+	CHECK(LaunchPicks(MatchOf(0, 1, 2)));
+	RoomMatch installedLooks = MatchOf(0, 1, 2);
+	installedLooks.picks[0] = PickOf(4, 0, 1);
+	CHECK(LaunchPicks(installedLooks));
+}
+
 TEST_CASE("the build a room checks carries a fingerprint of the game's content lists")
 {
 	const std::string fingerprint = ContentFingerprint(TestContent());
@@ -188,8 +239,19 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	std::swap(reordered.fighters[0], reordered.fighters[1]);
 	CHECK(ContentFingerprint(reordered) != fingerprint);
 	mod::ContentLists extra = TestContent();
-	extra.stages.push_back("S26");
+	extra.stages.push_back(Stage("S27"));
 	CHECK(ContentFingerprint(extra) != fingerprint);
+	// A stage of the universe more, fewer or in another place is another
+	// build, installed here or not.
+	mod::ContentLists fewer = TestContent();
+	fewer.stages.pop_back();
+	CHECK(ContentFingerprint(fewer) != fingerprint);
+	mod::ContentLists stageOrder = TestContent();
+	std::swap(stageOrder.stages[0], stageOrder.stages[1]);
+	CHECK(ContentFingerprint(stageOrder) != fingerprint);
+	mod::ContentLists recoded = TestContent();
+	recoded.stages[3].code = "S27";
+	CHECK(ContentFingerprint(recoded) != fingerprint);
 	// A costume or a colour more, less or moved is another pick space.
 	mod::ContentLists costume = TestContent();
 	costume.fighters[1].costumes.push_back(Costume(5, {0}));
@@ -204,7 +266,12 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	// Names follow each copy's language, and what is installed or owned is
 	// each copy's own: none of them changes the build.
 	mod::ContentLists translated = TestContent();
-	translated.stageNames = {"Etappe eins", "", ""};
+	translated.stages[0].name = "Etappe eins";
+	// Two installs that lack different stages share the build
+	// (EMBER_LIBRARY.md section 38), and so do ones that own different ones.
+	translated.stages[3].installed = true;
+	translated.stages[1].installed = false;
+	translated.stages[2].owned = false;
 	translated.fighters[0].name = "Ryu, translated";
 	translated.fighters[0].costumes[0].name = "Story, translated";
 	translated.fighters[3].installed = true;

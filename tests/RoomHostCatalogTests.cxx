@@ -10,6 +10,8 @@
 #include "RoomHost.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/SelectionPick.hxx"
+#include "common/StageCatalog.hxx"
+#include "session/RoomTypes.hxx"
 
 #include <string>
 #include <vector>
@@ -103,9 +105,17 @@ TEST_CASE("SFV's room host takes only the room of the build its pick space makes
 	sf4e::selection::Pick colour;
 	colour.color = catalog.colorLimit;
 	CHECK_FALSE(catalog.validPick(colour, false));
-	CHECK(catalog.validStage(0));
+	// Every stage of the universe is valid, whichever a member's copy lacks
+	// (the room carries that, not the host's catalog); Random never travels.
+	for (std::int64_t stage = 0; stage < (std::int64_t)space.stages.size(); stage++) CHECK(catalog.validStage(stage));
 	CHECK_FALSE(catalog.validStage((std::int64_t)space.stages.size()));
-	CHECK(catalog.randomStage == -1);
+	CHECK(catalog.randomStage == sfve::picks::kRandomStage);
+	CHECK_FALSE(catalog.validStage(sfve::picks::kRandomStage));
+	// A host never resolves Random: it only ever sees stages P1 resolved.
+	CHECK(catalog.resolveStage(1, 7, sf4e::selection::RandomPool(), nullptr, {}) == 1);
+	// A member's missing stages keep only the universe's.
+	CHECK(sf4e::room::MissingStagesFrom(std::vector<std::int64_t>{sfve::picks::kRandomStage, 1, 1, 0, -1}) ==
+		std::vector<std::int64_t>{0, 1});
 
 	// The listing's faces (EMBER_LIBRARY.md section 28): SFV Ember's players
 	// have no main, so each member is listed by the pick they shared in the

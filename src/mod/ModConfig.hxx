@@ -30,6 +30,10 @@
 //   -sfve_unowned=LIST   development: content marked unowned for this copy, on
 //                        top of the game's answer: CODE, CODE:costume or
 //                        CODE:costume:colour, comma separated (RYU,KEN:3,CNL:0:100)
+//   -sfve_uninstalled=LIST  development: stage codes treated as not installed
+//                        on this copy, comma separated (S01,S25): one full
+//                        install then plays a copy that lacks those stages
+//                        (EMBER_LIBRARY.md section 38)
 //   -sfve_game_ownership=1  a launch that is not a room's runs the game's own
 //                        ownership check (default off; a room's never does)
 //   -sfve_dialogs=N      offline start-up dialogs hidden: 0 none, 1 download errors,
@@ -93,6 +97,9 @@ struct ModConfig {
 	// Content this copy treats as unowned on top of the game's answer, to try
 	// the gate's screens and refusals with an account that owns everything.
 	std::vector<UnownedContent> unowned;
+	// Stage codes this copy treats as not installed (GameContent's
+	// MarkUninstalled): never the stage universe, only `installed`.
+	std::vector<std::string> uninstalled;
 	// A launch that is not a room's runs the game's own check (the battle
 	// jump's, VersusLaunch). A room's launch never does.
 	bool gameOwnershipCheck = false;
@@ -111,6 +118,8 @@ const char* IgnoredSetting();
 // "-sfve_unowned=..." as the command line gave it, when an entry did not
 // parse (and was left out); empty otherwise. For the log.
 const std::string& UnownedProblem();
+// "-sfve_uninstalled=..." likewise, when an entry was not a stage code.
+const std::string& UninstalledProblem();
 const char* ModeName(ModMode mode);
 
 } // namespace sfve::mod

@@ -175,15 +175,20 @@ std::string Pick(const std::string& args)
 	mod::FighterPick fighter;
 	mod::MatchRules rules;
 	if (!mod::ParseSetup(args, &fighter, &rules) || fighter.fighter.empty()) {
-		return "error usage: pick CODE[:costume[:colour]] [STAGE]";
+		return "error usage: pick CODE[:costume[:colour]] [STAGE|RND]";
 	}
 	const std::optional<int> id = FighterId(fighter.fighter);
 	if (!id) return "error that fighter is not in this game's list";
 	// The one pick the shell edits too (SfvPick); a stage left out stays.
+	// RND is Random, as the game's own code for it reads; a stage is one
+	// this copy has installed. Whether the opponent has it is the room's to
+	// say: the runtime's Ready check refuses one they lack.
 	PlayerPick pick = CurrentPick();
-	if (!rules.stage.empty()) {
+	if (rules.stage == L"RND") pick.stage = picks::kRandomStage;
+	else if (!rules.stage.empty()) {
 		const std::optional<int> stage = StageId(rules.stage);
 		if (!stage) return "error that stage is not in this game's list";
+		if (!StageInstalled(*stage)) return "error that stage is not installed in this copy";
 		pick.stage = *stage;
 	}
 	pick.pick.fighter = *id;

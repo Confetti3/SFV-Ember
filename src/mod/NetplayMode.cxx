@@ -45,7 +45,7 @@ void NetplayMode::Install()
 	adapter::RegisterRoomCommands();
 	adapter::RegisterReplayCommands();
 	// The runtime ticks this mode for the process's life (the driver holds it).
-	adapter::InstallEmberHost({config_.instance, config_.ownershipGate, config_.unowned}, *this);
+	adapter::InstallEmberHost({config_.instance, config_.ownershipGate, config_.unowned, config_.uninstalled}, *this);
 	adapter::InstallEmberShell();
 	// SFV's Training under Ember: followed once a frame, after Ember's tick
 	// has set the room's call (EMBER_LIBRARY.md section 27).

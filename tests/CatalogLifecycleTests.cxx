@@ -51,6 +51,7 @@ TEST_CASE("the catalog is empty until the game's lists fill it, takes one pick s
 	mod::ContentLists renamed = TestContent(); // names and installs are this copy's
 	renamed.fighters[0].name = "Ryu in another language";
 	renamed.fighters[3].installed = true;
+	renamed.stages[3].installed = true; // so is which stages the install has
 	CHECK(FillCatalog(renamed));
 	CHECK_FALSE(FillCatalog(CodesOnly({"RYU"}, {"S01"})));
 	mod::ContentLists recoloured = TestContent();

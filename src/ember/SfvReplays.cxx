@@ -265,7 +265,9 @@ private:
 };
 
 // The launch a replay asks for, as the room's match was launched; empty for
-// a header this copy's catalog cannot launch.
+// a header this copy's catalog cannot launch, its stage among them when this
+// copy has not installed it (the recording's stage is the room's, which this
+// copy may lack; SfvCatalog's StageInstalled).
 std::optional<mod::MatchPicks> PicksOf(const replay::Header& h)
 {
 	mod::MatchPicks picks;
@@ -278,7 +280,8 @@ std::optional<mod::MatchPicks> PicksOf(const replay::Header& h)
 		if (!FighterId(picks.players[side].fighter) || p.launchCostume < 0 || p.launchColour < 0) return std::nullopt;
 	}
 	picks.rules.stage = sf4e::platform::Utf8ToWide(h.stageCode.c_str());
-	if (!StageId(picks.rules.stage) || !mod::PlayableRounds(h.rounds) || h.timeFrames == 0) return std::nullopt;
+	const std::optional<int> stage = StageId(picks.rules.stage);
+	if (!stage || !StageInstalled(*stage) || !mod::PlayableRounds(h.rounds) || h.timeFrames == 0) return std::nullopt;
 	picks.rules.rounds = h.rounds;
 	picks.rules.timeFrames = h.timeFrames;
 	picks.replay = true;
@@ -440,7 +443,7 @@ private:
 			why = "it holds no frame";
 		}
 		std::optional<mod::MatchPicks> picks = why.empty() ? PicksOf(loaded->header) : std::nullopt;
-		if (why.empty() && !picks) why = "its fighters, stage or rules are not ones this copy can launch";
+		if (why.empty() && !picks) why = "its fighters, stage or rules are not ones this copy can launch, or its stage is not installed here";
 		if (!why.empty()) {
 			Log("replays: %ls cannot be watched: %s", path.filename().c_str(), why.c_str());
 			Notice("inputs.unreadable_detail", true);

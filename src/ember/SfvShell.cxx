@@ -136,7 +136,7 @@ public:
 	void StartTraining(const RuntimeSnapshot&) override
 	{
 		const PlayerPick player = CurrentPick();
-		const std::string stage = StageCode(player.stage);
+		const std::string stage = OfflineStageCode(player);
 		LaunchTraining(LaunchPick(player), LaunchPick(CurrentDummy()), std::wstring(stage.begin(), stage.end()),
 			"Training select's Start", "home.training_unavailable");
 	}
@@ -151,7 +151,7 @@ public:
 		const PlayerPick pick = dummy ? CurrentDummy() : CurrentPick();
 		const std::string error =
 			PickAvailable(pick, snapshot) ? std::string() : loc::T("runtime.selection_combination_unavailable");
-		(dummy ? dummyScreen_ : screen_).Draw(snapshot.canEditSelection, stage && !dummy, error);
+		(dummy ? dummyScreen_ : screen_).Draw(snapshot.canEditSelection, stage && !dummy, error, snapshot.unavailableStages);
 	}
 
 private:

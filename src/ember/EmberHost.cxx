@@ -116,11 +116,30 @@ void LogOwnership(const mod::ContentLists& lists, bool gate)
 			colours += (int)(costume.colours.size() - costume.ownedColours.size());
 		}
 	}
+	const auto stages = std::count_if(lists.stages.begin(), lists.stages.end(), [](const mod::StageContent& s) { return !s.owned; });
 	const mod::OwnershipSource& source = lists.ownership;
 	mod::Log("ember: ownership gate %s; the game's setup restricted %d (%d entries), filter %d, logged in %d; "
 		"%d marked unowned by -sfve_unowned; not owned: %d fighters, %d costumes, %d colours, %zu of %zu stages",
 		gate ? "on" : "off (development)", source.restricted, source.restrictionEntries, source.filter, source.loggedIn,
-		source.markedUnowned, fighters, costumes, colours, lists.stages.size() - lists.ownedStages.size(), lists.stages.size());
+		source.markedUnowned, fighters, costumes, colours, (size_t)stages, lists.stages.size());
+}
+
+// The catalog's stages for the log: the universe the build id fingerprints,
+// how many this copy has installed, and the codes of those it has not, so a
+// player's log names what their copy lacks; then the pick space's part
+// fingerprints, so two logs show whether fighters, costumes and colours agree
+// apart from the stages (SfvPickSpace's PartFingerprints).
+void LogStages(const mod::ContentLists& lists, int marked)
+{
+	std::string missing;
+	size_t installed = 0;
+	for (const mod::StageContent& stage : lists.stages) {
+		if (stage.installed) installed++;
+		else missing += (missing.empty() ? "" : ",") + stage.code;
+	}
+	mod::Log("ember: stages: %zu in the game's list, %zu installed here (%d marked not installed by -sfve_uninstalled); "
+		"not installed: %s; fingerprints: %s", lists.stages.size(), installed, marked, missing.empty() ? "none" : missing.c_str(),
+		picks::PartFingerprints(PickSpaceOf(lists)).c_str());
 }
 
 // Discord's companion (ProductIdentity::discordExe, beside the mod): the
@@ -153,6 +172,7 @@ bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 	const ULONGLONG readStarted = GetTickCount64();
 	mod::ContentLists lists = mod::ReadContentLists();
 	mod::MarkUnowned(lists, settings.unowned);
+	const int marked = mod::MarkUninstalled(lists, settings.uninstalled);
 	if (lists.fighters.empty() || lists.stages.empty()) {
 		if (s_state != HostState::WaitingForContent) mod::Log("ember: waiting for the game's content lists");
 		s_state = HostState::WaitingForContent;
@@ -163,9 +183,11 @@ bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 			std::to_string(lists.stages.size()) + " stages) do not make a usable catalog");
 	}
 	SealCatalog();
-	const size_t named = std::count_if(lists.stageNames.begin(), lists.stageNames.end(), [](const std::string& n) { return !n.empty(); });
+	const size_t named =
+		std::count_if(lists.stages.begin(), lists.stages.end(), [](const mod::StageContent& s) { return !s.name.empty(); });
 	mod::Log("ember: catalog of %d fighters and %zu stages (%zu named by the game; read in %llu ms), build %s",
 		ember::Catalog().fighterCount, lists.stages.size(), named, GetTickCount64() - readStarted, MatchBuildId().c_str());
+	LogStages(lists, marked);
 	LogOwnership(lists, settings.ownershipGate);
 
 	RouteRuntimeLog();

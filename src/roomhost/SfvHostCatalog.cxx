@@ -55,7 +55,10 @@ bool NormalizePick(sf4e::selection::Pick& pick, bool, const sf4e::selection::Ava
 	return sfve::picks::FitPick(s_space, pick);
 }
 
-int ResolveStage(int choice, std::uint32_t, const sf4e::selection::RandomPool&, const sf4e::selection::InstalledContent*)
+// A host never resolves Random: P1's copy does, before the stage travels, so
+// the stage a host sees is always one of the universe (or refused).
+int ResolveStage(int choice, std::uint32_t, const sf4e::selection::RandomPool&, const sf4e::selection::InstalledContent*,
+	const std::vector<std::int64_t>&)
 {
 	return ValidStage(choice) ? choice : 0;
 }
@@ -71,7 +74,7 @@ int CostumeCount(int fighter)
 	return sfve::picks::CostumeCount(s_space, fighter);
 }
 
-ember::GameCatalog s_catalog = {0, 0, 0, 1, &ValidPick, &ValidStage, {0, 1, 2, 3}, -1, &FighterLocked, &AvailablePick,
+ember::GameCatalog s_catalog = {0, 0, 0, 1, &ValidPick, &ValidStage, {0, 1, 2, 3}, sfve::picks::kRandomStage, &FighterLocked, &AvailablePick,
 	&NormalizePick, &ResolveStage, &FighterName, &CostumeCount, nullptr, sfve::picks::kRoundCounts,
 	(int)std::size(sfve::picks::kRoundCounts), sfve::picks::kRoundTimes, (int)std::size(sfve::picks::kRoundTimes), false, true};
 

@@ -130,7 +130,7 @@ public:
 			return;
 		}
 		const PlayerPick player = CurrentPick();
-		LaunchTraining(LaunchPick(player), LaunchPick(CurrentDummy()), Wide(StageCode(player.stage)), "a room's Wait in Training",
+		LaunchTraining(LaunchPick(player), LaunchPick(CurrentDummy()), Wide(OfflineStageCode(player)), "a room's Wait in Training",
 			"room.training.unavailable");
 	}
 	bool ControlsAvailable() override { return ReadTrainingView().available; }
