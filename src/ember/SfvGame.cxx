@@ -536,6 +536,20 @@ bool SavedBackgroundPlay()
 	return preferences.backgroundPlay;
 }
 
+bool SavedControllerLayer()
+{
+	const std::optional<nlohmann::json> saved = LoadSavedSettings("the controller layer (taken as on)");
+	if (!saved) return true;
+	sf4e::netplay::PlayerPreferences preferences;
+	try {
+		sf4e::netplay::ReadBoolPreferences(*saved, preferences);
+	} catch (const std::exception&) {
+		mod::Log("controller layer: the saved settings hold a value that is not on or off; taken as on");
+		return true;
+	}
+	return preferences.controllerLayer;
+}
+
 } // namespace sfve::adapter
 
 namespace ember::game {

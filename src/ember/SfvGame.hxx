@@ -70,6 +70,12 @@ void StopPreferences();
 // start (dllmain), before the game or the runtime runs.
 bool SavedBackgroundPlay();
 
+// The player's saved controller layer (settings.json's controllerLayer, the
+// key SF4 Ember's layer saves): on when nothing is saved or the settings
+// cannot be read, as the layer's default is. For the mod's start (dllmain);
+// a change takes effect at the next start. EMBER_LIBRARY.md section 48.
+bool SavedControllerLayer();
+
 // Every member's battle has loaded (the room client's Battle::OnSessionSynced
 // since the battle in play was set): its rollback session may start. Game
 // thread.

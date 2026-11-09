@@ -27,9 +27,25 @@ game's `StreetFighterV\Binaries\Win64` folder (the one that holds
 
 ## Controllers
 
-In this beta, SFV Ember's menus follow an Xbox-style (XInput) controller in
-the first slot. PlayStation pads, DirectInput sticks and the keyboard cannot
-move around SFV Ember's menus yet (F10 still opens and closes them).
+SFV reads only Xbox-style (XInput) controllers, and SFV Ember starts it
+outside Steam, so Steam Input does not convert other pads. SFV Ember's
+controller layer does instead: a PlayStation pad (DualShock 4, DualSense), a
+Switch Pro pad or an arcade stick in its PlayStation or DirectInput mode is
+read with SDL3 and reaches the game as an XInput controller, in the first slot
+no Xbox-style controller holds. An Xbox pad, or a stick in its XInput mode,
+reads exactly as before.
+
+SFV Ember's menus and its battles follow the controller in the first slot. With
+an Xbox pad plugged in as well, unplug it (or use it) to play with the other.
+
+To turn the layer off, set `"controllerLayer": false` in
+`%APPDATA%\SFVEmber\settings.json` and start SFV Ember again. The keyboard
+cannot move around SFV Ember's menus yet (F10 still opens and closes them).
+
+If Steam is running, its desktop configuration may also turn a PlayStation pad
+into a keyboard and mouse while SFV is in front, so SFV's own menus may take a
+press twice. Turning off Steam Input for PlayStation controllers in Steam's
+controller settings stops that.
 
 ## Beta notes
 

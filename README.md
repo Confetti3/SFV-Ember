@@ -31,9 +31,14 @@ Ember release.
 - Replays and the Discord companion from Ember.
 - In-app updates from this repository's releases.
 
-This is a beta. Known limits: Ember's menus need an Xbox-style (XInput)
-controller in the first slot; the frame meter is in Training only; non-English
+This is a beta. Known limits: Ember's menus and its battles follow the pad in
+the game's first slot; the frame meter is in Training only; non-English
 translations are drafts.
+
+PlayStation, Switch and DirectInput pads work without Steam Input: SFV Ember's
+controller layer reads them with SDL3 and gives them to the game as XInput
+pads, in slots no Xbox-style pad holds. `"controllerLayer": false` in
+`%APPDATA%\SFVEmber\settings.json` turns it off.
 
 ## Build
 

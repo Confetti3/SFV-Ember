@@ -2,6 +2,7 @@
 
 #include "mod/ControlPipe.hxx"
 #include "mod/Log.hxx"
+#include "mod/PadLayer.hxx"
 
 #include <windows.h>
 
@@ -67,20 +68,6 @@ constexpr Name kNames[] = {
 	{"Y", 0x8000},
 };
 
-// UE4 looks for newly connected pads only when Windows reports a device
-// change, so plugging a virtual pad in later has to say so.
-void AnnounceDeviceChange()
-{
-	EnumWindows(
-		[](HWND hwnd, LPARAM) -> BOOL {
-			DWORD pid = 0;
-			GetWindowThreadProcessId(hwnd, &pid);
-			if (pid == GetCurrentProcessId()) PostMessageW(hwnd, WM_DEVICECHANGE, 0x0007 /* DBT_DEVNODES_CHANGED */, 0);
-			return TRUE;
-		},
-		0);
-}
-
 // Fills an XINPUT_STATE for a virtual slot. False for a physical slot.
 bool FillVirtualXInput(int slot, void* xinputState)
 {
@@ -115,20 +102,29 @@ bool FillVirtualXInput(int slot, void* xinputState)
 // --- XInput hooks: every system XInput library the game may read pads through.
 
 using GetState_t = DWORD(WINAPI*)(DWORD, void*);
-// A system XInput library, with the names its two reads have in a HookFailure.
+using GetCapabilities_t = DWORD(WINAPI*)(DWORD, DWORD, void*);
+using SetState_t = DWORD(WINAPI*)(DWORD, void*);
+// A system XInput library, with the names its hooked calls have in a HookFailure.
 struct XInputModule {
 	const wchar_t* file;
 	const char* getState;
 	const char* getStateEx;
+	const char* getCapabilities;
+	const char* setState;
 };
 constexpr XInputModule kXInputModules[] = {
-	{L"xinput1_4.dll", "xinput1_4!XInputGetState", "xinput1_4!XInputGetStateEx"},
-	{L"xinput1_3.dll", "xinput1_3!XInputGetState", "xinput1_3!XInputGetStateEx"},
-	{L"xinput9_1_0.dll", "xinput9_1_0!XInputGetState", "xinput9_1_0!XInputGetStateEx"},
+	{L"xinput1_4.dll", "xinput1_4!XInputGetState", "xinput1_4!XInputGetStateEx", "xinput1_4!XInputGetCapabilities",
+		"xinput1_4!XInputSetState"},
+	{L"xinput1_3.dll", "xinput1_3!XInputGetState", "xinput1_3!XInputGetStateEx", "xinput1_3!XInputGetCapabilities",
+		"xinput1_3!XInputSetState"},
+	{L"xinput9_1_0.dll", "xinput9_1_0!XInputGetState", "xinput9_1_0!XInputGetStateEx", "xinput9_1_0!XInputGetCapabilities",
+		"xinput9_1_0!XInputSetState"},
 };
 constexpr int kModules = sizeof(kXInputModules) / sizeof(kXInputModules[0]);
 GetState_t o_getState[kModules];   // XInputGetState
 GetState_t o_getStateEx[kModules]; // ordinal 100, XInputGetStateEx (adds the guide button)
+GetCapabilities_t o_getCapabilities[kModules];
+SetState_t o_setState[kModules];
 
 std::atomic<PadFilter> s_padFilter;
 
@@ -140,22 +136,34 @@ std::atomic<PadFilter> s_padFilter;
 // call goes straight to the library. Without this the outer call recorded
 // the state the inner call's filter had already emptied, so while Ember's
 // menu held the pads its record of every pad read "nothing pressed".
+//
+// The capabilities and motor calls nest the same way, and pass through the
+// same way. A thread that reads XInput for itself (the controller layer's,
+// PassPadReadsThrough) passes every call straight to the library: none of
+// them is the game's.
 thread_local int t_hookDepth = 0;
+thread_local bool t_passThrough = false;
 std::atomic<uint64_t> s_nestedReads; // nested calls passed straight through, for the status report
+
+struct Depth {
+	Depth() { t_hookDepth++; }
+	~Depth() { t_hookDepth--; }
+};
 
 template <int M, bool Ex>
 DWORD WINAPI HookedGetState(DWORD user, void* state)
 {
 	const GetState_t original = Ex ? o_getStateEx[M] : o_getState[M];
+	if (t_passThrough) return original(user, state);
 	if (t_hookDepth > 0) {
 		s_nestedReads++;
 		return original(user, state);
 	}
-	struct Depth {
-		Depth() { t_hookDepth++; }
-		~Depth() { t_hookDepth--; }
-	} depth;
-	const DWORD result = FillVirtualXInput((int)user, state) ? ERROR_SUCCESS : original(user, state);
+	Depth depth;
+	// A virtual test pad first, then the controller layer's pad in a slot no
+	// real XInput pad holds (mod/PadLayer), then XInput itself.
+	const bool answered = FillVirtualXInput((int)user, state) || layer::FillState((int)user, state, Ex);
+	const DWORD result = answered ? ERROR_SUCCESS : original(user, state);
 	if (user < kPadSlots) {
 		const uint32_t seen = result == ERROR_SUCCESS && state ? Seen(*static_cast<const XState*>(state)) : 0;
 		if (s_seen[user].exchange(seen) != seen) s_seenChanges[user]++;
@@ -164,6 +172,33 @@ DWORD WINAPI HookedGetState(DWORD user, void* state)
 		if (const PadFilter filter = s_padFilter) filter(user, state);
 	}
 	return result;
+}
+
+// A slot the controller layer holds answers as a connected gamepad; any other
+// is XInput's to answer.
+template <int M>
+DWORD WINAPI HookedGetCapabilities(DWORD user, DWORD flags, void* capabilities)
+{
+	const GetCapabilities_t original = o_getCapabilities[M];
+	if (t_passThrough || t_hookDepth > 0) return original(user, flags, capabilities);
+	Depth depth;
+	return layer::FillCapabilities((int)user, capabilities) ? ERROR_SUCCESS : original(user, flags, capabilities);
+}
+
+// The game sets the motors of every connected slot on each poll (zero when
+// nothing shakes); a slot the controller layer holds keeps them for its
+// thread, which turns its pad's motors. XINPUT_VIBRATION is two WORDs.
+template <int M>
+DWORD WINAPI HookedSetState(DWORD user, void* vibration)
+{
+	const SetState_t original = o_setState[M];
+	if (t_passThrough || t_hookDepth > 0) return original(user, vibration);
+	Depth depth;
+	if (vibration) {
+		const auto* motors = static_cast<const WORD*>(vibration);
+		if (layer::SetMotors((int)user, motors[0], motors[1])) return ERROR_SUCCESS;
+	}
+	return original(user, vibration);
 }
 
 // Adds library M's reads to the pads' set, by the library's full path in the
@@ -182,9 +217,56 @@ void AddXInputHooks(HookTransaction& hooks, const std::wstring& systemFolder)
 	if (void* target = (void*)GetProcAddress(module, MAKEINTRESOURCEA(100))) {
 		hooks.Add(library.getStateEx, target, (void*)HookedGetState<M, true>, (void**)&o_getStateEx[M]);
 	}
+	if (void* target = (void*)GetProcAddress(module, "XInputGetCapabilities")) {
+		hooks.Add(library.getCapabilities, target, (void*)HookedGetCapabilities<M>, (void**)&o_getCapabilities[M]);
+	}
+	if (void* target = (void*)GetProcAddress(module, "XInputSetState")) {
+		hooks.Add(library.setState, target, (void*)HookedSetState<M>, (void**)&o_setState[M]);
+	}
 }
 
+// Hooks every system XInput library's calls as one set (InstallVirtualPads).
+std::optional<HookFailure> InstallXInputHooks();
+
 } // namespace
+
+int AnnounceDeviceChange()
+{
+	int posted = 0;
+	EnumWindows(
+		[](HWND hwnd, LPARAM count) -> BOOL {
+			DWORD pid = 0;
+			GetWindowThreadProcessId(hwnd, &pid);
+			if (pid == GetCurrentProcessId() && PostMessageW(hwnd, WM_DEVICECHANGE, 0x0007 /* DBT_DEVNODES_CHANGED */, 0)) {
+				++*reinterpret_cast<int*>(count);
+			}
+			return TRUE;
+		},
+		reinterpret_cast<LPARAM>(&posted));
+	return posted;
+}
+
+void PassPadReadsThrough()
+{
+	t_passThrough = true;
+}
+
+bool PhysicalPadConnected(int slot)
+{
+	if (slot < 0 || slot >= kPadSlots) return false;
+	// The first library hooked is the one underneath the others (xinput1_4
+	// calls no other), so the read enters no hook; the pass-through covers a
+	// PC where it does.
+	GetState_t read = nullptr;
+	for (int m = 0; m < kModules && !read; m++) read = o_getState[m];
+	if (!read) return false;
+	const bool was = t_passThrough;
+	t_passThrough = true;
+	XState state{};
+	const bool connected = read((DWORD)slot, &state) == ERROR_SUCCESS;
+	t_passThrough = was;
+	return connected;
+}
 
 void SetPadFilter(PadFilter filter)
 {
@@ -213,6 +295,18 @@ PadSeen LastPadState(int slot)
 
 std::optional<HookFailure> InstallVirtualPads()
 {
+	// Once per process: a second call answers as the first did (the tests
+	// that read through the hooks each ask for them).
+	static std::optional<std::optional<HookFailure>> s_installed;
+	if (s_installed) return *s_installed;
+	s_installed = InstallXInputHooks();
+	return *s_installed;
+}
+
+namespace {
+
+std::optional<HookFailure> InstallXInputHooks()
+{
 	wchar_t folder[MAX_PATH];
 	const UINT n = GetSystemDirectoryW(folder, MAX_PATH);
 	if (n == 0 || n >= MAX_PATH) {
@@ -234,6 +328,8 @@ std::optional<HookFailure> InstallVirtualPads()
 	Log("virtual pads: %s", missing ? "XInput not hooked; the pads are the game's" : "XInput hooked");
 	return missing;
 }
+
+} // namespace
 
 bool ParseButtons(const std::string& text, PadStep* out)
 {

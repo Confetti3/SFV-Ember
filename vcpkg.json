@@ -25,6 +25,11 @@
     },
     "minhook",
     "nlohmann-json",
+    {
+      "name": "sdl3",
+      "version>=": "3.4.16",
+      "default-features": false
+    },
     "xxhash",
     "doctest",
     "fmt",
