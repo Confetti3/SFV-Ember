@@ -8,7 +8,10 @@
 //   2. the network guard; if it cannot be installed the process ends here and
 //      the game never runs with network access;
 //   3. the crash record (it hooks the game's own dump writer);
-//   4. the build check; on anything but a verified build the mod stays inert.
+//   4. the build check; on anything but a verified build the mod stays inert;
+//   5. the battle hooks, all of them or none: Ember's netplay (the mode's
+//      install, with its rooms) only when all are in, and otherwise the game
+//      plays offline as SFV.
 
 #include "core/CoreLog.hxx"
 #include "ember/SfvGame.hxx"
@@ -23,6 +26,7 @@
 #include "mod/GameHooks.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
+#include "mod/GuardedStart.hxx"
 #include "mod/HudText.hxx"
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
@@ -42,10 +46,12 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <optional>
+#include <string>
 
 namespace {
 
-constexpr UINT kExitGuardFailed = 0x5F0E0001;
+using sfve::start::Refusal;
 
 bool s_started = false;
 
@@ -89,6 +95,26 @@ void MigrateSettings()
 	}
 }
 
+bool RollsBack(sfve::mod::ModMode mode)
+{
+	return mode == sfve::mod::ModMode::SyncTest || mode == sfve::mod::ModMode::Netplay;
+}
+
+// Ember's netplay needs every battle hook: the driver's frames, inputs and
+// flow, the allocator that zeroes the battle's memory, the match end and, in
+// the modes that roll back, the projectile release. Without any one of them
+// two copies would drift apart or leave a match their own ways, so they go
+// in together or not at all.
+std::optional<sfve::mod::HookFailure> InstallBattleHooks(uintptr_t base, sfve::mod::BattleDriver& driver)
+{
+	using namespace sfve::mod;
+	HookTransaction hooks;
+	AddGameHooks(hooks, base, &driver);
+	AddMatchEndHook(hooks, base);
+	if (RollsBack(Config().mode)) AddProjectileReleaseHook(hooks, base);
+	return hooks.Commit();
+}
+
 } // namespace
 
 extern "C" int SfveStart(int beforeGameCode)
@@ -106,11 +132,18 @@ extern "C" int SfveStart(int beforeGameCode)
 			SFVE_VERSION, claim.module.c_str(), loader, claim.winnerModule.c_str(), claim.winnerLoader.c_str());
 		return 1;
 	}
+	// Both loaders start the mod from the exe's entry point
+	// (mod/GuardedStart.hxx); an older proxy still in the game folder starts
+	// it from a thread when it could not, after game code ran unguarded.
+	if (!beforeGameCode) {
+		Log("start refused: the game was already running when sfv-ember %s came to start; closing it so it never "
+			"runs online unguarded", SFVE_VERSION);
+		sfve::start::EndProcess(Refusal::StartedLate);
+	}
 	sfve::CoreLogSink() = &LogLine;
 	wchar_t exe[MAX_PATH] = {};
 	GetModuleFileNameW(nullptr, exe, MAX_PATH);
-	Log("sfv-ember %s starting in %ls (%s), instance %d, mode %s", SFVE_VERSION, exe,
-		beforeGameCode ? "before game code" : "LATE: the game was already running", Config().instance,
+	Log("sfv-ember %s starting in %ls (before game code), instance %d, mode %s", SFVE_VERSION, exe, Config().instance,
 		ModeName(Config().mode));
 	Log("loaded from %ls, started by the %s", claim.module.c_str(), loader);
 	if (claim.error) Log("could not claim the process for this copy (Win32 %lu): a second copy would not be refused", claim.error);
@@ -124,8 +157,7 @@ extern "C" int SfveStart(int beforeGameCode)
 
 	if (!InstallNetGuard()) {
 		Log("start refused: the network guard is incomplete; closing the game so it never runs online");
-		TerminateProcess(GetCurrentProcess(), kExitGuardFailed);
-		return 0;
+		sfve::start::EndProcess(Refusal::GuardIncomplete);
 	}
 
 	// After the guard, whose start initialized MinHook: the record hooks the
@@ -167,7 +199,6 @@ extern "C" int SfveStart(int beforeGameCode)
 	InstallOfflineDialogs(base, dialogs);
 	RegisterStatus("suppressedDialogs", [] { return std::to_string(SuppressedDialogs()); });
 	if (scene && InstallVersusLaunch(base, Config().gameOwnershipCheck)) RegisterVersusLaunchCommands();
-	InstallMatchEnd(base);
 	// The game's exit request: the point the netplay mode's runtime leaves
 	// its room from (EmberHost), before the engine stops.
 	InstallGameExit(base);
@@ -216,11 +247,20 @@ extern "C" int SfveStart(int beforeGameCode)
 	});
 	static BattleDriver driver(MakeMode(Config()));
 	driver.RegisterControl();
-	// The mode's own commands and hosts (the netplay mode's Ember runtime),
-	// once the driver holds it for the process's life.
+	const std::optional<HookFailure> missing = InstallBattleHooks(base, driver);
+	static const std::string battleHooks = missing ? std::string("missing ") + missing->site : std::string("ready");
+	RegisterStatus("battleHooks", [] { return JsonString(battleHooks); });
+	if (missing) {
+		Log("battle hooks: %s could not be hooked (%d), so none are: Ember's netplay is off and the game plays "
+			"offline as SFV", missing->site, (int)missing->status);
+		return 1;
+	}
+	Log("battle hooks: battle frame and its constructor, input record, rollback unit, battle flow, allocator and "
+		"match end%s hooked", RollsBack(Config().mode) ? ", and dead projectiles released on the battle's clock" : "");
+	// The mode's own commands and hosts (the netplay mode's Ember runtime,
+	// whose rooms launch linked matches), once the driver holds it for the
+	// process's life and only on battles it can drive.
 	driver.InstallMode();
-	InstallGameHooks(base, &driver);
-	if (Config().mode == ModMode::SyncTest || Config().mode == ModMode::Netplay) InstallDeterministicProjectileRelease(base);
 	return 1;
 }
 

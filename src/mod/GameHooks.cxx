@@ -97,16 +97,49 @@ void* h_GameAlloc(size_t size)
 
 } // namespace
 
-bool HookCodeSite(uintptr_t base, const CodeSite& site, void* detour, void** original)
+void HookTransaction::Add(uintptr_t imageBase, const CodeSite& site, void* detour, void** original)
 {
-	void* target = reinterpret_cast<void*>(base + site.rva);
-	MH_STATUS st = MH_CreateHook(target, detour, original);
-	if (st == MH_OK) st = MH_EnableHook(target);
-	if (st != MH_OK) Log("hooks: %s failed (%d)", site.name, (int)st);
-	return st == MH_OK;
+	hooks_.push_back({site.name, reinterpret_cast<void*>(imageBase + site.rva), detour, original, nullptr});
 }
 
-bool InstallGameHooks(uintptr_t base, BattleListener* listener)
+std::optional<HookFailure> HookTransaction::Commit()
+{
+	std::vector<Hook> hooks = std::move(hooks_);
+	hooks_.clear();
+	std::optional<HookFailure> failure;
+	size_t created = 0;
+	for (; created < hooks.size(); created++) {
+		Hook& hook = hooks[created];
+		hook.before = *hook.original;
+		const MH_STATUS status = calls_.create(hook.target, hook.detour, hook.original);
+		if (status != MH_OK) {
+			failure = HookFailure{hook.site, status};
+			break;
+		}
+	}
+	for (size_t i = 0; !failure && i < created; i++) {
+		const MH_STATUS status = calls_.enable(hooks[i].target);
+		if (status != MH_OK) failure = HookFailure{hooks[i].site, status};
+	}
+	if (!failure) return std::nullopt;
+	for (size_t i = 0; i < created; i++) {
+		// A hook MinHook could not remove keeps its trampoline, which the
+		// original pointer still names.
+		if (calls_.remove(hooks[i].target) == MH_OK) *hooks[i].original = hooks[i].before;
+	}
+	return failure;
+}
+
+bool HookCodeSite(uintptr_t base, const CodeSite& site, void* detour, void** original)
+{
+	HookTransaction hook;
+	hook.Add(base, site, detour, original);
+	const std::optional<HookFailure> failure = hook.Commit();
+	if (failure) Log("hooks: %s failed (%d)", failure->site, (int)failure->status);
+	return !failure;
+}
+
+void AddGameHooks(HookTransaction& hooks, uintptr_t base, BattleListener* listener)
 {
 	s_listener = listener;
 	s_getManager = reinterpret_cast<GetManagerFn>(base + sfv::kGetManager.rva);
@@ -115,15 +148,15 @@ bool InstallGameHooks(uintptr_t base, BattleListener* listener)
 	s_getBattleData = reinterpret_cast<GetBattleDataFn>(base + sfv::kGetBattleData.rva);
 	s_imageBase = base;
 	// The flow's delegates allocate through it even if the hook below is not
-	// installed; hooking replaces this with the trampoline.
+	// installed; hooking replaces this with the trampoline, and a set that
+	// does not go in puts this back.
 	o_gameAlloc = reinterpret_cast<GameAllocFn>(base + sfv::kGameAlloc.rva);
-	const bool ok = HookCodeSite(base, sfv::kInputRecord, (void*)h_InputRecord, (void**)&o_inputRecord) &&
-		HookCodeSite(base, sfv::kRollbackUnitPre, (void*)h_UnitTick, (void**)&o_unitTick) &&
-		HookCodeSite(base, sfv::kBattleFrameUpdate, (void*)h_BattleFrame, (void**)&o_battleFrame) &&
-		HookCodeSite(base, sfv::kBattleFrameCtor, (void*)h_BattleFrameCtor, (void**)&o_battleFrameCtor) &&
-		HookCodeSite(base, sfv::kFlowMessage, (void*)h_FlowMessage, (void**)&o_flowMessage) &&
-		HookCodeSite(base, sfv::kGameAlloc, (void*)h_GameAlloc, (void**)&o_gameAlloc);
-	Log("hooks: %s", ok ? "battle frame and its constructor, input record, rollback unit, battle flow and allocator hooked" : "INCOMPLETE");
+	hooks.Add(base, sfv::kInputRecord, (void*)h_InputRecord, (void**)&o_inputRecord);
+	hooks.Add(base, sfv::kRollbackUnitPre, (void*)h_UnitTick, (void**)&o_unitTick);
+	hooks.Add(base, sfv::kBattleFrameUpdate, (void*)h_BattleFrame, (void**)&o_battleFrame);
+	hooks.Add(base, sfv::kBattleFrameCtor, (void*)h_BattleFrameCtor, (void**)&o_battleFrameCtor);
+	hooks.Add(base, sfv::kFlowMessage, (void*)h_FlowMessage, (void**)&o_flowMessage);
+	hooks.Add(base, sfv::kGameAlloc, (void*)h_GameAlloc, (void**)&o_gameAlloc);
 	RegisterStatus("zeroedAllocs", [] {
 		char text[64];
 		snprintf(text, sizeof(text), "{\"count\":%llu,\"bytes\":%llu}",
@@ -131,7 +164,6 @@ bool InstallGameHooks(uintptr_t base, BattleListener* listener)
 			(unsigned long long)s_zeroedBytes.load(std::memory_order_relaxed));
 		return std::string(text);
 	});
-	return ok;
 }
 
 uint8_t* GameFindUnit(uint8_t* anyUnit, uint32_t typeRva, uint32_t index)

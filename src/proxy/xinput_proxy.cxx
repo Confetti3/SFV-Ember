@@ -2,27 +2,30 @@
 //
 // Two jobs:
 // * forward every XInput export to the system's real XInput;
-// * start sfv_ember.dll before any game code runs. When Windows loads this
-//   proxy as one of the exe's imports, the exe has not started yet: the proxy
-//   points the exe's entry point at EntryHook, which puts the original bytes
-//   back, starts the mod (outside the loader lock) and then runs the game.
-//   Loaded later by LoadLibrary, it starts the mod from a thread and the mod
-//   logs that it started late.
+// * start sfv_ember.dll before any game code runs. Windows loads this proxy
+//   as one of the exe's imports, before the exe has started: the proxy points
+//   the exe's entry point at its start (src/mod/GuardedStart.hxx), which
+//   starts the mod outside the loader lock and then runs the game.
 //
-// If sfv_ember.dll is missing or refuses to start, the game is not run: a
-// proxy without its mod would be a game without its network guard.
+// The game runs only guarded. If the entry point cannot be pointed at the
+// start, if sfv_ember.dll is missing or refuses to start, or if the proxy is
+// loaded after the game started with no copy of the mod guarding it, the
+// process ends: a proxy without its mod would be a game without its network
+// guard.
 
 #include <windows.h>
 
 #include <stdint.h>
 #include <string.h>
 
+#include "../mod/GuardedStart.hxx"
+
 namespace {
+
+using sfve::start::Refusal;
 
 HMODULE s_self;
 HMODULE s_real;
-uint8_t* s_entry;
-uint8_t s_savedEntry[12];
 
 HMODULE RealXInput()
 {
@@ -44,79 +47,67 @@ FARPROC Real(const char* nameOrOrdinal)
 	return real ? GetProcAddress(real, nameOrOrdinal) : nullptr;
 }
 
-void Refuse(const wchar_t* why)
+// Outside the loader lock only: a refusal the player sees before the game
+// closes.
+[[noreturn]] void RefuseWithNotice(Refusal why, const wchar_t* notice)
 {
-	MessageBoxW(nullptr, why, L"SFV Ember", MB_OK | MB_ICONERROR);
-	TerminateProcess(GetCurrentProcess(), 0x5F0E0002);
+	MessageBoxW(nullptr, notice, L"SFV Ember", MB_OK | MB_ICONERROR);
+	sfve::start::Refuse(why, notice);
 }
 
-void StartMod(int beforeGameCode)
+// The sfv_ember.dll beside this proxy; false when its path does not fit.
+bool SiblingMod(wchar_t (&path)[MAX_PATH])
+{
+	const DWORD n = GetModuleFileNameW(s_self, path, MAX_PATH);
+	wchar_t* slash = n && n < MAX_PATH ? wcsrchr(path, L'\\') : nullptr;
+	if (!slash || (slash - path) + 16 >= MAX_PATH) return false;
+	wcscpy_s(slash + 1, MAX_PATH - (slash + 1 - path), L"sfv_ember.dll");
+	return true;
+}
+
+// Launcher.exe injected the mod from its package: that copy starts from its
+// own entry hook before the game (src/mod/EarlyStart.cxx), or has ended the
+// process, so this proxy starts no second one. A second copy would only stay
+// inert (src/mod/StartClaim.hxx).
+bool LauncherCopyLoaded(const wchar_t* sibling)
+{
+	HMODULE injected = GetModuleHandleW(L"sfv_ember.dll");
+	if (!injected) return false;
+	wchar_t path[MAX_PATH] = {};
+	const DWORD length = GetModuleFileNameW(injected, path, MAX_PATH);
+	return length && length < MAX_PATH && _wcsicmp(path, sibling) != 0;
+}
+
+// The start (sfve::start::Start), from the exe's entry point.
+void StartMod()
 {
 	wchar_t path[MAX_PATH];
-	const DWORD n = GetModuleFileNameW(s_self, path, MAX_PATH);
-	wchar_t* slash = n ? wcsrchr(path, L'\\') : nullptr;
-	if (!slash || (slash - path) + 16 >= MAX_PATH) {
-		Refuse(L"SFV Ember could not find its own folder. The game was not started.");
-		return;
+	if (!SiblingMod(path)) {
+		RefuseWithNotice(Refusal::ModUnavailable, L"SFV Ember could not find its own folder. The game was not started.");
 	}
-	wcscpy_s(slash + 1, MAX_PATH - (slash + 1 - path), L"sfv_ember.dll");
-	// Launcher.exe injected the mod from its package, and that copy starts
-	// from its own entry hook (src/mod/EarlyStart.cxx): this proxy loads no
-	// second one. A second copy would only stay inert (src/mod/StartClaim.hxx).
-	if (HMODULE injected = GetModuleHandleW(L"sfv_ember.dll")) {
-		wchar_t injectedPath[MAX_PATH] = {};
-		const DWORD length = GetModuleFileNameW(injected, injectedPath, MAX_PATH);
-		if (length && length < MAX_PATH && _wcsicmp(injectedPath, path) != 0) return;
-	}
+	if (LauncherCopyLoaded(path)) return;
 	HMODULE mod = LoadLibraryW(path);
 	using Start = int (*)(int);
 	Start start = mod ? reinterpret_cast<Start>(GetProcAddress(mod, "SfveStart")) : nullptr;
 	if (!start) {
-		Refuse(L"sfv_ember.dll is missing next to the game. The game was not started, so it cannot go online "
-			   L"unguarded. Put the file back, or delete xinput1_3.dll from the game folder to play without SFV Ember.");
-		return;
+		RefuseWithNotice(Refusal::ModUnavailable,
+			L"sfv_ember.dll is missing next to the game. The game was not started, so it cannot go online "
+			L"unguarded. Put the file back, or delete xinput1_3.dll from the game folder to play without SFV Ember.");
 	}
-	if (!start(beforeGameCode)) Refuse(L"SFV Ember refused to start; see %APPDATA%\\SFVEmber\\logs\\sfv_ember.log.");
+	if (!start(1)) {
+		RefuseWithNotice(Refusal::ModUnavailable, L"SFV Ember refused to start; see %APPDATA%\\SFVEmber\\logs\\sfv_ember.log.");
+	}
 }
 
-DWORD WINAPI EntryHook(void* peb)
+// Loaded by LoadLibrary, the game's code has already run: the proxy can no
+// longer start the mod before it. That is right only when the launcher's copy
+// guards this game from its own entry hook.
+void CheckLateLoad()
 {
-	DWORD old = 0;
-	VirtualProtect(s_entry, sizeof(s_savedEntry), PAGE_EXECUTE_READWRITE, &old);
-	memcpy(s_entry, s_savedEntry, sizeof(s_savedEntry));
-	VirtualProtect(s_entry, sizeof(s_savedEntry), old, &old);
-	FlushInstructionCache(GetCurrentProcess(), s_entry, sizeof(s_savedEntry));
-	StartMod(1);
-	return reinterpret_cast<DWORD(WINAPI*)(void*)>(s_entry)(peb);
-}
-
-DWORD WINAPI LateStart(void*)
-{
-	StartMod(0);
-	return 0;
-}
-
-bool HookEntryPoint()
-{
-	auto* base = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
-	const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
-	if (dos->e_magic != IMAGE_DOS_SIGNATURE) return false;
-	const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
-	if (nt->Signature != IMAGE_NT_SIGNATURE || !nt->OptionalHeader.AddressOfEntryPoint) return false;
-	s_entry = base + nt->OptionalHeader.AddressOfEntryPoint;
-
-	// mov rax, EntryHook; jmp rax
-	uint8_t patch[12] = {0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xE0};
-	const uintptr_t target = reinterpret_cast<uintptr_t>(&EntryHook);
-	memcpy(patch + 2, &target, sizeof(target));
-
-	DWORD old = 0;
-	if (!VirtualProtect(s_entry, sizeof(patch), PAGE_EXECUTE_READWRITE, &old)) return false;
-	memcpy(s_savedEntry, s_entry, sizeof(s_savedEntry));
-	memcpy(s_entry, patch, sizeof(patch));
-	VirtualProtect(s_entry, sizeof(patch), old, &old);
-	FlushInstructionCache(GetCurrentProcess(), s_entry, sizeof(patch));
-	return true;
+	wchar_t path[MAX_PATH];
+	if (SiblingMod(path) && LauncherCopyLoaded(path)) return;
+	sfve::start::Refuse(Refusal::StartedLate, L"xinput1_3.dll was loaded after the game started, with no SFV Ember "
+											  L"guarding it; the game cannot run unguarded");
 }
 
 } // namespace
@@ -197,8 +188,7 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved)
 	s_self = module;
 	DisableThreadLibraryCalls(module);
 	// A non-null `reserved` means a static load: the exe has not run yet.
-	if (reserved && HookEntryPoint()) return TRUE;
-	HANDLE thread = CreateThread(nullptr, 0, LateStart, nullptr, 0, nullptr);
-	if (thread) CloseHandle(thread);
+	if (reserved) sfve::start::StartAtEntry(&StartMod);
+	else CheckLateLoad();
 	return TRUE;
 }

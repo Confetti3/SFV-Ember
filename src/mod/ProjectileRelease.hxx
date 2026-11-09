@@ -25,6 +25,10 @@
 
 namespace sfve::mod {
 
-bool InstallDeterministicProjectileRelease(uintptr_t imageBase);
+class HookTransaction;
+
+// Adds the release's hook to the battle's set (dllmain) in the modes that
+// roll back: without it two copies release projectiles on different frames.
+void AddProjectileReleaseHook(HookTransaction& hooks, uintptr_t imageBase);
 
 } // namespace sfve::mod

@@ -2,7 +2,6 @@
 
 #include "mod/GameHooks.hxx"
 #include "mod/GameMemory.hxx"
-#include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
 
 namespace sfve::mod {
@@ -30,13 +29,11 @@ uint64_t h_Releasable(uint8_t* projectile)
 
 } // namespace
 
-bool InstallDeterministicProjectileRelease(uintptr_t imageBase)
+void AddProjectileReleaseHook(HookTransaction& hooks, uintptr_t imageBase)
 {
 	s_findPart = reinterpret_cast<FindPartFn>(imageBase + sfv::kFindPart.rva);
 	s_visualType = reinterpret_cast<const void*>(imageBase + sfv::projectilevisual::kType);
-	const bool ok = HookCodeSite(imageBase, sfv::kProjectileReleasable, (void*)h_Releasable, (void**)&o_releasable);
-	if (ok) Log("projectiles: dead projectiles are released on the battle's clock");
-	return ok;
+	hooks.Add(imageBase, sfv::kProjectileReleasable, (void*)h_Releasable, (void**)&o_releasable);
 }
 
 } // namespace sfve::mod

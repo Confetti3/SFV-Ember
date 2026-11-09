@@ -23,7 +23,11 @@
 
 namespace sfve::mod {
 
-bool InstallMatchEnd(uintptr_t imageBase);
+class HookTransaction;
+
+// Adds the results menu's hook to the battle's set (dllmain): a linked match
+// without it would open a menu each copy answers on its own.
+void AddMatchEndHook(HookTransaction& hooks, uintptr_t imageBase);
 
 // While on, a versus battle's results menu does not open; the match end is
 // kept for TakeEndedVersusBattle. Turning it off drops a pending one. Game

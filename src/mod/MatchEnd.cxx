@@ -38,10 +38,10 @@ void h_ShowResult(uint8_t* state)
 
 } // namespace
 
-bool InstallMatchEnd(uintptr_t imageBase)
+void AddMatchEndHook(HookTransaction& hooks, uintptr_t imageBase)
 {
 	s_base = imageBase;
-	return HookCodeSite(imageBase, sfv::kShowResult, (void*)h_ShowResult, (void**)&o_showResult);
+	hooks.Add(imageBase, sfv::kShowResult, (void*)h_ShowResult, (void**)&o_showResult);
 }
 
 void SetLinkedMatchEnd(bool on)

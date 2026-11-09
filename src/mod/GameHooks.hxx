@@ -6,6 +6,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
+#include <vector>
+
+#include <MinHook.h>
+
 #include "mod/BuildCheck.hxx"
 
 namespace sfve::mod {
@@ -28,11 +33,54 @@ public:
 	virtual void OnFlowState(int state) = 0;
 };
 
-// Hooks one verified code site (MinHook, enabled at once); logs a failure.
+// The MinHook calls a HookTransaction makes: MinHook's own, unless a test
+// gives stand-ins that fail a step on purpose.
+struct HookCalls {
+	MH_STATUS(WINAPI* create)(LPVOID target, LPVOID detour, LPVOID* original) = &MH_CreateHook;
+	MH_STATUS(WINAPI* enable)(LPVOID target) = &MH_EnableHook;
+	MH_STATUS(WINAPI* remove)(LPVOID target) = &MH_RemoveHook;
+};
+
+// The hook a HookTransaction could not install, and MinHook's status for it.
+struct HookFailure {
+	const char* site;
+	MH_STATUS status;
+};
+
+// Code-site hooks that go in together or not at all. Commit creates every
+// hook, then enables them. When one fails, it removes every hook it created
+// (MinHook disables an enabled one first) and puts back the value each
+// original pointer held before, so nothing of the set is left in the game and
+// no pointer is left on a freed trampoline. A hook it did not create (one
+// that was already there) stays as it was.
+class HookTransaction {
+public:
+	explicit HookTransaction(HookCalls calls = {}) : calls_(calls) {}
+
+	void Add(uintptr_t imageBase, const CodeSite& site, void* detour, void** original);
+	// Installs the hooks added since the last Commit: empty when all are in.
+	std::optional<HookFailure> Commit();
+
+private:
+	struct Hook {
+		const char* site;
+		void* target;
+		void* detour;
+		void** original;
+		void* before; // *original before the hook was created
+	};
+	HookCalls calls_;
+	std::vector<Hook> hooks_;
+};
+
+// Hooks one verified code site (a transaction of one); logs a failure.
 bool HookCodeSite(uintptr_t imageBase, const CodeSite& site, void* detour, void** original);
 
-// Hooks the verified build's functions. The listener must outlive the game.
-bool InstallGameHooks(uintptr_t imageBase, BattleListener* listener);
+// Adds the listener's hooks (the battle frame and its constructor, the input
+// record, the rollback unit, the battle flow and the allocator) to the
+// battle's set, which goes in whole or not at all (dllmain). The listener
+// must outlive the game.
+void AddGameHooks(HookTransaction& hooks, uintptr_t imageBase, BattleListener* listener);
 
 // The game's GetManager, for the rollback unit's context.
 uint8_t* GameGetManager(uint8_t* rollbackUnit);
