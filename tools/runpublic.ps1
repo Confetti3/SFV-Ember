@@ -121,8 +121,9 @@ try {
 	WaitFor 'copy 0 in the room' 60 { $s = Status 0; $s.room.room -eq 'joined' -and $s.room.members -eq 1 }
 	if ($shellJoin) {
 		# Copy 1 joins from the shell's own Public rooms list with its pad, as a
-		# player does: Start, Online play, Public rooms, the room's card.
-		Press 1 'START' | Out-Null
+		# player does: Ember (open at the main menu, or Start), Online play,
+		# Public rooms, the room's card.
+		if (!(Status 1).shell.shown) { Press 1 'START' | Out-Null }
 		if ((Status 1).shell.screen -eq 'welcome') { Seek 1 'welcome-skip' @('DOWN', 'DOWN', 'RIGHT'); Press 1 'A' | Out-Null }
 		Seek 1 'online' @('UP')
 		Press 1 'A' | Out-Null

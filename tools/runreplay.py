@@ -153,8 +153,9 @@ def play_battle(rematches: int) -> None:
 
 
 def watch_through_shell(shots: Path | None) -> None:
-    """Copy 0: Start, Replays, the newest row, Select, Watch now."""
-    press(0, "START")
+    """Copy 0: Ember (Start if it is closed), Replays, the newest row, Select, Watch now."""
+    if not shell(0)["shown"]:
+        press(0, "START")
     if shell(0)["screen"] == "welcome":
         seek(0, lambda f: f == "welcome-skip", ["DOWN", "DOWN", "RIGHT"])
         press(0, "A")

@@ -71,8 +71,10 @@ def seek(index: int, focus: str | tuple[str, ...], moves: list[str], limit: int 
 
 
 def open_home(index: int) -> None:
-    """Start opens Ember; the first-run welcome is skipped."""
-    press(index, "START")
+    """Ember opens on entering the main menu; Start opens it if it was closed.
+    The first-run welcome is skipped."""
+    if not shell(index)["shown"]:
+        press(index, "START")
     if shell(index)["screen"] == "welcome":
         seek(index, "welcome-skip", ["DOWN", "DOWN", "RIGHT"])
         press(index, "A")

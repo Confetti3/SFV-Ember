@@ -178,6 +178,9 @@ struct Shell {
 	std::shared_ptr<const facade::PresentationSnapshot> frame;
 	sf4e::ui::MenuPads::Taken openRequest;
 	bool started = false, wasShown = false, matchResultShown = false;
+	// At the game's main menu last frame, and entered it with Ember not yet
+	// opened for that visit.
+	bool atMenu = false, menuOpenPending = false;
 	// The runtime's last Training call the shell opened for (trainingCallSequence).
 	std::uint64_t trainingCallShown = 0;
 	// When the shell last showed or hid (ImGui's clock), for its fade.
@@ -320,12 +323,25 @@ void BeginFrame()
 	const Snapshot& snapshot = *shell.frame->runtime;
 	const bool focused = overlay::GameWindowFocused();
 	auto& presentation = shell.presentation;
-	// SFV's own menu comes first: Ember shows once the player opens it.
+	// Hidden until the game's main menu: the title and boot are the game's.
 	if (!shell.started) {
 		shell.started = true;
 		presentation.Close("Start or F10 opens Ember");
 	}
 	presentation.Update(snapshot.menuContext, snapshot.session.match, snapshot.offlineRequested, focused);
+	// Entering the game's main menu opens Ember, as SF4 Ember's overlay
+	// opens over its main menu: at boot, and back from SFV's own offline
+	// modes. Closed there with Start or F10, it stays closed until the menu
+	// is entered again. Held until Ember can show (the runtime may still be
+	// starting on the menu's first frames).
+	const bool atMenu = snapshot.menuContext == input::MenuContext::MainMenu;
+	if (atMenu && !shell.atMenu) shell.menuOpenPending = true;
+	if (!atMenu) shell.menuOpenPending = false;
+	shell.atMenu = atMenu;
+	if (shell.menuOpenPending && presentation.Available()) {
+		shell.menuOpenPending = false;
+		if (!presentation.Visible()) presentation.Open("the main menu");
+	}
 	// Watch now: Ember's menu gets out of the way as the replay's battle is
 	// launched, and comes back on the Replays screen when the main menu does
 	// (SfvReplays), as SF4's overlay does around the game's battle log.
