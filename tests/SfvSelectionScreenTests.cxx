@@ -4,8 +4,8 @@
 // shows and does), and the table page's and post-match prompt's one Ultra
 // value (StepTableSelection), which steps only the loadouts the fighter has.
 // Then the pick screen's stage row with a stage the opponent lacks and one
-// this player is not offered (section 41), and what its pane previews
-// (section 43). The fighters are CatalogFixture's: RYU two
+// this player is not offered (section 41), and what its pane previews and
+// says (section 43). The fighters are CatalogFixture's: RYU two
 // of each, CNL two V-Skills and one V-Trigger, KEN one of each.
 
 #include <doctest/doctest.h>
@@ -22,6 +22,7 @@
 #include "ui/GameMenu.hxx"
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -239,8 +240,8 @@ TEST_CASE("with a choice open the pane previews its focused option, ready or not
 	pick.stage = 0;
 	// No option: the pick as it is.
 	CHECK(SfvSelectionScreen::Previewed(pick, "costume", "").pick.costume == 4);
-	// A costume keeps the colour where it has it, else takes its first one
-	// this player can ready.
+	// A costume keeps the colour where it has it and this player can ready
+	// it, else takes its first one they can, as choosing it stores.
 	PlayerPick shown = SfvSelectionScreen::Previewed(pick, "costume", "#0");
 	CHECK(shown.pick.costume == 0);
 	CHECK(shown.pick.color == 1);
@@ -257,7 +258,8 @@ TEST_CASE("with a choice open the pane previews its focused option, ready or not
 	CHECK(picks::LoadoutOf(SfvSelectionScreen::Previewed(pick, "vskill", "#0").pick) == kOneTwo);
 	PlayerPick cnl = PlayerPickOf(kCnl, kOneOne);
 	CHECK(picks::LoadoutOf(SfvSelectionScreen::Previewed(cnl, "vtrigger", "#1").pick) == kOneOne);
-	// Another fighter: its first look, the loadout fitted to it.
+	// A fighter this player cannot play (KEN): as the spec fits it, its
+	// first look, the loadout fitted to it.
 	shown = SfvSelectionScreen::Previewed(pick, "fighter", "#2");
 	CHECK(shown.pick.fighter == kKen);
 	CHECK(shown.pick.costume == 0);
@@ -269,4 +271,81 @@ TEST_CASE("with a choice open the pane previews its focused option, ready or not
 	// The stored pick itself is never touched.
 	CHECK(pick.pick.fighter == kRyu);
 	CHECK(pick.stage == 0);
+}
+
+TEST_CASE("a fighter or costume previewed is what choosing it stores")
+{
+	FillTestCatalog();
+	const std::vector<StageOption> stages = StageOptions(MissingStages());
+	const auto same = [](const sf4e::selection::Pick& a, const sf4e::selection::Pick& b) {
+		return a.fighter == b.fighter && a.costume == b.costume && a.color == b.color && picks::LoadoutOf(a) == picks::LoadoutOf(b);
+	};
+	// From RYU's Nostalgia in colour 02 with both II: every fighter and
+	// costume this player can choose, previewed and then chosen.
+	PlayerPick from = PlayerPickOf(kRyu, kTwoTwo);
+	from.pick.costume = 4;
+	from.pick.color = 1;
+	const std::vector<MenuEntry> rows = PlayerRows(from);
+	for (const char* row : {"fighter", "costume"}) {
+		for (const sf4e::ui::MenuChoice& option : RowOf(rows, row).choices) {
+			if (!option.enabled) continue;
+			CAPTURE(row);
+			CAPTURE(option.id);
+			const PlayerPick shown = SfvSelectionScreen::Previewed(from, row, option.id);
+			PlayerPick chosen = from;
+			SfvSelectionScreen::Apply(Choose(row, option.id.c_str()), chosen, stages);
+			CHECK(same(shown.pick, SetPick(chosen).pick));
+		}
+	}
+	// CNL keeps colour 02, which its first costume has and this player can
+	// ready, where its first look would be colour 01.
+	const PlayerPick cnl = SfvSelectionScreen::Previewed(from, "fighter", "#1");
+	CHECK(cnl.pick.costume == 0);
+	CHECK(cnl.pick.color == 1);
+	CHECK(picks::LoadoutOf(cnl.pick) == kTwoOne);
+}
+
+TEST_CASE("the pane says why an option cannot be chosen, and that a stage shown is one the opponent lacks, with its row focused or its choice open")
+{
+	FillTestCatalog();
+	// At a table whose opponent lacks S01 (id 0), with S01 stored.
+	const std::vector<StageOption> stages = StageOptions({0, kUninstalledStage});
+	PlayerPick pick = PlayerPickOf(kRyu, kOneOne);
+	pick.stage = 0;
+	const std::vector<MenuEntry> rows = SfvSelectionScreen::Rows(pick, true, true, true, stages);
+	const std::string notShared = sf4e::loc::T("runtime.ready.stage_not_shared");
+	// The stage row focused, no choice open: the stored stage, dimmed, and why.
+	PickPreview preview = SfvSelectionScreen::PreviewOf(pick, "stage", std::nullopt, rows, stages);
+	CHECK(preview.focus == PreviewFocus::Stage);
+	CHECK(preview.pick.stage == 0);
+	CHECK_FALSE(preview.stageShared);
+	CHECK(preview.note == notShared);
+	// The stage choice open on S25 (its third option): shared, nothing to say.
+	preview = SfvSelectionScreen::PreviewOf(pick, "stage", SfvSelectionScreen::OpenChoice{"stage", 2}, rows, stages);
+	CHECK(preview.pick.stage == 2);
+	CHECK(preview.stageShared);
+	CHECK(preview.note.empty());
+	// Back on S01 in the open choice: why again.
+	preview = SfvSelectionScreen::PreviewOf(pick, "stage", SfvSelectionScreen::OpenChoice{"stage", 1}, rows, stages);
+	CHECK(preview.pick.stage == 0);
+	CHECK(preview.note == notShared);
+	// Another row focused: the look, with nothing to say about the stage.
+	preview = SfvSelectionScreen::PreviewOf(pick, "fighter", std::nullopt, rows, stages);
+	CHECK(preview.focus == PreviewFocus::Look);
+	CHECK(preview.note.empty());
+	// The costume choice open on RYU's costume 1, which this player cannot
+	// ready: shown, with SF4's NOT OWNED words.
+	preview = SfvSelectionScreen::PreviewOf(pick, "fighter", SfvSelectionScreen::OpenChoice{"costume", 1}, rows, stages);
+	CHECK(preview.pick.pick.costume == 1);
+	CHECK(preview.note == sf4e::loc::T("selection.not_owned"));
+	// A part's choice: its line brighter, its move already on it, no note.
+	preview = SfvSelectionScreen::PreviewOf(pick, "fighter", SfvSelectionScreen::OpenChoice{"vtrigger", 1}, rows, stages);
+	CHECK(preview.focus == PreviewFocus::Loadout);
+	CHECK(preview.part == picks::LoadoutPart::VTrigger);
+	CHECK(picks::LoadoutOf(preview.pick.pick) == kOneTwo);
+	CHECK(preview.note.empty());
+	// An index past the row's choices previews the pick itself.
+	preview = SfvSelectionScreen::PreviewOf(pick, "fighter", SfvSelectionScreen::OpenChoice{"costume", 99}, rows, stages);
+	CHECK(preview.pick.pick.costume == pick.pick.costume);
+	CHECK(preview.note.empty());
 }

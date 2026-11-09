@@ -545,7 +545,7 @@ std::vector<std::pair<std::wstring, ChoiceCounts>> s_choiceCounts;
 // the rest), into `lists`; the looks' answer is then kContentOwnership's
 // (ApplyContentOwnership). A costume or colour of the universe the game's
 // lists leave out (one the entitlement cache does not grant) reads as not
-// owned. Stages are not asked (sfv::kOwnedStages): their `owned` is
+// owned. Stages are not asked (the game's OwnedStages): their `owned` is
 // kContentOwnership's alone, from `installed` and `entitled`.
 void ReadOwnership(uint8_t* setup, ContentLists& lists)
 {

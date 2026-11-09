@@ -86,7 +86,6 @@ add_library(sfve_ember STATIC
     src/ember/RoomBattle.cxx
     src/ember/RoomCommands.cxx
     src/ember/SfvArt.cxx
-    src/ember/SfvArtProbe.cxx
     src/ember/SfvCatalog.cxx
     src/ember/SfvFaceCrop.cxx
     src/ember/SfvGame.cxx
@@ -157,10 +156,8 @@ unset(index)
 sf4e_embed_brand_mark(sfve_product "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
 target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
 
-# The mod's code the SFV catalog and adapter tests reach without the game
-# (BuildCheck for the shell's development art probe, SfvArtProbe).
+# The mod's code the SFV catalog and adapter tests reach without the game.
 set(SFVE_EMBER_TEST_MOD_SOURCES
-    src/mod/BuildCheck.cxx
     src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/GameArt.cxx src/mod/GameContent.cxx
     src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx
@@ -200,6 +197,9 @@ target_compile_definitions(sfve_ember_tests PRIVATE SFVE_EMBER_SOURCE_ROOT="${sf
 # The catalog's life (empty, filled once, sealed) changes the process for good: a program of its own.
 add_executable(sfve_catalog_lifecycle_tests tests/main.cxx tests/CatalogLifecycleTests.cxx ${SFVE_EMBER_TEST_MOD_SOURCES})
 target_link_libraries(sfve_catalog_lifecycle_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
+# The catalog filled with Ember's ownership gate off (-sfve_ownership=0), which a filled catalog keeps: a program of its own.
+add_executable(sfve_catalog_gate_off_tests tests/main.cxx tests/CatalogGateOffTests.cxx ${SFVE_EMBER_TEST_MOD_SOURCES})
+target_link_libraries(sfve_catalog_gate_off_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
 
 # The in-game mod. Loads inert: it blocks every non-loopback connection first,
 # then does nothing else unless the exe is the exact build it was made for.
@@ -390,6 +390,7 @@ add_test(NAME ember_runtime COMMAND ember_runtime_x64_test)
 # SFV's game definitions, and the runtime linked under them.
 add_test(NAME sfve_ember_tests COMMAND sfve_ember_tests)
 add_test(NAME sfve_catalog_lifecycle_tests COMMAND sfve_catalog_lifecycle_tests)
+add_test(NAME sfve_catalog_gate_off_tests COMMAND sfve_catalog_gate_off_tests)
 # SFV's room host catalog over the exported pick space.
 add_test(NAME sfve_room_host_tests COMMAND sfve_room_host_tests)
 add_test(NAME guard_probe COMMAND guard_probe WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

@@ -20,6 +20,10 @@
 // it (SfvSelectionScreen's Previewed), so the player sees each costume,
 // colour, part and stage before choosing it.
 //
+// Every line shows at the smallest window the shell allows (960x540): the
+// words keep their room and the picture above them gives way, narrower and
+// shorter at its own shape.
+//
 // Render thread, inside the pick screen's menu frame.
 
 #include "ember/SfvPick.hxx"
@@ -37,8 +41,9 @@ struct PickPreview {
 	PreviewFocus focus = PreviewFocus::Look;
 	// Loadout: the focused part, whose line is brighter. Otherwise unused.
 	picks::LoadoutPart part = picks::LoadoutPart::VSkill;
-	// Why the focused option of an open choice cannot be chosen, drawn first
-	// in the danger tone; empty for nothing to say.
+	// Why the focused option of an open choice cannot be chosen, or that the
+	// stage shown is one the opponent lacks, drawn first in the danger tone;
+	// empty for nothing to say.
 	std::string note;
 	// The stage shown is one both seated players have (not the stage row's
 	// OpponentLacks).
@@ -46,5 +51,16 @@ struct PickPreview {
 };
 
 void DrawPickPreview(const PickPreview& preview);
+
+// The pane's arithmetic, in its pixels, apart from ImGui so that the tests
+// check it at the smallest window. The look's words under its picture: the
+// fighter's and the costume's names, the colour chips (`strip`, their
+// SfvSwatchStrip height), the colour's line and one line per loadout part,
+// each `line` tall.
+float LookWordsHeight(float line, float strip);
+// The tallest a picture may be drawn with `room` left in the pane, `words`
+// under it and `gap` between the two: what is left once the words have
+// theirs, and none when nothing is.
+float PictureRoom(float room, float words, float gap);
 
 } // namespace sfve::adapter

@@ -309,13 +309,41 @@ TEST_CASE("a choice is worded by the game's pattern for it, with the move's name
 	CHECK(FormatChoice("{common1} {common2}", "II", "Axe Kick") == "II Axe Kick");
 	CHECK(FormatChoice("{0}: {common1}", "I", "Mind's Eye") == "I Mind's Eye");
 	// Until the game gives its words (no game runs in a test), the game's
-	// English, in its casing, so nothing changes case when its words arrive.
-	CHECK(std::string(PartLabel(picks::LoadoutPart::VSkill)) == "V-SKILL");
-	CHECK(std::string(PartLabel(picks::LoadoutPart::VTrigger)) == "V-TRIGGER");
+	// English in Ember's case, so nothing changes case when its words arrive.
+	CHECK(std::string(PartLabel(picks::LoadoutPart::VSkill)) == "V-Skill");
+	CHECK(std::string(PartLabel(picks::LoadoutPart::VTrigger)) == "V-Trigger");
 	CHECK(ChoiceText(1, "Axe Kick") == "II Axe Kick");
 	FillTestCatalog();
-	CHECK(LoadoutName(0, kTwoOne) == "V-SKILL II \xC2\xB7 V-TRIGGER I: Skill Two \xC2\xB7 Trigger One");
-	CHECK(LoadoutName(4, kTwoOne) == "V-SKILL II \xC2\xB7 V-TRIGGER I"); // BSN's are unnamed
+	CHECK(LoadoutName(0, kTwoOne) == "V-Skill II \xC2\xB7 V-Trigger I: Skill Two \xC2\xB7 Trigger One");
+	CHECK(LoadoutName(4, kTwoOne) == "V-Skill II \xC2\xB7 V-Trigger I"); // BSN's are unnamed
 	CHECK(LoadoutMoves(1, kTwoOne) == "Skill Two \xC2\xB7 Trigger One");
-	CHECK(LoadoutMoves(4, kOneTwo) == "V-SKILL I \xC2\xB7 V-TRIGGER II");
+	CHECK(LoadoutMoves(4, kOneTwo) == "V-Skill I \xC2\xB7 V-Trigger II");
+}
+
+TEST_CASE("the game's two labels are set in Ember's case, and a label outside ASCII is kept as the game wrote it")
+{
+	// The game's English labels differ in case; Ember's rows read "Fighter",
+	// "Costume", "Color".
+	CHECK(RowCase("V-Skill") == "V-Skill");
+	CHECK(RowCase("V-TRIGGER") == "V-Trigger");
+	CHECK(RowCase("v-trigger") == "V-Trigger");
+	CHECK(RowCase("HABILIDAD V") == "Habilidad V");
+	CHECK(RowCase("") == "");
+	// Japanese, and an accented capital, are not Ember's to recase.
+	CHECK(RowCase("V\xE3\x82\xB9\xE3\x82\xAD\xE3\x83\xAB") == "V\xE3\x82\xB9\xE3\x82\xAD\xE3\x83\xAB");
+	CHECK(RowCase("D\xC3\x89" "CLENCHEUR V") == "D\xC3\x89" "CLENCHEUR V");
+}
+
+TEST_CASE("a loaded look differs from the launched one by its costume, its colour or its code, whose case does not count")
+{
+	const mod::PlayerLook launched{"RYU", 4, 1};
+	CHECK_FALSE(mod::LookMismatch(launched, {"RYU", 4, 1}));
+	// The setting record's code and the launch's FString compare as the
+	// game compares codes.
+	CHECK_FALSE(mod::LookMismatch(launched, {"ryu", 4, 1}));
+	CHECK(mod::LookMismatch(launched, {"KEN", 4, 1}));
+	CHECK(mod::LookMismatch(launched, {"RY", 4, 1}));
+	// The load put a costume this copy lacks back to 0, or the colour moved.
+	CHECK(mod::LookMismatch(launched, {"RYU", 0, 1}));
+	CHECK(mod::LookMismatch(launched, {"RYU", 4, 0}));
 }

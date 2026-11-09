@@ -170,14 +170,7 @@ std::string ModeDataRefusal(uint8_t* modeData, LaunchTarget target)
 	return {};
 }
 
-// A player's fighter and look: as a launch wrote them into the jump, and as
-// the battle setting holds them once the battle has loaded.
-struct PlayerLook {
-	std::string fighter;
-	int costume = -1;
-	int colour = -1;
-	bool operator==(const PlayerLook&) const = default;
-};
+// Both players' looks (PlayerLook), as a launch wrote them into the jump.
 using PlayerLooks = std::array<PlayerLook, jump::kPlayers>;
 
 // The look the battle setting holds for player `player` (sfv::jump's
@@ -213,7 +206,7 @@ void LogLoadedLooks(const PlayerLooks& written)
 		Log("launch: player %d loaded %s costume %d colour %d", player + 1, loaded->fighter.c_str(), loaded->costume,
 			loaded->colour);
 		const PlayerLook& launched = written[(size_t)player];
-		if (*loaded == launched) continue;
+		if (!LookMismatch(launched, *loaded)) continue;
 		Log("launch: warning: player %d loaded %s costume %d colour %d, not the %s costume %d colour %d launched; another "
 			"copy that loaded the launched look shows a different one",
 			player + 1, loaded->fighter.c_str(), loaded->costume, loaded->colour, launched.fighter.c_str(), launched.costume,
@@ -291,6 +284,10 @@ void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 			: kind != sfv::scene::kJumpStateVtable            ? nullptr
 			: ++*frames >= kLoadFrames                        ? "the battle did not load within a minute"
 															  : "";
+		// Another state after the jump (not a battle's, whose looks are read
+		// back above): the watch ends, and says so, so that two copies' logs
+		// show a missing read-back rather than nothing.
+		if (!why) Log("launch: left the jump for state 0x%llX; looks not read back", (unsigned long long)kind);
 		if (why && !*why) return true; // still loading
 		if (why) {
 			Log("launch: failed: %s", why);
@@ -524,6 +521,13 @@ void FillCharPkg(uint8_t* chara, const FighterPick& pick)
 	if (pick.colour >= 0) Field<int32_t>(chara, jump::kCharColour) = pick.colour;
 	Field<int32_t>(chara, jump::kCharVSkill) = pick.vSkill;
 	Field<int32_t>(chara, jump::kCharVTrigger) = pick.vTrigger;
+}
+
+bool LookMismatch(const PlayerLook& written, const PlayerLook& loaded)
+{
+	const bool sameFighter = written.fighter.size() == loaded.fighter.size() &&
+		_strnicmp(written.fighter.c_str(), loaded.fighter.c_str(), written.fighter.size()) == 0;
+	return !sameFighter || written.costume != loaded.costume || written.colour != loaded.colour;
 }
 
 bool PlayableRounds(int rounds)

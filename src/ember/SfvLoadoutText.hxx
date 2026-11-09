@@ -8,9 +8,11 @@
 // 0x76AFD0, 0x72E960). Ember reads them once at the main menu
 // (ReadLoadoutWords), as it reads the league names (EMBER_LIBRARY.md section
 // 28); until then, and for a key the game has no text for, the words are the
-// game's English ones, in its casing, so every screen names the parts as the
-// game does and nothing changes case when its words arrive. The move names
-// are the catalog's (SfvCatalog's MoveName).
+// game's English ones. The game's own two labels differ in case ("V-Skill",
+// "V-TRIGGER"), so Ember sets both in its rows' case (RowCase): "V-Skill" and
+// "V-Trigger", as "Fighter", "Costume" and "Color" read beside them, and as
+// Ember's own text writes them. Nothing changes case when the game's words
+// arrive. The move names are the catalog's (SfvCatalog's MoveName).
 //
 // The library has no words of its own for these, and SFV may overlay only
 // the library's own messages, so the pick screen's rows and the shared
@@ -28,8 +30,14 @@ namespace sfve::adapter {
 // publishes them for every thread. Later calls do nothing.
 void ReadLoadoutWords();
 
-// The game's label for the part ("V-SKILL", "V-TRIGGER" in English).
+// The game's label for the part, in Ember's case ("V-Skill", "V-Trigger" in
+// English).
 const char* PartLabel(picks::LoadoutPart part);
+// A label in the case of Ember's rows: each word's first letter a capital,
+// the rest small ("V-TRIGGER" reads "V-Trigger"). A label with any letter
+// outside ASCII (Japanese's, an accented capital) is kept as written: its
+// case is not Ember's to guess.
+std::string RowCase(std::string label);
 // A choice as the game's select screen words it: its pattern for that
 // number with the move's name (FormatChoice), the numeral picks::Numeral.
 std::string ChoiceText(int number, const std::string& move);
@@ -42,16 +50,16 @@ std::string ChoiceText(int number, const std::string& move);
 std::string FormatChoice(const std::string& pattern, const char* numeral, const std::string& move);
 
 // The loadout at an Ultra number (picks::LoadoutAt) as the shared screens
-// name it, "V-SKILL II · V-TRIGGER I", and Home's short form, "II/I"; empty
+// name it, "V-Skill II · V-Trigger I", and Home's short form, "II/I"; empty
 // for a number that is no loadout. Any thread; each text lives for the
 // process's life.
 const char* LoadoutLabel(int index);
 const char* ShortLoadoutLabel(int index);
 // The fighter's moves for the loadout, "Mind's Eye · Kakko Fuden"; a part
-// the game gave no name is its label and numeral ("V-TRIGGER II").
+// the game gave no name is its label and numeral ("V-Trigger II").
 std::string LoadoutMoves(std::int64_t fighter, picks::Loadout loadout);
 // The table page's value: LoadoutLabel, then the moves where the game named
-// any: "V-SKILL II · V-TRIGGER I: Mind's Eye · Kakko Fuden".
+// any: "V-Skill II · V-Trigger I: Mind's Eye · Kakko Fuden".
 std::string LoadoutName(std::int64_t fighter, picks::Loadout loadout);
 
 } // namespace sfve::adapter

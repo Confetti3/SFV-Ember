@@ -44,11 +44,12 @@ Spec FighterBanner(std::string_view code)
 
 Spec StageCard(std::string_view code)
 {
-	if constexpr (kStageCard == StageCardPicture::LargeIcon) {
-		return InFolder(L"Stage/", code, L"/UI", L"StageSelectIcon_l");
-	} else {
-		return InFolder(L"Stage/", code, L"/UI", L"StageSelectBG", Framing::Centre, kBannerAspect);
-	}
+	return InFolder(L"Stage/", code, L"/UI", L"StageSelectIcon_l");
+}
+
+Spec StageBackground(std::string_view code)
+{
+	return InFolder(L"Stage/", code, L"/UI", L"StageSelectBG", Framing::Centre, kStageCardAspect);
 }
 
 Spec LoadoutMark(picks::LoadoutPart part, int choice)

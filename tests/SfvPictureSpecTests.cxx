@@ -1,6 +1,6 @@
 // SFV's picture paths and crops (SfvPictureSpec), checked without the game:
-// every path is the game's object path, an empty code asks for nothing, and
-// a centre crop keeps the frame's shape.
+// every path is the game's object path, an empty code asks for nothing, a
+// centre crop keeps the frame's shape, and a picture is its path and its cut.
 
 #include <doctest/doctest.h>
 
@@ -26,22 +26,28 @@ TEST_CASE("a fighter's pictures are its HUD's, by the game's object path")
 	CHECK(ObjectPath(L"Chara", L"").empty());
 }
 
-TEST_CASE("a stage's card is the picture kStageCard names, and Random has its own")
+TEST_CASE("a stage's card is its large select icon, Random has its own, and the background cut to its shape stands in")
 {
 	const Spec s01 = StageCard("S01");
+	CHECK(s01.path == L"/Game/Stage/S01/UI/StageSelectIcon_l.StageSelectIcon_l");
+	CHECK(s01.framing == Framing::Whole);
 	const Spec random = StageCard(kRandomStageCode);
-	if constexpr (kStageCard == StageCardPicture::BackgroundCentre) {
-		CHECK(s01.path == L"/Game/Stage/S01/UI/StageSelectBG.StageSelectBG");
-		CHECK(s01.framing == Framing::Centre);
-		CHECK(s01.aspect == doctest::Approx(380.0 / 258.0));
-		CHECK(random.path == L"/Game/Stage/RND/UI/StageSelectBG.StageSelectBG");
-	} else {
-		CHECK(s01.path == L"/Game/Stage/S01/UI/StageSelectIcon_l.StageSelectIcon_l");
-		CHECK(s01.framing == Framing::Whole);
-		CHECK(random.path == L"/Game/Stage/RND/UI/StageSelectIcon_l.StageSelectIcon_l");
-	}
-	CHECK(random.framing == s01.framing);
+	CHECK(random.path == L"/Game/Stage/RND/UI/StageSelectIcon_l.StageSelectIcon_l");
+	CHECK(random.framing == Framing::Whole);
 	CHECK(StageCard("").path.empty());
+	// Where a card does not load: the background, cut at its centre to the
+	// card's 674x238 shape.
+	const Spec background = StageBackground("S01");
+	CHECK(background.path == L"/Game/Stage/S01/UI/StageSelectBG.StageSelectBG");
+	CHECK(background.framing == Framing::Centre);
+	CHECK(background.aspect == doctest::Approx(674.0 / 238.0));
+	CHECK(StageBackground("").path.empty());
+	// The same picture cut two ways is two pictures to SfvArt.
+	Spec whole = background;
+	whole.framing = Framing::Whole;
+	whole.aspect = 0;
+	CHECK(whole != background);
+	CHECK((whole < background) != (background < whole));
 }
 
 TEST_CASE("the V-Skill and V-Trigger marks are the replay log's I and II")
@@ -81,6 +87,8 @@ TEST_CASE("a centre crop is the largest rect of the frame's shape at the picture
 	CHECK(stage == PixelRect{647, 0, 754, 512});
 	CHECK((float)stage.x / 2048 == doctest::Approx(0.3159).epsilon(0.001));
 	CHECK((float)(stage.x + stage.width) / 2048 == doctest::Approx(0.6841).epsilon(0.001));
+	// To a stage card's 674x238, as StageBackground cuts it: 1450x512.
+	CHECK(CentreCrop(2048, 512, 674.f / 238.f) == PixelRect{299, 0, 1450, 512});
 	// A picture narrower than the shape is cut top and bottom.
 	CHECK(CentreCrop(380, 400, 380.f / 258.f) == PixelRect{0, 71, 380, 258});
 	// Already the shape: the whole picture.

@@ -43,6 +43,10 @@ constexpr LoadoutRow kLoadoutRows[] = {{kVSkill, picks::LoadoutPart::VSkill}, {k
 // The pane is as wide as the fighter's banner (CharaSelectIcon_l, 380x258).
 constexpr float kBannerWidth = 380;
 
+// Why a stage the opponent lacks cannot be chosen: the runtime's own words,
+// on the stage row's option and in the pane.
+constexpr const char* kStageNotShared = "runtime.ready.stage_not_shared";
+
 std::string OptionId(int id)
 {
 	return "#" + std::to_string(id);
@@ -159,27 +163,6 @@ constexpr Opening kOpenings[] = {
 	{sf4e::ui::SelectionStart::LookUltra, kCostume, false},
 };
 
-// The first of `ids` that is also in `preferred`, else the first of `ids`;
-// `fallback` for none.
-int FirstOf(const std::vector<int>& ids, const std::vector<int>& preferred, int fallback)
-{
-	for (int id : ids) {
-		if (Contains(preferred, id)) return id;
-	}
-	return ids.empty() ? fallback : ids.front();
-}
-
-// The pick's loadout with each part the fighter lacks back at I, as the
-// stored pick is fitted.
-void FitPreviewLoadout(sf4e::selection::Pick& pick)
-{
-	picks::Loadout loadout = picks::LoadoutOf(pick);
-	for (const picks::LoadoutPart part : picks::kLoadoutParts) {
-		if (loadout.choice[part] >= PartChoices(pick.fighter, part)) loadout.choice[part] = 0;
-	}
-	picks::SetLoadout(pick, loadout);
-}
-
 } // namespace
 
 bool StepTableSelection(const sf4e::ui::ShellAction::SelectionStep& step, bool canEditSelection, bool canChangeUltra)
@@ -240,7 +223,7 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 	for (const StageOption& option : stageOptions) {
 		const bool lacking = option.offer == StageOffer::OpponentLacks;
 		stages.push_back({OptionId(option.id), sf4e::ui::StageLabel(option.id),
-			lacking ? std::string(loc::T("runtime.ready.stage_not_shared")) : std::string(), editable && stageEditable && !lacking});
+			lacking ? std::string(loc::T(kStageNotShared)) : std::string(), editable && stageEditable && !lacking});
 	}
 	std::vector<MenuEntry> rows;
 	rows.push_back(StepRow(kFighter, "selection.fighter", catalog.fighterName(pick.pick.fighter),
@@ -324,8 +307,12 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	// 540-line screen, so the pane says it too.
 	menu_.customDetail = true;
 	menu_.paneWidth = kBannerWidth;
+	// The navigation as the menu holds it while it draws the pane, at most a
+	// frame behind the choice list.
 	const sf4e::ui::GameMenu::Detail preview = [this, &pick, &rows, &stageOptions](const std::string& focus) {
-		DrawPickPreview(PreviewOf(pick, focus, rows, stageOptions));
+		std::optional<OpenChoice> choice;
+		if (menu_.navigation.Choosing()) choice = OpenChoice{menu_.navigation.DialogId(), menu_.navigation.ChoiceIndex()};
+		DrawPickPreview(PreviewOf(pick, focus, choice, rows, stageOptions));
 	};
 	const MenuAction action = menu_.Draw(title, rows, error.empty() ? status : error.c_str(), preview, 1,
 		{}, {}, false, 100, error.empty() ? sf4e::ui::Tone::Neutral : sf4e::ui::Tone::Error);
@@ -358,16 +345,17 @@ PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::stri
 			picks::SetLoadout(look, loadout);
 		}
 	} else if (rowId == kFighter && ember::ValidFighter(*option)) {
-		// The fighter in its first look this player can ready (any, for one
-		// they cannot), as the stored pick would be fitted.
+		// The fighter as choosing it would store the pick (SfvCatalog's
+		// FitLookWithin): in a look this player can ready, or for one they
+		// cannot play, as the spec fits it.
 		look.fighter = *option;
-		look.costume = FirstOf(CostumeIds(look.fighter, false), CostumeIds(look.fighter, true), 0);
-		look.color = FirstOf(ColourIds(look.fighter, look.costume), ColourIds(look.fighter, look.costume, true), 0);
-		FitPreviewLoadout(look);
+		FitLookWithin(look);
 	} else if (rowId == kCostume && Contains(CostumeIds(look.fighter, false), *option)) {
+		// A costume this player can ready as choosing it would store it; one
+		// they cannot is shown as it is, in the colour the spec fits to it.
 		look.costume = *option;
-		const std::vector<int> colours = ColourIds(look.fighter, look.costume);
-		if (!Contains(colours, look.color)) look.color = FirstOf(colours, ColourIds(look.fighter, look.costume, true), 0);
+		if (Contains(CostumeIds(look.fighter, true), *option)) FitLookWithin(look);
+		else ember::Catalog().normalizePick(look, false, nullptr, nullptr);
 	} else if (rowId == kColour && Contains(ColourIds(look.fighter, look.costume), *option)) {
 		look.color = *option;
 	} else if (rowId == kStage) {
@@ -376,24 +364,22 @@ PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::stri
 	return shown;
 }
 
-PickPreview SfvSelectionScreen::PreviewOf(const PlayerPick& pick, const std::string& focus, const std::vector<MenuEntry>& rows,
-	const std::vector<StageOption>& stageOptions) const
+PickPreview SfvSelectionScreen::PreviewOf(const PlayerPick& pick, const std::string& focus, const std::optional<OpenChoice>& choice,
+	const std::vector<MenuEntry>& rows, const std::vector<StageOption>& stageOptions)
 {
-	const auto& nav = menu_.navigation;
 	PickPreview preview;
-	// With a choice open, its row and its focused option: the navigation as
-	// the menu holds it while it draws the pane (at most a frame behind the
-	// choice list), this frame's rows, the index checked against them. An option that cannot be chosen says
-	// why (NOT OWNED, a stage the opponent lacks); a part's choice's detail
-	// is its move, which the pane's loadout lines already show.
+	// With a choice open, its row and its focused option, the index checked
+	// against this frame's rows. A fighter, costume or colour that cannot be
+	// chosen says why (NOT OWNED); a part's choice's detail is its move,
+	// which the pane's loadout lines already show; a stage's is below.
 	std::string rowId = focus, optionId;
-	if (nav.Choosing()) {
-		rowId = nav.DialogId();
+	if (choice) {
+		rowId = choice->row;
 		for (const MenuEntry& row : rows) {
-			if (row.id != rowId || nav.ChoiceIndex() >= row.choices.size()) continue;
-			const sf4e::ui::MenuChoice& option = row.choices[nav.ChoiceIndex()];
+			if (row.id != rowId || choice->option >= row.choices.size()) continue;
+			const sf4e::ui::MenuChoice& option = row.choices[choice->option];
 			optionId = option.id;
-			if (!option.enabled && !PartOfRow(rowId)) preview.note = option.detail;
+			if (!option.enabled && FocusOf(rowId) == PreviewFocus::Look) preview.note = option.detail;
 		}
 	}
 	preview.pick = Previewed(pick, rowId, optionId);
@@ -402,6 +388,9 @@ PickPreview SfvSelectionScreen::PreviewOf(const PlayerPick& pick, const std::str
 	for (const StageOption& option : stageOptions) {
 		if (option.id == preview.pick.stage) preview.stageShared = option.offer != StageOffer::OpponentLacks;
 	}
+	// A stage the opponent lacks says so whenever the pane shows it: the
+	// stored stage with the row focused, as an option with its choice open.
+	if (preview.focus == PreviewFocus::Stage && !preview.stageShared) preview.note = loc::T(kStageNotShared);
 	return preview;
 }
 

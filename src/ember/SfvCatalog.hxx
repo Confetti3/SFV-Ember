@@ -195,6 +195,13 @@ sf4e::selection::Availability OwnedAvailability(std::int64_t fighter);
 // ready (NormalizePick with their availability): the pick store's rule, so
 // a stored pick they cannot ready falls back to one they can.
 void FitOwnPick(sf4e::selection::Pick& pick);
+// The same fitting kept to the pick's own fighter: the pick fitted to the
+// spec (picks::FitPick, the loadout among it), then, for a fighter this
+// player may play, to a look they can ready as FitOwnPick would. For a
+// fighter they may not play, the spec's fitting alone. The pick screen's
+// preview of a fighter or costume (SfvSelectionScreen's Previewed) is so what
+// choosing it stores.
+void FitLookWithin(sf4e::selection::Pick& pick);
 // A costume as the game names it, in its language (its number where the
 // game gave no name), and a colour as the game's costume menu labels it
 // ("01", "EX01").

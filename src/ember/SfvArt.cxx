@@ -17,12 +17,14 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <array>
 #include <cwchar>
 #include <deque>
 #include <iterator>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -42,7 +44,6 @@ using pictures::PixelRect;
 
 struct Picture {
 	enum class State { Queued, WaitingForResource, Ready, Missing } state = State::Queued;
-	pictures::Spec spec; // as its first request asked
 	uint8_t* object = nullptr; // the game's texture, until its Direct3D texture is taken
 	int frames = 0;
 	mod::GameTexture texture;                  // Ready: the game's texture, with our reference
@@ -51,8 +52,10 @@ struct Picture {
 };
 
 std::mutex s_mutex;
-std::map<std::wstring, Picture> s_pictures; // by asset path
-std::deque<std::wstring> s_queue;
+// By path and framing: a texture cut two ways is two pictures, each loading
+// the game's object (which the game keeps once) and making its own view.
+std::map<pictures::Spec, Picture> s_pictures;
+std::deque<pictures::Spec> s_queue;
 std::map<std::pair<int, int>, CostumePalette> s_swatches; // by fighter and costume
 std::deque<std::pair<int, int>> s_swatchQueue;
 
@@ -151,18 +154,18 @@ std::optional<SquareCrop> ReadFaceSquare(const std::wstring& path, const mod::Ga
 
 // Render thread, under the lock, once the view is made: the part of the
 // picture its framing shows; empty draws it whole.
-std::optional<PixelRect> FindCrop(const std::wstring& path, const Picture& picture)
+std::optional<PixelRect> FindCrop(const pictures::Spec& spec, const Picture& picture)
 {
-	switch (picture.spec.framing) {
+	switch (spec.framing) {
 	case Framing::Whole: return std::nullopt;
 	case Framing::FaceSquare: {
-		const std::optional<SquareCrop> square = ReadFaceSquare(path, picture.texture);
+		const std::optional<SquareCrop> square = ReadFaceSquare(spec.path, picture.texture);
 		if (!square) return std::nullopt;
 		return PixelRect{square->x, square->y, square->side, square->side};
 	}
 	case Framing::Centre: {
-		const PixelRect cut = pictures::CentreCrop(picture.texture.width, picture.texture.height, picture.spec.aspect);
-		mod::Log("art: %ls: centre %dx%d at (%d, %d) of %dx%d", path.c_str(), cut.width, cut.height, cut.x, cut.y,
+		const PixelRect cut = pictures::CentreCrop(picture.texture.width, picture.texture.height, spec.aspect);
+		mod::Log("art: %ls: centre %dx%d at (%d, %d) of %dx%d", spec.path.c_str(), cut.width, cut.height, cut.x, cut.y,
 			picture.texture.width, picture.texture.height);
 		return cut;
 	}
@@ -173,11 +176,8 @@ std::optional<PixelRect> FindCrop(const std::wstring& path, const Picture& pictu
 // Under the lock: the picture's entry, queued for loading when it is new.
 Picture& Requested(const pictures::Spec& spec)
 {
-	auto [at, added] = s_pictures.try_emplace(spec.path);
-	if (added) {
-		at->second.spec = spec;
-		s_queue.push_back(spec.path);
-	}
+	auto [at, added] = s_pictures.try_emplace(spec);
+	if (added) s_queue.push_back(spec);
 	return at->second;
 }
 
@@ -190,7 +190,7 @@ sf4e::ui::SelectionImage Image(const pictures::Spec& spec)
 	Picture& picture = Requested(spec);
 	if (picture.state == Picture::State::Ready && !picture.view) {
 		MakeView(spec.path, picture);
-		if (picture.view) picture.crop = FindCrop(spec.path, picture);
+		if (picture.view) picture.crop = FindCrop(spec, picture);
 	}
 	if (picture.state == Picture::State::Missing) return image.missing = true, image;
 	if (picture.state != Picture::State::Ready) return image;
@@ -217,19 +217,19 @@ bool AtMainMenu()
 // the queue's next few.
 void PumpPictures()
 {
-	std::vector<std::wstring> load;
+	std::vector<pictures::Spec> load;
 	{
 		std::lock_guard lock(s_mutex);
-		for (auto& [path, picture] : s_pictures) {
+		for (auto& [spec, picture] : s_pictures) {
 			if (picture.state != Picture::State::WaitingForResource) continue;
 			bool pending = false;
 			std::string why;
 			if (const std::optional<mod::GameTexture> texture = mod::TakeGameTexture(picture.object, &pending, &why)) {
 				picture.texture = *texture;
 				picture.state = Picture::State::Ready;
-				mod::Log("art: %ls: %dx%d, format %u", path.c_str(), texture->width, texture->height, texture->format);
+				mod::Log("art: %ls: %dx%d, format %u", spec.path.c_str(), texture->width, texture->height, texture->format);
 			} else if (!pending || ++picture.frames >= kResourceFrames) {
-				mod::Log("art: %ls: not drawn: %s", path.c_str(), pending ? "its resource never came" : why.c_str());
+				mod::Log("art: %ls: not drawn: %s", spec.path.c_str(), pending ? "its resource never came" : why.c_str());
 				picture.state = Picture::State::Missing;
 			}
 			if (picture.state != Picture::State::WaitingForResource) picture.object = nullptr;
@@ -239,32 +239,34 @@ void PumpPictures()
 			s_queue.pop_front();
 		}
 	}
-	for (const std::wstring& path : load) {
-		uint8_t* object = mod::LoadTexture(path);
+	for (const pictures::Spec& spec : load) {
+		uint8_t* object = mod::LoadTexture(spec.path);
 		std::lock_guard lock(s_mutex);
-		Picture& picture = s_pictures[path];
+		Picture& picture = s_pictures[spec];
 		picture.object = object;
 		picture.state = object ? Picture::State::WaitingForResource : Picture::State::Missing;
-		if (!object) mod::Log("art: %ls: the game has no texture there", path.c_str());
+		if (!object) mod::Log("art: %ls: the game has no texture there", spec.path.c_str());
 	}
 }
 
-// Game thread: one costume's swatches a frame, every colour of it at once.
+// Game thread: one costume's swatches a frame, every colour of it at once,
+// into the entry its first request made.
 void PumpSwatches()
 {
 	std::pair<int, int> costume;
+	CostumePalette palette;
 	{
 		std::lock_guard lock(s_mutex);
 		if (s_swatchQueue.empty()) return;
 		costume = s_swatchQueue.front();
 		s_swatchQueue.pop_front();
+		palette = s_swatches[costume];
 	}
-	CostumePalette read;
-	read.read = true;
-	read.colours = ColourIds(costume.first, costume.second);
-	for (int colour : read.colours) read.swatches.push_back(mod::ColourSwatch(FighterCode(costume.first), costume.second, colour));
+	const std::string code = FighterCode(costume.first);
+	for (StripColour& colour : palette.colours) colour.swatch = mod::ColourSwatch(code, costume.second, colour.colour);
+	palette.read = true;
 	std::lock_guard lock(s_mutex);
-	s_swatches[costume] = std::move(read);
+	s_swatches[costume] = std::move(palette);
 }
 
 } // namespace
@@ -279,7 +281,12 @@ sf4e::ui::SelectionImage StageImage(int stage)
 {
 	// Random's code is the game's Random stage folder; the catalog keeps
 	// StageCode empty for it.
-	return Image(pictures::StageCard(stage == picks::kRandomStage ? std::string(pictures::kRandomStageCode) : StageCode(stage)));
+	const std::string code = stage == picks::kRandomStage ? std::string(pictures::kRandomStageCode) : StageCode(stage);
+	// Every stage has its card (the pak index lists all five pictures for
+	// each); one whose card does not load shows its background cut to the
+	// card's shape instead.
+	const sf4e::ui::SelectionImage card = Image(pictures::StageCard(code));
+	return card.missing ? Image(pictures::StageBackground(code)) : card;
 }
 
 sf4e::ui::SelectionImage LoadoutImage(picks::LoadoutPart part, int choice)
@@ -304,23 +311,20 @@ sf4e::ui::SelectionImage LeagueImage(const std::string& name)
 	return Image(known ? pictures::LeagueIcon(name) : pictures::Spec{});
 }
 
-sf4e::ui::SelectionImage PictureImage(const pictures::Spec& spec)
-{
-	return Image(spec);
-}
-
-void RequestPicture(const pictures::Spec& spec)
-{
-	if (spec.path.empty()) return;
-	std::lock_guard lock(s_mutex);
-	Requested(spec);
-}
-
 CostumePalette CostumeSwatches(int fighter, int costume)
 {
 	std::lock_guard lock(s_mutex);
 	auto [at, added] = s_swatches.try_emplace({fighter, costume});
-	if (added) s_swatchQueue.push_back({fighter, costume});
+	if (added) {
+		// The catalog is filled before Ember's runtime starts, and so before
+		// any of its screens asks: the colours and what this player can
+		// ready are read once, here.
+		const std::vector<int> ready = ColourIds(fighter, costume, true);
+		for (int colour : ColourIds(fighter, costume)) {
+			at->second.colours.push_back({colour, std::find(ready.begin(), ready.end(), colour) != ready.end(), std::nullopt});
+		}
+		s_swatchQueue.push_back({fighter, costume});
+	}
 	return at->second;
 }
 

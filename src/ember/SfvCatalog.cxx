@@ -146,21 +146,14 @@ bool AvailablePick(const sf4e::selection::Pick& pick, bool editionSelect, const 
 		LookReady(*CostumeAt(pick.fighter, pick.costume), pick.color);
 }
 
-// This copy's player's own pick, made one they can ready: the first fighter
-// of the roster's order they may play, that fighter's first costume with a
-// look they can ready, that costume's first colour making one. A part
-// already theirs stays. A fighter not locked always has such a costume, and
-// such a costume such a colour, so the pick ends ready; only with no fighter
-// they may play does it stay as it is (and a Ready of it is refused). No
-// ownership gates a loadout (SFV's own menus gate none): only the fighter's
-// own count does.
-void FitOwned(sf4e::selection::Pick& pick)
+// The look of a pick whose fighter this copy's player may play, made one
+// they can ready: the fighter's first costume with a look they can ready, and
+// that costume's first colour making one. A part already theirs stays. A
+// fighter not locked always has such a costume, and such a costume such a
+// colour, so the look ends ready. No ownership gates a loadout (SFV's own
+// menus gate none): only the fighter's own count does.
+void FitReadyLook(sf4e::selection::Pick& pick)
 {
-	if (FighterLocked(pick.fighter, {})) {
-		const auto open = std::find_if(s_rosterOrder.begin(), s_rosterOrder.end(), [](int id) { return !FighterLocked(id, {}); });
-		if (open == s_rosterOrder.end()) return;
-		pick.fighter = *open;
-	}
 	const mod::FighterContent& fighter = *FighterAt(pick.fighter);
 	const mod::CostumeContent* costume = CostumeAt(pick.fighter, pick.costume);
 	if (!costume || !CostumeReady(*costume)) {
@@ -168,9 +161,23 @@ void FitOwned(sf4e::selection::Pick& pick)
 		pick.costume = costume->id;
 	}
 	if (!LookReady(*costume, pick.color)) pick.color = ReadyColours(*costume).front();
-	// The loadout through the fighter's change, as picks::FitPick keeps it:
+	// The loadout through a fighter's change, as picks::FitPick keeps it:
 	// each part the new fighter lacks becomes I.
 	picks::SetLoadout(pick, picks::FitLoadout(*picks::FighterAt(s_space, pick.fighter), picks::LoadoutOf(pick)));
+}
+
+// This copy's player's own pick, made one they can ready: the first fighter
+// of the roster's order they may play, where they may not play the pick's,
+// in a look they can ready (FitReadyLook). Only with no fighter they may play
+// does it stay as it is (and a Ready of it is refused).
+void FitOwned(sf4e::selection::Pick& pick)
+{
+	if (FighterLocked(pick.fighter, {})) {
+		const auto open = std::find_if(s_rosterOrder.begin(), s_rosterOrder.end(), [](int id) { return !FighterLocked(id, {}); });
+		if (open == s_rosterOrder.end()) return;
+		pick.fighter = *open;
+	}
+	FitReadyLook(pick);
 }
 
 // Each part SFV refuses becomes the game's first of its kind, in this order
@@ -189,17 +196,12 @@ bool NormalizePick(sf4e::selection::Pick& pick, bool, const sf4e::selection::Ava
 	return !picks::SameFitting(pick, before);
 }
 
-// The stages this copy's player is offered (StageOffered) less
-// `unavailable`, in the universe's order: what Random rolls over, and the
-// stage row's Playable stages. The runtime's set is install-based (this
-// copy's missing stages and the opponent's), so a stage this player may not
-// choose is left out here, not by the room.
+// What Random rolls over: the stage row's Playable stages (StageOptions),
+// Random itself left out, in the universe's order.
 std::vector<int> PlayableStages(const std::vector<std::int64_t>& unavailable)
 {
-	std::vector<int> stages;
-	for (int id = 0; id < (int)s_lists.stages.size(); id++) {
-		if (StageOffered(id) && std::find(unavailable.begin(), unavailable.end(), id) == unavailable.end()) stages.push_back(id);
-	}
+	std::vector<int> stages = PlayableIds(StageOptions(unavailable));
+	std::erase(stages, picks::kRandomStage);
 	return stages;
 }
 
@@ -380,12 +382,14 @@ std::vector<std::int64_t> MissingStages()
 
 std::vector<StageOption> StageOptions(const std::vector<std::int64_t>& unavailable)
 {
+	// The one walk: a stage this player is not offered is never listed; one
+	// they are offered that the runtime's set holds is the opponent's lack,
+	// since this copy's own missing stages are never offered.
 	std::vector<StageOption> options{{picks::kRandomStage, StageOffer::Playable}};
-	const std::vector<int> playable = PlayableStages(unavailable);
 	for (int id = 0; id < (int)s_lists.stages.size(); id++) {
 		if (!StageOffered(id)) continue;
-		const bool offered = std::find(playable.begin(), playable.end(), id) != playable.end();
-		options.push_back({id, offered ? StageOffer::Playable : StageOffer::OpponentLacks});
+		const bool lacking = std::find(unavailable.begin(), unavailable.end(), id) != unavailable.end();
+		options.push_back({id, lacking ? StageOffer::OpponentLacks : StageOffer::Playable});
 	}
 	return options;
 }
@@ -459,6 +463,13 @@ void FitOwnPick(sf4e::selection::Pick& pick)
 	if (s_catalog.fighterCount == 0) return;
 	const sf4e::selection::Availability availability = OwnedAvailability(pick.fighter);
 	NormalizePick(pick, false, &availability, nullptr);
+}
+
+void FitLookWithin(sf4e::selection::Pick& pick)
+{
+	if (s_catalog.fighterCount == 0) return;
+	picks::FitPick(s_space, pick);
+	if (!FighterLocked(pick.fighter, {})) FitReadyLook(pick);
 }
 
 std::string CostumeName(std::int64_t fighter, int costume)

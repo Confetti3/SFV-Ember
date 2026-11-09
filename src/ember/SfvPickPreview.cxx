@@ -17,7 +17,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace sfve::adapter {
@@ -30,9 +32,10 @@ namespace v2 = sf4e::ui::v2;
 // What cannot be readied is drawn at this alpha, as the choice list dims it.
 constexpr float kLocked = .4f;
 // The shapes (height over width) frames keep while their pictures load: the
-// banner's (CharaSelectIcon_l, 380x258), which a stage's card is cut to, and
-// the shop costume picture's (420x190).
+// banner's (CharaSelectIcon_l, 380x258), a stage card's (StageSelectIcon_l,
+// 674x238) and the shop costume picture's (420x190).
 constexpr float kBannerShape = 1 / pictures::kBannerAspect;
+constexpr float kStageCardShape = 1 / pictures::kStageCardAspect;
 constexpr float kShopCostumeShape = 1 / pictures::kShopCostumeAspect;
 // A swatch chip: its first colour fills this much of it from the top, the
 // second the rest, as the game's costume menu splits its swatch.
@@ -52,95 +55,114 @@ float Whole(float pixels)
 }
 
 // A picture `width` wide at its own shape from `at`, at `alpha`, or an empty
-// frame of the shape it is expected to have while it loads; the height it
-// takes, none where the game has no picture.
+// frame of the shape it is expected to have while it loads; where that is
+// taller than `tallest`, that tall and narrower, centred. The height it
+// takes; none where the game has no picture or there is no room for one.
 float DrawPicture(ImDrawList* draw, const sf4e::ui::SelectionImage& image, ImVec2 at, float width, float expectedShape,
-	float alpha = 1)
+	float tallest, float alpha = 1)
 {
 	if (image.missing) return 0;
 	const float s = sf4e::ui::Scale();
-	const float height = std::floor(image.width > 0 ? width * image.height / image.width : width * expectedShape);
-	const ImVec2 end(at.x + width, at.y + height);
-	if (image.texture) draw->AddImage(image.texture, at, end, image.uvMin, image.uvMax, IM_COL32(255, 255, 255, (int)(alpha * 255 + .5f)));
-	else draw->AddRect(at, end, v2::Colors().border, 0, 0, s);
+	const float shape = image.width > 0 && image.height > 0 ? (float)image.height / image.width : expectedShape;
+	const float natural = std::floor(width * shape), height = (std::min)(natural, std::floor(tallest));
+	if (!(height > 0)) return 0;
+	const float wide = height < natural ? std::floor(height / shape) : width;
+	const ImVec2 min(at.x + std::floor((width - wide) * .5f), at.y), max(min.x + wide, at.y + height);
+	if (image.texture) draw->AddImage(image.texture, min, max, image.uvMin, image.uvMax, IM_COL32(255, 255, 255, (int)(alpha * 255 + .5f)));
+	else draw->AddRect(min, max, v2::Colors().border, 0, 0, s);
 	return height;
 }
 
 // The look's picture: the shop's picture of the costume where SfvPictureSpec
 // allows it and the shop has one, else the fighter's banner.
-float DrawLookPicture(ImDrawList* draw, const PlayerPick& shown, ImVec2 at, float width, float alpha)
+float DrawLookPicture(ImDrawList* draw, const PlayerPick& shown, ImVec2 at, float width, float tallest, float alpha)
 {
 	const sf4e::ui::SelectionImage costume = CostumeImage(shown.pick.fighter, shown.pick.costume);
-	if (!costume.missing) return DrawPicture(draw, costume, at, width, kShopCostumeShape, alpha);
-	return DrawPicture(draw, FighterImage(shown.pick.fighter, FighterPicture::Banner), at, width, kBannerShape, alpha);
+	if (!costume.missing) return DrawPicture(draw, costume, at, width, kShopCostumeShape, tallest, alpha);
+	return DrawPicture(draw, FighterImage(shown.pick.fighter, FighterPicture::Banner), at, width, kBannerShape, tallest, alpha);
 }
 
-// The costume's colours as chips (SfvSwatchStrip); the height it takes. Not
-// drawn where the game has no swatch for any of its colours.
-float DrawSwatchStrip(ImDrawList* draw, const PlayerPick& shown, ImVec2 at, float width)
-{
-	const auto& colors = v2::Colors();
-	const float s = sf4e::ui::Scale();
-	const int fighter = shown.pick.fighter;
-	const std::vector<int> colours = ColourIds(fighter, shown.pick.costume);
-	const CostumePalette palette = CostumeSwatches(fighter, shown.pick.costume);
-	const bool anySwatch = std::any_of(palette.swatches.begin(), palette.swatches.end(), [](const auto& swatch) { return swatch.has_value(); });
-	if (colours.empty() || (palette.read && !anySwatch)) return 0;
-	const char* exCaption = "EX"; // the game's EX colours' prefix ("EX01"), as ColourName writes it
+// The game's EX colours' prefix ("EX01"), as ColourName writes it.
+constexpr const char* kExCaption = "EX";
+
+// The costume's colours as chips (SfvSwatchStrip) at the pane's width, with
+// the sizes they are laid out by. No chips where the game has no swatch for
+// any of its colours.
+struct Strip {
 	StripMetrics metrics;
+	StripLayout layout;
+	float barGap = 0, bar = 0; // the chosen chip's gold bar: its distance under the chip, and its height
+};
+
+Strip LayOutStrip(const PlayerPick& shown, float width)
+{
+	const float s = sf4e::ui::Scale();
+	Strip strip;
+	const CostumePalette palette = CostumeSwatches(shown.pick.fighter, shown.pick.costume);
+	const bool anySwatch = std::any_of(palette.colours.begin(), palette.colours.end(),
+		[](const StripColour& colour) { return colour.swatch.has_value(); });
+	if (palette.read && !anySwatch) return strip;
+	StripMetrics& metrics = strip.metrics;
 	metrics.width = width;
 	metrics.chip = Whole(ImGui::GetTextLineHeight());
 	metrics.gap = Whole(4 * s);
-	const float barGap = (std::max)(1.f, Whole(2 * s)), bar = (std::max)(1.f, Whole(2 * s));
-	metrics.pitch = metrics.chip + barGap + bar + metrics.gap;
-	metrics.exIndent = Whole(ImGui::CalcTextSize(exCaption).x) + 2 * metrics.gap;
-	const StripLayout layout =
-		LayOutSwatchStrip(colours, ColourIds(fighter, shown.pick.costume, true), shown.pick.color, metrics);
-	if (layout.exRow >= 0) {
-		const float y = at.y + layout.exRow + (metrics.chip - ImGui::GetTextLineHeight()) * .5f;
-		draw->AddText(ImVec2(at.x, y), colors.muted, exCaption);
+	strip.barGap = (std::max)(1.f, Whole(2 * s));
+	strip.bar = (std::max)(1.f, Whole(2 * s));
+	metrics.pitch = metrics.chip + strip.barGap + strip.bar + metrics.gap;
+	metrics.exIndent = Whole(ImGui::CalcTextSize(kExCaption).x) + 2 * metrics.gap;
+	strip.layout = LayOutSwatchStrip(palette.colours, shown.pick.color, metrics);
+	return strip;
+}
+
+void DrawStrip(ImDrawList* draw, const Strip& strip, ImVec2 at)
+{
+	const auto& colors = v2::Colors();
+	const float s = sf4e::ui::Scale();
+	const StripMetrics& metrics = strip.metrics;
+	if (strip.layout.exRow >= 0) {
+		const float y = at.y + strip.layout.exRow + (metrics.chip - ImGui::GetTextLineHeight()) * .5f;
+		draw->AddText(ImVec2(at.x, y), colors.muted, kExCaption);
 	}
-	for (const Chip& chip : layout.chips) {
+	for (const Chip& chip : strip.layout.chips) {
 		const float alpha = chip.dimmed ? kLocked : 1.f;
 		const ImVec2 min(at.x + chip.x, at.y + chip.y), max(min.x + metrics.chip, min.y + metrics.chip);
-		std::optional<SwatchColours> swatch;
-		for (size_t i = 0; palette.read && i < palette.colours.size() && i < palette.swatches.size(); i++) {
-			if (palette.colours[i] == chip.colour) swatch = palette.swatches[i];
-		}
 		// While the swatches load, the chip is its edge alone.
-		if (swatch) {
+		if (chip.swatch) {
 			const float split = Whole(min.y + metrics.chip * kSwatchSplit);
-			draw->AddRectFilled(min, ImVec2(max.x, split), Rgb(swatch->first, alpha));
-			draw->AddRectFilled(ImVec2(min.x, split), max, Rgb(swatch->second, alpha));
+			draw->AddRectFilled(min, ImVec2(max.x, split), Rgb(chip.swatch->first, alpha));
+			draw->AddRectFilled(ImVec2(min.x, split), max, Rgb(chip.swatch->second, alpha));
 		}
 		draw->AddRect(min, max, chip.chosen ? colors.text : v2::color::Alpha(colors.border, alpha), 0, 0, s);
 		// Not this player's to ready: struck through, corner to corner.
 		if (chip.dimmed) draw->AddLine(ImVec2(min.x + s, max.y - s), ImVec2(max.x - s, min.y + s), colors.muted, s);
 		// The chosen colour: Band's focus mark, a gold bar, under it.
 		if (chip.chosen) {
-			const float top = max.y + barGap;
-			draw->AddRectFilled(ImVec2(min.x, top), ImVec2(max.x, top + bar), colors.accent);
+			const float top = max.y + strip.barGap;
+			draw->AddRectFilled(ImVec2(min.x, top), ImVec2(max.x, top + strip.bar), colors.accent);
 		}
 	}
-	return layout.height;
 }
 
 // The look: the picture, the fighter's and the costume's names, the colour
 // chips and the colour's label; dimmed where this player cannot ready it.
-float DrawLook(ImDrawList* draw, const PlayerPick& shown, ImVec2 at, float width)
+// `room` is the pane's height from `at`, which the loadout's lines under the
+// look share: the picture gives way so that every line shows.
+float DrawLook(ImDrawList* draw, const PlayerPick& shown, ImVec2 at, float width, float room)
 {
 	const auto& colors = v2::Colors();
 	const float gap = 10 * sf4e::ui::Scale(), line = ImGui::GetTextLineHeightWithSpacing();
 	const int fighter = shown.pick.fighter;
 	const bool locked = FighterNotOwned(fighter) || CostumeNotOwned(fighter, shown.pick.costume) ||
 		ColourNotOwned(fighter, shown.pick.costume, shown.pick.color);
-	const float top = at.y;
-	at.y += DrawLookPicture(draw, shown, at, width, locked ? kLocked : 1.f) + gap;
+	const Strip strip = LayOutStrip(shown, width);
+	const float top = at.y, tallest = PictureRoom(room, LookWordsHeight(line, strip.layout.height), gap);
+	at.y += DrawLookPicture(draw, shown, at, width, tallest, locked ? kLocked : 1.f) + gap;
 	draw->AddText(at, colors.text, ember::Catalog().fighterName(fighter));
 	at.y += line;
 	draw->AddText(at, colors.muted, CostumeName(fighter, shown.pick.costume).c_str());
 	at.y += line;
-	if (const float strip = DrawSwatchStrip(draw, shown, at, width)) at.y += strip;
+	DrawStrip(draw, strip, at);
+	at.y += strip.layout.height;
 	const std::string colour = std::string(loc::T("selection.color_row")) + " " + ColourName(shown.pick.color);
 	draw->AddText(at, colors.muted, colour.c_str());
 	at.y += line;
@@ -190,20 +212,36 @@ float DrawLoadout(ImDrawList* draw, const PlayerPick& shown, std::optional<picks
 }
 
 // The stage's card, dimmed for one the opponent lacks, its name and, for
-// Random, what Random does.
-void DrawStage(ImDrawList* draw, const PickPreview& preview, ImVec2 at, float width)
+// Random, what Random does; the card gives way to the words in `room`.
+void DrawStage(ImDrawList* draw, const PickPreview& preview, ImVec2 at, float width, float room)
 {
 	const auto& colors = v2::Colors();
 	const float gap = 10 * sf4e::ui::Scale(), line = ImGui::GetTextLineHeightWithSpacing();
 	const int stage = preview.pick.stage;
-	at.y += DrawPicture(draw, StageImage(stage), at, width, kBannerShape, preview.stageShared ? 1.f : kLocked) + gap;
+	const bool random = stage == picks::kRandomStage;
+	const std::string detail = random ? loc::T("selection.random_stage.detail") : "";
+	// Measured as drawn: v2::Paragraph with no draw list only measures.
+	const float words = line + (random ? v2::Paragraph(nullptr, at, width, detail, ImGui::GetFontSize(), colors.muted) : 0);
+	at.y += DrawPicture(draw, StageImage(stage), at, width, kStageCardShape, PictureRoom(room, words, gap),
+		preview.stageShared ? 1.f : kLocked) + gap;
 	draw->AddText(at, colors.text, sf4e::ui::StageLabel(stage).c_str());
-	if (stage != picks::kRandomStage) return;
+	if (!random) return;
 	at.y += line;
-	v2::Paragraph(draw, at, width, loc::T("selection.random_stage.detail"), ImGui::GetFontSize(), colors.muted);
+	v2::Paragraph(draw, at, width, detail, ImGui::GetFontSize(), colors.muted);
 }
 
 } // namespace
+
+float LookWordsHeight(float line, float strip)
+{
+	// Two names, the colour's line and a line per loadout part.
+	return (3 + (float)std::size(picks::kLoadoutParts)) * line + strip;
+}
+
+float PictureRoom(float room, float words, float gap)
+{
+	return (std::max)(0.f, room - words - gap);
+}
 
 void DrawPickPreview(const PickPreview& preview)
 {
@@ -211,15 +249,16 @@ void DrawPickPreview(const PickPreview& preview)
 	const auto& colors = v2::Colors();
 	const float gap = 10 * sf4e::ui::Scale();
 	ImVec2 at = ImGui::GetCursorScreenPos();
-	const float width = ImGui::GetContentRegionAvail().x;
+	const ImVec2 room = ImGui::GetContentRegionAvail();
+	const float width = room.x, bottom = at.y + room.y;
 	if (!preview.note.empty()) {
 		at.y += v2::Paragraph(draw, at, width, preview.note, ImGui::GetFontSize(), colors.danger) + gap;
 	}
 	if (preview.focus == PreviewFocus::Stage) {
-		DrawStage(draw, preview, at, width);
+		DrawStage(draw, preview, at, width, bottom - at.y);
 		return;
 	}
-	at.y += DrawLook(draw, preview.pick, at, width);
+	at.y += DrawLook(draw, preview.pick, at, width, bottom - at.y);
 	const std::optional<picks::LoadoutPart> focused =
 		preview.focus == PreviewFocus::Loadout ? std::optional<picks::LoadoutPart>(preview.part) : std::nullopt;
 	DrawLoadout(draw, preview.pick, focused, at);

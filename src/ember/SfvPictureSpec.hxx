@@ -10,13 +10,14 @@
 // code gives an empty Spec, which SfvArt reports as missing without asking
 // the game.
 //
-// Two choices wait for the laptop's probe (the `art` pipe command,
-// SfvArtProbe) and are data here, one line each: which picture is a stage's
-// card (kStageCard), and whether a costume shows the shop's picture of it
-// (kCostumePicture).
+// What the pictures are was measured in the game on the laptop
+// (EMBER_LIBRARY.md section 43): a stage's card is its 674x238 landscape
+// StageSelectIcon_l, and whether a costume shows the shop's picture of it
+// (kCostumePicture) is the owner's call.
 
 #include "ember/SfvPickSpace.hxx"
 
+#include <compare>
 #include <string>
 #include <string_view>
 
@@ -29,24 +30,21 @@ enum class Framing {
 	Centre,     // the largest centred rect of the Spec's aspect (CentreCrop)
 };
 
+// A picture as SfvArt loads and keeps it: the same path cut two ways is two
+// pictures.
 struct Spec {
 	std::wstring path; // empty: no picture, reported missing
 	Framing framing = Framing::Whole;
 	float aspect = 0; // Centre's width over height
+	auto operator<=>(const Spec&) const = default;
 };
-
-// A stage's card on the pick screen: the stage select's large card
-// (StageSelectIcon_l), drawn whole, or the stage select's 2048x512
-// background (StageSelectBG) cut at its centre to the banner's shape. The
-// probe says whether StageSelectIcon_l is a landscape card that loads whole;
-// until it does, the background, which is known to load, is the card.
-enum class StageCardPicture { LargeIcon, BackgroundCentre };
-inline constexpr StageCardPicture kStageCard = StageCardPicture::BackgroundCentre;
 
 // What the pane shows for a costume: the fighter's banner, or the shop's
 // picture of the costume where the shop sells it (420x190), with the banner
-// where it has none. Shop pictures wait for the probe to show that
-// shp_<CODE>_<NN>_00 is costume NN and carries no price or baked text.
+// where it has none. The shop's pictures are marketing art (the fighter in
+// the left two fifths, black on the right), and which costume
+// shp_<CODE>_<NN>_00 shows is unproven (RYU's 05 does not read as his
+// costume 5), so they stay off: the owner's call.
 enum class CostumePicture { Banner, ShopWhereSold };
 inline constexpr CostumePicture kCostumePicture = CostumePicture::Banner;
 
@@ -55,9 +53,11 @@ inline constexpr CostumePicture kCostumePicture = CostumePicture::Banner;
 // Random; SfvArt's StageImage is the one place Random gets this code.
 inline constexpr std::string_view kRandomStageCode = "RND";
 
-// The fighter banner's shape (CharaSelectIcon_l, 380x258), which a stage's
-// cut card keeps, and the shop costume picture's (420x190).
+// The fighter banner's shape (CharaSelectIcon_l, 380x258), a stage card's
+// (StageSelectIcon_l, 674x238), which its background is cut to where the
+// card does not load, and the shop costume picture's (420x190).
 inline constexpr float kBannerAspect = 380.f / 258.f;
+inline constexpr float kStageCardAspect = 674.f / 238.f;
 inline constexpr float kShopCostumeAspect = 420.f / 190.f;
 
 // "/Game/<folder>/<name>.<name>"; empty for an empty folder or name.
@@ -67,8 +67,12 @@ std::wstring ObjectPath(std::wstring_view folder, std::wstring_view name);
 Spec FighterFace(std::string_view code);
 // /Game/Chara/<code>/Hud/CharaSelectIcon_l, whole.
 Spec FighterBanner(std::string_view code);
-// /Game/Stage/<code>/UI/<card>, by kStageCard.
+// /Game/Stage/<code>/UI/StageSelectIcon_l, whole: the stage select's
+// landscape card, Random's (RND) a dark world map. Every stage has one.
 Spec StageCard(std::string_view code);
+// /Game/Stage/<code>/UI/StageSelectBG (2048x512), cut at its centre to the
+// card's shape: what SfvArt shows for a stage whose card does not load.
+Spec StageBackground(std::string_view code);
 // The game's generic V-Skill and V-Trigger marks, I and II, from the
 // Fighter Profile's replay log: /Game/WinSysAsset/FighterProfileReplayLog/
 // img_Vskill_1 and _2, img_Vtrigger_1 and _2. Empty for a choice outside 0

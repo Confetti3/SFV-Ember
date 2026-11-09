@@ -51,6 +51,18 @@ struct FighterPick {
 // code, which the game's own setters then copy. No game code.
 void FillCharPkg(uint8_t* chara, const FighterPick& pick);
 
+// A player's look as a launch writes it and as the loaded battle's setting
+// holds it, read back after the load to log what each copy loaded.
+struct PlayerLook {
+	std::string fighter; // the game's code
+	int costume = -1;
+	int colour = -1;
+};
+// The loaded look is not the one the launch wrote. Codes compare as the game
+// compares them, ignoring case: one side is the launch's FString narrowed,
+// the other the setting record's own code.
+bool LookMismatch(const PlayerLook& written, const PlayerLook& loaded);
+
 // The match's rules, as the versus battle settings offer them; negative
 // keeps what the mode's data holds (the player's own settings).
 struct MatchRules {

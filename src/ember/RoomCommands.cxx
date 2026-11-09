@@ -179,20 +179,12 @@ std::string Pick(const std::string& args)
 	}
 	const std::optional<int> id = FighterId(fighter.fighter);
 	if (!id) return "error that fighter is not in this game's list";
-	// The one pick the shell edits too (SfvPick); a stage left out stays.
-	// RND is Random, as the game's own code for it reads; a stage is one
-	// this copy's player is offered (StageOffered). Whether the opponent has
-	// it is the room's to say: the runtime's Ready check refuses one they
-	// lack.
+	// The one pick the shell edits too (SfvPick); a stage left out stays,
+	// and one named is Random or one this copy's player is offered
+	// (NameStage). Whether the opponent has it is the room's to say: the
+	// runtime's Ready check refuses one they lack.
 	PlayerPick pick = CurrentPick();
-	if (rules.stage == L"RND") pick.stage = picks::kRandomStage;
-	else if (!rules.stage.empty()) {
-		const std::optional<int> stage = StageId(rules.stage);
-		if (!stage) return "error that stage is not in this game's list";
-		if (!StageInstalled(*stage)) return "error that stage is not installed in this copy";
-		if (!StageOffered(*stage)) return "error that stage is not this player's to choose (the account's entitlement cache lacks it)";
-		pick.stage = *stage;
-	}
+	if (std::optional<std::string> refused = NameStage(rules.stage, pick.stage)) return *refused;
 	pick.pick.fighter = *id;
 	pick.pick.costume = fighter.costume < 0 ? 0 : fighter.costume;
 	pick.pick.color = fighter.colour < 0 ? 0 : fighter.colour;

@@ -161,6 +161,47 @@ TEST_CASE("this player's stored stage is Random or one they are offered")
 	CHECK(SetPick(pick).stage == 0);
 }
 
+TEST_CASE("with no stage offered the stored stage is Random, never a stage they may not choose")
+{
+	const int random = picks::kRandomStage;
+	// The stage row's choices on a copy whose account grants none of its
+	// installed stages: Random alone.
+	CHECK(FittedStage(0, {random}) == random);
+	CHECK(FittedStage(3, {random}) == random);
+	CHECK(FittedStage(random, {random}) == random);
+	// With stages offered, the first of them, never stage 0 unless offered.
+	CHECK(FittedStage(0, {random, 2, 5}) == 2);
+	CHECK(FittedStage(5, {random, 2, 5}) == 5);
+	CHECK(FittedStage(random, {random, 2, 5}) == random);
+	// What the store asks of it is the stage row's choices with nothing
+	// unavailable.
+	FillTestCatalog();
+	CHECK(PlayableIds(StageOptions({})) == std::vector<int>{random, 0, 2});
+}
+
+TEST_CASE("the pipe's pick takes Random or a stage this player is offered, and refuses any other with why")
+{
+	FillTestCatalog();
+	int stage = 2;
+	CHECK_FALSE(NameStage(L"", stage).has_value()); // no stage named: it stays
+	CHECK(stage == 2);
+	CHECK_FALSE(NameStage(L"RND", stage).has_value());
+	CHECK(stage == picks::kRandomStage);
+	CHECK_FALSE(NameStage(L"S01", stage).has_value());
+	CHECK(stage == 0);
+	// S02 is installed here but the account's cache lacks it (section 41).
+	const std::optional<std::string> notTheirs = NameStage(L"S02", stage);
+	REQUIRE(notTheirs.has_value());
+	CHECK(notTheirs->find("not this player's to choose") != std::string::npos);
+	const std::optional<std::string> notInstalled = NameStage(L"S26", stage);
+	REQUIRE(notInstalled.has_value());
+	CHECK(notInstalled->find("not installed") != std::string::npos);
+	const std::optional<std::string> unknown = NameStage(L"XYZ", stage);
+	REQUIRE(unknown.has_value());
+	CHECK(unknown->find("not in this game's list") != std::string::npos);
+	CHECK(stage == 0); // every refusal leaves it
+}
+
 TEST_CASE("the command line takes stages from this copy's install, never from the universe")
 {
 	mod::LoadConfigFromCommandLine(L"game.exe -sfve_mode=netplay -sfve_uninstalled=S01,s02,S25,TOOLONGCODE");

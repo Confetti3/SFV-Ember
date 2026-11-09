@@ -8,13 +8,16 @@
 
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvPictureSpec.hxx"
 
 #include "common/Localization.hxx"
 #include "ui/SelectionArt.hxx"
 #include "ui/SelectionLabels.hxx"
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 using namespace sfve::adapter;
 using namespace sfve::catalog_fixture;
@@ -38,13 +41,13 @@ TEST_CASE("the pick labels are the game's names, from the catalog")
 	CHECK(ColourName(127) == "EX28");
 	// The Ultra number is the loadout (section 40), named in the game's words
 	// once it gives them, in the game's English until then (no game runs in a test).
-	CHECK(std::string(UltraLabel(0)) == "V-SKILL I \xC2\xB7 V-TRIGGER I");
-	CHECK(std::string(UltraLabel(2)) == "V-SKILL II \xC2\xB7 V-TRIGGER I");
+	CHECK(std::string(UltraLabel(0)) == "V-Skill I \xC2\xB7 V-Trigger I");
+	CHECK(std::string(UltraLabel(2)) == "V-Skill II \xC2\xB7 V-Trigger I");
 	CHECK(std::string(ShortUltraLabel(1)) == "I/II");
 	CHECK(std::string(UltraLabel(4)).empty());
 	CHECK(std::string(ShortUltraLabel(-1)).empty());
 	CHECK(UltraMove(0, 3) == "Skill Two \xC2\xB7 Trigger Two");
-	CHECK(UltraMove(4, 1) == "V-SKILL I \xC2\xB7 V-TRIGGER II"); // BSN's are unnamed
+	CHECK(UltraMove(4, 1) == "V-Skill I \xC2\xB7 V-Trigger II"); // BSN's are unnamed
 	CHECK(UltraMove(0, 4).empty());
 	CHECK(UltraMove(5, 0).empty()); // not a fighter of the catalog
 }
@@ -83,8 +86,14 @@ TEST_CASE("the game's pictures are its fighters' faces and its stages', and the 
 	CHECK(art.RankingEmblem("LI_gold").texture == 0);
 	for (const char* other : {"class_B.dds", "LI_dummy", "LI_super_gold", "", "LI_gold.LI_gold", "../LI_gold"})
 		CHECK(art.RankingEmblem(other).missing);
-	CHECK_FALSE(CostumeSwatches(0, 4).read); // read by the game thread
-	CHECK(CostumeSwatches(0, 4).colours.empty());
+	// A costume's palette: its colours at once, each with whether this player
+	// can ready it (RYU's EX colours of costume 4 are not theirs), and the
+	// swatches once the game thread has read them (none runs in a test).
+	const CostumePalette palette = CostumeSwatches(0, 4);
+	CHECK_FALSE(palette.read);
+	CHECK(palette.colours == std::vector<StripColour>{{0, true, std::nullopt}, {1, true, std::nullopt},
+		{100, false, std::nullopt}, {101, false, std::nullopt}});
+	CHECK(CostumeSwatches(5, 0).colours.empty()); // not a fighter of the catalog
 	// The pick screen pane's pictures wait for the game too, and a costume
 	// picture is missing while the shop's are not shown.
 	CHECK_FALSE(LoadoutImage(sfve::picks::LoadoutPart::VSkill, 1).missing);

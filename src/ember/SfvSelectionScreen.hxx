@@ -38,7 +38,9 @@
 #include "ui/ApplicationShell.hxx"
 #include "ui/GameMenu.hxx"
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -71,22 +73,29 @@ public:
 	// What the pane shows for the row `rowId`.
 	static PreviewFocus FocusOf(const std::string& rowId);
 	// The pick as the pane shows it while the option `optionId` of the row's
-	// open choice has the focus: that fighter (in its first look this player
-	// can ready, and the loadout fitted to it), costume (keeping the colour
-	// where it has it), colour, part's choice or stage. Nothing is fitted to
-	// what the player can ready beyond that, so an option they cannot choose
-	// is shown as it is. The pick itself for no option, or one that is not
-	// the row's.
+	// open choice has the focus: that fighter or costume as choosing it would
+	// store the pick (SfvCatalog's FitLookWithin), a colour, a part's choice
+	// or a stage. A fighter or costume this player cannot ready is shown as it
+	// is, fitted to the spec alone, and so is a colour or a stage they cannot
+	// choose. The pick itself for no option, or one that is not the row's.
 	static PlayerPick Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId);
 
-private:
-	// The pane's contents for the focused row `focus`, or with a choice open,
-	// for its focused option: the pick previewed, and the option's detail
-	// (why it cannot be chosen) as its note. Called while the menu draws the
-	// pane: the navigation as it stands then, the rows this frame's.
-	PickPreview PreviewOf(const PlayerPick& pick, const std::string& focus, const std::vector<sf4e::ui::MenuEntry>& rows,
-		const std::vector<StageOption>& stageOptions) const;
+	// A choice open on the screen: its row, and the place of its focused
+	// option in the row's choices.
+	struct OpenChoice {
+		std::string row;
+		std::size_t option = 0;
+	};
+	// The pane's contents for the focused row `focus`, or with `choice` open,
+	// for its focused option among this frame's `rows`: the pick previewed
+	// (Previewed), and as its note why a fighter, costume or colour option
+	// cannot be chosen (its detail) or that the stage shown is one the
+	// opponent lacks (`stageOptions`' OpponentLacks), with the stage row
+	// focused or its choice open.
+	static PickPreview PreviewOf(const PlayerPick& pick, const std::string& focus, const std::optional<OpenChoice>& choice,
+		const std::vector<sf4e::ui::MenuEntry>& rows, const std::vector<StageOption>& stageOptions);
 
+private:
 	bool dummy_ = false;
 	sf4e::ui::GameMenu menu_;
 	// The row the shell opened the screen for (its Fighter or Stage row), or

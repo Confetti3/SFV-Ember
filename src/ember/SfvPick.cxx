@@ -4,6 +4,7 @@
 
 #include "common/GameCatalog.hxx"
 
+#include <algorithm>
 #include <mutex>
 #include <optional>
 
@@ -15,28 +16,15 @@ std::mutex s_mutex;
 PlayerPick s_pick;
 std::optional<PlayerPick> s_dummy; // none until the player picks one
 
-// Random, or a stage this copy's player is offered (StageOffered, the one
-// rule for their own stage offers); anything else becomes the first stage
-// they are offered, never stage 0, which they may not be. With none offered
-// it becomes Random, which then has nothing to roll and the Ready check
-// refuses.
-int FittedStage(int stage)
-{
-	if (stage == picks::kRandomStage || StageOffered(stage)) return stage;
-	for (int id = 0; id < StageCount(); id++) {
-		if (StageOffered(id)) return id;
-	}
-	return picks::kRandomStage;
-}
-
 // The pick under the catalog's rules and fitted to what this copy's player
-// can ready (FitOwnPick), and its stage fitted (FittedStage); as it is until
-// the catalog is filled.
+// can ready (FitOwnPick), and its stage fitted to the stage row's choices
+// (FittedStage, over StageOffered, the one rule for their own stage offers);
+// as it is until the catalog is filled.
 PlayerPick Fitted(PlayerPick pick)
 {
 	if (!ember::Usable(ember::Catalog())) return pick;
 	FitOwnPick(pick.pick);
-	pick.stage = FittedStage(pick.stage);
+	pick.stage = FittedStage(pick.stage, PlayableIds(StageOptions({})));
 	return pick;
 }
 
@@ -83,6 +71,28 @@ std::string PickText(const PlayerPick& pick)
 	return FighterCode(pick.pick.fighter) + " costume " + std::to_string(pick.pick.costume) + " colour " +
 		std::to_string(pick.pick.color) + " " + picks::LoadoutText(picks::LoadoutOf(pick.pick)) + " stage " +
 		(pick.stage == picks::kRandomStage ? "random" : StageCode(pick.stage));
+}
+
+int FittedStage(int stage, const std::vector<int>& choices)
+{
+	if (std::find(choices.begin(), choices.end(), stage) != choices.end()) return stage;
+	const auto first = std::find_if(choices.begin(), choices.end(), [](int id) { return id != picks::kRandomStage; });
+	return first == choices.end() ? picks::kRandomStage : *first;
+}
+
+std::optional<std::string> NameStage(const std::wstring& code, int& stage)
+{
+	if (code.empty()) return std::nullopt;
+	if (code == L"RND") {
+		stage = picks::kRandomStage;
+		return std::nullopt;
+	}
+	const std::optional<int> id = StageId(code);
+	if (!id) return "error that stage is not in this game's list";
+	if (!StageInstalled(*id)) return "error that stage is not installed in this copy";
+	if (!StageOffered(*id)) return "error that stage is not this player's to choose (the account's entitlement cache lacks it)";
+	stage = *id;
+	return std::nullopt;
 }
 
 } // namespace sfve::adapter

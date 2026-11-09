@@ -427,15 +427,14 @@ constexpr CodeSite kOwnedCostumes{"OwnedCostumes", 0x5545B0,
 // "EX01".. (the menu's labels, rva 0x553B80).
 constexpr CodeSite kOwnedColours{"OwnedColours", 0x55ABA0,
 	{0x4C, 0x89, 0x4C, 0x24, 0x20, 0x44, 0x89, 0x44, 0x24, 0x18, 0x48, 0x89, 0x54, 0x24, 0x10, 0x53}};
-// void OwnedStages(Setup*, TArray<FString>* out, bool random): the game's
-// installed stages (SpecStages, rva 0x5672D0, which also needs both of a
-// stage's codes in the entitlement cache) that the asset lists at +184 and
-// does not exclude at +168; the check's stage test (rva 0x56B920). Ember no
-// longer calls it: a stage's `owned` is GameContent's kContentOwnership
-// rule over the stage set's own flags (EMBER_LIBRARY.md section 41). It
-// stays among the verified sites.
-constexpr CodeSite kOwnedStages{"OwnedStages", 0x550DA0,
-	{0x48, 0x89, 0x5C, 0x24, 0x20, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x48, 0x83, 0xEC}};
+// The stages' counterpart, OwnedStages (rva 0x550DA0, void (Setup*,
+// TArray<FString>* out, bool random)), gives the game's installed stages
+// (SpecStages, rva 0x5672D0, which also needs both of a stage's codes in the
+// entitlement cache) that the asset lists at +184 and does not exclude at
+// +168; the check's stage test (rva 0x56B920). Ember does not call it: a
+// stage's `owned` is GameContent's kContentOwnership rule over the stage
+// set's own flags (EMBER_LIBRARY.md section 41), so it is not a site here,
+// where a verified site nothing calls could only fail the build check.
 // bool LoggedIn(): the default online subsystem (rva 0x73BEC0, from the
 // "OnlineSubsystem" module), its interface from vtable +80, reports status 2
 // from vtable +288 for the local user (UE4's ELoginStatus::LoggedIn is 2).
@@ -463,7 +462,7 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kSetPlayerParam, kRequestExit, kStageName, kSpecReady, kFindSpecFighter, kFindSpecFighterStep, kFindSpecCostume,
 	kFindSpecCostumeStep, kFindSpecColour, kFindSpecColourStep, kCostumeName, kTextToString, kCreateText,
 	kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke, kBattleSetupClass, kOwnedFighters, kOwnedCostumes,
-	kOwnedColours, kOwnedStages, kLoggedIn, kVersionDataClass};
+	kOwnedColours, kLoggedIn, kVersionDataClass};
 
 } // namespace sfve::mod::sfv
 

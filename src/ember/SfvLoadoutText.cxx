@@ -4,8 +4,10 @@
 #include "mod/GameContent.hxx"
 #include "mod/Log.hxx"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <utility>
 
 namespace sfve::adapter {
@@ -17,11 +19,11 @@ constexpr const char* kJoin = " \xC2\xB7 ";
 constexpr const char* kArgument = "{common1}";
 
 // One language's words, with the shared screens' texts made from them. The
-// labels start as the game's own English ones, in its casing, so a label
-// never changes case when the game's words arrive.
+// labels start as the game's own English ones in Ember's case (RowCase), so
+// a label never changes case when the game's words arrive.
 struct Words {
-	std::string vSkill = "V-SKILL";
-	std::string vTrigger = "V-TRIGGER";
+	std::string vSkill = "V-Skill";
+	std::string vTrigger = "V-Trigger";
 	std::array<std::string, picks::kPartChoices> choices; // the game's patterns; empty for none
 	std::array<std::string, picks::kLoadoutChoices> labels, shortLabels;
 };
@@ -67,8 +69,8 @@ void ReadLoadoutWords()
 	Words words = English();
 	const std::string vSkill = mod::LocalizedText(L"KW", L"ID_SYS_VSE_0002");
 	const std::string vTrigger = mod::LocalizedText(L"KW", L"ID_SYS_VSE_0001");
-	if (!vSkill.empty()) words.vSkill = vSkill;
-	if (!vTrigger.empty()) words.vTrigger = vTrigger;
+	if (!vSkill.empty()) words.vSkill = RowCase(vSkill);
+	if (!vTrigger.empty()) words.vTrigger = RowCase(vTrigger);
 	words.choices[0] = mod::LocalizedText(L"KW", L"ID_SYS_VSE_0004");
 	words.choices[1] = mod::LocalizedText(L"KW", L"ID_SYS_VSE_0005");
 	BuildLabels(words);
@@ -81,6 +83,18 @@ void ReadLoadoutWords()
 const char* PartLabel(picks::LoadoutPart part)
 {
 	return (part == picks::LoadoutPart::VSkill ? Current().vSkill : Current().vTrigger).c_str();
+}
+
+std::string RowCase(std::string label)
+{
+	if (std::any_of(label.begin(), label.end(), [](char c) { return (unsigned char)c >= 0x80; })) return label;
+	bool inWord = false;
+	for (char& c : label) {
+		const bool letter = std::isalpha((unsigned char)c) != 0;
+		if (letter) c = (char)(inWord ? std::tolower((unsigned char)c) : std::toupper((unsigned char)c));
+		inWord = letter;
+	}
+	return label;
 }
 
 std::string FormatChoice(const std::string& pattern, const char* numeral, const std::string& move)

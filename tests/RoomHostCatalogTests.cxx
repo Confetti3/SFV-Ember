@@ -181,11 +181,13 @@ TEST_CASE("SFV's room host takes only the room of the build its pick space makes
 }
 
 // The exported pick space is SFV's whole universe (EMBER_LIBRARY.md section
-// 41): every fighter, costume and colour the spec's rows hold, whatever the
-// exporting copy's account or install. Needs data/pick-space.json exported
-// from a copy with the universe reader (catalog-export); the counts are the
-// exe's own CharaSpec rows, computed apart from the game.
-TEST_CASE("SFV's room host data holds every costume and colour SFV has")
+// 41): every fighter, costume and colour the spec's rows hold, and every
+// stage, whatever the exporting copy's account or install. Needs
+// data/pick-space.json exported from a copy with the universe readers
+// (catalog-export); the counts are the exe's own CharaSpec and StageSpec
+// rows, computed apart from the game, so an export from an older reader
+// fails here rather than in a room's build check.
+TEST_CASE("SFV's room host data holds every costume, colour and stage SFV has")
 {
 	std::string build;
 	const sfve::picks::PickSpace space = Embedded(build);
@@ -199,6 +201,9 @@ TEST_CASE("SFV's room host data holds every costume and colour SFV has")
 	// The game's own lookups give 6,426 pairs (catalog-export, 2026-11-09);
 	// the plan's offline count of the exe's rows was 6,424.
 	CHECK(looks == 6426);
+	// The spec's 46 stage rows less RND (kUnplayableStages); an export from
+	// the account's own stage list held 37 (section 41).
+	CHECK(space.stages.size() == 45);
 	const int ryu = FighterIdOf(space, "RYU"), cnl = FighterIdOf(space, "CNL"), ken = FighterIdOf(space, "KEN");
 	REQUIRE(ryu >= 0);
 	REQUIRE(cnl >= 0);

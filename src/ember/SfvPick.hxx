@@ -24,7 +24,9 @@
 #include "common/SelectionPick.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace sfve::adapter {
 
@@ -53,5 +55,19 @@ void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command);
 // "RYU costume 0 colour 1 vskill II vtrigger I stage S25", by the game's
 // codes, for the status and the logs ("stage random" for Random).
 std::string PickText(const PlayerPick& pick);
+
+// The stage the stored pick keeps, of `choices` (the stage row's: Random,
+// then the stages this player is offered, SfvCatalog's PlayableIds of
+// StageOptions with nothing unavailable): the stage where it is one, else the
+// first stage offered, never stage 0, which may not be. With none offered it
+// is Random, which then has nothing to roll and the Ready check refuses.
+int FittedStage(int stage, const std::vector<int>& choices);
+
+// The pipe's `pick` stage, by the game's code ("S01", or RND, the game's own
+// code for Random), made `stage`: Random, or a stage this player is offered
+// (SfvCatalog's StageOffered). For a code outside the universe, a stage not
+// installed here or one not theirs to choose, the pipe's error, and `stage`
+// as it was. An empty code leaves it too.
+std::optional<std::string> NameStage(const std::wstring& code, int& stage);
 
 } // namespace sfve::adapter

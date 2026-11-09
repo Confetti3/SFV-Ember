@@ -3,7 +3,6 @@
 #include "ember/EmberHost.hxx"
 #include "ember/RoomBattle.hxx"
 #include "ember/SfvArt.hxx"
-#include "ember/SfvArtProbe.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvHud.hxx"
 #include "ember/SfvLoadoutText.hxx"
@@ -411,8 +410,6 @@ overlay::OverlayUi::Shown Draw()
 	// Over SFV's Training battle: the room line and the call's banner.
 	DrawSfvTraining(*shell.frame, presentation.Visible(), shell.host.Shell().UnreadChat(), overlay::GameWindowFocused());
 	DrawReplayControls(shell, snapshot, presentation.Visible());
-	// The development probe's picture, over everything (nothing unless asked).
-	DrawArtProbe();
 	const double now = ImGui::GetTime();
 	if (presentation.Visible() != shell.wasShown) shell.changedAt = now;
 	const float fade = FadeProgress(now - shell.changedAt);
@@ -517,9 +514,6 @@ bool ShellTakesPads()
 void InstallEmberShell()
 {
 	InstallSfvArt();
-	// Development only: the `art` pipe command (SfvArtProbe), the one line a
-	// build-time development gate wraps.
-	RegisterArtProbe();
 	InstallSfvHud();
 	mod::RegisterStatus("shell", StatusJson);
 	overlay::OverlayUi ui;
