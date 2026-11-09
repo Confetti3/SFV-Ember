@@ -4,7 +4,7 @@ project(sfv_ember VERSION 0.1.0 LANGUAGES CXX)
 # SFV Ember's own version: its log's first line, and the version Ember's
 # shell shows (the library's SF4E_APP_VERSION, EMBER_APP_VERSION below). A
 # pre-release until SFV Ember ships, so the shell calls it a Beta.
-set(SFVE_VERSION "${PROJECT_VERSION}-beta.1")
+set(SFVE_VERSION "${PROJECT_VERSION}-beta.2")
 
 # Street Fighter V is a 64-bit game: everything here builds for x64 only.
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
