@@ -124,11 +124,30 @@ GetState_t o_getStateEx[kModules]; // ordinal 100, XInputGetStateEx (adds the gu
 
 std::atomic<PadFilter> s_padFilter;
 
+// One XInput library may read through another: Windows 11's xinput1_3.dll
+// (10.0.26200) is a shim whose XInputGetState and XInputGetStateEx call
+// xinput1_4.dll's, and both are hooked. The game's one read then enters a
+// hook twice on the same thread. Only the outermost call is the read: it
+// fills a virtual slot, records the slot and runs the pad filter. A nested
+// call goes straight to the library. Without this the outer call recorded
+// the state the inner call's filter had already emptied, so while Ember's
+// menu held the pads its record of every pad read "nothing pressed".
+thread_local int t_hookDepth = 0;
+std::atomic<uint64_t> s_nestedReads; // nested calls passed straight through, for the status report
+
 template <int M, bool Ex>
 DWORD WINAPI HookedGetState(DWORD user, void* state)
 {
-	const DWORD result = FillVirtualXInput((int)user, state) ? ERROR_SUCCESS
-		: (Ex ? o_getStateEx[M] : o_getState[M])(user, state);
+	const GetState_t original = Ex ? o_getStateEx[M] : o_getState[M];
+	if (t_hookDepth > 0) {
+		s_nestedReads++;
+		return original(user, state);
+	}
+	struct Depth {
+		Depth() { t_hookDepth++; }
+		~Depth() { t_hookDepth--; }
+	} depth;
+	const DWORD result = FillVirtualXInput((int)user, state) ? ERROR_SUCCESS : original(user, state);
 	if (user < kPadSlots) {
 		const uint32_t seen = result == ERROR_SUCCESS && state ? Seen(*static_cast<const XState*>(state)) : 0;
 		if (s_seen[user].exchange(seen) != seen) s_seenChanges[user]++;
@@ -167,6 +186,18 @@ bool HookModule()
 void SetPadFilter(PadFilter filter)
 {
 	s_padFilter = filter;
+}
+
+uint64_t PadReads(int slot)
+{
+	if (slot < 0 || slot >= kPadSlots) return 0;
+	std::lock_guard lock(s_mutex);
+	return s_reads[slot];
+}
+
+uint64_t NestedPadReads()
+{
+	return s_nestedReads;
 }
 
 PadSeen LastPadState(int slot)
@@ -288,6 +319,7 @@ void RegisterPadCommands()
 		}
 		return json + "]";
 	});
+	RegisterStatus("padNested", [] { return std::to_string(NestedPadReads()); });
 	RegisterCommand("virtual", [](const std::string& args) {
 		const int slot = atoi(args.c_str());
 		const bool on = args.find(" on") != std::string::npos;

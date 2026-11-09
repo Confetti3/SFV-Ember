@@ -161,6 +161,7 @@ add_executable(sfve_ember_tests
     tests/SfvReplaysTests.cxx
     tests/CrashRecordTests.cxx
     tests/LocaleOverlayTests.cxx
+    tests/VirtualPadsTests.cxx
     src/mod/ControlPipe.cxx
     src/mod/CrashRecord.cxx
     src/mod/GameArt.cxx

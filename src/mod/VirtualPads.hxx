@@ -57,6 +57,12 @@ struct PadSeen {
 };
 PadSeen LastPadState(int slot);
 
+// The game's reads of a slot, one per read however many XInput libraries it
+// passes through, and the calls one hooked library made into another (passed
+// straight through, never counted as reads).
+uint64_t PadReads(int slot);
+uint64_t NestedPadReads();
+
 // Button names: A B X Y UP DOWN LEFT RIGHT START BACK LB RB LS RS LT RT.
 bool ParseButtons(const std::string& text, PadStep* out);
 

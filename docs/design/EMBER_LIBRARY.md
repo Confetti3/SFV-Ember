@@ -1107,7 +1107,7 @@ So SFV's palette is one family: neutrals with almost no chroma, leaning to hue 9
 - One ramp, OKLCH hue 95, neutral chroma under 0.01. Ink L 0.17, panel 0.21, frame (a card at rest) 0.275, button 0.30, hover 0.33, border 0.37, muted text 0.80, text 0.94. The text is SFV's ivory.
 - The accent is gold: L 0.80, C 0.115, hue 88, with a light step at L 0.90.
 - Danger, Ready and Pending move to the accent's lightness (0.82) at a chroma at or under the gold's, so none looks pasted in; Pending is a sand on the ramp rather than an orange. LIVE stays a deeper red (0.66), as a live mark should.
-- Cards at rest are a step lighter than their panel. The focused card or row goes darkest (L 0.12), marked by a gold bar on its left and a gold hairline along its foot. There is no box outline around it, and secondary buttons are edged in the border tone, not the accent's.
+- Cards at rest are a step lighter than their panel. The focused card or row goes a step lighter than hover, marked by a gold bar on its left alone (section 36; until 2026-11-09 it went darkest, L 0.12, with a gold hairline along its foot). There is no box outline around it, and secondary buttons are edged in the border tone, not the accent's.
 - Screen titles are in capitals. Corners are square. Gold hairlines close the header and open the hint bar, as on SFV's bands.
 - There is no backdrop picture: the menu's ground is flat ink.
 
@@ -2043,3 +2043,14 @@ Settings showed SFV players rows that only do something in SF4 Ember. The librar
 **Play in the background** stays and now works on SFV: the mod reads the saved setting from the library's settings store as the game starts (`SavedBackgroundPlay` in `SfvGame.cxx`, used by `dllmain.cxx` beside `-sfve_background`), so a change takes effect at the next start; SF4 applies it at once. The row's text says nothing of a restart.
 
 Tests: the library's ShellJourney (`RowsFollowTheGame`: every feature off then on, the pad walking each page) and ProductRules / ProductRulesOn (Main character and the card); sfv-ember's `EmberAdapterTests` checks SFV sets none of the features.
+
+## 36. Pads in the menu, the focus mark, the window (2026-11-09)
+
+The maintainer's first test on her own PC (package 20261108-230721) found four things.
+
+- **The pad could not move through Ember's menu.** Start opened it; the D-pad and A did nothing. SFV's exe imports `xinput1_3.dll`, and on Windows 11 26200+ System32's `xinput1_3.dll` (10.0.26200.1) is a shim whose `XInputGetState` and `XInputGetStateEx` call `xinput1_4.dll`'s through a function pointer. `mod/VirtualPads` hooks both libraries, so the game's one read entered the hooks twice: the inner call recorded the pad and ran the pad filter, which empties the state while Ember's menu holds the pads; the outer call then recorded that emptied state. `LastPadState` read nothing pressed whenever the menu was open, each read counted twice (about 120 a second on her PC against the laptop's 60), and `padSeen` changed on nearly every read. Start worked because it is read while the menu is closed. The laptop's xinput1_3 reads on its own and virtual pads never call the library, so no test met it. Now only the outermost hook call fills, records and filters; a nested call goes straight to the library and counts in the status field `padNested`. `VirtualPadsTests` reads through xinput1_3 and checks one read and at most one filter call per read; on a PC with the shim it proves the fix.
+- **SF4-only rows.** Her package was built before section 35. Change controller (row `capture`) was still offered: SFV's battle always plays pad 0, so it joins the `padLayer` rows (library `Offered`; ShellJourney's `RowsFollowTheGame` lists it).
+- **The focus mark bled.** The focused card went darkest, with a gold bar, a gold foot hairline and the card's border-tone edge around it. `ShellTheme::underlineFocus` is now `barFocus`: the focused card or row keeps only the full-height gold bar (whole pixels), the focused card drops its edge, and Band's `header` (every focused or chosen ground) moves from 0x060604 to 0x45433D, a step above hover on the same ramp. SF4's theme leaves the flag off and draws as before.
+- **Full screen upset her monitor.** The launcher now always starts the game with `-windowed` (a plain window at the game's saved resolution; a test's own `--game-option -windowed` is not repeated).
+
+Not done: the launcher does not yet warn about Steam's stale `ActiveProcess` pid, which crashes the game in its LoggedIn (`+0x742A34`); restarting Steam clears it.

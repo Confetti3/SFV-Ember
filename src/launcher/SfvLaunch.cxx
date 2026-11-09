@@ -15,7 +15,8 @@
 // rotations) and its own single-instance lock, so the
 // one-launcher-per-user rule for instance 0, what players run, is unchanged.
 // --game-option passes one test option to the game: -sfve_* or the window's
-// -windowed, -ResX=N and -ResY=N, nothing else.
+// -windowed, -ResX=N and -ResY=N, nothing else. The game always gets
+// -windowed (StartGame), so a test's own is not repeated.
 
 #include "launcher/LaunchSteps.hxx"
 
@@ -204,6 +205,12 @@ HANDLE StartGame(const StartRequest& request, DWORD& startError)
 	std::wstring commandLine = L"\"" + request.executable + L"\"";
 	for (const std::string& option : s_gameOptions) commandLine += L" " + sf4e::platform::Utf8ToWide(option.c_str());
 	commandLine += L" -sfve_loader=launcher -sfve_mode=netplay -sfve_room=1";
+	// The game opens in a window at its saved resolution, never full screen:
+	// SFV's own full screen changes the monitor's mode, which upset players'
+	// displays. A plain window is the chosen default (2026-11-09).
+	bool windowed = false;
+	for (const std::string& option : s_gameOptions) windowed = windowed || option == "-windowed";
+	if (!windowed) commandLine += L" -windowed";
 	if (s_instance != 0) commandLine += L" -sfve_instance=" + std::to_wstring(s_instance);
 	InheritedDumpChannel dumps(request.dumps);
 	if (dumps.Ready()) commandLine += L" -sfve_dump_channel=" + dumps.Option();
