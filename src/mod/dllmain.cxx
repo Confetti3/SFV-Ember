@@ -42,6 +42,7 @@
 #include "mod/NetGuard.hxx"
 #include "mod/NetplayMode.hxx"
 #include "mod/OfflineDialogs.hxx"
+#include "mod/OnlineStandIn.hxx"
 #include "mod/ProjectileRelease.hxx"
 #include "mod/SfvOffsets.hxx"
 #include "mod/StartClaim.hxx"
@@ -236,6 +237,10 @@ extern "C" int SfveStart(int beforeGameCode)
 		return 1;
 	}
 	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	// Before game code asks for its online subsystem: with Steam's sign-in
+	// out of reach the game would stop in LoggedIn (OnlineStandIn.hxx).
+	InstallOnlineStandIn(base);
+	RegisterStatus("onlineStandIn", [] { return std::to_string(OnlineStandInUses()); });
 	// The scene manager's tick runs the game-thread queue; without it the
 	// title cannot be moved on, so the offline notice must stay.
 	const bool scene = InstallGameScene(base);

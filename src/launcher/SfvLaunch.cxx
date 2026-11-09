@@ -22,14 +22,13 @@
 // Before anything starts, the exe must be the build the mod was made for
 // (ExecutableBuild): never another build, which would run as plain SFV, and
 // never UE4's starter in the game's top folder, which would start the game
-// without the mod. Then Steam's record is checked (SteamSession), and a
-// restart of a running Steam is the player's to allow.
+// without the mod. Steam's state is not checked: a game that cannot reach a
+// signed-in Steam runs offline (mod/OnlineStandIn.hxx).
 
 #include "launcher/ExecutableBuild.hxx"
 #include "launcher/LaunchMessages.hxx"
 #include "launcher/LaunchSteps.hxx"
 #include "OldDefaultName.hxx"
-#include "SteamSession.hxx"
 #include "mod/BuildKind.hxx"
 #include "mod/SfvBuild.hxx"
 
@@ -235,13 +234,6 @@ HANDLE StartGame(const StartRequest& request, StartFailure& failure)
 			sf4e::platform::Utf8ToWide(sfv::kBuildLabel), stamp.value_or(0), sfv::kExeTimestamp);
 		failure.message = sf4e::loc::Tf(messages::GameBuildUnsupported, Product().branding.productName, sfv::kBuildLabel,
 			sf4e::platform::WideToUtf8(request.executable));
-		return nullptr;
-	}
-	// The game's Steam start needs Steam's record of its client to be right,
-	// or SFV crashes in its online code (launcher/SteamSession.hxx).
-	const auto mayRestart = [] { return AskOkCancel(messages::SteamRestartAsk); };
-	if (sfve::launcher::EnsureSteamSession(mayRestart) == sfve::launcher::SteamSession::Failed) {
-		failure.message = sf4e::loc::T(messages::SteamNotReady);
 		return nullptr;
 	}
 	// The game's command line: its own path, then the mod's settings

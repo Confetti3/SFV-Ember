@@ -21,9 +21,6 @@ The launcher finds the game through Steam, starts it in a window with SFV
 Ember inside it and waits for it to close. Nothing is copied into the game's
 folder. Press **F10** or **Start** in the game to open SFV Ember.
 
-If Steam was left in a bad state by an earlier game session, the launcher asks
-to restart Steam before it starts the game.
-
 If the launcher cannot find the game, it opens its recovery window: choose the
 game's `StreetFighterV\Binaries\Win64` folder (the one that holds
 `StreetFighterV.exe`) and retry.

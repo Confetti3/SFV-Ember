@@ -435,6 +435,13 @@ constexpr CodeSite kOwnedColours{"OwnedColours", 0x55ABA0,
 // stage's `owned` is GameContent's kContentOwnership rule over the stage
 // set's own flags (EMBER_LIBRARY.md section 41), so it is not a site here,
 // where a verified site nothing calls could only fail the build check.
+// IOnlineSubsystem* GetOnlineSubsystem(): the default online subsystem
+// (Steam), or null when steam_api found no signed-in Steam: the
+// "OnlineSubsystem" module's GetOnlineSubsystem (vtable +72) with no name.
+// Its eight callers, LoggedIn among them, do not all test for null
+// (OnlineStandIn.hxx).
+constexpr CodeSite kGetOnlineSubsystem{"GetOnlineSubsystem", 0x73BEC0,
+	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x33, 0xC0, 0x48, 0x89, 0x44, 0x24}};
 // bool LoggedIn(): the default online subsystem (rva 0x73BEC0, from the
 // "OnlineSubsystem" module), its interface from vtable +80, reports status 2
 // from vtable +288 for the local user (UE4's ELoginStatus::LoggedIn is 2).
@@ -462,7 +469,7 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kSetPlayerParam, kRequestExit, kStageName, kSpecReady, kFindSpecFighter, kFindSpecFighterStep, kFindSpecCostume,
 	kFindSpecCostumeStep, kFindSpecColour, kFindSpecColourStep, kCostumeName, kTextToString, kCreateText,
 	kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke, kBattleSetupClass, kOwnedFighters, kOwnedCostumes,
-	kOwnedColours, kLoggedIn, kVersionDataClass,
+	kOwnedColours, kGetOnlineSubsystem, kLoggedIn, kVersionDataClass,
 	// The fighter state the frame meter reads (SfvFighterOffsets.hxx).
 	kUpdateUntilActionable, kFrameAdvantage, kChangeState, kStateTableInit, kApplyHitStop, kSetScript, kSetScriptFrame,
 	kScriptPosture, kStartAction, kProjectileDie, kDamage};

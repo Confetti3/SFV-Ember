@@ -17,11 +17,9 @@ Safety rules this module enforces:
   deployed, or the launcher, the mod and the helper in the package folder),
   and is killed if its control pipe (which the mod opens only after the
   network guard is installed) does not answer within GUARD_TIMEOUT_S. Through
-  the launcher the clock has two phases: the launcher's own preparation (the
-  Steam check, up to LAUNCHER_PREP_TIMEOUT_S) ends when the launcher has
-  started the game, or when its log reports the Steam check as failed (the
-  launcher then stays up on a recovery window), and only then does the
-  GUARD_TIMEOUT_S guard deadline run.
+  the launcher the clock has two phases: the launcher's own preparation (up
+  to LAUNCHER_PREP_TIMEOUT_S) ends when the launcher has started the game, and
+  only then does the GUARD_TIMEOUT_S guard deadline run.
 * Nothing here uses the game's online modes.
 * Only copies this module started are killed. A process is known by its id
   and its creation time together (a bare id can be reused), kept in the
@@ -77,15 +75,9 @@ MOD_FILES = ("xinput1_3.dll", "sfv_ember.dll", "sf4-net.exe")  # sf4-net: script
 # flags), which the build copies from the Ember library into its assets/.
 ASSETS = "assets"
 GUARD_TIMEOUT_S = 20.0
-# The launcher's preparation before the game exists: the Steam check waits up
-# to 60 s for the old client to exit and 90 s for the new one's sign-in
-# (kExitWaitMs and kRecordWaitMs in src/launcher/SteamSession.cxx: keep these
-# two in step), then the game starts. A failed check is normally reported
-# from the launcher's log long before; this is the backstop.
-STEAM_EXIT_WAIT_S = 60.0
-STEAM_SIGN_IN_WAIT_S = 90.0
-LAUNCHER_PREP_SLACK_S = 30.0
-LAUNCHER_PREP_TIMEOUT_S = STEAM_EXIT_WAIT_S + STEAM_SIGN_IN_WAIT_S + LAUNCHER_PREP_SLACK_S
+# The launcher's preparation before the game exists (the exe's build check
+# and the game's start; it checks nothing of Steam's).
+LAUNCHER_PREP_TIMEOUT_S = 30.0
 STEAM_APP_ID = "310950"
 VIA = os.environ.get("SFVE_VIA", "proxy")
 PACKAGE_DIR = Path(os.environ.get("SFVE_PACKAGE_DIR", str(BUILD_DIR)))
@@ -596,23 +588,13 @@ class _LogCursor:
         return whole.decode(errors="replace").splitlines()
 
 
-def _steam_check_failure(lines: list[str]) -> str:
-    """The first line of `lines` that reports the launcher's Steam check as
-    failed ("Steam check:" at spdlog's error level, src/launcher/SteamSession.cxx),
-    or ""."""
-    return next((line.strip() for line in lines if "Steam check:" in line and "[error]" in line), "")
-
-
 def _await_game_start(launcher: Identity, index: int, log: _LogCursor) -> str:
     """Waits through the launcher's preparation until the launcher has
     started the game (a StreetFighterV.exe in its process tree). `log` is the
     launcher's log from before it started. Returns "" once the game exists,
-    or why not: the launcher ended first, the log reported the Steam check as
-    failed (the launcher then stays up on its recovery window, so the log is
-    what ends the wait), or the preparation took more than
+    or why not: the launcher ended first, or the preparation took more than
     LAUNCHER_PREP_TIMEOUT_S. The process table says whether the game started,
-    so that does not depend on the log's wording; only the early report of a
-    failure does."""
+    so that does not depend on the log's wording."""
     game = GAME_EXE.name.lower()
     deadline = time.monotonic() + LAUNCHER_PREP_TIMEOUT_S
     while True:
@@ -622,9 +604,6 @@ def _await_game_start(launcher: Identity, index: int, log: _LogCursor) -> str:
             return ""
         if not tree:
             return f"launcher ended before it started the game (see {launcher_log_path(index)})"
-        failure = _steam_check_failure(log.new_lines())
-        if failure:
-            return f"launcher's Steam check failed ({failure}; log {launcher_log_path(index)})"
         if time.monotonic() > deadline:
             return f"launcher did not start the game within {LAUNCHER_PREP_TIMEOUT_S:.0f} s (see {launcher_log_path(index)})"
         time.sleep(0.5)
