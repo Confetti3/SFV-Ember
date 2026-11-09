@@ -36,12 +36,17 @@ const wchar_t* FindAny(const wchar_t* line, const wchar_t* name, wchar_t* out, s
 }
 
 // The options a player build reads: those its launcher passes the game
-// (SfvLaunch's StartGame). The rest are the tests' (ModConfig.hxx).
-constexpr const wchar_t* kPlayerOptions[] = {L"sfve_mode", L"sfve_room", L"sfve_dump_channel"};
+// (SfvLaunch's StartGame), with the one value it passes where it passes one.
+// The rest are the tests' (ModConfig.hxx).
+struct PlayerOption {
+	const wchar_t* name;
+	const wchar_t* value; // null: any value
+};
+constexpr PlayerOption kPlayerOptions[] = {{L"sfve_mode", L"netplay"}, {L"sfve_room", nullptr}, {L"sfve_dump_channel", nullptr}};
 
 // The command line's options as this build reads them: a player build reads
-// only kPlayerOptions and reads every other option as absent, noting the
-// ones it was given for the log.
+// only kPlayerOptions and reads every other option, or another value, as
+// absent, noting the ones it was given for the log.
 class Options {
 public:
 	Options(const wchar_t* line, BuildKind kind, std::string& ignored) : line_(line), kind_(kind), ignored_(ignored)
@@ -52,7 +57,7 @@ public:
 	const wchar_t* Find(const wchar_t* name, wchar_t* out, size_t outLen)
 	{
 		const wchar_t* value = FindAny(line_, name, out, outLen);
-		if (!value || Reads(name)) return value;
+		if (!value || Reads(name, value)) return value;
 		std::string narrow;
 		for (const wchar_t* c = name; *c; c++) narrow += (char)*c; // option names are ASCII
 		ignored_ += (ignored_.empty() ? "-" : ", -") + narrow;
@@ -66,11 +71,11 @@ public:
 	}
 
 private:
-	bool Reads(const wchar_t* name) const
+	bool Reads(const wchar_t* name, const wchar_t* value) const
 	{
 		if (kind_ == BuildKind::Development) return true;
-		for (const wchar_t* option : kPlayerOptions) {
-			if (!wcscmp(option, name)) return true;
+		for (const PlayerOption& option : kPlayerOptions) {
+			if (!wcscmp(option.name, name)) return !option.value || !_wcsicmp(option.value, value);
 		}
 		return false;
 	}

@@ -38,10 +38,13 @@ struct OutsideState {
 // left out of the hash peers compare.
 void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& where);
 
-// The rules' id, 16 hex digits: a hash of kRunRules, of the regions and peer
-// masks AddStateOutsideTheGameSnapshot adds (their sizes, flags and masks,
-// never their addresses) and of the flow record's size. The same for every
-// copy of one build; any change to the rules changes it.
+// The rules' id, 16 hex digits: a hash of kRunRules; of the regions and peer
+// masks AddStateOutsideTheGameSnapshot adds, laid out at fixed made-up
+// addresses (their offsets, sizes, flags and masks); and of the flow
+// record's rules (its size, sfv::flowstate's base and every class's size,
+// own fields and leftover words). The same for every copy of one build; any
+// change to a table that decides what is saved, restored or compared
+// changes it, and a new such table must feed it too.
 const std::string& LayoutRulesId();
 
 } // namespace sfve::mod

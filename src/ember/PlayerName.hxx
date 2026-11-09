@@ -9,7 +9,7 @@
 //
 // A test copy (instance N > 0, a development build's) shares the player's
 // settings, so it plays as "SFV N+1" and never writes that name back
-// (SfvPreferences).
+// (SavedSettings' PreferencesToSave).
 
 #include <string>
 

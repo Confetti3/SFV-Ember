@@ -25,13 +25,25 @@ std::string Hex(uint64_t value)
 
 std::string MakeLayoutRulesId()
 {
-	// Laid out at made-up addresses: only sizes, flags and masks are hashed.
+	// The outside state laid out at fixed made-up addresses, so each region's
+	// place in its object (its offset) is hashed with its size, flags and masks.
 	StateLayout outside;
 	AddStateOutsideTheGameSnapshot(outside, {0x10000000, 0x20000000, 0x30000000, 0x40000000, 0x50000000});
-	std::string text = "outside " + Hex(outside.LayoutId()) + "; flow record " + std::to_string(sizeof(FlowRecord)) + "; runs";
+	std::string text = "outside " + Hex(outside.LayoutId());
+	for (const StateRegion& region : outside.Regions()) text += " " + region.name + "@" + Hex(reinterpret_cast<uintptr_t>(region.ptr));
+	text += "; runs";
 	for (const sfv::manager::RunRule& rule : sfv::manager::kRunRules) {
 		text += " " + std::string(rule.owner) + "+" + std::to_string(rule.offset) + rule.kind + "[" +
 			std::to_string(rule.maskFrom) + "," + std::to_string(rule.maskTo) + ")";
+	}
+	// The flow record (SfvFlow): what each state class restores and which of
+	// its words peers leave out.
+	namespace fs = sfv::flowstate;
+	text += "; flow record " + std::to_string(sizeof(FlowRecord)) + ", " + std::to_string(kMaxFlowStates) + " states, base " +
+		std::to_string(fs::kBaseSize) + ", largest " + std::to_string(fs::kMaxSize) + "; classes";
+	for (const fs::ClassSize& state : fs::kClassSizes) {
+		text += " " + Hex(state.vtable) + ":" + std::to_string(state.size) + (state.keepOwn ? "+own" : "") + "/" +
+			std::to_string(state.leftoverWords);
 	}
 	return Hex(XXH3_64bits(text.data(), text.size()));
 }

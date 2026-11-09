@@ -2,7 +2,7 @@
 # -OutDir (D:\sfv-ember-dist by default, never the C: drive), with the zip's
 # .sha256 beside it. Nothing is published.
 #
-#   scripts\package.ps1 [-BuildDir D:\sfv-ember-build] [-OutDir D:\sfv-ember-dist] [-VersionLabel <label>]
+#   scripts\package.ps1 [-BuildDir D:\sfv-ember-build-player] [-OutDir D:\sfv-ember-dist] [-VersionLabel <label>]
 #
 # The build must be scripts\build.ps1's player build (-Player), with its tests
 # passed, and the helper scripts\build-helper.ps1's from the same Ember
@@ -27,7 +27,7 @@
 # checks (scripts\test-updater-download-validation.ps1) on the zip.
 
 param(
-	[string]$BuildDir = 'D:\sfv-ember-build',
+	[string]$BuildDir = 'D:\sfv-ember-build-player',
 	[string]$OutDir = 'D:\sfv-ember-dist',
 	[string]$VersionLabel = ''
 )

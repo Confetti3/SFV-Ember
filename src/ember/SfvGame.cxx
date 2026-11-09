@@ -6,7 +6,7 @@
 #include "ember/SfvGame.hxx"
 
 #include "core/RollbackSession.hxx"
-#include "ember/PlayerName.hxx"
+#include "ember/SavedSettings.hxx"
 #include "ember/RoomBattle.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvReplays.hxx"
@@ -402,11 +402,7 @@ public:
 	{
 		if (stopped_ || !preferences.Valid()) return 0;
 		if (!writer_) writer_ = new sf4e::netplay::SettingsWriter(sf4e::netplay::SettingsStore::DefaultDirectory());
-		nlohmann::json values = sf4e::netplay::PlayerPreferencesJson(preferences);
-		// A test copy shares the player's settings: its own name stays its own
-		// (PlayerName.hxx).
-		if (TestCopy(mod::Config().instance)) values.erase("displayName");
-		return writer_->QueueLauncher(values);
+		return writer_->QueueLauncher(PreferencesToSave(preferences, mod::Config().instance));
 	}
 	bool Saved(std::uint64_t revision) override { return writer_ && revision && writer_->SavedLauncherRevision() >= revision; }
 	bool Pending() override { return writer_ && writer_->GetStatus().pending; }
@@ -527,15 +523,11 @@ void StopPreferences()
 
 bool SavedBackgroundPlay()
 {
-	nlohmann::json saved;
-	std::string error;
-	if (!sf4e::netplay::SettingsStore(sf4e::netplay::SettingsStore::DefaultDirectory()).LoadLauncher(saved, error)) {
-		mod::Log("background play: the saved settings could not be read (%s); taken as off", error.c_str());
-		return false;
-	}
+	const std::optional<nlohmann::json> saved = LoadSavedSettings("background play (taken as off)");
+	if (!saved) return false;
 	sf4e::netplay::PlayerPreferences preferences;
 	try {
-		sf4e::netplay::ReadBoolPreferences(saved, preferences);
+		sf4e::netplay::ReadBoolPreferences(*saved, preferences);
 	} catch (const std::exception&) {
 		mod::Log("background play: the saved settings hold a value that is not on or off; taken as off");
 		return false;

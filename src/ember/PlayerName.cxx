@@ -1,10 +1,6 @@
 #include "ember/PlayerName.hxx"
 
-#include "mod/Log.hxx"
-
-#include "netplay/SettingsStore.hxx"
-
-#include <nlohmann/json.hpp>
+#include "ember/SavedSettings.hxx"
 
 namespace sfve::adapter {
 
@@ -20,14 +16,10 @@ std::string PlayerNameFor(int instance, const std::string& saved)
 
 std::string SavedDisplayName()
 {
-	nlohmann::json saved;
-	std::string error;
-	if (!sf4e::netplay::SettingsStore(sf4e::netplay::SettingsStore::DefaultDirectory()).LoadLauncher(saved, error)) {
-		mod::Log("ember: the saved settings could not be read (%s); no saved name", error.c_str());
-		return {};
-	}
-	const auto name = saved.find("displayName");
-	return name != saved.end() && name->is_string() ? name->get<std::string>() : std::string();
+	const std::optional<nlohmann::json> saved = LoadSavedSettings("the player's name");
+	if (!saved) return {};
+	const auto name = saved->find("displayName");
+	return name != saved->end() && name->is_string() ? name->get<std::string>() : std::string();
 }
 
 } // namespace sfve::adapter

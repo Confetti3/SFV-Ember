@@ -44,9 +44,10 @@
 //   -sfve_crash_command=1  test: the pipe's "crash game|thread" faults on purpose
 //
 // All of them are a development build's (mod/BuildKind.hxx). A player build
-// reads only what its launcher passes, -sfve_mode, -sfve_room and
-// -sfve_dump_channel, and every other option as if it were absent: its
-// ownership gate is on, nothing drives its player, it is copy 0.
+// reads only what its launcher passes, -sfve_mode=netplay, -sfve_room and
+// -sfve_dump_channel, and every other option or value as if it were absent:
+// its ownership gate is on, nothing drives its player, it is copy 0. (The
+// launcher's -sfve_loader=launcher is EarlyStart's, read before this.)
 
 #include "mod/BuildKind.hxx"
 

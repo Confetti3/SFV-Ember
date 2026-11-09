@@ -13,13 +13,14 @@
 #     --instance and --game-option, the mod's -sfve_* test options and the
 #     control pipe's commands all work;
 #   - with -Player a player build, which takes none of them: the only kind
-#     scripts\package.ps1 packages. Give it a -BuildDir of its own (for
-#     example D:\sfv-ember-build-player), so the tools' tree stays a
+#     scripts\package.ps1 packages. It goes to D:\sfv-ember-build-player
+#     unless -BuildDir says otherwise, so the tools' tree stays a
 #     development one.
 # The receipt records which kind it is (buildKind).
 
 param(
-	[string]$BuildDir = 'D:\sfv-ember-build',
+	# D:\sfv-ember-build by default, D:\sfv-ember-build-player with -Player.
+	[string]$BuildDir = '',
 	[string]$EmberRoot = $env:SFVE_EMBER_ROOT,
 	[string]$VcpkgCache = 'D:\sf4-build\vcpkg-cache',
 	[string]$VcpkgRoot = '',
@@ -37,6 +38,7 @@ $repo = Split-Path -Parent $PSScriptRoot
 
 # Every place this build writes to is checked before anything is created: never C:.
 . (Join-Path $PSScriptRoot 'BuildPaths.ps1')
+if (!$BuildDir) { $BuildDir = if ($Player) { 'D:\sfv-ember-build-player' } else { 'D:\sfv-ember-build' } }
 $BuildDir = Resolve-BuildPath $BuildDir '-BuildDir'
 $VcpkgCache = Resolve-BuildPath $VcpkgCache '-VcpkgCache'
 

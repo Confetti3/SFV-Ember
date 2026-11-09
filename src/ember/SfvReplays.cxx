@@ -503,9 +503,9 @@ ember::game::Replays& SfvReplays()
 fs::path ReplayFolder()
 {
 	// The tests' and test tools' own folder, so their battles stay out of
-	// the player's.
+	// the player's: a development build's only (mod/BuildKind.hxx).
 	wchar_t named[MAX_PATH];
-	const DWORD length = GetEnvironmentVariableW(L"SFVE_REPLAY_DIR", named, MAX_PATH);
+	const DWORD length = kBuildKind == BuildKind::Development ? GetEnvironmentVariableW(L"SFVE_REPLAY_DIR", named, MAX_PATH) : 0;
 	if (length > 0 && length < MAX_PATH) return fs::path(named);
 	PWSTR appData = nullptr;
 	fs::path folder;

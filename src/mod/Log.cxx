@@ -1,4 +1,5 @@
 #include "mod/Log.hxx"
+#include "mod/LogFile.hxx"
 
 #include <windows.h>
 #include <shlobj.h>

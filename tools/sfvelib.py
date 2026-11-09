@@ -162,6 +162,7 @@ def deploy(adopt: bool = False) -> list[str]:
     refused, unless `adopt` takes it over. Returns the files copied."""
     if VIA == "launcher":
         raise SfveError("SFVE_VIA=launcher starts the game from the package folder: nothing is installed in the game folder")
+    refuse_player_build(BUILD_DIR)
     installed = set(_installed())
     copied = []
     for name in _deployed_files():
@@ -475,11 +476,14 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
     until the guard answers (GUARD_TIMEOUT_S)."""
     registry_path()  # the run is mandatory: refuse before anything starts
     options = _game_options(index, mode, extra or [], windowed)
-    set_aside(log_path(index))  # each run starts its own log; the last one is kept
+    # Each run starts its own log; the last one is kept.
+    if not set_aside(log_path(index)):
+        raise SfveError(f"{log_path(index)} is held open by another program: close it first")
     if VIA == "launcher":
         missing = [name for name in LAUNCHER_FILES if not (PACKAGE_DIR / name).exists()]
         if missing:
             raise SfveError(f"{PACKAGE_DIR} has no {', '.join(missing)}: build or stage SFV Ember first")
+        refuse_player_build(PACKAGE_DIR)
         # The test's options come first on the game's command line, so they
         # take the place of the launcher's own (ModConfig reads the first).
         launcher_log = _LogCursor(launcher_log_path(index))  # before the launcher can write to it
@@ -534,6 +538,24 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
             _kill_tree([started, game])
             raise SfveError(f"instance {index} did not finish starting the mod; killed")
     return Instance(index, game_pid)
+
+
+def build_kind(folder: Path) -> str:
+    """The kind of build a build tree or package holds, by its receipt
+    (scripts/build.ps1, build-provenance.json): "player", "development", or ""
+    for none."""
+    try:
+        return json.loads((folder / "build-provenance.json").read_text(encoding="utf-8-sig")).get("buildKind", "")
+    except (OSError, ValueError):
+        return ""
+
+
+def refuse_player_build(folder: Path) -> None:
+    """The tools drive a development build only: a player build takes no test
+    options and its pipe answers ping and status alone."""
+    if build_kind(folder) == "player":
+        raise SfveError(f"{folder} is a player build, which takes no test options: "
+                        "build a development one (scripts/build.ps1 without -Player)")
 
 
 def launcher_log_path(index: int) -> Path:

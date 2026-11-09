@@ -26,12 +26,14 @@
 // restart of a running Steam is the player's to allow.
 
 #include "launcher/ExecutableBuild.hxx"
+#include "launcher/LaunchMessages.hxx"
 #include "launcher/LaunchSteps.hxx"
 #include "SteamSession.hxx"
 #include "mod/BuildKind.hxx"
-#include "mod/SfvOffsets.hxx"
+#include "mod/SfvBuild.hxx"
 
 #include "common/CrashDump.hxx"
+#include "common/Localization.hxx"
 #include "common/ProductIdentity.hxx"
 #include "launcher/netplay/netplay_persist.hxx"
 #include "platform/Utf8.hxx"
@@ -59,7 +61,7 @@ std::vector<std::string> s_gameOptions;
 // parse then refuses a bad value.
 int InstanceFromCommandLine()
 {
-	if (sfve::kBuildKind == sfve::BuildKind::Player) return 0;
+	if constexpr (sfve::kBuildKind == sfve::BuildKind::Player) return 0;
 	int count = 0;
 	LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &count);
 	if (!arguments) return 0;
@@ -163,7 +165,7 @@ namespace ember { namespace launch {
 
 void AddOptions(CLI::App& app)
 {
-	if (sfve::kBuildKind == sfve::BuildKind::Player) return;
+	if constexpr (sfve::kBuildKind == sfve::BuildKind::Player) return;
 	s_instance = InstanceFromCommandLine();
 	app.add_option("--instance", s_instance, "Test only: start copy N (1-3) of a two-copy test, beside the player's copy.")
 		->check(CLI::Range(1, kMaxTestInstance));
@@ -219,15 +221,16 @@ HANDLE StartGame(const StartRequest& request, StartFailure& failure)
 	const std::optional<uint32_t> stamp = sfve::launcher::ExecutableTimestamp(request.executable);
 	if (stamp != sfv::kExeTimestamp) {
 		spdlog::error(L"{} is not {} (PE stamp {:#010x}, wanted {:#010x}); not started", request.executable,
-			sf4e::platform::Utf8ToWide(sfv::VerifiedBuild()->label), stamp.value_or(0), sfv::kExeTimestamp);
-		failure.refusal = StartRefusal::UnsupportedBuild;
-		failure.supportedBuild = sfv::VerifiedBuild()->label;
+			sf4e::platform::Utf8ToWide(sfv::kBuildLabel), stamp.value_or(0), sfv::kExeTimestamp);
+		failure.message = sf4e::loc::Tf(messages::GameBuildUnsupported, Product().branding.productName, sfv::kBuildLabel,
+			sf4e::platform::WideToUtf8(request.executable));
 		return nullptr;
 	}
 	// The game's Steam start needs Steam's record of its client to be right,
 	// or SFV crashes in its online code (launcher/SteamSession.hxx).
-	if (sfve::launcher::EnsureSteamSession(&ConfirmSteamRestart) == sfve::launcher::SteamSession::Failed) {
-		failure.refusal = StartRefusal::SteamNotReady;
+	const auto mayRestart = [] { return AskOkCancel(messages::SteamRestartAsk); };
+	if (sfve::launcher::EnsureSteamSession(mayRestart) == sfve::launcher::SteamSession::Failed) {
+		failure.message = sf4e::loc::T(messages::SteamNotReady);
 		return nullptr;
 	}
 	// The game's command line: its own path, then the mod's settings

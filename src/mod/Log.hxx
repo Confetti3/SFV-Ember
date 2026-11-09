@@ -4,10 +4,7 @@
 // appDataFolder, where the launcher logs too), one line per call, any thread.
 // Opened before anything else so a refused start leaves a reason.
 
-#include <windows.h>
-
 #include <string>
-#include <vector>
 
 namespace sfve::mod {
 
@@ -24,24 +21,9 @@ void OpenLog(int instance);
 struct LogTarget {
 	std::wstring path;
 	std::wstring failedPath;
-	DWORD error = 0;
+	unsigned long error = 0;
 };
 const LogTarget& CurrentLogTarget();
-
-// One file OpenLog tries: the usual log, appended to, or a file of the
-// process's own, created new.
-struct LogCandidate {
-	std::wstring path; // empty: skipped
-	bool own = false;
-};
-struct OpenedLog {
-	HANDLE file = INVALID_HANDLE_VALUE;
-	std::wstring path;
-	std::wstring failedPath; // the first that failed, with its error
-	DWORD error = 0;
-};
-// Opens the first candidate that can be written, creating its folder.
-OpenedLog OpenFirstLog(const std::vector<LogCandidate>& candidates);
 void Log(const char* fmt, ...);
 void LogLine(const char* line);
 // LogLine unless another thread is writing the log at that moment (then the

@@ -7,7 +7,7 @@
 #include <doctest/doctest.h>
 
 #include "mod/ControlPipe.hxx"
-#include "mod/Log.hxx"
+#include "mod/LogFile.hxx"
 #include "mod/ModConfig.hxx"
 
 #include <windows.h>
@@ -66,6 +66,13 @@ TEST_CASE("a player build reads only its launcher's options")
 	CHECK(development.virtualPadMask == 3);
 	CHECK(development.port == 7100);
 	CHECK(sfve::mod::PlayerBuildIgnored().empty());
+
+	// The launcher's mode is netplay; any other is a test's.
+	LoadConfigFromCommandLine(L"x -sfve_mode=synctest -sfve_perturb=1", BuildKind::Player);
+	CHECK(Config().mode == sfve::mod::ModMode::Probe);
+	CHECK(sfve::mod::PlayerBuildIgnored().find("-sfve_mode") != std::string::npos);
+	LoadConfigFromCommandLine(L"x -sfve_mode=synctest", BuildKind::Development);
+	CHECK(Config().mode == sfve::mod::ModMode::SyncTest);
 	LoadConfigFromCommandLine(L"");
 }
 

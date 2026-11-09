@@ -97,6 +97,7 @@ add_library(sfve_ember STATIC
     src/ember/EmberHost.cxx
     src/ember/PlayerName.cxx
     src/ember/PublicCommands.cxx
+    src/ember/SavedSettings.cxx
     src/ember/RoomBattle.cxx
     src/ember/RoomCommands.cxx
     src/ember/SfvArt.cxx
@@ -198,6 +199,7 @@ add_executable(sfve_ember_tests
     tests/RoomBuildTests.cxx
     tests/BuildKindTests.cxx
     tests/ExecutableBuildTests.cxx
+    tests/PlayerNameTests.cxx
     src/launcher/ExecutableBuild.cxx
     ${SFVE_EMBER_TEST_MOD_SOURCES})
 target_link_libraries(sfve_ember_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
@@ -285,7 +287,7 @@ add_executable(Launcher WIN32
     src/launcher/SteamSession.cxx
     src/launcher/LauncherSelection.cxx
     src/launcher/Launcher.exe.manifest)
-# src: the mod's verified build (mod/SfvOffsets.hxx) and the build's kind.
+# src: the verified game build (mod/SfvBuild.hxx) and the build kind (mod/BuildKind.hxx).
 target_include_directories(Launcher PRIVATE src "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/src/common"
     "${DETOURS_INCLUDE_DIR}")
 target_compile_definitions(Launcher PRIVATE UNICODE _UNICODE)
