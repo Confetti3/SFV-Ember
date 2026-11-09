@@ -196,7 +196,9 @@ TEST_CASE("SFV's room host data holds every costume and colour SFV has")
 	}
 	CHECK(space.fighters.size() == 45);
 	CHECK(costumes == 875);
-	CHECK(looks == 6424);
+	// The game's own lookups give 6,426 pairs (catalog-export, 2026-11-09);
+	// the plan's offline count of the exe's rows was 6,424.
+	CHECK(looks == 6426);
 	const int ryu = FighterIdOf(space, "RYU"), cnl = FighterIdOf(space, "CNL"), ken = FighterIdOf(space, "KEN");
 	REQUIRE(ryu >= 0);
 	REQUIRE(cnl >= 0);
