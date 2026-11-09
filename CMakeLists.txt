@@ -29,6 +29,19 @@ find_library(DETOURS_LIBRARY detours REQUIRED)
 add_compile_options(/W4 /permissive- /utf-8 /Zc:__cplusplus)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
 
+# A development build takes the test switches (src/mod/BuildKind.hxx): the
+# launcher's --instance and --game-option, the mod's -sfve_* test options and
+# the control pipe's commands. scripts/build.ps1 makes one unless -Player;
+# scripts/package.ps1 packages only a player build (EMBER_LIBRARY.md section 41).
+option(SFVE_DEV_BUILD "Development build: the test switches work (never in a player package)" ON)
+if(SFVE_DEV_BUILD)
+    add_compile_definitions(SFVE_DEV_BUILD=1)
+    message(STATUS "SFV Ember: a development build (the test switches work)")
+else()
+    add_compile_definitions(SFVE_DEV_BUILD=0)
+    message(STATUS "SFV Ember: a player build (no test switches)")
+endif()
+
 # Ember, the library SFV Ember is built on (docs/design/EMBER_LIBRARY.md,
 # sections 4 and 9): its game-neutral code and its runtime, compiled from the
 # library's sources with its own x64 build, the one its probe checks. Until
@@ -82,7 +95,9 @@ target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 # overlay.
 add_library(sfve_ember STATIC
     src/ember/EmberHost.cxx
+    src/ember/PlayerName.cxx
     src/ember/PublicCommands.cxx
+    src/ember/SavedSettings.cxx
     src/ember/RoomBattle.cxx
     src/ember/RoomCommands.cxx
     src/ember/SfvArt.cxx
@@ -98,6 +113,7 @@ add_library(sfve_ember STATIC
     src/ember/SfvPickSpace.cxx
     src/ember/SfvPictureSpec.cxx
     src/ember/SfvReplays.cxx
+    src/ember/SfvRoomBuild.cxx
     src/ember/SfvSelection.cxx
     src/ember/SfvSelectionScreen.cxx
     src/ember/SfvShell.cxx
@@ -164,7 +180,7 @@ add_library(sfve_ember_test_mod OBJECT
     src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/FighterReader.cxx src/mod/GameArt.cxx
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx
-    src/mod/ModConfig.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvRegionNames.cxx
+    src/mod/ModConfig.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx src/mod/SfvRegionNames.cxx
     src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx)
 target_link_libraries(sfve_ember_test_mod PUBLIC sfve_ember minhook::minhook)
 # The runtime under SFV's definitions, with nothing of SF4's roster, stages
@@ -192,11 +208,19 @@ add_executable(sfve_ember_tests
     tests/VirtualPadsTests.cxx
     tests/HookTransactionTests.cxx
     tests/SfvFlowTests.cxx
-    tests/SfvFrameMeterTests.cxx)
+    tests/SfvFrameMeterTests.cxx
+    tests/RoomBuildTests.cxx
+    tests/BuildKindTests.cxx
+    tests/ExecutableBuildTests.cxx
+    tests/PlayerNameTests.cxx
+    src/launcher/ExecutableBuild.cxx)
 target_link_libraries(sfve_ember_tests PRIVATE sfve_ember_test_mod sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
 # LocaleOverlayTests reads the library's fonts and locales.json from its checkout.
 file(TO_CMAKE_PATH "${SFVE_EMBER_SOURCE_ROOT}" sfve_ember_root_forward)
 target_compile_definitions(sfve_ember_tests PRIVATE SFVE_EMBER_SOURCE_ROOT="${sfve_ember_root_forward}")
+# RoomBuildTests reads the room host's pick space from this checkout.
+file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/data/pick-space.json" sfve_pick_space_forward)
+target_compile_definitions(sfve_ember_tests PRIVATE SFVE_PICK_SPACE_PATH="${sfve_pick_space_forward}")
 
 # The catalog's life (empty, filled once, sealed) changes the process for good: a program of its own.
 add_executable(sfve_catalog_lifecycle_tests tests/main.cxx tests/CatalogLifecycleTests.cxx)
@@ -226,6 +250,7 @@ add_library(sfv_ember SHARED
     src/mod/BackgroundPlay.cxx
     src/mod/MultiInstance.cxx
     src/mod/SfvAdapter.cxx
+    src/mod/SfvLayoutRules.cxx
     src/mod/SfvRegionNames.cxx
     src/mod/ProjectileRelease.cxx
     src/mod/SfvFlow.cxx
@@ -275,10 +300,12 @@ function(sfve_program_resources target description file_name)
 endfunction()
 add_executable(Launcher WIN32
     src/launcher/SfvLaunch.cxx
+    src/launcher/ExecutableBuild.cxx
     src/launcher/SteamSession.cxx
     src/launcher/LauncherSelection.cxx
     src/launcher/Launcher.exe.manifest)
-target_include_directories(Launcher PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/src/common"
+# src: the verified game build (mod/SfvBuild.hxx) and the build kind (mod/BuildKind.hxx).
+target_include_directories(Launcher PRIVATE src "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/src/common"
     "${DETOURS_INCLUDE_DIR}")
 target_compile_definitions(Launcher PRIVATE UNICODE _UNICODE)
 # Its wWinMain is in ember_launcher_x64, where the linker does not look for an entry point.
@@ -377,6 +404,7 @@ set(SFVE_ROOM_HOST_SOURCES
 add_library(sfve_room_host_catalog STATIC
     src/roomhost/SfvHostCatalog.cxx
     src/ember/SfvPickSpace.cxx
+    src/ember/SfvRoomBuild.cxx
     "${CMAKE_BINARY_DIR}/generated/SfvHostPickSpace.cxx")
 target_include_directories(sfve_room_host_catalog PUBLIC src "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/server/roomhost")
 target_link_libraries(sfve_room_host_catalog PUBLIC ember_neutral_x64 xxHash::xxhash nlohmann_json::nlohmann_json bcrypt ws2_32)

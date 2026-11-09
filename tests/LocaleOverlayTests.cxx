@@ -13,6 +13,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
 #include <fstream>
 #include <iterator>
@@ -196,6 +197,43 @@ TEST_CASE("the interface's fonts draw every character of SFV Ember's words")
 				const bool drawn = (baked && body.Has(codepoint) && heading.Has(codepoint)) || (scriptFont && scriptFont->Has(codepoint));
 				INFO(id << " U+" << std::hex << codepoint);
 				CHECK(drawn);
+			}
+		}
+	}
+}
+
+TEST_CASE("no language's SFV Ember text names Ultra or an edition")
+{
+	// SFV's pick is the V-Skill and V-Trigger; the shared text's Ultra Combo and
+	// editions belong to SF4. Checked on the active text, overlays layered.
+	std::string error;
+	REQUIRE(loc::testing::LayerOverlays(ember::Product().localeOverlays, error));
+	struct KeepActive {
+		loc::Locale was = loc::Active();
+		~KeepActive() { loc::SetActive(was); }
+	} keep;
+	const auto lower = [](std::string text) {
+		std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(c < 0x80 ? std::tolower(c) : c); });
+		return text;
+	};
+	for (std::size_t i = 0; i < static_cast<std::size_t>(loc::Locale::Count); ++i) {
+		const loc::Locale locale = static_cast<loc::Locale>(i);
+		loc::SetActive(locale);
+		for (const char* id : {"about.controls_detail", "about.controls_keyboard", "runtime.selection_combination_unavailable",
+		                       "runtime.ready.selection_unavailable", "room.opponent_changed_fighter", "room.change_fighter.detail",
+		                       "rules.winner_keeps_fighter.detail", "selection.winner_keeps_fighter", "launcher.steam_runs_as_admin",
+		                       "launcher.game_blocked_by_windows"}) {
+			INFO(loc::Tag(locale) << " " << id);
+			const std::string text = loc::T(id);
+			CHECK(text != id);
+			const std::string folded = lower(text);
+			for (const char* word : {"ultra", "edition", "ウルトラ", "울트라", "ультра", "究极"}) CHECK(folded.find(word) == std::string::npos);
+		}
+		// English names the product, not the library's "Ember", in these two.
+		if (locale == loc::Locale::En) {
+			for (const char* id : {"launcher.steam_runs_as_admin", "launcher.game_blocked_by_windows"}) {
+				INFO(id);
+				CHECK(std::string(loc::T(id)).find("SFV Ember") != std::string::npos);
 			}
 		}
 	}

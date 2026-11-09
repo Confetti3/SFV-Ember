@@ -115,7 +115,6 @@ private:
 	void WaitingToBind(const char* what);
 	bool AddGameRegions(uint8_t* manager);
 	void CollectPostRestore(uint8_t* manager);
-	void AddStateOutsideTheGameSnapshot(uint8_t* ruleUnit, uint8_t* battleData, uintptr_t base);
 	void RunUpdate();
 
 	BattleIdentity identity_;

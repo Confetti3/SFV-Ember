@@ -9,13 +9,12 @@
 // mod touches the game, and leaves it alone otherwise.
 
 #include "mod/BuildCheck.hxx"
+#include "mod/SfvBuild.hxx"
 #include "mod/SfvFighterOffsets.hxx"
 
 #include <stdint.h>
 
 namespace sfve::mod::sfv {
-
-constexpr uint32_t kExeTimestamp = 0x648AD3A4;
 
 // void BattleFrameUpdate(BattleFrame*): one rendered frame of battle.
 // Scheduler phase 1, then 1 + max(+0x1A4, +0x1A8) battle ticks (phase 2,
@@ -502,7 +501,7 @@ static_assert(kSpecColourSet.step.bytes[3] == 0x89 && kSpecColourSet.step.bytes[
 
 inline const GameBuild* VerifiedBuild()
 {
-	static const GameBuild build{"SFV CE build 13173604", kExeTimestamp, kSites, sizeof(kSites) / sizeof(kSites[0])};
+	static const GameBuild build{kBuildLabel, kExeTimestamp, kSites, sizeof(kSites) / sizeof(kSites[0])};
 	return &build;
 }
 

@@ -8,8 +8,22 @@
 
 namespace sfve::mod {
 
-// Instance 0 logs to sfv_ember.log, instance N to sfv_ember.N.log.
+// Instance 0 logs to sfv_ember.log, instance N to sfv_ember.N.log. When that
+// file cannot be opened (another program holds it, or writing it is
+// refused), the process logs to sfv_ember-<pid>.log beside it, else under
+// %LOCALAPPDATA%\SFVEmber\logs, else in %TEMP%, and the first line there
+// names the file that failed and why (CurrentLogTarget, the pipe's status).
 void OpenLog(int instance);
+
+// Where this process logs: the file, and the first file that could not be
+// opened on the way with its Win32 error (none: empty and 0). An empty path:
+// it logs nowhere.
+struct LogTarget {
+	std::wstring path;
+	std::wstring failedPath;
+	unsigned long error = 0;
+};
+const LogTarget& CurrentLogTarget();
 void Log(const char* fmt, ...);
 void LogLine(const char* line);
 // LogLine unless another thread is writing the log at that moment (then the

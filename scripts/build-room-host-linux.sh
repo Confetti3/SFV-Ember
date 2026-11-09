@@ -37,6 +37,6 @@ trap 'rm -rf "$GEN"' EXIT
     echo '} }'
 } > "$GEN/SfvHostPickSpace.cxx"
 
-CATALOG_SOURCES="$SFV/src/roomhost/SfvHostCatalog.cxx $SFV/src/ember/SfvPickSpace.cxx $GEN/SfvHostPickSpace.cxx" \
+CATALOG_SOURCES="$SFV/src/roomhost/SfvHostCatalog.cxx $SFV/src/ember/SfvPickSpace.cxx $SFV/src/ember/SfvRoomBuild.cxx $GEN/SfvHostPickSpace.cxx" \
 CXXFLAGS="-I$SFV/src -I$EMBER/src -I$EMBER/server/roomhost $XXHASH_FLAGS ${CXXFLAGS:-}" \
     bash "$EMBER/server/roomhost/build-linux.sh" "$EMBER" "$OUT"

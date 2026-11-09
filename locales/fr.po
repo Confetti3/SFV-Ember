@@ -36,6 +36,33 @@ msgstr "Non possédé dans cette copie de Street Fighter V."
 msgid "runtime.invite_other_build"
 msgstr "L'hôte utilise une autre version de SFV Ember. Les deux joueurs doivent avoir la même version."
 
+msgid "about.controls_detail"
+msgstr "Manette : A sélectionne et B revient en arrière. Clavier : flèches, Entrée et Échap. La croix directionnelle déplace ; Gauche et Droite changent une valeur. Revenir en arrière à l'Accueil masque SFV Ember. F10, ou Start sur la manette, l'ouvre à nouveau au menu principal du jeu.\n\nDans un salon, A sur une table permet de choisir une place, A sur votre place vous déclare prêt et B quitte votre place ou la file. X ouvre Combattant, Y Options et View Chat ; appuyez à nouveau pour revenir au salon.\n\nL'entraînement est celui de Street Fighter V : son menu pause règle le mannequin, l'enregistrement et les frame data. Quand un adversaire vous rappelle dans votre salon, View sur la manette ou Entrée vous y ramène aussitôt."
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "Cette combinaison est interdite par les règles du salon. Choisissez un autre personnage, costume, couleur, V-Skill ou V-Trigger."
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "Ce choix de personnage est indisponible. Choisissez un costume, une couleur, un V-Skill et un V-Trigger disponibles."
+
+msgid "room.opponent_changed_fighter"
+msgstr "L'adversaire a pris {0}. Vérifiez votre V-Skill et votre V-Trigger avant de passer à Prêt."
+
+msgid "room.change_fighter.detail"
+msgstr "Choisissez un personnage, puis son V-Skill et son V-Trigger. Revenez ici et passez à Prêt."
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "Comme dans une vraie salle d'arcade, le vainqueur d'un set garde le combattant avec lequel il a gagné. Seuls le V-Skill, le V-Trigger, le costume et la couleur peuvent changer."
+
+msgid "selection.winner_keeps_fighter"
+msgstr "Vous avez gagné le dernier set : vous gardez ce combattant. Vous pouvez encore changer le V-Skill, le V-Trigger, le costume et la couleur."
+
+msgid "launcher.steam_runs_as_admin"
+msgstr "Street Fighter V n'a pas pu joindre Steam, car Steam s'exécute en tant qu'administrateur. Fermez Steam, relancez-le normalement, puis réessayez. Lancer SFV Ember en tant qu'administrateur fonctionne aussi, mais les mises à jour ne s'installent pas ainsi."
+
+msgid "launcher.game_blocked_by_windows"
+msgstr "Windows a bloqué l'un des fichiers du jeu avant le démarrage de SFV Ember (contrôle des applications). Le Contrôle intelligent des applications ne peut pas autoriser un seul programme : s'il est activé dans Sécurité Windows, SFV Ember ne fonctionnera qu'une fois désactivé. Sur un PC géré par une organisation, demandez à son administrateur d'autoriser SFV Ember."
+
 msgid "launcher.update_failed"
 msgstr "Impossible d'installer la mise à jour. Fermez le jeu et l'ancien lanceur avant de réessayer. Voir %TEMP%\\sfv-ember-update.log ; les copies conservées sont dans .ember-update-backups."
 

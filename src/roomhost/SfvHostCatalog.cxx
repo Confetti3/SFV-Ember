@@ -13,6 +13,7 @@
 // Loadout), valid only where the fighter has both (EMBER_LIBRARY.md section
 // 40).
 #include "ember/SfvPickSpace.hxx"
+#include "ember/SfvRoomBuild.hxx"
 
 #include "common/GameCatalog.hxx"
 
@@ -102,8 +103,9 @@ bool PrepareCatalog(const Config& config, std::string& reason)
 		reason = "catalog_invalid";
 		return false;
 	}
-	// The data is what the game exported, and the room is for that build.
-	const std::string build = sfve::picks::BuildId(space);
+	// The data is what the game exported, and the room is for that build. Its
+	// layout id is the export's: the host has no game code to work it out.
+	const std::string build = sfve::room::RoomBuildId(sfve::picks::BuildId(space), sfve::room::LayoutIdOf(exported));
 	if (build != exported || build != config.buildId) {
 		reason = "other_build";
 		return false;

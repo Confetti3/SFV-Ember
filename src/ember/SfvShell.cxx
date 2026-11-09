@@ -27,6 +27,7 @@
 #include "ui/GameMenu.hxx"
 #include "ui/MenuRows.hxx"
 #include "ui/OverlayPresentation.hxx"
+#include "ui/PassiveHint.hxx"
 #include "ui/ReplayPlaybackHud.hxx"
 #include "ui/SelectionLabels.hxx"
 #include "ui/Theme.hxx"
@@ -394,6 +395,17 @@ void PublishStatus(Shell& shell)
 	s_status = std::move(status);
 }
 
+// "SFV Ember / F10 or Start" over the game's main menu for its first seconds
+// each time the menu is the game's alone again, as SF4 Ember's overlay shows
+// it (OverlayLayers), unless the player turned Help's Show shortcut hint off.
+// On the process clock: ImGui's restarts with a device reset.
+void DrawOpenHint(const Snapshot& snapshot, const sf4e::ui::OverlayPresentation& presentation)
+{
+	static sf4e::ui::TimedHint hint(sf4e::ui::ShortcutHintSeconds);
+	const bool due = snapshot.preferences.showShortcutHint && presentation.Available() && !presentation.Visible();
+	sf4e::ui::DrawShortcutHint(sf4e::ui::ShortcutHintAlpha(hint.Left(due, GetTickCount64() / 1000.0)));
+}
+
 // Render thread, inside ImGui's frame: the shell shown, or its hidden work.
 overlay::OverlayUi::Shown Draw()
 {
@@ -420,6 +432,7 @@ overlay::OverlayUi::Shown Draw()
 		if (close) presentation.Close(close);
 	} else {
 		shell.host.Background(snapshot);
+		DrawOpenHint(snapshot, presentation);
 		// The shell's ground going, over the game it uncovers.
 		if (fade < 1.f) {
 			const ImGuiViewport* viewport = ImGui::GetMainViewport();

@@ -6,6 +6,7 @@
 #include "ember/SfvGame.hxx"
 
 #include "core/RollbackSession.hxx"
+#include "ember/SavedSettings.hxx"
 #include "ember/RoomBattle.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvReplays.hxx"
@@ -15,6 +16,7 @@
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
 #include "mod/MatchResult.hxx"
+#include "mod/ModConfig.hxx"
 #include "mod/SfvAdapter.hxx"
 #include "mod/VersusLaunch.hxx"
 #include "mod/VirtualPads.hxx"
@@ -401,7 +403,7 @@ public:
 	{
 		if (stopped_ || !preferences.Valid()) return 0;
 		if (!writer_) writer_ = new sf4e::netplay::SettingsWriter(sf4e::netplay::SettingsStore::DefaultDirectory());
-		return writer_->QueueLauncher(sf4e::netplay::PlayerPreferencesJson(preferences));
+		return writer_->QueueLauncher(PreferencesToSave(preferences, mod::Config().instance));
 	}
 	bool Saved(std::uint64_t revision) override { return writer_ && revision && writer_->SavedLauncherRevision() >= revision; }
 	bool Pending() override { return writer_ && writer_->GetStatus().pending; }
@@ -453,16 +455,18 @@ SfvServices s_services;
 // in folder; SFV has no replay list of its own to add one to, no video
 // export, replay meter or inputs reader yet) and Training (section 27: SFV's
 // own Training mode, SfvTraining); SFV offers no pad setup, Steam profiles
-// or custom content yet, and none of the settings features (section 35:
-// Ember's input and display fixes, its pad layer, the keyboard, the
-// challenger call, lobby music, character pictures or the shortcut hint), so
-// Settings leaves their rows out.
+// or custom content yet, and of the settings features (section 35) only the
+// shortcut hint, "F10 or Start" over the main menu (SfvShell; section 41):
+// not Ember's input and display fixes, its pad layer, the keyboard, the
+// challenger call, lobby music or character pictures, so Settings leaves
+// their rows out.
 Capabilities SfvCapabilities()
 {
 	Capabilities caps;
 	caps.spectators = true;
 	caps.replays = true;
 	caps.training = true;
+	caps.settingsFeatures.shortcutHint = true;
 	return caps;
 }
 const Adapter s_game = {SfvCapabilities(), s_state, s_battleSide, s_input, s_preferences, s_services,
@@ -520,15 +524,11 @@ void StopPreferences()
 
 bool SavedBackgroundPlay()
 {
-	nlohmann::json saved;
-	std::string error;
-	if (!sf4e::netplay::SettingsStore(sf4e::netplay::SettingsStore::DefaultDirectory()).LoadLauncher(saved, error)) {
-		mod::Log("background play: the saved settings could not be read (%s); taken as off", error.c_str());
-		return false;
-	}
+	const std::optional<nlohmann::json> saved = LoadSavedSettings("background play (taken as off)");
+	if (!saved) return false;
 	sf4e::netplay::PlayerPreferences preferences;
 	try {
-		sf4e::netplay::ReadBoolPreferences(saved, preferences);
+		sf4e::netplay::ReadBoolPreferences(*saved, preferences);
 	} catch (const std::exception&) {
 		mod::Log("background play: the saved settings hold a value that is not on or off; taken as off");
 		return false;

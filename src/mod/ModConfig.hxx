@@ -42,6 +42,14 @@
 //                        and done events and the mailbox, as this process's
 //                        handle values in hex (SfvLaunch.cxx; CrashRecord.hxx)
 //   -sfve_crash_command=1  test: the pipe's "crash game|thread" faults on purpose
+//
+// All of them are a development build's (mod/BuildKind.hxx). A player build
+// reads only what its launcher passes, -sfve_mode=netplay, -sfve_room and
+// -sfve_dump_channel, and every other option or value as if it were absent:
+// its ownership gate is on, nothing drives its player, it is copy 0. (The
+// launcher's -sfve_loader=launcher is EarlyStart's, read before this.)
+
+#include "mod/BuildKind.hxx"
 
 #include <stdint.h>
 
@@ -110,7 +118,7 @@ struct ModConfig {
 };
 
 const ModConfig& Config();
-void LoadConfigFromCommandLine(const wchar_t* commandLine);
+void LoadConfigFromCommandLine(const wchar_t* commandLine, BuildKind kind = kBuildKind);
 // A setting the command line gave that its mode cannot take, and so left
 // off, for the log; null when there is none. -sfve_room=1 hosts Ember's
 // runtime in the netplay mode only, so with any other mode rooms stay off.
@@ -120,6 +128,9 @@ const char* IgnoredSetting();
 const std::string& UnownedProblem();
 // "-sfve_uninstalled=..." likewise, when an entry was not a stage code.
 const std::string& UninstalledProblem();
+// The development options a player build was given and did not read
+// ("-sfve_ownership, -sfve_mash"), for the log; empty when there were none.
+const std::string& PlayerBuildIgnored();
 const char* ModeName(ModMode mode);
 
 } // namespace sfve::mod

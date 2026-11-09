@@ -162,6 +162,7 @@ def deploy(adopt: bool = False) -> list[str]:
     refused, unless `adopt` takes it over. Returns the files copied."""
     if VIA == "launcher":
         raise SfveError("SFVE_VIA=launcher starts the game from the package folder: nothing is installed in the game folder")
+    refuse_player_build(BUILD_DIR)
     installed = set(_installed())
     copied = []
     for name in _deployed_files():
@@ -475,11 +476,14 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
     until the guard answers (GUARD_TIMEOUT_S)."""
     registry_path()  # the run is mandatory: refuse before anything starts
     options = _game_options(index, mode, extra or [], windowed)
-    log_path(index).unlink(missing_ok=True)  # each run starts its own log
+    # Each run starts its own log; the last one is kept.
+    if not set_aside(log_path(index)):
+        raise SfveError(f"{log_path(index)} is held open by another program: close it first")
     if VIA == "launcher":
         missing = [name for name in LAUNCHER_FILES if not (PACKAGE_DIR / name).exists()]
         if missing:
             raise SfveError(f"{PACKAGE_DIR} has no {', '.join(missing)}: build or stage SFV Ember first")
+        refuse_player_build(PACKAGE_DIR)
         # The test's options come first on the game's command line, so they
         # take the place of the launcher's own (ModConfig reads the first).
         launcher_log = _LogCursor(launcher_log_path(index))  # before the launcher can write to it
@@ -536,24 +540,38 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
     return Instance(index, game_pid)
 
 
+def build_kind(folder: Path) -> str:
+    """The kind of build a build tree or package holds, by its receipt
+    (scripts/build.ps1, build-provenance.json): "player", "development", or ""
+    for none."""
+    try:
+        return json.loads((folder / "build-provenance.json").read_text(encoding="utf-8-sig")).get("buildKind", "")
+    except (OSError, ValueError):
+        return ""
+
+
+def refuse_player_build(folder: Path) -> None:
+    """The tools drive a development build only: a player build takes no test
+    options and its pipe answers ping and status alone."""
+    if build_kind(folder) == "player":
+        raise SfveError(f"{folder} is a player build, which takes no test options: "
+                        "build a development one (scripts/build.ps1 without -Player)")
+
+
 def launcher_log_path(index: int) -> Path:
     return LOG_DIR / ("launcher.log" if index == 0 else f"launcher.instance{index}.log")
 
 
 class _LogCursor:
-    """The lines a log gains after the cursor was made. The log is deleted
+    """The lines a log gains after the cursor was made. The log is set aside
     first, as launch does for the game's, so the launcher starts a new file
-    and every line of it is read from the top. A log that cannot be deleted
+    and every line of it is read from the top. A log that cannot be moved
     (it is open) is read from its current end, and a size below the position
     (the launcher's rotate_on_open replaced it) starts over at the top."""
 
     def __init__(self, path: Path):
         self.path = path
-        try:
-            path.unlink(missing_ok=True)
-            self.offset = 0
-        except OSError:
-            self.offset = self._size()
+        self.offset = 0 if set_aside(path) else self._size()
 
     def _size(self) -> int:
         try:
@@ -734,6 +752,32 @@ def fight(index: int) -> None:
 def log_path(index: int) -> Path:
     name = "sfv_ember.log" if index == 0 else f"sfv_ember.{index}.log"
     return LOG_DIR / name
+
+
+SET_ASIDE_KEPT = 5
+
+
+def set_aside(path: Path) -> bool:
+    """Moves a log a test run is about to start afresh to
+    <name>.before-test-<time>.log beside it, so a run never loses a player's
+    earlier log (the game's or the launcher's), and keeps the newest
+    SET_ASIDE_KEPT of those. True when the path is free for the run: it was
+    moved or never there; False when it could not be moved (it is open)."""
+    if not path.exists():
+        return True
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    target = path.with_name(f"{path.stem}.before-test-{stamp}{path.suffix}")
+    try:
+        path.replace(target)
+    except OSError:
+        return False
+    earlier = sorted(path.parent.glob(f"{path.stem}.before-test-*{path.suffix}"))
+    for old in earlier[:-SET_ASIDE_KEPT]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    return True
 
 
 def tail(index: int, lines: int = 40) -> list[str]:

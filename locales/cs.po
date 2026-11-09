@@ -36,6 +36,33 @@ msgstr "V této kopii Street Fighter V nevlastníte."
 msgid "runtime.invite_other_build"
 msgstr "Hostitel používá jiné sestavení SFV Ember. Oba hráči potřebují stejnou verzi."
 
+msgid "about.controls_detail"
+msgstr "Ovladač: A vybírá a B se vrací. Klávesnice: šipky, Enter a Escape. Směrový kříž pohybuje; Vlevo a Vpravo mění hodnotu. Návrat na Domů skryje SFV Ember. F10 nebo Start na ovladači jej znovu otevře v hlavní nabídce hry.\n\nV místnosti vám A na stole umožní vybrat místo, A na vlastním místě vás připraví a B opustí místo nebo frontu. X otevře Bojovníka, Y Možnosti a View Chat; dalším stiskem se vrátíte do místnosti.\n\nTrénink je přímo ten ze Street Fighter V: jeho pauzovací nabídka nastavuje figurínu, nahrávání a data snímků. Když vás soupeř zavolá zpět do vaší místnosti, View na ovladači nebo Enter vás tam vrátí hned."
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "Tato kombinace není podle pravidel místnosti dostupná. Vyberte jinou postavu, kostým, barvu, V-Skill nebo V-Trigger."
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "Tento výběr postavy není dostupný. Zvolte dostupný kostým, barvu, V-Skill a V-Trigger."
+
+msgid "room.opponent_changed_fighter"
+msgstr "Soupeř změnil postavu na {0}. Než budete připraveni, zkontrolujte svůj V-Skill a V-Trigger."
+
+msgid "room.change_fighter.detail"
+msgstr "Vyberte postavu, pak její V-Skill a V-Trigger. Vraťte se sem a potvrďte Připraven."
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "Jako ve skutečné herně zůstává vítěz setu u bojovníka, se kterým vyhrál. Změnit lze jen V-Skill, V-Trigger, kostým a barvu."
+
+msgid "selection.winner_keeps_fighter"
+msgstr "Poslední set je tvůj, takže si tohoto bojovníka ponecháš. V-Skill, V-Trigger, kostým a barvu můžeš dál měnit."
+
+msgid "launcher.steam_runs_as_admin"
+msgstr "Hra Street Fighter V se nemohla spojit se Steamem, protože Steam běží jako správce. Zavřete Steam, spusťte ho normálně a zkuste to znovu. Spuštění SFV Ember jako správce také funguje, ale aktualizace se tak neinstalují."
+
+msgid "launcher.game_blocked_by_windows"
+msgstr "Windows zablokoval jeden ze souborů hry dříve, než se SFV Ember mohl spustit (řízení aplikací). Inteligentní řízení aplikací neumí povolit jediný program: pokud je v Zabezpečení Windows zapnuté, SFV Ember poběží až po jeho vypnutí. Na počítači spravovaném organizací požádejte jejího správce o povolení pro SFV Ember."
+
 msgid "launcher.update_failed"
 msgstr "Aktualizaci se nepodařilo nainstalovat. Zavřete hru a předchozí spouštěč a zkuste to znovu. Viz %TEMP%\\sfv-ember-update.log; záložní kopie jsou v .ember-update-backups."
 
