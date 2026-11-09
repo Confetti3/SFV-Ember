@@ -39,24 +39,6 @@ msgstr "호스트가 다른 SFV Ember 빌드를 사용 중입니다. 두 플레�
 msgid "about.controls_detail"
 msgstr "컨트롤러: A로 선택하고 B로 돌아갑니다. 키보드: 방향키, Enter, Escape. 방향 패드로 이동하고 왼쪽과 오른쪽으로 값을 바꿉니다. 홈에서 돌아가면 SFV Ember가 숨겨집니다. 게임 메인 메뉴에서 F10 또는 컨트롤러의 Start를 누르면 다시 열립니다.\n\n방에서는 테이블에서 A를 눌러 자리를 고르고 자기 자리에서 A를 눌러 준비합니다. B를 누르면 자리나 대기열에서 나갑니다. X는 파이터, Y는 옵션, View는 채팅을 엽니다. 다시 누르면 방으로 돌아갑니다.\n\n훈련은 Street Fighter V 자체의 것입니다. 일시정지 메뉴에서 더미, 녹화, 프레임 데이터를 설정합니다. 상대가 나를 방으로 다시 부르면 컨트롤러의 View 또는 Enter로 바로 돌아갈 수 있습니다."
 
-msgid "runtime.selection_combination_unavailable"
-msgstr "이 조합은 방 규칙에서 사용할 수 없습니다. 다른 캐릭터, 코스튬, 색상, V스킬 또는 V트리거를 선택하세요."
-
-msgid "runtime.ready.selection_unavailable"
-msgstr "이 캐릭터 선택을 사용할 수 없습니다. 사용 가능한 코스튬, 색상, V스킬 및 V트리거를 고르세요."
-
-msgid "room.opponent_changed_fighter"
-msgstr "상대가 {0}(으)로 바꿨습니다. 준비하기 전에 V스킬과 V트리거를 확인하세요."
-
-msgid "room.change_fighter.detail"
-msgstr "캐릭터를 선택한 뒤 V스킬과 V트리거를 고르세요. 여기로 돌아와 준비를 선택하세요."
-
-msgid "rules.winner_keeps_fighter.detail"
-msgstr "실제 오락실처럼 세트 승자는 이긴 캐릭터로 계속합니다. V스킬, V트리거, 코스튬, 색상만 바꿀 수 있습니다."
-
-msgid "selection.winner_keeps_fighter"
-msgstr "지난 세트에서 이겼으므로 이 캐릭터를 유지합니다. V스킬, V트리거, 코스튬, 색상은 계속 바꿀 수 있습니다."
-
 msgid "launcher.steam_runs_as_admin"
 msgstr "Steam이 관리자 권한으로 실행 중이어서 Street Fighter V가 Steam에 연결하지 못했습니다. Steam을 종료하고 일반 방식으로 다시 실행한 뒤 다시 시도하세요. SFV Ember를 관리자 권한으로 실행해도 되지만, 그러면 업데이트가 설치되지 않습니다."
 

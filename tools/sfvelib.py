@@ -755,6 +755,8 @@ def log_path(index: int) -> Path:
 
 
 SET_ASIDE_KEPT = 5
+# How long a log still held by an exiting copy is waited for before giving up.
+SET_ASIDE_WAIT_S = 10.0
 
 
 def set_aside(path: Path) -> bool:
@@ -767,10 +769,20 @@ def set_aside(path: Path) -> bool:
         return True
     stamp = time.strftime("%Y%m%d-%H%M%S")
     target = path.with_name(f"{path.stem}.before-test-{stamp}{path.suffix}")
-    try:
-        path.replace(target)
-    except OSError:
-        return False
+    for n in range(2, 100):  # two set-asides in one second keep both
+        if not target.exists():
+            break
+        target = path.with_name(f"{path.stem}.before-test-{stamp}-{n}{path.suffix}")
+    # A copy a run has just ended can hold its log for a moment while it exits.
+    deadline = time.monotonic() + SET_ASIDE_WAIT_S
+    while True:
+        try:
+            path.replace(target)
+            break
+        except OSError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.25)
     earlier = sorted(path.parent.glob(f"{path.stem}.before-test-*{path.suffix}"))
     for old in earlier[:-SET_ASIDE_KEPT]:
         try:

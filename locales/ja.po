@@ -39,24 +39,6 @@ msgstr "ホストは別のSFV Emberビルドを使っています。両プレイ
 msgid "about.controls_detail"
 msgstr "コントローラー: Aで選択、Bで戻ります。キーボード: 矢印、Enter、Escape。十字キーで移動し、左右で値を変えます。ホームで戻るとSFV Emberが隠れます。ゲームのメインメニューでF10、またはコントローラーのStartを押すと再び開きます。\n\nルームでは、テーブル上でAを押すと席を選べます。自分の席でAを押すと準備完了になり、Bで席や順番待ちから抜けます。Xでファイター、Yでオプション、Viewでチャットを開きます。もう一度押すとルームに戻ります。\n\nトレーニングはStreet Fighter V本来のものです。ポーズメニューでダミー、レコーディング、フレームデータを設定します。対戦相手にルームへ呼び戻されたときは、コントローラーのViewまたはEnterですぐに戻れます。"
 
-msgid "runtime.selection_combination_unavailable"
-msgstr "この組み合わせはルームのルールで使用できません。別のキャラ、コスチューム、カラー、Vスキル、Vトリガーを選んでください。"
-
-msgid "runtime.ready.selection_unavailable"
-msgstr "このキャラ選択は使用できません。使用可能なコスチューム、カラー、Vスキル、Vトリガーを選んでください。"
-
-msgid "room.opponent_changed_fighter"
-msgstr "相手が{0}に変更しました。準備完了の前にVスキルとVトリガーを確認してください。"
-
-msgid "room.change_fighter.detail"
-msgstr "キャラを選び、次にVスキルとVトリガーを選びます。戻って準備完了にしてください。"
-
-msgid "rules.winner_keeps_fighter.detail"
-msgstr "本物のゲームセンターのように、セットの勝者は勝ったキャラクターのまま続けます。変更できるのはVスキル、Vトリガー、コスチューム、カラーだけです。"
-
-msgid "selection.winner_keeps_fighter"
-msgstr "前のセットに勝ったので、このキャラクターのまま続けます。Vスキル、Vトリガー、コスチューム、カラーは変更できます。"
-
 msgid "launcher.steam_runs_as_admin"
 msgstr "Steamが管理者として実行されているため、Street Fighter VがSteamに接続できませんでした。Steamを終了して通常どおり起動し直してから再試行してください。SFV Emberを管理者として起動しても動作しますが、その場合アップデートはインストールされません。"
 

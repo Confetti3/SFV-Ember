@@ -39,24 +39,6 @@ msgstr "房主使用的是另一个 SFV Ember 构建版本。双方需要使用�
 msgid "about.controls_detail"
 msgstr "控制器：A 选择，B 返回。键盘：方向键、Enter 和 Escape。方向键移动，左右更改数值。在主页返回会隐藏 SFV Ember。在游戏主菜单按 F10 或控制器上的 Start 可再次打开。\n\n在房间中，在桌台上按 A 可选择座位，在自己的座位上按 A 可准备，按 B 可离开座位或队列位置。X 打开斗士，Y 打开选项，View 打开聊天；再次按下会返回房间。\n\n训练是《街头霸王V》自带的：其暂停菜单可设置假想对手、录制和帧数据。当对手叫你回到房间时，按控制器上的 View 或 Enter 即可立即返回。"
 
-msgid "runtime.selection_combination_unavailable"
-msgstr "此组合不符合房间规则。请选择其他角色、服装、颜色、V技能或V触发。"
-
-msgid "runtime.ready.selection_unavailable"
-msgstr "此角色选择不可用。请选择可用的服装、颜色、V技能和V触发。"
-
-msgid "room.opponent_changed_fighter"
-msgstr "对手换成了{0}。准备前请检查你的V技能和V触发。"
-
-msgid "room.change_fighter.detail"
-msgstr "选择角色，然后选择V技能和V触发。返回此处并选择准备。"
-
-msgid "rules.winner_keeps_fighter.detail"
-msgstr "就像真正的街机厅，一局的胜者继续使用获胜的角色，只能更改V技能、V触发、服装和颜色。"
-
-msgid "selection.winner_keeps_fighter"
-msgstr "你赢了上一局，因此保留这个角色。仍可更改V技能、V触发、服装和颜色。"
-
 msgid "launcher.steam_runs_as_admin"
 msgstr "Steam 正以管理员身份运行，因此《街头霸王V》无法连接到 Steam。请关闭 Steam，以普通方式重新启动后重试。以管理员身份启动 SFV Ember 也可以，但这样不会安装更新。"
 

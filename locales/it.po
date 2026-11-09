@@ -39,24 +39,6 @@ msgstr "L'host usa un'altra build di SFV Ember. Entrambi i giocatori devono aver
 msgid "about.controls_detail"
 msgstr "Controller: A seleziona e B torna indietro. Tastiera: frecce, Invio ed Escape. La croce direzionale muove; Sinistra e Destra cambiano un valore. Tornare indietro in Home nasconde SFV Ember. F10, o Start sul controller, lo apre di nuovo nel menu principale del gioco.\n\nIn una stanza, A su un tavolo permette di scegliere un posto, A sul proprio posto segnala che si è pronti e B lascia il posto o la coda. X apre Combattente, Y Opzioni e View Chat; premi di nuovo per tornare alla stanza.\n\nL'allenamento è quello di Street Fighter V: il suo menu di pausa imposta il manichino, la registrazione e i frame data. Quando un avversario ti richiama nella tua stanza, View sul controller o Invio ti riporta subito."
 
-msgid "runtime.selection_combination_unavailable"
-msgstr "Combinazione non disponibile con le regole della sala. Scegli un altro personaggio, costume, colore, V-Skill o V-Trigger."
-
-msgid "runtime.ready.selection_unavailable"
-msgstr "Selezione personaggio non disponibile. Scegli costume, colore, V-Skill e V-Trigger disponibili."
-
-msgid "room.opponent_changed_fighter"
-msgstr "L'avversario è passato a {0}. Controlla V-Skill e V-Trigger prima di metterti pronto."
-
-msgid "room.change_fighter.detail"
-msgstr "Scegli un personaggio, poi V-Skill e V-Trigger. Torna qui e seleziona Mettiti pronto."
-
-msgid "rules.winner_keeps_fighter.detail"
-msgstr "Come in una vera sala giochi, chi vince il set resta con il lottatore con cui ha vinto. Possono cambiare solo V-Skill, V-Trigger, il costume e il colore."
-
-msgid "selection.winner_keeps_fighter"
-msgstr "Hai vinto l'ultimo set, quindi tieni questo lottatore. Puoi ancora cambiare V-Skill, V-Trigger, il costume e il colore."
-
 msgid "launcher.steam_runs_as_admin"
 msgstr "Street Fighter V non è riuscito a raggiungere Steam perché Steam è in esecuzione come amministratore. Chiudi Steam, riavvialo normalmente e riprova. Avviare SFV Ember come amministratore funziona, ma così gli aggiornamenti non vengono installati."
 

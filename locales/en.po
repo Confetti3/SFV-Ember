@@ -39,24 +39,6 @@ msgstr "The host is on a different SFV Ember build. Both players need the same v
 msgid "about.controls_detail"
 msgstr "Controller: A selects and B goes back. Keyboard: arrows, Enter and Escape. The D-pad moves; Left and Right change a value. Going back at Home hides SFV Ember. F10, or Start on the controller, opens it again at the game's main menu.\n\nIn a room, A on a table lets you pick a seat, A on your own seat readies up, and B leaves your seat or queue place. X opens Fighter, Y opens Options and View opens Chat; press it again to return to the room.\n\nTraining is Street Fighter V's own: its pause menu sets the dummy, recording and frame data. When an opponent calls you back to your room, View on the controller or Enter goes at once."
 
-msgid "runtime.selection_combination_unavailable"
-msgstr "This combination is unavailable under the room's rules. Choose another fighter, costume, color, V-Skill or V-Trigger."
-
-msgid "runtime.ready.selection_unavailable"
-msgstr "This fighter selection is unavailable. Choose an available costume, color, V-Skill and V-Trigger."
-
-msgid "room.opponent_changed_fighter"
-msgstr "Opponent changed to {0}. Check your V-Skill and V-Trigger before you ready up."
-
-msgid "room.change_fighter.detail"
-msgstr "Choose a fighter, then its V-Skill and V-Trigger. Return here and select Ready up."
-
-msgid "rules.winner_keeps_fighter.detail"
-msgstr "As at a real arcade, a set's winner stays with the fighter they won with. Only the V-Skill, V-Trigger, costume and color can change."
-
-msgid "selection.winner_keeps_fighter"
-msgstr "You won the last set, so you keep this fighter. You can still change the V-Skill, V-Trigger, costume and color."
-
 msgid "launcher.steam_runs_as_admin"
 msgstr "Street Fighter V could not reach Steam because Steam is running as administrator. Close Steam, start it again normally, then retry. Starting SFV Ember as administrator also works, but updates will not install that way."
 

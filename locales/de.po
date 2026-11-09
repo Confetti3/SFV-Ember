@@ -39,24 +39,6 @@ msgstr "Der Host nutzt einen anderen SFV Ember-Build. Beide Spieler brauchen die
 msgid "about.controls_detail"
 msgstr "Controller: A wählt aus und B geht zurück. Tastatur: Pfeile, Enter und Escape. Das Steuerkreuz bewegt; Links und Rechts ändern einen Wert. Zurück auf Home blendet SFV Ember aus. F10 oder Start am Controller öffnet es wieder im Hauptmenü des Spiels.\n\nIm Raum lässt dich A auf einem Tisch einen Platz wählen, A auf deinem eigenen Platz meldet dich bereit und B verlässt deinen Platz oder die Warteschlange. X öffnet Kämpfer, Y Optionen und View Chat; erneut drücken kehrt zum Raum zurück.\n\nDas Training ist das von Street Fighter V selbst: Sein Pausenmenü steuert Dummy, Aufnahme und Frame-Daten. Wenn dich ein Gegner in deinen Raum zurückruft, bringt dich View am Controller oder Enter sofort dorthin."
 
-msgid "runtime.selection_combination_unavailable"
-msgstr "Diese Kombination ist nach den Raumregeln nicht verfügbar. Wählen Sie einen anderen Charakter, eine andere Kleidung, Farbe, V-Skill oder V-Trigger."
-
-msgid "runtime.ready.selection_unavailable"
-msgstr "Diese Charakterwahl ist nicht verfügbar. Wählen Sie verfügbare Kleidung, Farbe, V-Skill und V-Trigger."
-
-msgid "room.opponent_changed_fighter"
-msgstr "Der Gegner hat zu {0} gewechselt. Prüfen Sie Ihren V-Skill und V-Trigger, bevor Sie bereit sind."
-
-msgid "room.change_fighter.detail"
-msgstr "Wählen Sie einen Charakter, dann dessen V-Skill und V-Trigger. Kehren Sie zurück und wählen Sie Bereit."
-
-msgid "rules.winner_keeps_fighter.detail"
-msgstr "Wie in einer echten Spielhalle bleibt der Sieger eines Sets bei dem Kämpfer, mit dem er gewonnen hat. Nur V-Skill, V-Trigger, Kostüm und Farbe lassen sich ändern."
-
-msgid "selection.winner_keeps_fighter"
-msgstr "Du hast das letzte Set gewonnen und behältst diesen Kämpfer. V-Skill, V-Trigger, Kostüm und Farbe kannst du weiter ändern."
-
 msgid "launcher.steam_runs_as_admin"
 msgstr "Street Fighter V konnte Steam nicht erreichen, weil Steam als Administrator läuft. Beenden Sie Steam, starten Sie es normal neu und versuchen Sie es erneut. SFV Ember als Administrator zu starten geht auch, dann werden aber keine Updates installiert."
 
