@@ -5,6 +5,7 @@
 
 #include "mod/GameInput.hxx"
 
+using sfve::PackedInput;
 using namespace sfve::mod::input;
 
 TEST_CASE("no seed: the pad plays every frame")
