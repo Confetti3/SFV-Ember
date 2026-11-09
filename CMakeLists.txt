@@ -213,7 +213,9 @@ add_executable(sfve_ember_tests
     tests/BuildKindTests.cxx
     tests/ExecutableBuildTests.cxx
     tests/PlayerNameTests.cxx
-    src/launcher/ExecutableBuild.cxx)
+    tests/SteamRecordTests.cxx
+    src/launcher/ExecutableBuild.cxx
+    src/launcher/SteamRecord.cxx)
 target_link_libraries(sfve_ember_tests PRIVATE sfve_ember_test_mod sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
 # LocaleOverlayTests reads the library's fonts and locales.json from its checkout.
 file(TO_CMAKE_PATH "${SFVE_EMBER_SOURCE_ROOT}" sfve_ember_root_forward)
@@ -246,7 +248,6 @@ add_library(sfv_ember SHARED
     src/mod/VirtualPads.cxx
     src/mod/NetGuard.cxx
     src/mod/OfflineDialogs.cxx
-    src/mod/OnlineStandIn.cxx
     src/mod/BuildCheck.cxx
     src/mod/BackgroundPlay.cxx
     src/mod/MultiInstance.cxx
@@ -302,6 +303,7 @@ endfunction()
 add_executable(Launcher WIN32
     src/launcher/SfvLaunch.cxx
     src/launcher/ExecutableBuild.cxx
+    src/launcher/SteamRecord.cxx
     src/launcher/LauncherSelection.cxx
     src/launcher/Launcher.exe.manifest)
 # src: the verified game build (mod/SfvBuild.hxx) and the build kind (mod/BuildKind.hxx).

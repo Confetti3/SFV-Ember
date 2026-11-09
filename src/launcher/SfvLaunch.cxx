@@ -22,13 +22,14 @@
 // Before anything starts, the exe must be the build the mod was made for
 // (ExecutableBuild): never another build, which would run as plain SFV, and
 // never UE4's starter in the game's top folder, which would start the game
-// without the mod. Steam's state is not checked: a game that cannot reach a
-// signed-in Steam runs offline (mod/OnlineStandIn.hxx).
+// without the mod. Then Steam's record of its client is put right when it
+// is wrong (SteamRecord): nothing is asked and Steam is never restarted.
 
 #include "launcher/ExecutableBuild.hxx"
 #include "launcher/LaunchMessages.hxx"
 #include "launcher/LaunchSteps.hxx"
 #include "OldDefaultName.hxx"
+#include "SteamRecord.hxx"
 #include "mod/BuildKind.hxx"
 #include "mod/SfvBuild.hxx"
 
@@ -236,6 +237,10 @@ HANDLE StartGame(const StartRequest& request, StartFailure& failure)
 			sf4e::platform::WideToUtf8(request.executable));
 		return nullptr;
 	}
+	// The game's Steam start reads Steam's record of its client; a wrong one
+	// stops the game in LoggedIn (launcher/SteamRecord.hxx). It is put right
+	// here, silently; the game starts whatever the outcome.
+	sfve::launcher::RepairSteamRecord();
 	// The game's command line: its own path, then the mod's settings
 	// (mod/ModConfig.hxx). Rooms and Ember's runtime on; the ownership check
 	// is the mod's own default. -sfve_loader=launcher has the mod start

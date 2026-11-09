@@ -283,7 +283,13 @@ constexpr uint32_t kNodeFunction = 0x30;
 // Presentation, which drifts on replay without the fight diverging (learned
 // with the in-game synctest, -sfve_learn=1): the camera (CameraUnit+0x100,
 // 528 bytes: eye, target, field of view, read by nothing in the fight; the
-// screen edge comes from the fighters' centre below, not the camera), a
+// screen edge comes from the fighters' centre below, not the camera), and
+// its later run at +0x480 (128 bytes: a 4x4 matrix at +0x480 and the
+// floats after it to +0x500, registered by the camera's snapshot at rva
+// 0x32EBD0): two PCs keep different values there while every fight run
+// matches (EMBER_LIBRARY.md section 47: four desyncs between two players'
+// PCs, each this run alone, the 521 others equal, through whole fights
+// once it is left out), so it is the camera's presentation as above; a
 // projectile's visual part (ProjectileVisualPart+0xC0 and +0xF0: its UE
 // actor, reconciled after a restore by rva 0x482D10, so a replay can differ
 // in the actor pointer and a frame counter), and a fighter's material part
@@ -337,6 +343,7 @@ struct RunRule {
 constexpr uint32_t kToTheEnd = ~0u;
 constexpr RunRule kRunRules[] = {
 	{"CameraUnit", 0x100, ".presentation"},
+	{"CameraUnit", 0x480, ".presentation"},
 	{"CharaManagerUnit", 0x1C0, "", 16, 32},
 	{"CharaMaterialPart", 0xD8, ".presentation"},
 	{"CharaMaterialPart", 0x3B0, ".presentation"},
