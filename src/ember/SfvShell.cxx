@@ -163,6 +163,12 @@ private:
 struct ShellStatus {
 	bool shown = false;
 	std::string why, screen, focus;
+	// The pad as the shell navigated by it this frame: the runtime's menu
+	// sample (device, whether it read, its menu bits), the capture and
+	// context that gate it, and what navigation made of it.
+	int deviceType = -1, deviceIndex = -1, capture = 0, context = 0;
+	bool sampleConnected = false, navigationAvailable = false, focused = false;
+	unsigned sampleButtons = 0, navigationButtons = 0;
 };
 std::mutex s_statusMutex;
 ShellStatus s_status;
@@ -378,6 +384,18 @@ void PublishStatus(Shell& shell)
 	sf4e::ui::MenuNavigation& navigation = shell.host.Shell().Navigation();
 	status.screen = navigation.Screen();
 	status.focus = navigation.Focus();
+	if (shell.frame) {
+		const Snapshot& snapshot = *shell.frame->runtime;
+		status.deviceType = snapshot.menuController.deviceType;
+		status.deviceIndex = snapshot.menuController.deviceIndex;
+		status.sampleConnected = snapshot.menuController.connected;
+		status.sampleButtons = snapshot.menuController.buttons;
+		status.capture = static_cast<int>(snapshot.inputCapture);
+		status.context = static_cast<int>(snapshot.menuContext);
+	}
+	status.navigationAvailable = shell.navigation.Available();
+	status.navigationButtons = shell.navigation.Buttons();
+	status.focused = overlay::GameWindowFocused();
 	std::lock_guard lock(s_statusMutex);
 	s_status = std::move(status);
 }
@@ -484,7 +502,12 @@ std::string StatusJson()
 {
 	std::lock_guard lock(s_statusMutex);
 	return "{\"shown\":" + std::string(s_status.shown ? "true" : "false") + ",\"why\":" + mod::JsonString(s_status.why) +
-		",\"screen\":" + mod::JsonString(s_status.screen) + ",\"focus\":" + mod::JsonString(s_status.focus) + "}";
+		",\"screen\":" + mod::JsonString(s_status.screen) + ",\"focus\":" + mod::JsonString(s_status.focus) +
+		",\"input\":{\"device\":[" + std::to_string(s_status.deviceType) + "," + std::to_string(s_status.deviceIndex) +
+		"],\"capture\":" + std::to_string(s_status.capture) + ",\"context\":" + std::to_string(s_status.context) +
+		",\"sample\":" + (s_status.sampleConnected ? std::to_string(s_status.sampleButtons) : std::string("null")) +
+		",\"navigation\":" + (s_status.navigationAvailable ? std::to_string(s_status.navigationButtons) : std::string("null")) +
+		",\"focused\":" + (s_status.focused ? "true" : "false") + "}}";
 }
 
 } // namespace

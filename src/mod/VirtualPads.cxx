@@ -7,6 +7,8 @@
 
 #include <windows.h>
 
+#include <stdio.h>
+
 #include <atomic>
 #include <deque>
 #include <mutex>
@@ -39,6 +41,9 @@ uint64_t s_reads[kPadSlots]; // XInput reads seen per slot, for the status repor
 // the left stick's directions (PadSeen::stick), bits 24 and 25 the left and
 // right triggers held.
 std::atomic<uint32_t> s_seen[kPadSlots];
+// How often each slot's record changed from one read to the next: a pad two
+// readers see differently changes on almost every read.
+std::atomic<uint32_t> s_seenChanges[kPadSlots];
 constexpr uint32_t kSeenConnected = 0x10000;
 constexpr int kSeenStickShift = 20;
 constexpr uint32_t kSeenLeftTrigger = 1u << 24, kSeenRightTrigger = 1u << 25;
@@ -125,7 +130,8 @@ DWORD WINAPI HookedGetState(DWORD user, void* state)
 	const DWORD result = FillVirtualXInput((int)user, state) ? ERROR_SUCCESS
 		: (Ex ? o_getStateEx[M] : o_getState[M])(user, state);
 	if (user < kPadSlots) {
-		s_seen[user] = result == ERROR_SUCCESS && state ? Seen(*static_cast<const XState*>(state)) : 0;
+		const uint32_t seen = result == ERROR_SUCCESS && state ? Seen(*static_cast<const XState*>(state)) : 0;
+		if (s_seen[user].exchange(seen) != seen) s_seenChanges[user]++;
 	}
 	if (result == ERROR_SUCCESS && state) {
 		if (const PadFilter filter = s_padFilter) filter(user, state);
@@ -270,6 +276,16 @@ void RegisterPadCommands()
 		std::lock_guard lock(s_mutex);
 		std::string json = "[";
 		for (int i = 0; i < kPadSlots; i++) json += (i ? "," : "") + std::to_string(s_reads[i]);
+		return json + "]";
+	});
+	// Each slot's last read as LastPadState gives it, and how often it changed.
+	RegisterStatus("padSeen", [] {
+		std::string json = "[";
+		for (int i = 0; i < kPadSlots; i++) {
+			char item[48];
+			snprintf(item, sizeof(item), "%s[\"%08X\",%u]", i ? "," : "", (unsigned)s_seen[i], (unsigned)s_seenChanges[i]);
+			json += item;
+		}
 		return json + "]";
 	});
 	RegisterCommand("virtual", [](const std::string& args) {
