@@ -297,5 +297,5 @@ TEST_CASE("the game's XInput calls reach a layer slot through the hooks")
 	if (sfve::mod::PhysicalPadConnected(3)) MESSAGE("a real XInput pad sits in slot 3 on this PC");
 
 	ClearSlots();
-	CHECK(getState(3, &state) != ERROR_SUCCESS || state.dwPacketNumber != 0x5EED0001);
+	CHECK((getState(3, &state) != ERROR_SUCCESS || state.dwPacketNumber != 0x5EED0001));
 }
