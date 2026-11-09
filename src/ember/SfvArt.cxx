@@ -16,6 +16,7 @@
 #include <wrl/client.h>
 
 #include <array>
+#include <cstdio>
 #include <cwchar>
 #include <deque>
 #include <iterator>
@@ -152,6 +153,19 @@ std::optional<SquareCrop> ReadFaceSquare(const std::wstring& path, const mod::Ga
 	if (FAILED(result)) {
 		mod::Log("art: %ls: its alpha could not be read (0x%08lX); drawn whole", path.c_str(), (unsigned long)result);
 		return std::nullopt;
+	}
+	// For tuning the crop against the game's real cards: with SFVE_DUMP_ART
+	// set, each face's pixels go to the log folder as width, height (two
+	// 32-bit words) and then its rows, four bytes a pixel, unpadded.
+	if (GetEnvironmentVariableW(L"SFVE_DUMP_ART", nullptr, 0)) {
+		std::wstring name = path.substr(path.find_last_of(L'/') + 1);
+		const std::wstring chara = path.find(L"/Chara/") != std::wstring::npos ? path.substr(path.find(L"/Chara/") + 7, 3) : L"";
+		if (FILE* file = _wfopen((mod::LogFolder() + L"\\art-" + chara + L"-" + name.substr(0, name.find(L'.')) + L".bgra").c_str(), L"wb")) {
+			const std::uint32_t size[2] = {static_cast<std::uint32_t>(texture.width), static_cast<std::uint32_t>(texture.height)};
+			fwrite(size, sizeof(size), 1, file);
+			for (int y = 0; y < (int)texture.height; y++) fwrite(static_cast<const std::uint8_t*>(mapped.pData) + (size_t)mapped.RowPitch * y, 4, texture.width, file);
+			fclose(file);
+		}
 	}
 	const std::optional<SquareCrop> square =
 		FaceSquare(static_cast<const std::uint8_t*>(mapped.pData), texture.width, texture.height, mapped.RowPitch);
