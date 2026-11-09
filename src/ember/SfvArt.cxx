@@ -3,6 +3,7 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvFaceCrop.hxx"
 #include "ember/SfvLoadoutText.hxx"
+#include "ember/SfvPictureSpec.hxx"
 #include "ember/SfvRankNames.hxx"
 #include "mod/GameArt.hxx"
 #include "mod/GameContent.hxx"
@@ -36,42 +37,24 @@ constexpr int kLoadsPerFrame = 2;
 // one still without it after this long is given up on.
 constexpr int kResourceFrames = 120;
 
-// How a picture is shown: whole, or (a select-grid face) the square of its
-// face (SfvFaceCrop).
-enum class Framing { Whole, FaceSquare };
+using pictures::Framing;
+using pictures::PixelRect;
 
 struct Picture {
 	enum class State { Queued, WaitingForResource, Ready, Missing } state = State::Queued;
-	Framing framing = Framing::Whole; // as its first request asked
+	pictures::Spec spec; // as its first request asked
 	uint8_t* object = nullptr; // the game's texture, until its Direct3D texture is taken
 	int frames = 0;
 	mod::GameTexture texture;                  // Ready: the game's texture, with our reference
 	ID3D11ShaderResourceView* view = nullptr;  // made on the render thread
-	std::optional<SquareCrop> square;          // FaceSquare: found with the view; empty draws it whole
-};
-
-struct CostumeSwatches {
-	bool read = false;
-	std::vector<int> colours;
-	std::vector<std::optional<std::pair<std::uint32_t, std::uint32_t>>> swatches; // one per colour
+	std::optional<PixelRect> crop;             // FaceSquare or Centre: found with the view; empty draws it whole
 };
 
 std::mutex s_mutex;
 std::map<std::wstring, Picture> s_pictures; // by asset path
 std::deque<std::wstring> s_queue;
-std::map<std::pair<int, int>, CostumeSwatches> s_swatches; // by fighter and costume
+std::map<std::pair<int, int>, CostumePalette> s_swatches; // by fighter and costume
 std::deque<std::pair<int, int>> s_swatchQueue;
-
-std::wstring Wide(const std::string& text)
-{
-	return std::wstring(text.begin(), text.end());
-}
-
-// A UI texture's object path: "/Game/<folder>/<name>.<name>".
-std::wstring AssetPath(const std::wstring& folder, const wchar_t* name)
-{
-	return L"/Game/" + folder + L"/" + name + L"." + name;
-}
 
 // The game's textures are typeless where it views them as sRGB; Ember draws
 // their stored values as they are, as the game's own menus show them.
@@ -166,20 +149,48 @@ std::optional<SquareCrop> ReadFaceSquare(const std::wstring& path, const mod::Ga
 	return square;
 }
 
-sf4e::ui::SelectionImage Image(const std::wstring& path, Framing framing = Framing::Whole)
+// Render thread, under the lock, once the view is made: the part of the
+// picture its framing shows; empty draws it whole.
+std::optional<PixelRect> FindCrop(const std::wstring& path, const Picture& picture)
+{
+	switch (picture.spec.framing) {
+	case Framing::Whole: return std::nullopt;
+	case Framing::FaceSquare: {
+		const std::optional<SquareCrop> square = ReadFaceSquare(path, picture.texture);
+		if (!square) return std::nullopt;
+		return PixelRect{square->x, square->y, square->side, square->side};
+	}
+	case Framing::Centre: {
+		const PixelRect cut = pictures::CentreCrop(picture.texture.width, picture.texture.height, picture.spec.aspect);
+		mod::Log("art: %ls: centre %dx%d at (%d, %d) of %dx%d", path.c_str(), cut.width, cut.height, cut.x, cut.y,
+			picture.texture.width, picture.texture.height);
+		return cut;
+	}
+	}
+	return std::nullopt;
+}
+
+// Under the lock: the picture's entry, queued for loading when it is new.
+Picture& Requested(const pictures::Spec& spec)
+{
+	auto [at, added] = s_pictures.try_emplace(spec.path);
+	if (added) {
+		at->second.spec = spec;
+		s_queue.push_back(spec.path);
+	}
+	return at->second;
+}
+
+// Render thread: the picture, once its view is made and its crop found.
+sf4e::ui::SelectionImage Image(const pictures::Spec& spec)
 {
 	sf4e::ui::SelectionImage image;
-	if (path.empty()) return image.missing = true, image;
+	if (spec.path.empty()) return image.missing = true, image;
 	std::lock_guard lock(s_mutex);
-	auto [at, added] = s_pictures.try_emplace(path);
-	Picture& picture = at->second;
-	if (added) {
-		picture.framing = framing;
-		s_queue.push_back(path);
-	}
+	Picture& picture = Requested(spec);
 	if (picture.state == Picture::State::Ready && !picture.view) {
-		MakeView(path, picture);
-		if (picture.view && picture.framing == Framing::FaceSquare) picture.square = ReadFaceSquare(path, picture.texture);
+		MakeView(spec.path, picture);
+		if (picture.view) picture.crop = FindCrop(spec.path, picture);
 	}
 	if (picture.state == Picture::State::Missing) return image.missing = true, image;
 	if (picture.state != Picture::State::Ready) return image;
@@ -188,10 +199,11 @@ sf4e::ui::SelectionImage Image(const std::wstring& path, Framing framing = Frami
 	image.height = picture.texture.height;
 	// A crop is its uv rect and its own size, as the shared art reports one
 	// (SelectionArt::Request), so every shared screen fits it as it is.
-	if (const std::optional<SquareCrop>& square = picture.square) {
-		image.uvMin = ImVec2((float)square->x / image.width, (float)square->y / image.height);
-		image.uvMax = ImVec2((float)(square->x + square->side) / image.width, (float)(square->y + square->side) / image.height);
-		image.width = image.height = square->side;
+	if (const std::optional<PixelRect>& crop = picture.crop; crop && crop->width > 0 && crop->height > 0) {
+		image.uvMin = ImVec2((float)crop->x / image.width, (float)crop->y / image.height);
+		image.uvMax = ImVec2((float)(crop->x + crop->width) / image.width, (float)(crop->y + crop->height) / image.height);
+		image.width = crop->width;
+		image.height = crop->height;
 	}
 	return image;
 }
@@ -247,7 +259,7 @@ void PumpSwatches()
 		costume = s_swatchQueue.front();
 		s_swatchQueue.pop_front();
 	}
-	CostumeSwatches read;
+	CostumePalette read;
 	read.read = true;
 	read.colours = ColourIds(costume.first, costume.second);
 	for (int colour : read.colours) read.swatches.push_back(mod::ColourSwatch(FighterCode(costume.first), costume.second, colour));
@@ -260,16 +272,28 @@ void PumpSwatches()
 sf4e::ui::SelectionImage FighterImage(int fighter, FighterPicture picture)
 {
 	const std::string code = FighterCode(fighter);
-	if (code.empty()) return Image({});
-	const std::wstring folder = L"Chara/" + Wide(code) + L"/Hud";
-	if (picture == FighterPicture::Face) return Image(AssetPath(folder, L"CharaSelectIconLeft"), Framing::FaceSquare);
-	return Image(AssetPath(folder, L"CharaSelectIcon_l"));
+	return Image(picture == FighterPicture::Face ? pictures::FighterFace(code) : pictures::FighterBanner(code));
 }
 
 sf4e::ui::SelectionImage StageImage(int stage)
 {
-	const std::string code = StageCode(stage);
-	return Image(code.empty() ? std::wstring() : AssetPath(L"Stage/" + Wide(code) + L"/UI", L"StageSelectBG"));
+	// Random's code is the game's Random stage folder; the catalog keeps
+	// StageCode empty for it.
+	return Image(pictures::StageCard(stage == picks::kRandomStage ? std::string(pictures::kRandomStageCode) : StageCode(stage)));
+}
+
+sf4e::ui::SelectionImage LoadoutImage(picks::LoadoutPart part, int choice)
+{
+	return Image(pictures::LoadoutMark(part, choice));
+}
+
+sf4e::ui::SelectionImage CostumeImage(int fighter, int costume)
+{
+	if constexpr (pictures::kCostumePicture == pictures::CostumePicture::Banner) {
+		return Image({});
+	} else {
+		return Image(pictures::ShopCostume(FighterCode(fighter), costume));
+	}
 }
 
 sf4e::ui::SelectionImage LeagueImage(const std::string& name)
@@ -277,19 +301,27 @@ sf4e::ui::SelectionImage LeagueImage(const std::string& name)
 	const ember::RankingClass* ranks = ember::Product().branding.rankingClasses;
 	bool known = false;
 	for (int band = 0; ranks && band < ember::RankingClassCount; band++) known = known || name == ranks[band].emblem;
-	return Image(known ? AssetPath(L"CommonAsset/LeagueIcon", Wide(name).c_str()) : std::wstring());
+	return Image(known ? pictures::LeagueIcon(name) : pictures::Spec{});
 }
 
-std::optional<std::pair<std::uint32_t, std::uint32_t>> Swatch(int fighter, int costume, int colour)
+sf4e::ui::SelectionImage PictureImage(const pictures::Spec& spec)
+{
+	return Image(spec);
+}
+
+void RequestPicture(const pictures::Spec& spec)
+{
+	if (spec.path.empty()) return;
+	std::lock_guard lock(s_mutex);
+	Requested(spec);
+}
+
+CostumePalette CostumeSwatches(int fighter, int costume)
 {
 	std::lock_guard lock(s_mutex);
 	auto [at, added] = s_swatches.try_emplace({fighter, costume});
 	if (added) s_swatchQueue.push_back({fighter, costume});
-	const CostumeSwatches& swatches = at->second;
-	for (size_t i = 0; swatches.read && i < swatches.colours.size(); i++) {
-		if (swatches.colours[i] == colour) return swatches.swatches[i];
-	}
-	return std::nullopt;
+	return at->second;
 }
 
 // Game thread at the main menu, once: SFV's league names in the game's

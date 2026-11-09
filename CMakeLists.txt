@@ -86,17 +86,21 @@ add_library(sfve_ember STATIC
     src/ember/RoomBattle.cxx
     src/ember/RoomCommands.cxx
     src/ember/SfvArt.cxx
+    src/ember/SfvArtProbe.cxx
     src/ember/SfvCatalog.cxx
     src/ember/SfvFaceCrop.cxx
     src/ember/SfvGame.cxx
     src/ember/SfvHud.cxx
     src/ember/SfvLoadoutText.cxx
     src/ember/SfvPick.cxx
+    src/ember/SfvPickPreview.cxx
     src/ember/SfvPickSpace.cxx
+    src/ember/SfvPictureSpec.cxx
     src/ember/SfvReplays.cxx
     src/ember/SfvSelection.cxx
     src/ember/SfvSelectionScreen.cxx
     src/ember/SfvShell.cxx
+    src/ember/SfvSwatchStrip.cxx
     src/ember/SfvTraining.cxx
     src/ember/SfvVerification.cxx
     src/overlay/Overlay.cxx
@@ -153,8 +157,10 @@ unset(index)
 sf4e_embed_brand_mark(sfve_product "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
 target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
 
-# The mod's code the SFV catalog and adapter tests reach without the game.
+# The mod's code the SFV catalog and adapter tests reach without the game
+# (BuildCheck for the shell's development art probe, SfvArtProbe).
 set(SFVE_EMBER_TEST_MOD_SOURCES
+    src/mod/BuildCheck.cxx
     src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/GameArt.cxx src/mod/GameContent.cxx
     src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx
@@ -174,6 +180,8 @@ add_executable(sfve_ember_tests
     tests/GameLocatorTests.cxx
     tests/SelectionArtTests.cxx
     tests/FaceCropTests.cxx
+    tests/SfvPictureSpecTests.cxx
+    tests/SwatchStripTests.cxx
     tests/SfvVerificationTests.cxx
     tests/BattleIdentityTests.cxx
     tests/HudLayoutTests.cxx

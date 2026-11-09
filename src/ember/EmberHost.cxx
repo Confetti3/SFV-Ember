@@ -111,21 +111,13 @@ bool Refuse(const std::string& why)
 // (EMBER_LIBRARY.md section 23): the game's answer and -sfve_unowned's marks.
 void LogOwnership(const mod::ContentLists& lists, bool gate)
 {
-	int fighters = 0, costumes = 0, colours = 0;
-	for (const mod::FighterContent& fighter : lists.fighters) {
-		fighters += !fighter.owned;
-		for (const mod::CostumeContent& costume : fighter.costumes) {
-			costumes += !costume.owned;
-			colours += (int)(costume.colours.size() - costume.ownedColours.size());
-		}
-	}
-	const auto stages = std::count_if(lists.stages.begin(), lists.stages.end(), [](const mod::StageContent& s) { return !s.owned; });
+	const mod::ContentCounts counts = mod::CountContent(lists);
 	const mod::OwnershipSource& source = lists.ownership;
-	mod::Log("ember: ownership gate %s, looks by %s; the game's setup restricted %d (%d entries), filter %d, logged in %d; "
-		"%d marked unowned by -sfve_unowned; not owned: %d fighters, %d costumes, %d colours, %zu of %zu stages",
-		gate ? "on" : "off (development)", mod::CostumeOwnershipName(source.looks), source.restricted,
-		source.restrictionEntries, source.filter, source.loggedIn, source.markedUnowned, fighters, costumes, colours,
-		(size_t)stages, lists.stages.size());
+	mod::Log("ember: ownership gate %s, looks by %s, stages by %s; the game's setup restricted %d (%d entries), filter %d, "
+		"logged in %d; %d marked unowned by -sfve_unowned; not owned: %d fighters, %d costumes, %d colours, %d of %d stages",
+		gate ? "on" : "off (development)", mod::LooksRule(source), mod::ContentOwnershipName(source.stages),
+		source.restricted, source.restrictionEntries, source.filter, source.loggedIn, source.markedUnowned,
+		counts.fightersNotOwned, counts.costumesNotOwned, counts.coloursNotOwned, counts.stagesNotOwned, counts.stages);
 }
 
 // The costumes of the pick space against this copy's install and its
@@ -136,42 +128,35 @@ void LogOwnership(const mod::ContentLists& lists, bool gate)
 // build id; the numbers say why a copy offers fewer looks than the spec has.
 void LogCostumes(const mod::ContentLists& lists)
 {
-	int costumes = 0, installed = 0, entitled = 0, lacking = 0, lackingLooks = 0, fighters = 0;
-	for (const mod::FighterContent& fighter : lists.fighters) {
-		fighters += fighter.entitled;
-		for (const mod::CostumeContent& costume : fighter.costumes) {
-			costumes++;
-			installed += costume.installed;
-			entitled += costume.entitled;
-			lacking += !costume.entitled;
-			for (int colour : costume.colours) {
-				const bool granted = costume.entitled &&
-					std::find(costume.entitledColours.begin(), costume.entitledColours.end(), colour) != costume.entitledColours.end();
-				lackingLooks += !granted;
-			}
-		}
-	}
+	const mod::ContentCounts counts = mod::CountContent(lists);
 	mod::Log("ember: costumes %d in the spec, %d installed here, %d in the account cache; account cache lacks: %d costumes, "
-		"%d colours; fighters %zu in the spec, %d in the account cache", costumes, installed, entitled, lacking, lackingLooks,
-		lists.fighters.size(), fighters);
+		"%d colours; fighters %d in the spec, %d in the account cache", counts.costumes, counts.costumesInstalled,
+		counts.costumesEntitled, counts.costumes - counts.costumesEntitled, counts.looksNotEntitled, counts.fighters,
+		counts.fightersEntitled);
 }
 
 // The catalog's stages for the log: the universe the build id fingerprints,
 // how many this copy has installed, and the codes of those it has not, so a
 // player's log names what their copy lacks; then the pick space's part
 // fingerprints, so two logs show whether fighters, costumes and colours agree
-// apart from the stages (SfvPickSpace's PartFingerprints).
+// apart from the stages (SfvPickSpace's PartFingerprints). A second line
+// names, with the game's names, the stages installed here that the account's
+// entitlement cache does not grant (EMBER_LIBRARY.md section 41): the rows
+// SFV's own stage lists leave out, which kContentOwnership's default does not
+// offer this player.
 void LogStages(const mod::ContentLists& lists, int marked)
 {
-	std::string missing;
-	size_t installed = 0;
+	const mod::ContentCounts counts = mod::CountContent(lists);
+	std::string missing, notEntitled;
 	for (const mod::StageContent& stage : lists.stages) {
-		if (stage.installed) installed++;
-		else missing += (missing.empty() ? "" : ",") + stage.code;
+		if (!stage.installed) missing += (missing.empty() ? "" : ",") + stage.code;
+		else if (!stage.entitled) notEntitled += (notEntitled.empty() ? "" : ", ") + stage.code + " \"" + stage.name + "\"";
 	}
-	mod::Log("ember: stages: %zu in the game's list, %zu installed here (%d marked not installed by -sfve_uninstalled); "
-		"not installed: %s; fingerprints: %s", lists.stages.size(), installed, marked, missing.empty() ? "none" : missing.c_str(),
-		picks::PartFingerprints(PickSpaceOf(lists)).c_str());
+	mod::Log("ember: stages: %d in the game's list, %d installed here (%d marked not installed by -sfve_uninstalled); "
+		"not installed: %s; fingerprints: %s", counts.stages, counts.stagesInstalled, marked,
+		missing.empty() ? "none" : missing.c_str(), picks::PartFingerprints(PickSpaceOf(lists)).c_str());
+	mod::Log("ember: stages installed here but not in the account cache: %d (%s); offered by %s", counts.stagesNotEntitled,
+		notEntitled.empty() ? "none" : notEntitled.c_str(), mod::ContentOwnershipName(lists.ownership.stages));
 }
 
 // Each fighter's V-Skills and V-Triggers as the game's name assets give
@@ -213,6 +198,8 @@ bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 {
 	const ULONGLONG readStarted = GetTickCount64();
 	mod::ContentLists lists = mod::ReadContentLists();
+	// Tables that can never make lists: no point waiting for them.
+	if (!lists.error.empty()) return Refuse("the game's lists cannot be read: " + lists.error);
 	mod::MarkUnowned(lists, settings.unowned);
 	const int marked = mod::MarkUninstalled(lists, settings.uninstalled);
 	if (lists.fighters.empty() || lists.stages.empty()) {

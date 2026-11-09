@@ -1,18 +1,14 @@
 #include "ember/SfvSelectionScreen.hxx"
 
-#include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvLoadoutText.hxx"
+#include "ember/SfvPickPreview.hxx"
 #include "ember/SfvPickSpace.hxx"
 
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "ui/MenuRows.hxx"
 #include "ui/SelectionLabels.hxx"
-#include "ui/Theme.hxx"
-#include "ui/V2.hxx"
-
-#include <imgui.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -44,11 +40,8 @@ struct LoadoutRow {
 };
 constexpr LoadoutRow kLoadoutRows[] = {{kVSkill, picks::LoadoutPart::VSkill}, {kVTrigger, picks::LoadoutPart::VTrigger}};
 
-// The fighter's banner (CharaSelectIcon_l) is 380x258 and a stage's picture
-// (StageSelectBG) 2048x512: the shapes their frames keep while they load.
+// The pane is as wide as the fighter's banner (CharaSelectIcon_l, 380x258).
 constexpr float kBannerWidth = 380;
-constexpr float kBannerShape = 258.f / 380.f;
-constexpr float kStageShape = 512.f / 2048.f;
 
 std::string OptionId(int id)
 {
@@ -166,23 +159,25 @@ constexpr Opening kOpenings[] = {
 	{sf4e::ui::SelectionStart::LookUltra, kCostume, false},
 };
 
-ImU32 Rgb(std::uint32_t rgb)
+// The first of `ids` that is also in `preferred`, else the first of `ids`;
+// `fallback` for none.
+int FirstOf(const std::vector<int>& ids, const std::vector<int>& preferred, int fallback)
 {
-	return IM_COL32((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, 0xFF);
+	for (int id : ids) {
+		if (Contains(preferred, id)) return id;
+	}
+	return ids.empty() ? fallback : ids.front();
 }
 
-// A picture `width` wide at its own shape from `at`, or an empty frame of the
-// shape it is expected to have while it loads; the height it takes, none
-// where the game has no picture.
-float DrawPicture(ImDrawList* draw, const sf4e::ui::SelectionImage& image, ImVec2 at, float width, float expectedShape)
+// The pick's loadout with each part the fighter lacks back at I, as the
+// stored pick is fitted.
+void FitPreviewLoadout(sf4e::selection::Pick& pick)
 {
-	if (image.missing) return 0;
-	const float s = sf4e::ui::Scale();
-	const float height = image.width > 0 ? width * image.height / image.width : width * expectedShape;
-	const ImVec2 end(at.x + width, at.y + height);
-	if (image.texture) draw->AddImage(image.texture, at, end, image.uvMin, image.uvMax);
-	else draw->AddRect(at, end, sf4e::ui::v2::Colors().border, 4 * s, 0, s);
-	return height;
+	picks::Loadout loadout = picks::LoadoutOf(pick);
+	for (const picks::LoadoutPart part : picks::kLoadoutParts) {
+		if (loadout.choice[part] >= PartChoices(pick.fighter, part)) loadout.choice[part] = 0;
+	}
+	picks::SetLoadout(pick, loadout);
 }
 
 } // namespace
@@ -211,7 +206,7 @@ bool StepTableSelection(const sf4e::ui::ShellAction::SelectionStep& step, bool c
 }
 
 std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool editable, bool withStage, bool stageEditable,
-	const std::vector<int>& stageChoices)
+	const std::vector<StageOption>& stageOptions)
 {
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const char* adjusts = editable ? "selection.adjust_saves" : "selection.locked_detail";
@@ -239,8 +234,14 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 		colours.push_back({OptionId(id), ColourName(id), notOwned(ColourNotOwned(pick.pick.fighter, pick.pick.costume, id)),
 			editable && Contains(readyColours, id)});
 	}
+	// A stage the opponent lacks is listed, unable to be chosen, with the
+	// runtime's own reason (EMBER_LIBRARY.md section 43).
 	std::vector<MenuChoice> stages;
-	for (int id : stageChoices) stages.push_back({OptionId(id), sf4e::ui::StageLabel(id), {}, editable && stageEditable});
+	for (const StageOption& option : stageOptions) {
+		const bool lacking = option.offer == StageOffer::OpponentLacks;
+		stages.push_back({OptionId(option.id), sf4e::ui::StageLabel(option.id),
+			lacking ? std::string(loc::T("runtime.ready.stage_not_shared")) : std::string(), editable && stageEditable && !lacking});
+	}
 	std::vector<MenuEntry> rows;
 	rows.push_back(StepRow(kFighter, "selection.fighter", catalog.fighterName(pick.pick.fighter),
 		editable ? "selection.select_saves" : "selection.locked_detail", editable, std::move(fighters), pick.pick.fighter));
@@ -258,7 +259,7 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 	return rows;
 }
 
-bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const std::vector<int>& stageChoices)
+bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions)
 {
 	if (const std::optional<picks::LoadoutPart> part = PartOfRow(action.id)) return ApplyPart(action, *part, pick.pick);
 	const ember::GameCatalog& catalog = ember::Catalog();
@@ -269,7 +270,8 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const
 	// new fighter or costume lacks, or that is not theirs, is fitted as the
 	// pick is stored (SetPick), and so is a loadout part the new fighter
 	// lacks. A choice they cannot ready is refused here too, whatever the
-	// list let through.
+	// list let through, and so is a stage the opponent lacks.
+	const std::vector<int> stageChoices = PlayableIds(stageOptions);
 	if (action.kind == MenuAction::Adjust) {
 		if (action.id == kFighter) sf4e::ui::Step(pick.pick.fighter, PlayableRoster(), action.delta);
 		else if (action.id == kCostume) sf4e::ui::Step(pick.pick.costume, CostumeIds(pick.pick.fighter, true), action.delta);
@@ -313,8 +315,8 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	menu_.exitName = embedded.exitName;
 	menu_.shortcutHints = embedded.shortcutHints;
 	PlayerPick pick = dummy_ ? CurrentDummy() : CurrentPick();
-	const std::vector<int> stageChoices = StageChoices(unavailableStages);
-	const std::vector<MenuEntry> rows = Rows(pick, editable, !dummy_, stageEditable && !dummy_, stageChoices);
+	const std::vector<StageOption> stageOptions = StageOptions(unavailableStages);
+	const std::vector<MenuEntry> rows = Rows(pick, editable, !dummy_, stageEditable && !dummy_, stageOptions);
 	const char* status = loc::T(editable ? "selection.status_adjust" : "selection.locked_detail");
 	// The pane beside the rows is the pick's preview, as wide as the fighter's
 	// banner. The choice dialog draws an option's detail under its list,
@@ -322,71 +324,85 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	// 540-line screen, so the pane says it too.
 	menu_.customDetail = true;
 	menu_.paneWidth = kBannerWidth;
-	const std::string note = FocusedChoiceNote(rows);
-	const sf4e::ui::GameMenu::Detail preview = [&pick, &note](const std::string& focus) { DrawPreview(pick, focus, note); };
+	const sf4e::ui::GameMenu::Detail preview = [this, &pick, &rows, &stageOptions](const std::string& focus) {
+		DrawPickPreview(PreviewOf(pick, focus, rows, stageOptions));
+	};
 	const MenuAction action = menu_.Draw(title, rows, error.empty() ? status : error.c_str(), preview, 1,
 		{}, {}, false, 100, error.empty() ? sf4e::ui::Tone::Neutral : sf4e::ui::Tone::Error);
 	if (action.kind == MenuAction::Close || action.kind == MenuAction::Shortcut) sf4e::ui::ForwardMenuAction(action);
 	if (action.kind == MenuAction::Activate && action.id == kDone) sf4e::ui::ForwardMenuAction({MenuAction::Close});
-	if (!editable || (action.id == kStage && (!stageEditable || dummy_)) || !Apply(action, pick, stageChoices)) return;
+	if (!editable || (action.id == kStage && (!stageEditable || dummy_)) || !Apply(action, pick, stageOptions)) return;
 	if (dummy_) SetDummy(pick);
 	else SetPick(pick);
 	// Opened for this one change, a choice made is it: back where it came from.
 	if (action.kind == MenuAction::Chosen && action.id == openOn_) sf4e::ui::ForwardMenuAction({MenuAction::Close});
 }
 
-std::string SfvSelectionScreen::FocusedChoiceNote(const std::vector<MenuEntry>& rows) const
+PreviewFocus SfvSelectionScreen::FocusOf(const std::string& rowId)
 {
-	const auto& nav = menu_.navigation;
-	if (!nav.Choosing()) return {};
-	for (const MenuEntry& row : rows) {
-		if (row.id == nav.DialogId() && nav.ChoiceIndex() < row.choices.size()) return row.choices[nav.ChoiceIndex()].detail;
-	}
-	return {};
+	if (rowId == kStage) return PreviewFocus::Stage;
+	if (PartOfRow(rowId)) return PreviewFocus::Loadout;
+	return PreviewFocus::Look;
 }
 
-void SfvSelectionScreen::DrawPreview(const PlayerPick& pick, const std::string& focus, const std::string& note)
+PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId)
 {
-	ImDrawList* draw = ImGui::GetWindowDrawList();
-	const auto& colors = sf4e::ui::v2::Colors();
-	const float s = sf4e::ui::Scale(), gap = 10 * s, line = ImGui::GetTextLineHeightWithSpacing();
-	ImVec2 at = ImGui::GetCursorScreenPos();
-	const float width = ImGui::GetContentRegionAvail().x;
-	if (!note.empty()) {
-		at.y += sf4e::ui::v2::Paragraph(draw, at, width, note, ImGui::GetFontSize(), colors.danger) + gap;
+	PlayerPick shown = pick;
+	const std::optional<int> option = OptionOf(optionId);
+	if (!option) return shown;
+	sf4e::selection::Pick& look = shown.pick;
+	if (const std::optional<picks::LoadoutPart> part = PartOfRow(rowId)) {
+		if (Contains(PartNumbers(look.fighter, *part), *option)) {
+			picks::Loadout loadout = picks::LoadoutOf(look);
+			loadout.choice[*part] = (std::uint8_t)*option;
+			picks::SetLoadout(look, loadout);
+		}
+	} else if (rowId == kFighter && ember::ValidFighter(*option)) {
+		// The fighter in its first look this player can ready (any, for one
+		// they cannot), as the stored pick would be fitted.
+		look.fighter = *option;
+		look.costume = FirstOf(CostumeIds(look.fighter, false), CostumeIds(look.fighter, true), 0);
+		look.color = FirstOf(ColourIds(look.fighter, look.costume), ColourIds(look.fighter, look.costume, true), 0);
+		FitPreviewLoadout(look);
+	} else if (rowId == kCostume && Contains(CostumeIds(look.fighter, false), *option)) {
+		look.costume = *option;
+		const std::vector<int> colours = ColourIds(look.fighter, look.costume);
+		if (!Contains(colours, look.color)) look.color = FirstOf(colours, ColourIds(look.fighter, look.costume, true), 0);
+	} else if (rowId == kColour && Contains(ColourIds(look.fighter, look.costume), *option)) {
+		look.color = *option;
+	} else if (rowId == kStage) {
+		shown.stage = *option;
 	}
-	if (focus == kStage) {
-		// Random has no picture: StageImage reports it missing.
-		at.y += DrawPicture(draw, StageImage(pick.stage), at, width, kStageShape) + gap;
-		draw->AddText(at, colors.text, sf4e::ui::StageLabel(pick.stage).c_str());
-		return;
-	}
-	at.y += DrawPicture(draw, FighterImage(pick.pick.fighter, FighterPicture::Banner), at, width, kBannerShape) + gap;
-	draw->AddText(at, colors.text, ember::Catalog().fighterName(pick.pick.fighter));
-	at.y += line;
-	draw->AddText(at, colors.muted, CostumeName(pick.pick.fighter, pick.pick.costume).c_str());
-	at.y += line;
-	// The colour by the costume menu's label, then its two swatch colours.
-	const std::string colour = std::string(loc::T("selection.color_row")) + " " + ColourName(pick.pick.color);
-	draw->AddText(at, colors.muted, colour.c_str());
-	if (const auto swatch = Swatch(pick.pick.fighter, pick.pick.costume, pick.pick.color)) {
-		const float side = ImGui::GetTextLineHeight();
-		float x = at.x + ImGui::CalcTextSize(colour.c_str()).x + gap;
-		for (const std::uint32_t rgb : {swatch->first, swatch->second}) {
-			draw->AddRectFilled(ImVec2(x, at.y), ImVec2(x + side, at.y + side), Rgb(rgb), 3 * s);
-			draw->AddRect(ImVec2(x, at.y), ImVec2(x + side, at.y + side), colors.border, 3 * s, 0, s);
-			x += side + 4 * s;
+	return shown;
+}
+
+PickPreview SfvSelectionScreen::PreviewOf(const PlayerPick& pick, const std::string& focus, const std::vector<MenuEntry>& rows,
+	const std::vector<StageOption>& stageOptions) const
+{
+	const auto& nav = menu_.navigation;
+	PickPreview preview;
+	// With a choice open, its row and its focused option: the navigation as
+	// the menu holds it while it draws the pane (at most a frame behind the
+	// choice list), this frame's rows, the index checked against them. An option that cannot be chosen says
+	// why (NOT OWNED, a stage the opponent lacks); a part's choice's detail
+	// is its move, which the pane's loadout lines already show.
+	std::string rowId = focus, optionId;
+	if (nav.Choosing()) {
+		rowId = nav.DialogId();
+		for (const MenuEntry& row : rows) {
+			if (row.id != rowId || nav.ChoiceIndex() >= row.choices.size()) continue;
+			const sf4e::ui::MenuChoice& option = row.choices[nav.ChoiceIndex()];
+			optionId = option.id;
+			if (!option.enabled && !PartOfRow(rowId)) preview.note = option.detail;
 		}
 	}
-	// The V-Skill and the V-Trigger, each as the game words its choice.
-	const picks::Loadout loadout = picks::LoadoutOf(pick.pick);
-	for (const LoadoutRow& row : kLoadoutRows) {
-		at.y += line;
-		const int number = loadout.choice[row.part];
-		const std::string text =
-			std::string(PartLabel(row.part)) + " " + ChoiceText(number, MoveName(pick.pick.fighter, row.part, number));
-		draw->AddText(at, colors.muted, text.c_str());
+	preview.pick = Previewed(pick, rowId, optionId);
+	preview.focus = FocusOf(rowId);
+	if (const std::optional<picks::LoadoutPart> part = PartOfRow(rowId)) preview.part = *part;
+	for (const StageOption& option : stageOptions) {
+		if (option.id == preview.pick.stage) preview.stageShared = option.offer != StageOffer::OpponentLacks;
 	}
+	return preview;
 }
 
 } // namespace sfve::adapter

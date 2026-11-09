@@ -76,27 +76,53 @@ constexpr uint32_t kPersonalName = 80;
 // RefColorAvailableCode (a colour) granted. An element without a row is one
 // the game has no data for; every element with one is in the universe.
 //
+// The stages are a fourth set, built by step 7 too (rva 0x56CB10): one
+// element for every row of the StageSpec table embedded in the exe ("Name,
+// StageId,RefAvailableCode,RefVisibleCode", 46 rows), in the rows' order,
+// keyed by the row's StageId (an index into the StageAsset table,
+// content::kStageEntries). Step 8's stages' refresh (rva 0x57E380) tests each
+// stage's package (value+3, whatever the cache grants) and sets value+0 and
+// value+1 from the cache (type 3); the game's stage listers keep only
+// elements with all three (sfv::kSpecData's comment).
+//
 // Each set is a UE4 TSet (+0 its elements' data) found by key with the
-// game's own lookups (sfv::kFindSpecFighter and the others); an element is
-// its int key, then its value at +8.
+// game's own lookups (sfv::kSpecFighterSet and the others); an element is
+// its int key, then its value at +8. The elements are a TSparseArray: +8
+// their count, +52 how many slots are free. The builder empties a set before
+// it fills it (rva 0x549A50, 0x549C30) and nothing removes from one, so no
+// slot is free and the elements lie in the order they were added, the order
+// the game's listers walk them in.
 namespace spec {
 constexpr uint32_t kFighters = 328; // SpecData: the fighters' set, keyed by CharaUniqueID
+constexpr uint32_t kStages = 408;   // SpecData: the stages' set, keyed by StageAsset index
 constexpr uint32_t kSetElements = 0;
+constexpr uint32_t kSetCount = 8;
+constexpr uint32_t kSetFreeSlots = 52;
 constexpr uint32_t kValue = 8;
 constexpr uint32_t kFighterStride = 136;
 constexpr uint32_t kCostumeStride = 120;
 constexpr uint32_t kColourStride = 40;
-// A value's fields, the same for the three kinds.
+constexpr uint32_t kStageStride = 48;
+// A value's fields, the same for the four kinds.
 constexpr uint32_t kEntitled = 0; // byte: the row's code is in the entitlement cache
-constexpr uint32_t kRow = 8;      // the linked FKWCharaSpec row; null for none
+constexpr uint32_t kRow = 8;      // the linked FKWCharaSpec (or FKWStageSpec) row; null for none
 // A fighter's value: its costumes' set, keyed by costume number. (Its +2 is
-// kSpecFighters' selectable flag, +4 its cached package test.)
+// the game's selectable flag: its package, both codes granted and a usable
+// costume; +4 its cached package test.)
 constexpr uint32_t kFighterCostumes = 32;
 // A costume's value: its colours' set, keyed by colour number. (Its +3 is
-// its cached package test, set only for the costumes the refresh asks.)
+// its cached package test: the builder sets +2 on every costume, and the
+// refresh tests each one once and clears +2.)
 constexpr uint32_t kCostumeColours = 24;
 // The builder adds colours 0 to 127 under every costume.
 constexpr int kColourKeys = 128;
+// A stage's value: +3 its package found (or the code RND), set by the
+// stages' refresh whatever the cache grants.
+constexpr uint32_t kStageInstalled = 3;
+// A stage's value: +2 the game's selectable flag (element +10, what its stage
+// lister keeps), which the stages' refresh (rva 0x57E380) sets to +3 and both
+// of the stage row's codes granted by the entitlement cache (+0 and +1).
+constexpr uint32_t kStageSelectable = 2;
 } // namespace spec
 
 // A fighter's V-Trigger and V-Skill names (/Game/Chara/DA_VTriggerNameAsset
@@ -172,6 +198,22 @@ constexpr int kProviderType = 14;        // a provider type registered by the fl
 constexpr uint32_t kProviderPlayers = 8; // Provider: PlayerSetup[]
 constexpr uint32_t kPlayerSetupSize = 96;
 constexpr int kPlayers = 2;
+// The battle setting's players, as the battle loads them. sfv::kPlayerRef
+// gives the setting's player `n` (the setting's +88 + 8n, rva 0x7B5680): its
+// +40 the setting's four 1424-byte player records, its +56 which record is
+// this player's (below 4). A record: +144 the fighter's code (4 bytes, UTF-8,
+// read so by rva 0x7B3A50), +176 the costume, +180 the colour, +220 the
+// V-Trigger, +228 the V-Skill (rva 0x7CAA40 copies a CharPkg's +16, +20, +48
+// and +56 to them, through a pointer to the record's +144). The battle's resource load (rva 0x69BC20) puts the costume back to
+// 0 through rva 0x7B33B0 when its package is missing on this copy.
+constexpr uint32_t kRefRecords = 40;
+constexpr uint32_t kRefRecord = 56;
+constexpr uint32_t kSettingRecords = 4;
+constexpr uint32_t kSettingRecordSize = 1424;
+constexpr uint32_t kSettingCode = 144;
+constexpr uint32_t kSettingCodeSize = 4;
+constexpr uint32_t kSettingCostume = 176;
+constexpr uint32_t kSettingColour = 180;
 // The mode data object's type for each target (the first step's mapping:
 // 0 -> 4, 2 -> 0, else 3).
 constexpr int kVersusCpuType = 4;

@@ -69,7 +69,9 @@ TEST_CASE("the game's pictures are its fighters' faces and its stages', and the 
 	CHECK(art.Portrait(5).missing); // not a fighter of the catalog
 	CHECK_FALSE(art.Stage(3).missing); // the universe's, whether or not this copy has it
 	CHECK(art.Stage(4).missing);
-	CHECK(art.Stage(sfve::picks::kRandomStage).missing); // Random has no picture, and none is asked for
+	// Random has the game's own Random stage picture (section 43).
+	CHECK_FALSE(art.Stage(sfve::picks::kRandomStage).missing);
+	CHECK(art.Stage(sfve::picks::kRandomStage).texture == 0);
 	// The game has no picture of a fighter in a costume or colour.
 	CHECK(art.Character(0, 0, 0).missing);
 	CHECK(art.Appearance(0, 0, 0).missing);
@@ -81,5 +83,14 @@ TEST_CASE("the game's pictures are its fighters' faces and its stages', and the 
 	CHECK(art.RankingEmblem("LI_gold").texture == 0);
 	for (const char* other : {"class_B.dds", "LI_dummy", "LI_super_gold", "", "LI_gold.LI_gold", "../LI_gold"})
 		CHECK(art.RankingEmblem(other).missing);
-	CHECK_FALSE(Swatch(0, 4, 100).has_value()); // read by the game thread
+	CHECK_FALSE(CostumeSwatches(0, 4).read); // read by the game thread
+	CHECK(CostumeSwatches(0, 4).colours.empty());
+	// The pick screen pane's pictures wait for the game too, and a costume
+	// picture is missing while the shop's are not shown.
+	CHECK_FALSE(LoadoutImage(sfve::picks::LoadoutPart::VSkill, 1).missing);
+	CHECK(LoadoutImage(sfve::picks::LoadoutPart::VTrigger, 2).missing); // no third choice
+	if constexpr (sfve::pictures::kCostumePicture == sfve::pictures::CostumePicture::Banner) CHECK(CostumeImage(0, 4).missing);
+	// The Arcade cabinet's badge is the loadout's short form.
+	CHECK(std::string(sf4e::ui::UltraBadge(2)) == "II/I");
+	CHECK(std::string(sf4e::ui::UltraBadge(4)).empty());
 }

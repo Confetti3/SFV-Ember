@@ -3,8 +3,10 @@
 // a row for each part (SfvSelectionScreen's Rows and Apply, what its Draw
 // shows and does), and the table page's and post-match prompt's one Ultra
 // value (StepTableSelection), which steps only the loadouts the fighter has.
-// The fighters are CatalogFixture's: RYU two of each, CNL two V-Skills and
-// one V-Trigger, KEN one of each.
+// Then the pick screen's stage row with a stage the opponent lacks and one
+// this player is not offered (section 41), and what its pane previews
+// (section 43). The fighters are CatalogFixture's: RYU two
+// of each, CNL two V-Skills and one V-Trigger, KEN one of each.
 
 #include <doctest/doctest.h>
 
@@ -15,6 +17,7 @@
 #include "ember/SfvPickSpace.hxx"
 #include "ember/SfvSelectionScreen.hxx"
 
+#include "common/Localization.hxx"
 #include "ui/ApplicationShell.hxx"
 #include "ui/GameMenu.hxx"
 
@@ -53,7 +56,7 @@ bool HasRow(const std::vector<MenuEntry>& rows, const char* id)
 
 std::vector<MenuEntry> PlayerRows(const PlayerPick& pick)
 {
-	return SfvSelectionScreen::Rows(pick, true, true, true, StageChoices(MissingStages()));
+	return SfvSelectionScreen::Rows(pick, true, true, true, StageOptions(MissingStages()));
 }
 
 MenuAction Adjust(const char* row, int delta)
@@ -124,7 +127,7 @@ TEST_CASE("the pick screen has a V-Skill and a V-Trigger row, and a part the fig
 TEST_CASE("the pick screen changes a part only to a choice the fighter has, and says when the loadout changed")
 {
 	FillTestCatalog();
-	const std::vector<int> stages = StageChoices(MissingStages());
+	const std::vector<StageOption> stages = StageOptions(MissingStages());
 	PlayerPick pick = PlayerPickOf(kCnl, kOneOne);
 	// Right on V-Skill: II, a change.
 	CHECK(SfvSelectionScreen::Apply(Adjust("vskill", 1), pick, stages));
@@ -184,4 +187,86 @@ TEST_CASE("the table page's and post-match prompt's Ultra steps only the fighter
 		CHECK(StepTableSelection(Step(Field::Ultra, 1), true, true));
 		CHECK(picks::LoadoutOf(CurrentPick().pick) == expected);
 	}
+}
+
+TEST_CASE("the stage row lists a stage the opponent lacks with the reason, leaves out one this player is not offered, and Left, Right and a choice pass both by")
+{
+	FillTestCatalog();
+	// At a table whose opponent lacks S01 (id 0); this copy lacks S26, and
+	// the account's cache lacks S02 (id 1), which is installed here.
+	const std::vector<StageOption> stages = StageOptions({0, kUninstalledStage});
+	PlayerPick pick = PlayerPickOf(kRyu, kOneOne);
+	pick.stage = picks::kRandomStage;
+	const MenuEntry& row = RowOf(SfvSelectionScreen::Rows(pick, true, true, true, stages), "stage");
+	REQUIRE(row.choices.size() == 3);
+	CHECK(row.choices[1].id == "#0");
+	CHECK_FALSE(row.choices[1].enabled);
+	CHECK(row.choices[1].detail == sf4e::loc::T("runtime.ready.stage_not_shared"));
+	CHECK(row.choices[2].id == "#2");
+	CHECK(row.choices[2].enabled);
+	CHECK(row.choices[2].detail.empty());
+	CHECK(std::none_of(row.choices.begin(), row.choices.end(), [](const auto& choice) { return choice.id == "#1"; }));
+	CHECK(std::none_of(row.choices.begin(), row.choices.end(), [](const auto& choice) { return choice.id == "#3"; }));
+	// Right from Random skips S01 (dimmed) and S02 (not listed) for S25;
+	// choosing either is refused.
+	CHECK(SfvSelectionScreen::Apply(Adjust("stage", 1), pick, stages));
+	CHECK(pick.stage == 2);
+	CHECK_FALSE(SfvSelectionScreen::Apply(Choose("stage", "#0"), pick, stages));
+	CHECK_FALSE(SfvSelectionScreen::Apply(Choose("stage", "#1"), pick, stages));
+	CHECK(pick.stage == 2);
+	CHECK(SfvSelectionScreen::Apply(Choose("stage", "#255"), pick, stages));
+	CHECK(pick.stage == picks::kRandomStage);
+}
+
+TEST_CASE("the pane shows the focused row's part of the pick")
+{
+	CHECK(SfvSelectionScreen::FocusOf("fighter") == PreviewFocus::Look);
+	CHECK(SfvSelectionScreen::FocusOf("costume") == PreviewFocus::Look);
+	CHECK(SfvSelectionScreen::FocusOf("color") == PreviewFocus::Look);
+	CHECK(SfvSelectionScreen::FocusOf("vskill") == PreviewFocus::Loadout);
+	CHECK(SfvSelectionScreen::FocusOf("vtrigger") == PreviewFocus::Loadout);
+	CHECK(SfvSelectionScreen::FocusOf("stage") == PreviewFocus::Stage);
+	CHECK(SfvSelectionScreen::FocusOf("done") == PreviewFocus::Look);
+	CHECK(SfvSelectionScreen::FocusOf("") == PreviewFocus::Look);
+}
+
+TEST_CASE("with a choice open the pane previews its focused option, ready or not")
+{
+	FillTestCatalog();
+	PlayerPick pick = PlayerPickOf(kRyu, kTwoTwo);
+	pick.pick.costume = 4;
+	pick.pick.color = 1;
+	pick.stage = 0;
+	// No option: the pick as it is.
+	CHECK(SfvSelectionScreen::Previewed(pick, "costume", "").pick.costume == 4);
+	// A costume keeps the colour where it has it, else takes its first one
+	// this player can ready.
+	PlayerPick shown = SfvSelectionScreen::Previewed(pick, "costume", "#0");
+	CHECK(shown.pick.costume == 0);
+	CHECK(shown.pick.color == 1);
+	pick.pick.color = 100;
+	shown = SfvSelectionScreen::Previewed(pick, "costume", "#0");
+	CHECK(shown.pick.color == 0);
+	// A costume this player cannot ready is shown as it is (RYU's costume 1).
+	CHECK(SfvSelectionScreen::Previewed(pick, "costume", "#1").pick.costume == 1);
+	// A colour, an EX one this player cannot ready among them.
+	pick.pick.color = 0;
+	CHECK(SfvSelectionScreen::Previewed(pick, "color", "#101").pick.color == 101);
+	CHECK(SfvSelectionScreen::Previewed(pick, "color", "#7").pick.color == 0); // not a colour of the costume
+	// A part's choice, only one the fighter has.
+	CHECK(picks::LoadoutOf(SfvSelectionScreen::Previewed(pick, "vskill", "#0").pick) == kOneTwo);
+	PlayerPick cnl = PlayerPickOf(kCnl, kOneOne);
+	CHECK(picks::LoadoutOf(SfvSelectionScreen::Previewed(cnl, "vtrigger", "#1").pick) == kOneOne);
+	// Another fighter: its first look, the loadout fitted to it.
+	shown = SfvSelectionScreen::Previewed(pick, "fighter", "#2");
+	CHECK(shown.pick.fighter == kKen);
+	CHECK(shown.pick.costume == 0);
+	CHECK(shown.pick.color == 0);
+	CHECK(picks::LoadoutOf(shown.pick) == kOneOne);
+	// A stage, and Random.
+	CHECK(SfvSelectionScreen::Previewed(pick, "stage", "#2").stage == 2);
+	CHECK(SfvSelectionScreen::Previewed(pick, "stage", "#255").stage == picks::kRandomStage);
+	// The stored pick itself is never touched.
+	CHECK(pick.pick.fighter == kRyu);
+	CHECK(pick.stage == 0);
 }

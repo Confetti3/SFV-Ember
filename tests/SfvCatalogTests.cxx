@@ -152,7 +152,7 @@ TEST_CASE("a stage is one of the game's stages, by its place in the list")
 	CHECK_FALSE(valid(picks::kRandomStage)); // never a stage on the wire
 }
 
-TEST_CASE("which stages this copy has installed is its own: the room hears them, and the stage row offers the rest")
+TEST_CASE("which stages this copy has installed is its own: the room hears them, and the stage row offers this player's")
 {
 	FillTestCatalog();
 	CHECK(StageInstalled(0));
@@ -168,12 +168,37 @@ TEST_CASE("which stages this copy has installed is its own: the room hears them,
 	CHECK(std::is_sorted(missing.begin(), missing.end()));
 	CHECK(std::adjacent_find(missing.begin(), missing.end()) == missing.end());
 	CHECK(ember::Catalog().stagesCanBeMissing);
-	// The stage row: Random, then the universe less what the runtime says is
-	// unavailable (this copy's own missing stages, and at a table the
-	// opponent's as well).
-	CHECK(StageChoices(MissingStages()) == std::vector<int>{picks::kRandomStage, 0, 1, 2});
-	CHECK(StageChoices({1, kUninstalledStage}) == std::vector<int>{picks::kRandomStage, 0, 2});
-	CHECK(StageChoices({}) == std::vector<int>{picks::kRandomStage, 0, 1, 2, 3});
+	// S02 is installed here though the account's cache lacks it: the room
+	// hears only what this copy has not installed (section 41).
+	CHECK(StageInstalled(kNotEntitledStage));
+	// This player's own offers, under the default rule (the fixture's `owned`
+	// is ContentOwnership::Entitlements'): installed and entitled.
+	CHECK(StageOffered(0));
+	CHECK_FALSE(StageOffered(kNotEntitledStage));
+	CHECK(StageOffered(2));
+	CHECK_FALSE(StageOffered(kUninstalledStage));
+	CHECK_FALSE(StageOffered(4));
+	CHECK_FALSE(StageOffered(picks::kRandomStage));
+	// The stage row: Random, then the universe in its order less the stages
+	// this player is not offered (this copy's missing S26, and S02 the cache
+	// lacks); one only the opponent lacks is listed as such (section 43), and
+	// only Random and the rest can be chosen.
+	using Offer = StageOffer;
+	CHECK(StageOptions(MissingStages()) ==
+		std::vector<StageOption>{{picks::kRandomStage, Offer::Playable}, {0, Offer::Playable}, {2, Offer::Playable}});
+	const std::vector<StageOption> atTable = StageOptions({2, kUninstalledStage});
+	CHECK(atTable ==
+		std::vector<StageOption>{{picks::kRandomStage, Offer::Playable}, {0, Offer::Playable}, {2, Offer::OpponentLacks}});
+	CHECK(PlayableIds(atTable) == std::vector<int>{picks::kRandomStage, 0});
+	// A stage the opponent lacks that this player is not offered either is
+	// left out, not dimmed: not being theirs to choose hides it.
+	CHECK(StageOptions({kNotEntitledStage, kUninstalledStage}) ==
+		std::vector<StageOption>{{picks::kRandomStage, Offer::Playable}, {0, Offer::Playable}, {2, Offer::Playable}});
+	// Neither this copy's missing stage nor the stage the cache lacks is ever
+	// listed, even where the runtime's set leaves them out.
+	CHECK(PlayableIds(StageOptions({})) == std::vector<int>{picks::kRandomStage, 0, 2});
+	// The opponent lacking every stage this copy has: Random alone can be chosen.
+	CHECK(PlayableIds(StageOptions({0, 1, 2, kUninstalledStage})) == std::vector<int>{picks::kRandomStage});
 }
 
 TEST_CASE("a room's match launches its fighters, stage, rounds and time by the game's codes")
@@ -191,6 +216,12 @@ TEST_CASE("a room's match launches its fighters, stage, rounds and time by the g
 	CHECK(picks->players[1].costume == 4);
 	CHECK(picks->players[1].colour == 101);
 	CHECK(picks->rules.stage == L"S02");
+	// S02 is installed here, though this copy's account does not grant it and
+	// its player is never offered it: a stage the room's P1 chose plays on
+	// any copy that has it installed (section 41).
+	REQUIRE_FALSE(StageOffered(kNotEntitledStage));
+	CHECK(match.stage == kNotEntitledStage);
+	CHECK(LaunchPicks(match).refusal.log.empty());
 	CHECK(picks->rules.rounds == 5);
 	CHECK(picks->rules.timeFrames == 60 * 60);
 
@@ -287,8 +318,8 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	colour.fighters[0].costumes[2].colours.pop_back();
 	CHECK(ContentFingerprint(colour) != fingerprint);
 	mod::ContentLists moved = TestContent();
-	moved.fighters[0].costumes[0].colours = {0, 1};
-	moved.fighters[0].costumes[1].colours.push_back(2);
+	moved.fighters[0].costumes[0].colours = {{0}, {1}};
+	moved.fighters[0].costumes[1].colours.push_back({2});
 	CHECK(ContentFingerprint(moved) != fingerprint);
 	// A fighter with a V-Trigger or a V-Skill more or less is another pick
 	// space (section 40), and so is one whose counts swap.
@@ -310,6 +341,10 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	translated.stages[3].installed = true;
 	translated.stages[1].installed = false;
 	translated.stages[2].owned = false;
+	// Nor which stages the account's cache grants (section 41).
+	translated.stages[0].entitled = false;
+	translated.stages[3].entitled = true;
+	translated.stages[3].owned = true;
 	translated.fighters[0].name = "Ryu, translated";
 	translated.fighters[0].costumes[0].name = "Story, translated";
 	translated.fighters[0].vSkills[1] = "Skill Two, translated";
@@ -318,15 +353,16 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	translated.fighters[4].costumes[1].installed = true;
 	translated.fighters[2].owned = true;
 	translated.fighters[1].costumes[1].owned = true;
-	translated.fighters[0].costumes[2].ownedColours = {0};
+	for (mod::ColourContent& entry : translated.fighters[0].costumes[2].colours) entry.owned = entry.id == 0;
 	// Nor what the account's entitlement cache grants, nor the rule that
 	// turns it into ownership (EMBER_LIBRARY.md section 41).
 	translated.fighters[1].costumes[2].entitled = true;
-	translated.fighters[1].costumes[2].entitledColours = {0};
-	translated.fighters[0].costumes[2].entitledColours.clear();
+	translated.fighters[1].costumes[2].colours[0].entitled = true;
+	for (mod::ColourContent& entry : translated.fighters[0].costumes[2].colours) entry.entitled = false;
 	translated.fighters[0].entitled = false;
 	translated.fighters[4].costumes[0].installed = false;
-	translated.ownership.looks = mod::CostumeOwnership::Installed;
+	translated.ownership.looks = mod::ContentOwnership::Installed;
+	translated.ownership.stages = mod::ContentOwnership::Installed;
 	CHECK(ContentFingerprint(translated) == fingerprint);
 	// A costume more moves the picks' part of the log's fingerprints, never
 	// the stages' part.

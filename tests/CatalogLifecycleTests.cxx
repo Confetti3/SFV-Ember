@@ -55,7 +55,7 @@ TEST_CASE("the catalog is empty until the game's lists fill it, takes one pick s
 	CHECK(FillCatalog(renamed));
 	CHECK_FALSE(FillCatalog(CodesOnly({"RYU"}, {"S01"})));
 	mod::ContentLists recoloured = TestContent();
-	recoloured.fighters[2].costumes[0].colours.push_back(1);
+	recoloured.fighters[2].costumes[0].colours.push_back({1});
 	CHECK_FALSE(FillCatalog(recoloured));
 	CHECK(ember::Catalog().fighterCount == 5);
 

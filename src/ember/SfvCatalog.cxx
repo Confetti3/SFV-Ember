@@ -49,59 +49,58 @@ const mod::CostumeContent* CostumeAt(std::int64_t fighter, int costume)
 	return nullptr;
 }
 
-bool Contains(const std::vector<int>& list, int value)
-{
-	return std::find(list.begin(), list.end(), value) != list.end();
-}
-
-bool HasColour(const mod::CostumeContent& costume, int colour)
-{
-	return Contains(costume.colours, colour);
-}
-
 // What this copy's player may pick, by GameContent's `owned` while the gate
-// is on: the game's answer for fighters, and for looks the answer of
-// GameContent's one switch, kCostumeOwnership (the game's, from the account's
-// entitlement cache, or every look installed here; EMBER_LIBRARY.md section
-// 41). Only this copy's own player's picks are
-// judged so: the opponent's pick plays as picked (LaunchPicks checks the
-// spec alone), as SF4's DLC gate does.
+// is on: the game's answer for fighters, and for looks and stages the answer
+// of GameContent's one switch, kContentOwnership (the game's, from the
+// account's entitlement cache, or everything installed here;
+// EMBER_LIBRARY.md section 41). Only this copy's own player's picks are
+// judged so: the opponent's pick, and the stage the room's P1 chose, play as
+// picked (LaunchPicks checks the spec and this copy's install alone), as
+// SF4's DLC gate does.
 bool FighterOwned(const mod::FighterContent& fighter)
 {
 	return !s_gate || fighter.owned;
 }
 
-// What a player wears is a look, a costume in one of its colours, and the
-// game's answer is owned only for the look as a whole: the costume and that
-// colour both theirs. A costume of theirs in no colour of theirs gives them
-// nothing to wear, so no rule here asks a costume's or a colour's flag alone.
-bool LookOwned(const mod::CostumeContent& costume, int colour)
+// What a player wears is a look, a costume in one of its colours (one of the
+// costume's own entries), and the game's answer is owned only for the look
+// as a whole: the costume and that colour both theirs. A costume of theirs in
+// no colour of theirs gives them nothing to wear, so no rule here asks a
+// costume's or a colour's flag alone.
+bool LookOwned(const mod::CostumeContent& costume, const mod::ColourContent& colour)
 {
-	return !s_gate || (costume.owned && Contains(costume.ownedColours, colour));
+	return !s_gate || (costume.owned && colour.owned);
 }
 
 // A costume with at least one look the game lets them pick, installed here or not.
 bool CostumeOwned(const mod::CostumeContent& costume)
 {
 	return std::any_of(costume.colours.begin(), costume.colours.end(),
-		[&costume](int colour) { return LookOwned(costume, colour); });
+		[&costume](const mod::ColourContent& colour) { return LookOwned(costume, colour); });
 }
 
-// A look this copy's player can ready: a colour of the costume, the costume
-// installed here, and the look theirs. The one availability rule: the Ready
-// check, the fitting of their own pick and the pick screen's choices are all
-// built from it.
+// A look this copy's player can ready: the costume installed here, and the
+// look theirs. The one availability rule: the Ready check, the fitting of
+// their own pick and the pick screen's choices are all built from it.
+bool LookReady(const mod::CostumeContent& costume, const mod::ColourContent& colour)
+{
+	return costume.installed && LookOwned(costume, colour);
+}
+
+// The same for the costume in the colour numbered `colour`; never for a
+// colour the costume does not have.
 bool LookReady(const mod::CostumeContent& costume, int colour)
 {
-	return costume.installed && HasColour(costume, colour) && LookOwned(costume, colour);
+	const mod::ColourContent* entry = mod::ColourOf(costume, colour);
+	return entry && LookReady(costume, *entry);
 }
 
 // The costume's colours, in the game's order, that make a look they can ready.
 std::vector<int> ReadyColours(const mod::CostumeContent& costume)
 {
 	std::vector<int> ready;
-	for (int colour : costume.colours) {
-		if (LookReady(costume, colour)) ready.push_back(colour);
+	for (const mod::ColourContent& colour : costume.colours) {
+		if (LookReady(costume, colour)) ready.push_back(colour.id);
 	}
 	return ready;
 }
@@ -110,7 +109,7 @@ std::vector<int> ReadyColours(const mod::CostumeContent& costume)
 bool CostumeReady(const mod::CostumeContent& costume)
 {
 	return std::any_of(costume.colours.begin(), costume.colours.end(),
-		[&costume](int colour) { return LookReady(costume, colour); });
+		[&costume](const mod::ColourContent& colour) { return LookReady(costume, colour); });
 }
 
 // A costume of the fighter the spec has, in one of that costume's colours.
@@ -190,24 +189,28 @@ bool NormalizePick(sf4e::selection::Pick& pick, bool, const sf4e::selection::Ava
 	return !picks::SameFitting(pick, before);
 }
 
-// The universe's stages less `unavailable`, in the universe's order: what the
-// stage row offers after Random, and what Random rolls over.
+// The stages this copy's player is offered (StageOffered) less
+// `unavailable`, in the universe's order: what Random rolls over, and the
+// stage row's Playable stages. The runtime's set is install-based (this
+// copy's missing stages and the opponent's), so a stage this player may not
+// choose is left out here, not by the room.
 std::vector<int> PlayableStages(const std::vector<std::int64_t>& unavailable)
 {
 	std::vector<int> stages;
 	for (int id = 0; id < (int)s_lists.stages.size(); id++) {
-		if (std::find(unavailable.begin(), unavailable.end(), id) == unavailable.end()) stages.push_back(id);
+		if (StageOffered(id) && std::find(unavailable.begin(), unavailable.end(), id) == unavailable.end()) stages.push_back(id);
 	}
 	return stages;
 }
 
 // Random (kRandomStage) becomes one of the PlayableStages, each as likely
 // (the roll modulo their count: a 32-bit roll over at most a few dozen stages
-// is even to within one part in 10^7). The runtime's set already holds this
-// copy's own missing stages, so nothing else is asked. With no stage left,
-// Random stays as it is, unresolved, and the runtime's Ready check refuses
-// it. Any other choice is a stage of the universe, else the first. SF4's
-// RandomPool and custom stages are not SFV's.
+// is even to within one part in 10^7). Only this copy's own Random is
+// resolved here (P1's at Ready, or Training's), so it rolls only over what
+// this player is offered. With no stage left, Random stays as it is,
+// unresolved, and the runtime's Ready check refuses it. Any other choice is
+// a stage of the universe, else the first. SF4's RandomPool and custom
+// stages are not SFV's.
 int ResolveStage(int choice, std::uint32_t roll, const sf4e::selection::RandomPool&, const sf4e::selection::InstalledContent*,
 	const std::vector<std::int64_t>& unavailable)
 {
@@ -318,7 +321,7 @@ picks::PickSpace PickSpaceOf(const mod::ContentLists& lists)
 	picks::PickSpace space;
 	for (const mod::FighterContent& fighter : lists.fighters) {
 		picks::Fighter entry{fighter.code, {}, (int)fighter.vSkills.size(), (int)fighter.vTriggers.size()};
-		for (const mod::CostumeContent& costume : fighter.costumes) entry.costumes.push_back({costume.id, costume.colours});
+		for (const mod::CostumeContent& costume : fighter.costumes) entry.costumes.push_back({costume.id, mod::ColourNumbers(costume)});
 		space.fighters.push_back(std::move(entry));
 	}
 	for (const mod::StageContent& stage : lists.stages) space.stages.push_back(stage.code);
@@ -360,6 +363,12 @@ bool StageInstalled(std::int64_t stage)
 	return content && content->installed;
 }
 
+bool StageOffered(std::int64_t stage)
+{
+	const mod::StageContent* content = StageAt(stage);
+	return content && content->installed && (!s_gate || content->owned);
+}
+
 std::vector<std::int64_t> MissingStages()
 {
 	std::vector<std::int64_t> missing;
@@ -369,18 +378,31 @@ std::vector<std::int64_t> MissingStages()
 	return missing;
 }
 
-std::vector<int> StageChoices(const std::vector<std::int64_t>& unavailable)
+std::vector<StageOption> StageOptions(const std::vector<std::int64_t>& unavailable)
 {
-	std::vector<int> stages{picks::kRandomStage};
+	std::vector<StageOption> options{{picks::kRandomStage, StageOffer::Playable}};
 	const std::vector<int> playable = PlayableStages(unavailable);
-	stages.insert(stages.end(), playable.begin(), playable.end());
-	return stages;
+	for (int id = 0; id < (int)s_lists.stages.size(); id++) {
+		if (!StageOffered(id)) continue;
+		const bool offered = std::find(playable.begin(), playable.end(), id) != playable.end();
+		options.push_back({id, offered ? StageOffer::Playable : StageOffer::OpponentLacks});
+	}
+	return options;
+}
+
+std::vector<int> PlayableIds(const std::vector<StageOption>& options)
+{
+	std::vector<int> ids;
+	for (const StageOption& option : options) {
+		if (option.offer == StageOffer::Playable) ids.push_back(option.id);
+	}
+	return ids;
 }
 
 std::string OfflineStageCode(int stage)
 {
 	// The roll is the game state's (SfvGame's system generator), as P1's
-	// Ready rolls a room's Random.
+	// Ready rolls a room's Random, over the stages this player is offered.
 	return StageCode(ResolveStage(stage, ember::game::Game().state.Random(), sf4e::selection::RandomPool(), nullptr, MissingStages()));
 }
 
@@ -399,7 +421,7 @@ std::vector<int> ColourIds(std::int64_t fighter, int costume, bool pickableOnly)
 {
 	const mod::CostumeContent* content = CostumeAt(fighter, costume);
 	if (!content) return {};
-	return pickableOnly ? ReadyColours(*content) : content->colours;
+	return pickableOnly ? ReadyColours(*content) : mod::ColourNumbers(*content);
 }
 
 bool FighterNotOwned(std::int64_t fighter)
@@ -418,7 +440,8 @@ bool CostumeNotOwned(std::int64_t fighter, int costume)
 bool ColourNotOwned(std::int64_t fighter, int costume, int colour)
 {
 	const mod::CostumeContent* content = CostumeAt(fighter, costume);
-	return content && HasColour(*content, colour) && !LookOwned(*content, colour);
+	const mod::ColourContent* entry = content ? mod::ColourOf(*content, colour) : nullptr;
+	return entry && !LookOwned(*content, *entry);
 }
 
 sf4e::selection::Availability OwnedAvailability(std::int64_t fighter)

@@ -21,7 +21,7 @@
 // What this copy's install lacks is per copy: such a fighter is locked and
 // such a costume cannot be readied (FighterLocked, AvailablePick). So is what
 // this copy's player may not pick (GameContent's `owned`, for a costume in a
-// colour together, under its kCostumeOwnership switch: by default the
+// colour together, under its kContentOwnership switch: by default the
 // game's answer, from the account's entitlement cache; EMBER_LIBRARY.md
 // section 41) while Ember's ownership gate is on, and a
 // fighter with no costume and colour left to ready is locked too: each
@@ -35,8 +35,14 @@
 // has installed is per copy (StageInstalled), never part of the build id:
 // two copies that lack different stages still meet, the room carries what
 // each lacks (MissingStages, the library's GameState::MissingStages), and
-// the stage row and Random offer only stages both seated players have.
-// EMBER_LIBRARY.md section 38.
+// Random rolls only over stages both seated players have. Which stages this
+// copy's player may choose is per copy too (StageOffered: installed and,
+// under kContentOwnership's default, granted by the account's entitlement
+// cache): their stage row, their stored stage and the Random their copy
+// rolls take only those, while a stage the room's P1 chose plays on any copy
+// that has it installed. The stage row shows a stage only the opponent
+// lacks, unable to be chosen (StageOptions). EMBER_LIBRARY.md sections 38,
+// 41 and 43.
 //
 // A pick's V-Skill and V-Trigger are its loadout (SfvPickSpace's Loadout),
 // which travels in the shared pick's Ultra slot as one of four numbers
@@ -115,25 +121,49 @@ std::string StageCode(std::int64_t stage);
 std::string StageName(std::int64_t stage);
 // How many stages the universe has (0 before FillCatalog); ids run from 0.
 int StageCount();
-// This copy has the stage's package: the one per-copy stage rule. A launch
-// (LaunchPicks), a replay's playback and the fitting of this player's own
-// stored stage ask it, whatever the room says; false for an id outside the
-// universe.
+// This copy has the stage's package: what a stage needs to play here. A
+// launch (LaunchPicks) and a replay's playback ask it, whatever the room
+// says or this copy's account grants; false for an id outside the universe.
 bool StageInstalled(std::int64_t stage);
+// This copy's player may choose the stage: installed here and, while Ember's
+// ownership gate is on, owned under GameContent's kContentOwnership (by
+// default, granted by the account's entitlement cache, as SFV's own stage
+// lists offer it). The one rule for this player's own stage offers: the
+// stage row (StageOptions), the fitting of their stored stage (SfvPick) and
+// the Random their copy rolls (the catalog's resolveStage,
+// OfflineStageCode). False for an id outside the universe.
+bool StageOffered(std::int64_t stage);
 // The universe's stages this copy has not installed, by id, ascending: what
 // the room hears this copy lacks (SfvGame's GameState::MissingStages). Fixed
-// once the catalog is filled.
+// once the catalog is filled. Install-based only: a stage this player is not
+// offered still plays here when the room's P1 chose it.
 std::vector<std::int64_t> MissingStages();
-// What the pick screen's stage row offers: Random (picks::kRandomStage)
-// first, then the universe's stages less `unavailable`, in the universe's
-// order: the stages the catalog's resolveStage rolls Random over, by the same
-// filter. `unavailable` is the runtime's unavailableStages: this copy's
-// missing stages, and at a table the opponent's as well.
-std::vector<int> StageChoices(const std::vector<std::int64_t>& unavailable);
+// What the pick screen's stage row lists: Random (picks::kRandomStage)
+// first, then the universe's stages in its order that this player is offered
+// (StageOffered: no other can ever be theirs to pick, so it is not listed). A
+// stage in `unavailable` that they are offered is one the opponent lacks:
+// listed, as OpponentLacks, so the player sees it and why (the runtime's
+// runtime.ready.stage_not_shared), but never chosen. `unavailable` is the
+// runtime's unavailableStages: this copy's missing stages, and at a table the
+// opponent's as well; the two are told apart here alone. EMBER_LIBRARY.md
+// sections 41 and 43.
+enum class StageOffer { Playable, OpponentLacks };
+struct StageOption {
+	int id = 0;
+	StageOffer offer = StageOffer::Playable;
+	bool operator==(const StageOption&) const = default;
+};
+std::vector<StageOption> StageOptions(const std::vector<std::int64_t>& unavailable);
+// The options that can be chosen, in order: what Left and Right step through
+// and what a choice must be. Random and the Playable stages, the stages the
+// catalog's resolveStage rolls Random over.
+std::vector<int> PlayableIds(const std::vector<StageOption>& options);
 // The stage code a launch that is not a room's (Training) plays the stage
-// choice on: the stage, or for Random one this copy has installed, rolled by
+// choice on: the stage, or for Random one this player is offered, rolled by
 // the catalog's own resolveStage with this copy's missing stages as the
-// unavailable ones, as a room's Random is. A launch never sees Random itself.
+// unavailable ones, as a room's Random is. A launch never sees Random
+// itself: with no stage offered the code is empty, and the launch leaves the
+// stage as it is.
 std::string OfflineStageCode(int stage);
 
 // The fighter's costume numbers in the game's order, and a costume's colour

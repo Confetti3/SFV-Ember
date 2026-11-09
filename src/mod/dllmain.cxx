@@ -248,45 +248,40 @@ extern "C" int SfveStart(int beforeGameCode)
 	RegisterCommand("content", [](const std::string&) {
 		RunOnGameThread([] {
 			ContentLists lists = ReadContentLists();
+			if (!lists.error.empty()) Log("content: no lists: %s", lists.error.c_str());
 			MarkUnowned(lists, Config().unowned);
 			MarkUninstalled(lists, Config().uninstalled);
 			const OwnershipSource& source = lists.ownership;
-			Log("content: %zu fighters, %zu stages; ownership %s, looks by %s: setup restricted %d (%d entries), filter %d, "
-				"logged in %d, %d marked unowned by -sfve_unowned",
-				lists.fighters.size(), lists.stages.size(), source.read ? "read" : "not read", CostumeOwnershipName(source.looks),
-				source.restricted, source.restrictionEntries, source.filter, source.loggedIn, source.markedUnowned);
-			int unownedFighters = 0, unownedCostumes = 0, unownedColours = 0;
+			Log("content: %zu fighters, %zu stages; ownership %s, looks by %s, stages by %s: setup restricted %d (%d entries), "
+				"filter %d, logged in %d, %d marked unowned by -sfve_unowned",
+				lists.fighters.size(), lists.stages.size(), source.read ? "read" : "not read", LooksRule(source),
+				ContentOwnershipName(source.stages), source.restricted, source.restrictionEntries, source.filter,
+				source.loggedIn, source.markedUnowned);
 			for (const FighterContent& fighter : lists.fighters) {
-				unownedFighters += !fighter.owned;
 				Log("content: %s \"%s\"%s%s%s, %zu costumes", fighter.code.c_str(), fighter.name.c_str(),
 					fighter.installed ? "" : " (not installed)", fighter.owned ? "" : " (not owned)",
 					fighter.entitled ? "" : " (not in the account cache)", fighter.costumes.size());
 				Log("content:   %s", ChoicesText(fighter).c_str());
 				for (const CostumeContent& costume : fighter.costumes) {
 					std::string colours;
-					for (int colour : costume.colours) {
-						const auto has = [colour](const std::vector<int>& list) {
-							return std::find(list.begin(), list.end(), colour) != list.end();
-						};
-						const bool owned = has(costume.ownedColours);
-						unownedColours += !owned;
-						colours += " " + std::to_string(colour) + (owned ? "" : "(not owned)") +
-							(has(costume.entitledColours) ? "" : "(not in the account cache)");
+					for (const ColourContent& colour : costume.colours) {
+						colours += " " + std::to_string(colour.id) + (colour.owned ? "" : "(not owned)") +
+							(colour.entitled ? "" : "(not in the account cache)");
 					}
-					unownedCostumes += !costume.owned;
 					Log("content:   costume %d \"%s\"%s%s%s, colours%s", costume.id, costume.name.c_str(),
 						costume.installed ? "" : " (not installed)", costume.owned ? "" : " (not owned)",
 						costume.entitled ? "" : " (not in the account cache)", colours.c_str());
 				}
 			}
-			int unownedStages = 0;
 			for (const StageContent& stage : lists.stages) {
-				unownedStages += !stage.owned;
-				Log("content: stage %s \"%s\"%s%s", stage.code.c_str(), stage.name.c_str(),
-					stage.installed ? "" : " (not installed)", stage.owned ? "" : " (not owned)");
+				Log("content: stage %s \"%s\"%s%s%s", stage.code.c_str(), stage.name.c_str(),
+					stage.installed ? "" : " (not installed)", stage.installed && !stage.entitled ? " (not in the account cache)" : "",
+					stage.owned ? "" : " (not owned)");
 			}
-			Log("content: not owned: %d fighters, %d costumes, %d colours, %d stages", unownedFighters, unownedCostumes,
-				unownedColours, unownedStages);
+			const ContentCounts counts = CountContent(lists);
+			Log("content: not owned: %d fighters, %d costumes, %d colours, %d stages; %d stages installed but not in the "
+				"account cache", counts.fightersNotOwned, counts.costumesNotOwned, counts.coloursNotOwned, counts.stagesNotOwned,
+				counts.stagesNotEntitled);
 		});
 		return std::string("ok queued (see the log)");
 	});

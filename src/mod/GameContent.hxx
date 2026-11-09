@@ -12,14 +12,17 @@
 //   comes from the game's spec data (DA_Spec) and fighter table
 //   (DA_CharaEntry), never from what this copy has installed or what its
 //   account's entitlement cache holds: every fighter, costume and colour with
-//   a CharaSpec row (sfv::spec, found with sfv::kFindSpecFighter and the
-//   others), and the spec's stages (sfv::kSpecStageIds). EMBER_LIBRARY.md
-//   section 41.
+//   a CharaSpec row (sfv::spec, found with the game's own lookups,
+//   sfv::kSpecFighterSet and the others), and every stage with a StageSpec
+//   row (sfv::spec::kStages). Each is a number or a code: `id` and `code`
+//   below, all that SfvCatalog's PickSpaceOf takes. EMBER_LIBRARY.md section
+//   41.
 // - This copy's own: whether its install has a fighter's, a costume's or a
 //   stage's package (`installed`), what its account's entitlement cache
 //   grants (`entitled`), what this copy's player may pick (`owned`: the
-//   game's answer, sfv::kOwnedFighters and the rest, under kCostumeOwnership
-//   for looks), and the names, in the game's language.
+//   game's answer, sfv::kOwnedFighters and the rest, for fighters; under
+//   kContentOwnership for looks and stages), and the names, in the game's
+//   language.
 //
 // Stage names are the stage's data asset's FText (sfv::kStageName); fighter
 // names the fighter's PersonalData FText; costume names the spec's (where it
@@ -40,45 +43,72 @@
 
 namespace sfve::mod {
 
-// Which looks (a costume in one of its colours) this copy's player may pick.
-// The opponent's look always plays as picked, whatever this copy's answer
-// (EMBER_LIBRARY.md sections 23 and 41). Fighters keep the game's answer
-// (sfv::kOwnedFighters) under either.
-enum class CostumeOwnership {
-	// The game's own answer (sfv::kOwnedCostumes, kOwnedColours), as its
-	// menus offer looks: those the account's entitlement cache grants and
-	// this copy has installed. On a copy whose cache lacks a costume, that
-	// costume shows as not owned.
+// Which looks (a costume in one of its colours) and which stages this copy's
+// player may pick. The opponent's look always plays as picked, and so does
+// the stage the room's P1 chose, whatever this copy's answer: only that this
+// copy has it installed is asked (EMBER_LIBRARY.md sections 23, 38 and 41).
+// Fighters keep the game's answer (sfv::kOwnedFighters) under either.
+enum class ContentOwnership {
+	// As the game's menus offer them. Looks: the game's own answer
+	// (sfv::kOwnedCostumes, kOwnedColours), those the account's entitlement
+	// cache grants and this copy has installed, or, while the battle setup
+	// asset restricts the picks (OwnershipSource::restricted), the asset's
+	// own list; on a copy whose cache lacks a costume, that costume shows as
+	// not owned. Stages: those installed here whose StageSpec row's two codes
+	// the cache grants (StageContent::entitled), the stages SFV Ember offered
+	// before its stage universe became the spec's rows.
 	Entitlements,
-	// Every look of a costume this copy has installed, whatever the cache
-	// holds. While the battle setup asset restricts the picks to its own list
-	// (OwnershipSource::restricted), the game's answer still decides.
+	// Every look of a costume this copy has installed, and every stage
+	// installed here, whatever the cache holds. While the battle setup asset
+	// restricts the picks, the game's answer still decides the looks.
 	Installed,
 };
 
-// The one switch for that rule, applied by ApplyCostumeOwnership as the
+// The one switch for that rule, applied by ApplyContentOwnership as the
 // content lists are read.
-constexpr CostumeOwnership kCostumeOwnership = CostumeOwnership::Entitlements;
+constexpr ContentOwnership kContentOwnership = ContentOwnership::Entitlements;
+
+// One colour of a costume: its number (the pick space's) and this copy's
+// facts about it.
+struct ColourContent {
+	int id = 0; // the game's colour number: 0-99, then 100 and up for the EX colours
+	// This copy's player may pick the costume in this colour, under
+	// kContentOwnership. A look is theirs only with the costume's own `owned`
+	// as well (SfvCatalog's LookOwned).
+	bool owned = false;
+	// The account's entitlement cache grants the colour's code
+	// (RefColorAvailableCode, sfv::spec::kEntitled). Reported, never gated on
+	// directly.
+	bool entitled = false;
+	// The colour's two swatch colours (the costume settings menu's) are not
+	// read with the lists: the game reads them from the costume's
+	// CostumeColorPreview data asset, which it finds or loads first
+	// (sfv::kColourSwatch), a load per costume that the lists' one read at
+	// the main menu cannot afford for all 875. SfvArt reads them a costume a
+	// frame (mod::ColourSwatch, GameArt.hxx).
+};
 
 struct CostumeContent {
 	int id = 0; // the game's costume number: its place in the fighter's CostumeDatas
-	// The game's colour numbers for this costume, in the game's order: 0-99,
-	// then 100 and up for the EX colours. Every colour with a CharaSpec row.
-	std::vector<int> colours;
+	// Every colour with a CharaSpec row, in the game's order: 0-99, then the
+	// EX colours.
+	std::vector<ColourContent> colours;
 	std::string name; // UTF-8, display only
 	// This copy has the costume's package (sfv::kCostumePackage, the test the
 	// battle's own load makes).
 	bool installed = false;
-	// This copy's player may pick it, under kCostumeOwnership.
+	// This copy's player may pick it, under kContentOwnership.
 	bool owned = false;
-	// The colours of `colours` this copy's player may pick, in the same order.
-	std::vector<int> ownedColours;
 	// The account's entitlement cache grants the costume's code
-	// (sfv::spec::kEntitled), and the colours of `colours` whose codes it
-	// grants, in the same order. Reported, never gated on directly.
+	// (RefCostumeAvailableCode, sfv::spec::kEntitled). Reported, never gated
+	// on directly.
 	bool entitled = false;
-	std::vector<int> entitledColours;
 };
+
+// The costume's colour `id`; null for a colour it does not have.
+const ColourContent* ColourOf(const CostumeContent& costume, int id);
+// The costume's colour numbers, in order: all the pick space keeps of them.
+std::vector<int> ColourNumbers(const CostumeContent& costume);
 
 struct FighterContent {
 	std::string code;
@@ -110,63 +140,107 @@ struct OwnershipSource {
 	// Content the command line marks unowned for this copy
 	// (-sfve_unowned, ModConfig), applied on top of the game's answer.
 	int markedUnowned = 0;
-	// The rule that made the costumes' `owned` (ApplyCostumeOwnership).
-	CostumeOwnership looks = CostumeOwnership::Entitlements;
+	// The rule that made the looks' `owned` (ApplyContentOwnership): Installed
+	// only where it applied, Entitlements (the game's answer) otherwise.
+	ContentOwnership looks = ContentOwnership::Entitlements;
+	// The rule that made the stages' `owned`: always the switch's, since no
+	// asset restriction applies to stages.
+	ContentOwnership stages = ContentOwnership::Entitlements;
 };
 
-// One stage of the spec's universe (sfv::kSpecStageIds): every copy of the
-// build lists the same stages in the same order, whatever it has installed.
+// One stage of the universe: every stage with a StageSpec row (less Random
+// and those without stage data), the same stages in the same order on every
+// copy of the build, whatever it has installed or its account holds.
 struct StageContent {
 	std::string code;       // "S01"
 	std::string name;       // UTF-8, display only; empty where the game has none
-	bool installed = false; // in sfv::kSpecStages: this copy has the stage's package
-	// The game lets this copy's player choose it (sfv::kOwnedStages); logged,
-	// not gated (a room's stage is P1's choice and the battle jump runs no
-	// check in a room).
+	bool installed = false; // this copy has the stage's package (sfv::spec::kStageInstalled)
+	// The game's own selectable flag (sfv::spec::kStageSelectable): the
+	// stage's package is here AND the account's entitlement cache grants both
+	// of its StageSpec row's codes. What SFV's own stage lists keep.
+	bool entitled = false;
+	// This copy's player may choose it, under kContentOwnership: their stage
+	// row, the fitting of their stored stage and the Random their copy rolls
+	// as P1 take only these (SfvCatalog's StageOffered). Never asked of the
+	// room's stage: one P1 chose plays on any copy that has it installed.
 	bool owned = false;
 };
 
 struct ContentLists {
-	std::vector<FighterContent> fighters; // in the order of the game's select screen
+	std::vector<FighterContent> fighters; // in the fighter table's order, the game's select screen's
 	// The universe, in the spec's order: playable ones (not random, not those
 	// without stage data), installed here or not.
 	std::vector<StageContent> stages;
 	OwnershipSource ownership;
+	// Why this exe's tables can never give Ember lists (a CharaUniqueID twice
+	// in the fighter table, a spec set laid out otherwise than Ember knows, a
+	// name asset past what Ember reads, nothing playable); empty otherwise.
+	// With it the lists are empty and stay so: the host refuses rather than
+	// waits.
+	std::string error;
 };
 
-// Game thread. Empty lists until the game's content tables, its battle
-// setup asset and its V-Trigger and V-Skill name assets are loaded, until
-// the spec's refresh has set the entitlement flags (sfv::kSpecFighters lists
-// a fighter), and while the spec's stage universe is empty or this copy has
-// none of its stages installed. Those assets are found, or loaded, with
-// StaticLoadObject, so call it at the main menu (never in a battle). A name
-// asset whose counts are past any the game could hold (sfv::choices'
-// limits) reads as not there, logged once. This copy's installs and the
-// names are read last, once everything else is there: each asks the game's
-// package files. The costumes' `owned` is kCostumeOwnership's
-// (ApplyCostumeOwnership).
+// Game thread. Empty lists until the game's content tables are loaded, the
+// spec's map is built and refreshed (sfv::kSpecReady, the same on every
+// copy whatever its account holds) and its battle setup asset and its
+// V-Trigger and V-Skill name assets are there; nothing is read until all of
+// them are, so a wait costs only those checks. Those assets are found, or
+// loaded, with StaticLoadObject, so call it at the main menu (never in a
+// battle). Once everything is there, empty lists with `error` for tables
+// that can never make lists. This copy's installs and the names are read
+// last: each asks the game's package files. The costumes' and stages'
+// `owned` is kContentOwnership's (ApplyContentOwnership).
 ContentLists ReadContentLists();
 
-// Makes each costume's `owned` and `ownedColours` the `policy`'s, from the
-// game's answer they hold when called (ReadContentLists' ReadOwnership).
-// Entitlements keeps the game's answer. Installed makes a costume owned
-// exactly when it is installed, in every colour, unless the battle setup
-// asset restricts the picks (`ownership.restricted`), when the game's answer
-// stays. Fighters and stages are untouched. Records the policy in
-// `ownership.looks`. No game code: the tests call it with either policy.
-void ApplyCostumeOwnership(ContentLists& lists, CostumeOwnership policy);
-const char* CostumeOwnershipName(CostumeOwnership policy);
+// Makes each costume's, colour's and stage's `owned` the `policy`'s: the one
+// place the rule is applied. Looks start from the game's answer they hold
+// when called (ReadContentLists' ReadOwnership): Entitlements keeps it;
+// Installed makes a costume owned exactly when it is installed, in every
+// colour, unless the battle setup asset restricts the picks
+// (`ownership.restricted`), when the game's answer stays. A stage is owned
+// under Entitlements when it is installed and `entitled`, under Installed
+// when it is installed. Fighters are untouched. Records the rules that
+// applied in `ownership.looks` and `ownership.stages`. No game code: the
+// tests call it with either policy.
+void ApplyContentOwnership(ContentLists& lists, ContentOwnership policy);
+const char* ContentOwnershipName(ContentOwnership policy);
+// The rule that decided the looks, for the log: "the battle setup's list"
+// while the setup restricts the picks, else ContentOwnershipName(looks).
+const char* LooksRule(const OwnershipSource& source);
 
-// Whether a battle on this copy loads the costume `costume` of the fighter
-// `code` names (compared as the game compares codes) as picked: the spec has
-// a row for it, and this copy has its package (sfv::kCostumePackage), the
-// one test the battle's load makes before it would silently put the costume
-// back to 0. Whose entitlement it is does not enter: the opponent's pick
-// plays as picked. Game thread, at the main menu.
-enum class CostumeLoad { Loadable, NotInSpec, NoPackage, NoTables };
-CostumeLoad CostumeLoadState(std::wstring_view code, int costume);
-// The spec has a row for the colour `colour` of that costume. Game thread.
-bool ColourInSpec(std::wstring_view code, int costume, int colour);
+// The lists counted for the log (EmberHost's lines and the pipe's
+// `content`). A colour counts once per costume; one not owned is one whose
+// own `owned` is clear; a look the cache lacks is one whose costume or colour
+// it does not grant. A stage the cache lacks is one installed here and not
+// `entitled`.
+struct ContentCounts {
+	int fighters = 0, fightersEntitled = 0, fightersNotOwned = 0;
+	int costumes = 0, costumesInstalled = 0, costumesEntitled = 0, costumesNotOwned = 0;
+	int colours = 0, coloursNotOwned = 0, looksNotEntitled = 0;
+	int stages = 0, stagesInstalled = 0, stagesNotEntitled = 0, stagesNotOwned = 0;
+};
+ContentCounts CountContent(const ContentLists& lists);
+
+// Whether a battle on this copy loads a look as picked, by one lookup of the
+// fighter: the fighter `code` names (compared as the game compares codes) is
+// one a battle can load (BattleFighter) and installed here
+// (sfv::kFighterInstalled); its costume `costume` has a spec row and its
+// package is here (sfv::kCostumePackage, the one test the battle's load makes
+// before it would silently put the costume back to 0); its colour `colour`
+// has a spec row. A costume or colour below 0 is the launch's "leave it as
+// it is" and is not checked; a colour is checked against costume 0 then.
+// Whose entitlement it is does not enter: the opponent's pick plays as
+// picked. Game thread, at the main menu.
+enum class LookLoad {
+	Loadable,
+	NoTables,            // the fighter table or the spec is not loaded
+	NotBattleFighter,    // no such fighter, or one with no battle setup of its own
+	FighterNotInstalled, // its package is not here
+	CostumeNotInSpec,
+	CostumeNotInstalled, // its package is not here
+	ColourNotInSpec,
+};
+LookLoad LookLoadState(std::wstring_view code, int costume, int colour);
 
 // A fighter's V-Skill or V-Trigger names as the game's name asset gave them,
 // made one or two choices (picks::kPartChoices): none becomes one unnamed
@@ -199,16 +273,16 @@ std::optional<ChoiceCounts> FighterChoiceCounts(std::wstring_view code);
 // the select screen turns both into another fighter before a battle loads,
 // which Ember's launch does not, and a battle launched with ELV itself hangs
 // at a black screen. This is the one rule for which fighters exist for
-// Ember: ReadContentLists lists only these, and a launch (VersusLaunch) takes
-// only these, so a launch cannot reach a fighter the catalog leaves out.
-// Whether this copy has the fighter's package is a separate, per-copy fact
-// (FighterContent::installed). Reads only the table, no game code; false for
-// a null table.
+// Ember: ReadContentLists lists only these, and a launch (LookLoadState)
+// takes only these, so a launch cannot reach a fighter the catalog leaves
+// out. Whether this copy has the fighter's package is a separate, per-copy
+// fact (FighterContent::installed). Reads only the table, no game code;
+// false for a null table.
 bool BattleFighter(uint8_t* charaAsset, std::wstring_view code);
 
 // Development (-sfve_unowned, ModConfig): each mark takes a fighter, a
 // costume of it or a colour of that costume from this copy's player, on top
-// of `owned` (the game's answer, or kCostumeOwnership's for looks), so the
+// of `owned` (the game's answer, or kContentOwnership's for looks), so the
 // gate's screens and refusals can be tried with an account that owns
 // everything. Never the other way: nothing not owned becomes owned. Counted
 // in `ownership.markedUnowned`.

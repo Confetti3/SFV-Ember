@@ -10,10 +10,13 @@
 //
 // The pictures are the game's own (SfvArt): a fighter's portrait is the
 // square of the head in its select grid's slanted face (SfvFaceCrop), and a
-// stage's its stage-select picture. The game has no
-// picture of a fighter in a costume or colour (its select screens show the
-// 3D model), none Ember draws of a V-Skill or V-Trigger, and no ranking
-// emblems, so those report missing.
+// stage's its card (SfvPictureSpec's StageCard), Random's the game's own
+// Random stage picture. The game has no picture of a fighter in a costume
+// or colour (its select screens show the 3D model), no one picture of a
+// V-Skill and V-Trigger together (the pick screen's pane draws their marks
+// itself), and no ranking emblems, so those report missing. Where a shared
+// screen draws an Ultra's badge (the Arcade cabinet), SFV's is the
+// loadout's short form, "II/I" (UltraBadge; EMBER_LIBRARY.md section 43).
 
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
@@ -64,6 +67,7 @@ std::string ShortAppearanceLabel(const selection::Pick& pick, const selection::I
 // The Ultra number is the loadout (picks::LoadoutAt): its label and its moves.
 const char* UltraLabel(int ultra) { return sfve::adapter::LoadoutLabel(ultra); }
 const char* ShortUltraLabel(int ultra) { return sfve::adapter::ShortLoadoutLabel(ultra); }
+const char* UltraBadge(int ultra) { return sfve::adapter::ShortLoadoutLabel(ultra); }
 std::string UltraMove(int fighter, int ultra)
 {
 	const std::optional<sfve::picks::Loadout> loadout = sfve::picks::LoadoutAt(ultra);

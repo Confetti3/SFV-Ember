@@ -27,9 +27,7 @@ struct GameArray {
 
 using GameDataFn = uint8_t* (*)();
 using SpecDataFn = uint8_t* (*)(uint8_t* singleton);
-using CodeListFn = bool (*)(uint8_t** spec, GameArray<GameString>* out, bool includeRandom);
-using FighterIdsFn = bool (*)(uint8_t** spec, GameArray<int32_t>* out);
-using StageIdsFn = bool (*)(uint8_t** spec, GameArray<int32_t>* out);
+using SpecReadyFn = bool (*)(uint8_t* spec);
 using FindFn = int32_t* (*)(uint8_t* set, int32_t* outIndex, int32_t key);
 using FighterInstalledFn = bool (*)(uint8_t* charaAsset, const GameString* code);
 using CostumePackageFn = bool (*)(uint8_t* charaAsset, const GameString* code, int32_t costume);
@@ -43,7 +41,6 @@ using LoadObjectFn = uint8_t* (*)(uint8_t* objectClass, uint8_t* outer, const wc
 using OwnedFightersFn = void (*)(uint8_t* setup, GameArray<GameString>* out, bool random, bool eleven);
 using OwnedCostumesFn = bool (*)(uint8_t* setup, const GameString* code, GameArray<int32_t>* out);
 using OwnedColoursFn = void (*)(uint8_t* setup, const GameString* code, int32_t costume, GameArray<int32_t>* out);
-using OwnedStagesFn = void (*)(uint8_t* setup, GameArray<GameString>* out, bool random);
 using LoggedInFn = bool (*)();
 
 // The battle setup data asset (sfv::kOwnedFighters and the rest): the one the
@@ -95,19 +92,6 @@ struct CodeView {
 	std::wstring wide;
 };
 
-// One of the game's code lists; the game's array is freed after.
-std::vector<std::string> ReadCodes(const CodeSite& lister, uint8_t* spec)
-{
-	GameArray<GameString> list;
-	std::vector<std::string> codes;
-	if (At<CodeListFn>(lister)(&spec, &list, false)) {
-		for (int i = 0; i < list.count; i++) codes.push_back(Narrow(list.data[i]));
-	}
-	for (int i = 0; i < list.count; i++) FreeBlock(list.data[i].data);
-	FreeBlock(list.data);
-	return codes;
-}
-
 // A code list the game fills, freed after.
 template <typename List>
 std::vector<std::string> TakeCodes(List&& list)
@@ -121,8 +105,7 @@ std::vector<std::string> TakeCodes(List&& list)
 	return out;
 }
 
-// One of the spec's number lists, in the lister's order; the array is freed
-// after.
+// One of the game's number lists, in its order; the array is freed after.
 template <typename List>
 std::vector<int> ReadNumbers(List&& list)
 {
@@ -224,6 +207,13 @@ uint8_t* EntryWithCode(uint8_t* charaAsset, std::wstring_view code)
 	return FindEntry(CharaRecords(charaAsset), [code](uint8_t* entry) { return HasCode(entry, code); });
 }
 
+// The entry names a battle setup of its own, not just the empty FString's
+// terminator (BattleFighter's rule).
+bool NamesSetup(uint8_t* entry)
+{
+	return Field<GameString>(entry, sfv::content::kCharaSetupData).count > 1;
+}
+
 // The fighter's name in the game's language, from its PersonalData (loaded
 // with the fighter table); empty where it has none.
 std::string FighterName(uint8_t* entry)
@@ -239,61 +229,67 @@ bool Contains(const std::vector<int>& list, int value)
 	return std::find(list.begin(), list.end(), value) != list.end();
 }
 
-// The game's two tables the pick space is read from: the fighter table
-// (content::kCharaAsset) and the spec data (kSpecData); either null while
-// it is not there.
+bool Contains(const std::vector<std::string>& list, const std::string& value)
+{
+	return std::find(list.begin(), list.end(), value) != list.end();
+}
+
+// The game's tables the lists are read from: its singleton, the fighter
+// table (content::kCharaAsset), the stage table (content::kStageAsset) and
+// the spec data (kSpecData); the others null while the singleton is not
+// there, each null while it is not loaded.
 struct SpecTables {
+	uint8_t* singleton = nullptr;
 	uint8_t* charaAsset = nullptr;
+	uint8_t* stageAsset = nullptr;
 	uint8_t* spec = nullptr;
+
+	bool Loaded() const { return charaAsset && stageAsset && spec; }
 };
 
 SpecTables Tables()
 {
 	uint8_t* singleton = At<GameDataFn>(sfv::kGameData)();
 	if (!singleton) return {};
-	return {Field<uint8_t*>(singleton, sfv::content::kCharaAsset), At<SpecDataFn>(sfv::kSpecData)(singleton)};
+	return {singleton, Field<uint8_t*>(singleton, sfv::content::kCharaAsset),
+		Field<uint8_t*>(singleton, sfv::content::kStageAsset), At<SpecDataFn>(sfv::kSpecData)(singleton)};
 }
 
-// The value of the element keyed `key` in one of the spec's sets
-// (sfv::spec), found with the game's own lookup for that set, when the
-// builder linked a CharaSpec row to it; null otherwise. The one way Ember
-// reaches the spec's map: the reader and the launch's check both ask it.
-uint8_t* LinkedValue(const CodeSite& find, uint8_t* set, uint32_t stride, int32_t key)
+// The value of the element keyed `key` in one of the spec's sets of the pick
+// space (`kind`, whose set is at its offset in `parent`), found with the
+// game's own lookup for that set, when the builder linked a CharaSpec row to
+// it; null otherwise. The one way Ember finds an element of the pick space:
+// the reader and the launch's check both ask it.
+uint8_t* LinkedValue(const sfv::SpecSet& kind, uint8_t* parent, int32_t key)
 {
+	uint8_t* set = parent + kind.set;
 	int32_t index = -1;
-	At<FindFn>(find)(set, &index, key);
+	At<FindFn>(kind.find)(set, &index, key);
 	uint8_t* elements = Field<uint8_t*>(set, sfv::spec::kSetElements);
 	if (index < 0 || !elements) return nullptr;
-	uint8_t* value = elements + (size_t)stride * (size_t)index + sfv::spec::kValue;
+	uint8_t* value = elements + (size_t)kind.stride * (size_t)index + sfv::spec::kValue;
 	return Field<void*>(value, sfv::spec::kRow) ? value : nullptr;
 }
 
-uint8_t* SpecFighter(uint8_t* spec, int32_t uniqueId)
+// The elements of one of the spec's sets in their array's order, the order
+// the builder added them in and the game's listers walk (sfv::spec). A set
+// with free slots is not laid out as Ember knows (the builder empties a set
+// and fills it, and nothing removes from one): none, with `error` said.
+std::optional<Records> SetElements(uint8_t* set, uint32_t stride, const char* what, std::string& error)
 {
-	return LinkedValue(sfv::kFindSpecFighter, spec + sfv::spec::kFighters, sfv::spec::kFighterStride, uniqueId);
-}
-
-uint8_t* SpecCostume(uint8_t* fighter, int32_t costume)
-{
-	return LinkedValue(sfv::kFindSpecCostume, fighter + sfv::spec::kFighterCostumes, sfv::spec::kCostumeStride, costume);
-}
-
-uint8_t* SpecColour(uint8_t* costume, int32_t colour)
-{
-	return LinkedValue(sfv::kFindSpecColour, costume + sfv::spec::kCostumeColours, sfv::spec::kColourStride, colour);
+	const int32_t freeSlots = Field<int32_t>(set, sfv::spec::kSetFreeSlots);
+	if (freeSlots != 0) {
+		error = "the spec's " + std::string(what) + " set has " + std::to_string(freeSlots) +
+			" free slots, which its builder never leaves; Ember does not read it";
+		return std::nullopt;
+	}
+	return Records(set, sfv::spec::kSetElements, sfv::spec::kSetCount, stride);
 }
 
 // The entitlement cache grants the value's code (set by the spec's refresh).
 bool Entitled(uint8_t* value)
 {
 	return Field<uint8_t>(value, sfv::spec::kEntitled) != 0;
-}
-
-// The spec's value of the fighter `code` names; null for none.
-uint8_t* SpecFighterOf(const SpecTables& tables, std::wstring_view code)
-{
-	uint8_t* entry = EntryWithCode(tables.charaAsset, code);
-	return entry ? SpecFighter(tables.spec, Field<int32_t>(entry, sfv::content::kCharaUniqueId)) : nullptr;
 }
 
 // The fighter's costumes and colours: every costume number of its
@@ -311,30 +307,29 @@ FighterContent ReadFighter(uint8_t* entry, uint8_t* value)
 		sfv::content::kGameStringStride);
 	for (int number = 0; number < costumeDatas.count; number++) {
 		uint8_t* path = costumeDatas.Nth(number);
-		uint8_t* costumeValue = SpecCostume(value, number);
+		uint8_t* costumeValue = LinkedValue(sfv::kSpecCostumeSet, value, number);
 		// A package named, not just the empty FString's terminator.
 		if (!path || !costumeValue || Field<GameString>(path, 0).count <= 1) continue;
 		CostumeContent costume;
 		costume.id = number;
 		costume.entitled = Entitled(costumeValue);
 		for (int colour = 0; colour < sfv::spec::kColourKeys; colour++) {
-			uint8_t* colourValue = SpecColour(costumeValue, colour);
-			if (!colourValue) continue;
-			costume.colours.push_back(colour);
-			if (Entitled(colourValue)) costume.entitledColours.push_back(colour);
+			if (uint8_t* colourValue = LinkedValue(sfv::kSpecColourSet, costumeValue, colour)) {
+				costume.colours.push_back({colour, false, Entitled(colourValue)});
+			}
 		}
 		fighter.costumes.push_back(std::move(costume));
 	}
 	return fighter;
 }
 
-// The ids sfv::kSpecFighters lists: empty until the spec's refresh has set
-// the entitlement flags, and only what this copy's install and account let
-// it select.
-std::vector<int> SelectableIds(uint8_t* spec)
-{
-	return ReadNumbers([&](GameArray<int32_t>* out) { return At<FighterIdsFn>(sfv::kSpecFighters)(&spec, out); });
-}
+// The universe's fighters, and each one's CharaUniqueID (the spec's key) in
+// the same order; or why the table can never give them.
+struct FighterUniverse {
+	std::vector<FighterContent> fighters;
+	std::vector<int> keys;
+	std::string error;
+};
 
 // The fighters of the universe, in the fighter table's order (the order the
 // spec's builder adds them in, and so the game's own listers' order), each
@@ -342,34 +337,58 @@ std::vector<int> SelectableIds(uint8_t* spec)
 // more, a row, and a battle setup of its own (BattleFighter, the rule a
 // launch asks too), so Random and ELEVEN are not among them. Nothing here
 // depends on this copy's install or account, so every copy of the build
-// keeps the same fighters in the same order. That this order is the game's
-// listers' is read from the builder, not seen: a disagreement with
-// kSpecFighters' order (`selectable`) is logged once.
-std::vector<FighterContent> ReadFighters(const SpecTables& tables, const std::vector<int>& selectable)
+// keeps the same fighters in the same order. Two entries the builder adds
+// (rva 0x56C2B0: an id of 0 or more and a code) with the same id are an
+// error: the builder keeps one element for both and adds both entries'
+// costume numbers under it, so which entry's CostumeDatas the rows describe
+// is not known.
+FighterUniverse ReadFighters(const SpecTables& tables)
 {
-	std::vector<FighterContent> fighters;
-	std::vector<int> ids;
+	FighterUniverse universe;
+	std::vector<std::pair<int, std::string>> added; // the builder's entries: id, code
 	CharaRecords(tables.charaAsset).ForEach([&](uint8_t* entry) {
+		if (!universe.error.empty()) return;
 		const int32_t id = Field<int32_t>(entry, sfv::content::kCharaUniqueId);
-		if (id < 0 || Contains(ids, id)) return;
-		uint8_t* value = SpecFighter(tables.spec, id);
-		if (!value || !BattleFighter(tables.charaAsset, TextOf(Field<GameString>(entry, 0)))) return;
-		ids.push_back(id);
-		fighters.push_back(ReadFighter(entry, value));
+		// A code, not just the empty FString's terminator.
+		if (id < 0 || Field<GameString>(entry, 0).count <= 1) return;
+		const std::string code = Narrow(Field<GameString>(entry, 0));
+		const auto twin = std::find_if(added.begin(), added.end(), [id](const auto& seen) { return seen.first == id; });
+		if (twin != added.end()) {
+			universe.error = "the fighter table has CharaUniqueID " + std::to_string(id) + " twice (" + twin->second + " and " +
+				code + "), so the spec's costumes for it are not known";
+			return;
+		}
+		added.emplace_back(id, code);
+		uint8_t* value = LinkedValue(sfv::kSpecFighterSet, tables.spec, id);
+		if (!value || !NamesSetup(entry)) return;
+		universe.keys.push_back(id);
+		universe.fighters.push_back(ReadFighter(entry, value));
 	});
-	std::vector<int> ours, theirs;
-	for (int id : ids) {
-		if (Contains(selectable, id)) ours.push_back(id);
-	}
-	for (int id : selectable) {
-		if (Contains(ids, id)) theirs.push_back(id);
-	}
-	static bool loggedOrder = false;
-	if (ours != theirs && !loggedOrder) {
-		Log("content: the fighter table's order differs from the game's selectable list's; the universe keeps the table's");
-		loggedOrder = true;
-	}
-	return fighters;
+	if (!universe.error.empty()) return {{}, {}, std::move(universe.error)};
+	return universe;
+}
+
+// That the universe's fighter order is the game's listers' is read from the
+// builder, not seen: the spec's fighter set holds its elements in the order
+// the builder added them, which is the order the listers walk. A universe
+// whose keys come in another order is logged once. It asks neither the
+// install nor the account, and it changes no id: the universe keeps the
+// table's order on every copy.
+void LogOrder(uint8_t* spec, const std::vector<int>& keys)
+{
+	static bool logged = false;
+	if (logged) return;
+	std::string error; // a set laid out otherwise: nothing to compare with
+	const std::optional<Records> elements = SetElements(spec + sfv::spec::kFighters, sfv::spec::kFighterStride, "fighters", error);
+	if (!elements) return;
+	std::vector<int> theirs;
+	elements->ForEach([&](uint8_t* element) {
+		const int32_t key = Field<int32_t>(element, 0);
+		if (Contains(keys, key)) theirs.push_back(key);
+	});
+	if (theirs == keys) return;
+	Log("content: the fighter table's order differs from the spec's fighter set's; the universe keeps the table's");
+	logged = true;
 }
 
 // This copy's own facts about the fighters, and the costumes' names: each
@@ -391,11 +410,6 @@ void ReadInstallsAndNames(uint8_t* charaAsset, std::vector<FighterContent>& figh
 	}
 }
 
-bool Contains(const std::vector<std::string>& list, const std::string& value)
-{
-	return std::find(list.begin(), list.end(), value) != list.end();
-}
-
 // The code of the StageAsset table's entry `index` (content::kStageEntries);
 // empty for an index outside the table.
 std::string StageCodeAt(uint8_t* stageAsset, int32_t index)
@@ -406,30 +420,29 @@ std::string StageCodeAt(uint8_t* stageAsset, int32_t index)
 	return Narrow(Field<GameString>(entries + (size_t)sfv::content::kStageStride * index, 0));
 }
 
-// The spec's stage universe (sfv::kSpecStageIds) in its order, less Random
-// and the stages without stage data, each marked installed when this copy's
-// kSpecStages lists it. A code kSpecStages gives outside the universe cannot
-// come from the game's code (it filters the same map); it is logged once and
-// left out.
-std::vector<StageContent> ReadStages(uint8_t* singleton, uint8_t* spec)
+// The stage universe: every element of the spec's stage set (one per
+// StageSpec row), in the set's order, less Random and the stages without
+// stage data, each with whether this copy has its package (the refresh's
+// own test, sfv::spec::kStageInstalled) and the game's selectable flag
+// (sfv::spec::kStageSelectable: that package and both of the row's codes in
+// the account's entitlement cache). The game's stage listers are not asked:
+// both keep only the selectable stages (sfv::kSpecData's comment), and the
+// universe must not depend on the account.
+std::vector<StageContent> ReadStages(const SpecTables& tables, std::string& error)
 {
-	uint8_t* stageAsset = Field<uint8_t*>(singleton, sfv::content::kStageAsset);
-	if (!stageAsset) return {};
+	const std::optional<Records> elements = SetElements(tables.spec + sfv::spec::kStages, sfv::spec::kStageStride, "stages", error);
+	if (!elements) return {};
 	std::vector<StageContent> stages;
-	for (int index : ReadNumbers([&](GameArray<int32_t>* out) { return At<StageIdsFn>(sfv::kSpecStageIds)(&spec, out); })) {
-		std::string code = StageCodeAt(stageAsset, index);
-		if (Unplayable(code)) continue;
-		stages.push_back({std::move(code)});
-	}
-	static bool loggedStray = false;
-	for (const std::string& installed : ReadCodes(sfv::kSpecStages, spec)) {
-		const auto stage = std::find_if(stages.begin(), stages.end(), [&](const StageContent& s) { return s.code == installed; });
-		if (stage != stages.end()) stage->installed = true;
-		else if (!Unplayable(installed) && !loggedStray) {
-			Log("content: installed stage %s is not in the spec's stage list; left out", installed.c_str());
-			loggedStray = true;
-		}
-	}
+	elements->ForEach([&](uint8_t* element) {
+		std::string code = StageCodeAt(tables.stageAsset, Field<int32_t>(element, 0));
+		if (Unplayable(code)) return;
+		uint8_t* value = element + sfv::spec::kValue;
+		StageContent stage;
+		stage.code = std::move(code);
+		stage.installed = Field<uint8_t>(value, sfv::spec::kStageInstalled) != 0;
+		stage.entitled = Field<uint8_t>(value, sfv::spec::kStageSelectable) != 0;
+		stages.push_back(std::move(stage));
+	});
 	return stages;
 }
 
@@ -496,8 +509,8 @@ size_t FittedCount(size_t given)
 }
 
 // Each fighter's V-Skills and V-Triggers from the game's name assets
-// (FitChoices). False, with nothing changed, when either asset is not there:
-// the lists wait for it rather than give every fighter one of each.
+// (FitChoices). False, with nothing changed, when either asset is not there
+// or is past what Ember reads (ChoiceNames).
 bool ReadChoices(std::vector<FighterContent>& fighters)
 {
 	const auto [vSkillAsset, vTriggerAsset] = ChoiceAssets();
@@ -528,15 +541,14 @@ ChoiceCounts CountsOf(const FighterContent& fighter)
 std::vector<std::pair<std::wstring, ChoiceCounts>> s_choiceCounts;
 
 // What the game lets this copy's player pick, as its menus and the battle
-// jump's check ask it (sfv::kOwnedFighters and the rest), into `lists`; the
-// looks' answer is then kCostumeOwnership's (ApplyCostumeOwnership). A
-// costume of the universe the game's lists leave out (one the entitlement
-// cache does not grant) reads as not owned. False, with nothing changed,
-// when the battle setup asset is not there.
-bool ReadOwnership(ContentLists& lists)
+// jump's check ask the battle setup asset `setup` (sfv::kOwnedFighters and
+// the rest), into `lists`; the looks' answer is then kContentOwnership's
+// (ApplyContentOwnership). A costume or colour of the universe the game's
+// lists leave out (one the entitlement cache does not grant) reads as not
+// owned. Stages are not asked (sfv::kOwnedStages): their `owned` is
+// kContentOwnership's alone, from `installed` and `entitled`.
+void ReadOwnership(uint8_t* setup, ContentLists& lists)
 {
-	uint8_t* setup = BattleSetup();
-	if (!setup) return false;
 	OwnershipSource& source = lists.ownership;
 	source.read = true;
 	source.restricted = Field<uint8_t>(setup, kSetupRestricted) != 0;
@@ -557,118 +569,170 @@ bool ReadOwnership(ContentLists& lists)
 				At<OwnedColoursFn>(sfv::kOwnedColours)(setup, &code, costume.id, out);
 				return true;
 			});
-			costume.ownedColours.clear();
-			for (int colour : costume.colours) {
-				if (Contains(colours, colour)) costume.ownedColours.push_back(colour);
-			}
+			for (ColourContent& colour : costume.colours) colour.owned = Contains(colours, colour.id);
 		}
 	}
-	const std::vector<std::string> stages =
-		TakeCodes([&](GameArray<GameString>* out) { At<OwnedStagesFn>(sfv::kOwnedStages)(setup, out, false); });
-	for (StageContent& stage : lists.stages) stage.owned = Contains(stages, stage.code);
-	return true;
+}
+
+// No lists while `what` is not there; each wait is logged once.
+ContentLists Waiting(const char* what)
+{
+	static std::vector<std::string> said;
+	if (!Contains(said, what)) {
+		Log("content: %s; the lists wait for it", what);
+		said.emplace_back(what);
+	}
+	return {};
+}
+
+// No lists, ever, for this exe: why (ContentLists::error).
+ContentLists Never(std::string why)
+{
+	ContentLists lists;
+	lists.error = std::move(why);
+	return lists;
 }
 
 } // namespace
+
+const ColourContent* ColourOf(const CostumeContent& costume, int id)
+{
+	const auto colour = std::find_if(costume.colours.begin(), costume.colours.end(), [id](const ColourContent& c) { return c.id == id; });
+	return colour == costume.colours.end() ? nullptr : &*colour;
+}
+
+std::vector<int> ColourNumbers(const CostumeContent& costume)
+{
+	std::vector<int> numbers;
+	for (const ColourContent& colour : costume.colours) numbers.push_back(colour.id);
+	return numbers;
+}
 
 bool BattleFighter(uint8_t* charaAsset, std::wstring_view code)
 {
 	if (!charaAsset || code.empty()) return false;
 	uint8_t* entry = EntryWithCode(charaAsset, code);
-	// A setup named, not just the empty FString's terminator.
-	return entry && Field<GameString>(entry, sfv::content::kCharaSetupData).count > 1;
+	return entry && NamesSetup(entry);
 }
 
-void ApplyCostumeOwnership(ContentLists& lists, CostumeOwnership policy)
+void ApplyContentOwnership(ContentLists& lists, ContentOwnership policy)
 {
-	lists.ownership.looks = policy;
-	if (policy != CostumeOwnership::Installed || lists.ownership.restricted) return;
+	const bool byInstall = policy == ContentOwnership::Installed;
+	lists.ownership.stages = policy;
+	for (StageContent& stage : lists.stages) stage.owned = stage.installed && (byInstall || stage.entitled);
+	const bool looksByInstall = byInstall && !lists.ownership.restricted;
+	lists.ownership.looks = looksByInstall ? ContentOwnership::Installed : ContentOwnership::Entitlements;
+	if (!looksByInstall) return;
 	for (FighterContent& fighter : lists.fighters) {
 		for (CostumeContent& costume : fighter.costumes) {
 			costume.owned = costume.installed;
-			costume.ownedColours = costume.installed ? costume.colours : std::vector<int>();
+			for (ColourContent& colour : costume.colours) colour.owned = costume.installed;
 		}
 	}
 }
 
-const char* CostumeOwnershipName(CostumeOwnership policy)
+const char* ContentOwnershipName(ContentOwnership policy)
 {
 	switch (policy) {
-	case CostumeOwnership::Entitlements: return "entitlements";
-	case CostumeOwnership::Installed: return "installed";
+	case ContentOwnership::Entitlements: return "entitlements";
+	case ContentOwnership::Installed: return "installed";
 	}
 	return "?";
 }
 
-CostumeLoad CostumeLoadState(std::wstring_view code, int costume)
+const char* LooksRule(const OwnershipSource& source)
 {
-	const SpecTables tables = Tables();
-	if (!tables.charaAsset || !tables.spec) return CostumeLoad::NoTables;
-	uint8_t* fighter = SpecFighterOf(tables, code);
-	if (!fighter || !SpecCostume(fighter, costume)) return CostumeLoad::NotInSpec;
-	const CodeView view(code);
-	const GameString game = view.Get();
-	return At<CostumePackageFn>(sfv::kCostumePackage)(tables.charaAsset, &game, costume) ? CostumeLoad::Loadable
-																					   : CostumeLoad::NoPackage;
+	return source.restricted ? "the battle setup's list" : ContentOwnershipName(source.looks);
 }
 
-bool ColourInSpec(std::wstring_view code, int costume, int colour)
+ContentCounts CountContent(const ContentLists& lists)
+{
+	ContentCounts counts;
+	for (const FighterContent& fighter : lists.fighters) {
+		counts.fighters++;
+		counts.fightersEntitled += fighter.entitled;
+		counts.fightersNotOwned += !fighter.owned;
+		for (const CostumeContent& costume : fighter.costumes) {
+			counts.costumes++;
+			counts.costumesInstalled += costume.installed;
+			counts.costumesEntitled += costume.entitled;
+			counts.costumesNotOwned += !costume.owned;
+			for (const ColourContent& colour : costume.colours) {
+				counts.colours++;
+				counts.coloursNotOwned += !colour.owned;
+				counts.looksNotEntitled += !(costume.entitled && colour.entitled);
+			}
+		}
+	}
+	for (const StageContent& stage : lists.stages) {
+		counts.stages++;
+		counts.stagesInstalled += stage.installed;
+		counts.stagesNotEntitled += stage.installed && !stage.entitled;
+		counts.stagesNotOwned += !stage.owned;
+	}
+	return counts;
+}
+
+LookLoad LookLoadState(std::wstring_view code, int costume, int colour)
 {
 	const SpecTables tables = Tables();
-	if (!tables.charaAsset || !tables.spec) return false;
-	uint8_t* fighter = SpecFighterOf(tables, code);
-	uint8_t* costumeValue = fighter ? SpecCostume(fighter, costume) : nullptr;
-	return costumeValue && SpecColour(costumeValue, colour);
+	if (!tables.charaAsset || !tables.spec) return LookLoad::NoTables;
+	uint8_t* entry = code.empty() ? nullptr : EntryWithCode(tables.charaAsset, code);
+	if (!entry || !NamesSetup(entry)) return LookLoad::NotBattleFighter;
+	const CodeView view(code);
+	const GameString game = view.Get();
+	if (!At<FighterInstalledFn>(sfv::kFighterInstalled)(tables.charaAsset, &game)) return LookLoad::FighterNotInstalled;
+	uint8_t* fighter = LinkedValue(sfv::kSpecFighterSet, tables.spec, Field<int32_t>(entry, sfv::content::kCharaUniqueId));
+	uint8_t* costumeValue = fighter ? LinkedValue(sfv::kSpecCostumeSet, fighter, costume < 0 ? 0 : costume) : nullptr;
+	if (costume >= 0) {
+		if (!costumeValue) return LookLoad::CostumeNotInSpec;
+		if (!At<CostumePackageFn>(sfv::kCostumePackage)(tables.charaAsset, &game, costume)) return LookLoad::CostumeNotInstalled;
+	}
+	if (colour >= 0 && !(costumeValue && LinkedValue(sfv::kSpecColourSet, costumeValue, colour))) return LookLoad::ColourNotInSpec;
+	return LookLoad::Loadable;
 }
 
 ContentLists ReadContentLists()
 {
-	ContentLists lists;
-	uint8_t* singleton = At<GameDataFn>(sfv::kGameData)();
+	// The waits first, cheapest first: until all of them are over nothing
+	// is read, so a frame of waiting costs these checks alone.
 	const SpecTables tables = Tables();
-	if (!singleton || !tables.spec || !tables.charaAsset) return lists;
-	// The rows are linked a step before the refresh sets the entitlement
-	// flags; until the refresh has run, every `entitled` would read false.
-	const std::vector<int> selectable = SelectableIds(tables.spec);
-	if (selectable.empty()) {
-		static bool logged = false;
-		if (!logged) Log("content: the spec's entitlement flags are not set yet; the lists wait for them");
-		logged = true;
-		return lists;
-	}
-	lists.fighters = ReadFighters(tables, selectable);
-	lists.stages = ReadStages(singleton, tables.spec);
-	const bool anyInstalled =
-		std::any_of(lists.stages.begin(), lists.stages.end(), [](const StageContent& stage) { return stage.installed; });
-	if (lists.fighters.empty() || !anyInstalled) return {};
+	if (!tables.Loaded()) return Waiting("the game's content tables are not loaded yet");
+	if (!At<SpecReadyFn>(sfv::kSpecReady)(tables.spec)) return Waiting("the spec's map is not built and refreshed yet");
 	// Without the battle setup asset there is no answer to what this copy's
 	// player may pick: no lists at all, rather than lists that say nothing is
 	// owned or everything is.
-	if (!ReadOwnership(lists)) {
-		static bool logged = false;
-		if (!logged) Log("content: the battle setup asset is not there yet; the lists wait for it");
-		logged = true;
-		return {};
+	uint8_t* setup = BattleSetup();
+	if (!setup) return Waiting("the battle setup asset is not there yet");
+	if (const auto [vSkills, vTriggers] = ChoiceAssets(); !vSkills || !vTriggers) {
+		return Waiting("the V-Skill or V-Trigger name asset is not there yet");
 	}
-	if (!ReadChoices(lists.fighters)) {
-		static bool logged = false;
-		if (!logged) Log("content: the V-Skill or V-Trigger name asset is not there yet; the lists wait for it");
-		logged = true;
-		return {};
+
+	// Everything is there: what is read from here on is final for this exe,
+	// so a list it cannot make is an error, never a wait.
+	ContentLists lists;
+	FighterUniverse universe = ReadFighters(tables);
+	if (!universe.error.empty()) return Never(std::move(universe.error));
+	if (universe.fighters.empty()) return Never("the spec has no fighter a battle can load");
+	lists.fighters = std::move(universe.fighters);
+	lists.stages = ReadStages(tables, lists.error);
+	if (!lists.error.empty()) return Never(std::move(lists.error));
+	if (std::none_of(lists.stages.begin(), lists.stages.end(), [](const StageContent& stage) { return stage.installed; })) {
+		return Never("this copy has none of the spec's " + std::to_string(lists.stages.size()) + " stages installed");
 	}
+	LogOrder(tables.spec, universe.keys);
+	ReadOwnership(setup, lists);
+	if (!ReadChoices(lists.fighters)) return Never("the V-Skill or V-Trigger name asset is past what Ember reads");
 	s_choiceCounts.clear();
 	for (const FighterContent& fighter : lists.fighters) s_choiceCounts.emplace_back(CodeView(fighter.code).wide, CountsOf(fighter));
 	ReadInstallsAndNames(tables.charaAsset, lists.fighters);
-	ApplyCostumeOwnership(lists, kCostumeOwnership);
+	ApplyContentOwnership(lists, kContentOwnership);
 
-	// The stages' names only once both lists are there: each may load a
-	// stage's data, so only an installed stage's is asked for (one this copy
-	// lacks is never shown, and its data asset may be in the package it
-	// lacks).
-	uint8_t* stageAsset = Field<uint8_t*>(singleton, sfv::content::kStageAsset);
-	if (!stageAsset) return lists;
+	// The stages' names last: each may load a stage's data, so only an
+	// installed stage's is asked for (one this copy lacks is never shown, and
+	// its data asset may be in the package it lacks).
 	for (StageContent& stage : lists.stages) {
-		if (stage.installed) stage.name = StageName(stageAsset, stage.code);
+		if (stage.installed) stage.name = StageName(tables.stageAsset, stage.code);
 	}
 	return lists;
 }
@@ -734,8 +798,11 @@ void MarkUnowned(ContentLists& lists, const std::vector<UnownedContent>& marks)
 			for (CostumeContent& costume : fighter.costumes) {
 				if (costume.id != mark.costume) continue;
 				if (mark.colour < 0) costume.owned = false;
-				else costume.ownedColours.erase(std::remove(costume.ownedColours.begin(), costume.ownedColours.end(), mark.colour),
-					costume.ownedColours.end());
+				else {
+					for (ColourContent& colour : costume.colours) {
+						if (colour.id == mark.colour) colour.owned = false;
+					}
+				}
 			}
 		}
 	}

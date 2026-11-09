@@ -5,7 +5,7 @@
 // (D:\sfv-re\StreetFighterV.exe.i64). RVAs; the image is relocated.
 //
 // Every function the mod hooks or calls carries a 16-byte signature read from
-// that exe. BuildCheck verifies the timestamp and every signature before the
+// that exe, and the three spec finds a second one at their element step. BuildCheck verifies the timestamp and every signature before the
 // mod touches the game, and leaves it alone otherwise.
 
 #include "mod/BuildCheck.hxx"
@@ -214,32 +214,21 @@ constexpr CodeSite kShowResult{"ShowResult", 0x66A0D0,
 constexpr CodeSite kRestartBattle{"RestartBattle", 0x684760,
 	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x41}};
 
-// Content lists (GameContent): the singleton's spec data ("SpecDataAsset"),
-// and bool List(SpecData** spec, TArray<FString>* out, bool includeRandom)
-// for the spec's stages less those whose package this copy lacks (no
-// ownership). kSpecStages keeps the order of kSpecStageIds' list and only
-// the stages also in a second walk of
-// the spec's stage map (rva 0x559540), which keeps an entry whose flag at
-// +11 says it needs no package, the code RND, or one whose package the
-// StageAsset entry's +16 path names exists on this install (rva 0x549500,
-// then the package test at rva 0x11EE840). So two installs of the same
-// build can list different stages: what this copy has installed, never what
-// every copy shares (EMBER_LIBRARY.md section 38).
+// Content lists (GameContent): the singleton's spec data ("SpecDataAsset";
+// its pick-space map is namespace spec, in SfvMenuLayouts.hxx).
+//
+// The game's stage listers are not used: neither is the same on every copy.
+// SpecStageIds (rva 0x567B20) walks the spec's stage set and keeps each
+// element whose flag at value+2 is set; the stages' refresh (rva 0x57E380,
+// step 8) sets that flag to "package found" (value+3) and both of the row's
+// codes granted by the account's entitlement cache (value+0, value+1: the
+// type-3 set of rva 0x54F680). Only while the online identity is logged in
+// does it append index 50 (rva 0x57F1A0). SpecStages (rva 0x5672D0) narrows
+// that list to the installed stages again (rva 0x559540). So both depend on
+// the install and on the account; GameContent reads the stage universe from
+// the set's elements instead (EMBER_LIBRARY.md section 41).
 constexpr CodeSite kSpecData{"SpecData", 0x68E7E0,
 	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x33, 0xDB, 0x48, 0x8B, 0xF9, 0x33}};
-constexpr CodeSite kSpecStages{"SpecStages", 0x5672D0,
-	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x83, 0x7A, 0x0C, 0x00, 0x48, 0x8B, 0x1A, 0x48, 0x89, 0x6C}};
-// bool SpecStageIds(SpecData** spec, TArray<int>* out): the stages the spec
-// lets players select, with no package check: it walks the spec's stage map
-// (spec+408, 48-byte elements, the StageAsset index at +0) in its order and
-// keeps each entry whose flag at +10 is set, once; then, only while the
-// online identity is logged in (rva 0x57F1A0, which asks kLoggedIn first), it
-// appends index 50. Each value is an index into the StageAsset table
-// (content::kStageEntries), whose entry's code kSpecStages turns it into
-// (rva 0x547510). The same on every install of the build: Ember's stage
-// universe, which the build id fingerprints.
-constexpr CodeSite kSpecStageIds{"SpecStageIds", 0x567B20,
-	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x48}};
 
 // UClass* MainMenuState(package): the main menu's class (scene vtable
 // kMainMenuVtable); the results menu's "Exit" changes scene to it (rva
@@ -274,32 +263,45 @@ constexpr CodeSite kStageName{"StageName", 0x564550,
 // keep only what the account's entitlement cache grants (EMBER_LIBRARY.md
 // section 41).
 //
-// bool SpecFighters(SpecData** spec, TArray<int>* out): the fighters whose
-// spec flag at value+2 is set, the "selectable" flag the refresh (rva
-// 0x57CE50) sets from the fighter's package (value+4), its RefAvailableCode
-// and RefVisibleCode in the entitlement cache (value+0, value+1) and a
-// usable costume. So it depends on the install and the account. GameContent
-// asks it only whether the refresh has run (a list that is not empty), since
-// the entitlement flags are set by that step (step 8 of the queue at rva
-// 0x7A2FC0) and the rows a step before it.
-constexpr CodeSite kSpecFighters{"SpecFighters", 0x566AF0,
-	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x48, 0x89, 0x7C, 0x24, 0x18, 0x55}};
+// bool SpecReady(SpecData* spec): the spec's map is built and refreshed: its
+// +232, which step 7 of the queue at rva 0x7A2FC0 sets once it has built the
+// map (rva 0x56C260), and its +233, which step 8 sets once its three
+// refreshes have run (rva 0x57CE10: fighters and costumes, rva 0x57CE50, then
+// stages, rva 0x57E380). Step 8 sets it whatever the entitlement cache
+// grants, so it says the same on every copy; the game asks it the same way
+// (rva 0x7878F0, with the spec from kSpecData).
+constexpr CodeSite kSpecReady{"SpecReady", 0x546710,
+	{0x80, 0xB9, 0xE8, 0x00, 0x00, 0x00, 0x00, 0x74, 0x0C, 0x80, 0xB9, 0xE9, 0x00, 0x00, 0x00, 0x00}};
 // int* Find(TSet* set, int* outIndex, int key): the index of the set's
 // element whose int key (element +0) is `key`, written to *outIndex and
 // returned, or -1 for none. The set is UE4's TSet: +0 the elements' data,
 // +56 the hash's inline bucket, +64 its allocation, +72 its size; a bucket is
 // the key masked by size - 1, and each element holds the next index of its
-// chain. The three share their first bytes and differ in the element's size
-// and where its next index is; each is checked at its own rva.
+// chain. The three share their first 80 bytes, so each also has a step site:
+// the 16 bytes at its rva + 0x53, where it scales an index by its element's
+// size, compares the key and starts to load the next index (whose offset the
+// costumes' and colours' 16 bytes include). BuildCheck checks those too, so two swapped rvas, or a stride that is
+// not the one the game's own find uses, fail the build check
+// (sfv::kSpecFighterSet and the others bundle each with its stride).
 // The fighters' set (spec::kFighters): 136-byte elements, next at +128.
 constexpr CodeSite kFindSpecFighter{"FindSpecFighter", 0x54B7D0,
 	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x4C, 0x8B, 0xDA, 0x48, 0x8B, 0xD1, 0x8B, 0x49, 0x48, 0x49, 0x63}};
+// imul rdx, rcx, 88h; cmp [rdx+r8], ebx; jz; mov eax, [rdx+r8+80h].
+constexpr CodeSite kFindSpecFighterStep{"FindSpecFighterStep", 0x54B823,
+	{0x48, 0x69, 0xD1, 0x88, 0x00, 0x00, 0x00, 0x42, 0x39, 0x1C, 0x02, 0x74, 0x1D, 0x42, 0x8B, 0x84}};
 // A fighter's costumes (spec::kFighterCostumes): 120-byte elements, next at +112.
 constexpr CodeSite kFindSpecCostume{"FindSpecCostume", 0x54B8F0,
 	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x4C, 0x8B, 0xDA, 0x48, 0x8B, 0xD1, 0x8B, 0x49, 0x48, 0x49, 0x63}};
+// imul rdx, rcx, 78h; cmp [rdx+r8], ebx; jz; mov eax, [rdx+r8+70h]; cmp.
+constexpr CodeSite kFindSpecCostumeStep{"FindSpecCostumeStep", 0x54B943,
+	{0x48, 0x6B, 0xD1, 0x78, 0x42, 0x39, 0x1C, 0x02, 0x74, 0x1A, 0x42, 0x8B, 0x44, 0x02, 0x70, 0x83}};
 // A costume's colours (spec::kCostumeColours): 40-byte elements, next at +32.
 constexpr CodeSite kFindSpecColour{"FindSpecColour", 0x54B860,
 	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x4C, 0x8B, 0xDA, 0x48, 0x8B, 0xD1, 0x8B, 0x49, 0x48, 0x49, 0x63}};
+// lea rdx, [rcx+rcx*4]; cmp [r8+rdx*8], ebx (5 * 8 = 40); jz;
+// mov eax, [r8+rdx*8+20h]; cmp.
+constexpr CodeSite kFindSpecColourStep{"FindSpecColourStep", 0x54B8B3,
+	{0x48, 0x8D, 0x14, 0x89, 0x41, 0x39, 0x1C, 0xD0, 0x74, 0x1A, 0x41, 0x8B, 0x44, 0xD0, 0x20, 0x83}};
 // FString* CostumeName(void*, FString* out, const FString* code, int costume):
 // the costume's FText (its spec value+8 object, +64) as shown, or
 // "Costume<n>" where the spec has none (rva 0x55C5B0); the first argument is
@@ -401,7 +403,9 @@ constexpr CodeSite kBattleSetupClass{"BattleSetupClass", 0xC26230,
 	{0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05, 0xE5, 0xF9, 0xE7, 0x02, 0x48, 0x85, 0xC0, 0x75, 0x21}};
 // void OwnedFighters(Setup*, TArray<FString>* out, bool random, bool eleven):
 // the selectable fighters whose package is installed (rva 0x566FC0, from
-// kSpecFighters' flag) that the asset allows (rva 0x55A9B0: its
+// the spec's selectable flag at a fighter's value+2, which needs its package
+// and both of its codes in the entitlement cache) that the asset allows (rva
+// 0x55A9B0: its
 // list at +48 with +96 clear, else the restriction list); Random and ELEVEN
 // appended on request. The check takes a fighter in this list (rva
 // 0x56AF20), or one of a login-gated list's (rva 0x56B3A0, 0x565F20: lists
@@ -423,9 +427,13 @@ constexpr CodeSite kOwnedCostumes{"OwnedCostumes", 0x5545B0,
 // "EX01".. (the menu's labels, rva 0x553B80).
 constexpr CodeSite kOwnedColours{"OwnedColours", 0x55ABA0,
 	{0x4C, 0x89, 0x4C, 0x24, 0x20, 0x44, 0x89, 0x44, 0x24, 0x18, 0x48, 0x89, 0x54, 0x24, 0x10, 0x53}};
-// void OwnedStages(Setup*, TArray<FString>* out, bool random): kSpecStages
-// that the asset lists at +184 and does not exclude at +168; the check's
-// stage test (rva 0x56B920).
+// void OwnedStages(Setup*, TArray<FString>* out, bool random): the game's
+// installed stages (SpecStages, rva 0x5672D0, which also needs both of a
+// stage's codes in the entitlement cache) that the asset lists at +184 and
+// does not exclude at +168; the check's stage test (rva 0x56B920). Ember no
+// longer calls it: a stage's `owned` is GameContent's kContentOwnership
+// rule over the stage set's own flags (EMBER_LIBRARY.md section 41). It
+// stays among the verified sites.
 constexpr CodeSite kOwnedStages{"OwnedStages", 0x550DA0,
 	{0x48, 0x89, 0x5C, 0x24, 0x20, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x48, 0x83, 0xEC}};
 // bool LoggedIn(): the default online subsystem (rva 0x73BEC0, from the
@@ -451,11 +459,11 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
-	kFighterInstalled, kCostumePackage, kShowResult, kRestartBattle, kSpecData, kSpecStages, kMainMenuClass,
-	kSetPlayerParam, kRequestExit, kStageName, kSpecFighters, kFindSpecFighter, kFindSpecCostume, kFindSpecColour,
-	kCostumeName, kTextToString, kCreateText, kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke,
-	kBattleSetupClass, kOwnedFighters, kOwnedCostumes, kOwnedColours, kOwnedStages, kLoggedIn, kSpecStageIds,
-	kVersionDataClass};
+	kFighterInstalled, kCostumePackage, kShowResult, kRestartBattle, kSpecData, kMainMenuClass,
+	kSetPlayerParam, kRequestExit, kStageName, kSpecReady, kFindSpecFighter, kFindSpecFighterStep, kFindSpecCostume,
+	kFindSpecCostumeStep, kFindSpecColour, kFindSpecColourStep, kCostumeName, kTextToString, kCreateText,
+	kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke, kBattleSetupClass, kOwnedFighters, kOwnedCostumes,
+	kOwnedColours, kOwnedStages, kLoggedIn, kVersionDataClass};
 
 } // namespace sfve::mod::sfv
 
@@ -466,6 +474,28 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 #include "mod/SfvMenuLayouts.hxx"
 
 namespace sfve::mod::sfv {
+
+// One of the spec's three sets of the pick space, as GameContent finds an
+// element of it: the game's own find, the find's step site (which BuildCheck
+// checks, so the stride below is the one the game's find scales by), the
+// element's size, and where the set is in what holds it (the spec, a
+// fighter's value or a costume's value).
+struct SpecSet {
+	CodeSite find;
+	CodeSite step;
+	uint32_t stride;
+	uint32_t set;
+};
+constexpr SpecSet kSpecFighterSet{kFindSpecFighter, kFindSpecFighterStep, spec::kFighterStride, spec::kFighters};
+constexpr SpecSet kSpecCostumeSet{kFindSpecCostume, kFindSpecCostumeStep, spec::kCostumeStride, spec::kFighterCostumes};
+constexpr SpecSet kSpecColourSet{kFindSpecColour, kFindSpecColourStep, spec::kColourStride, spec::kCostumeColours};
+// The step sites encode the strides: imul's 32-bit and 8-bit immediates for
+// the fighters and costumes, lea's *5 with a scale of 8 for the colours.
+static_assert(kSpecFighterSet.step.bytes[3] == kSpecFighterSet.stride && kSpecFighterSet.step.bytes[4] == 0,
+	"the fighters' stride is the one their find scales by");
+static_assert(kSpecCostumeSet.step.bytes[3] == kSpecCostumeSet.stride, "the costumes' stride is the one their find scales by");
+static_assert(kSpecColourSet.step.bytes[3] == 0x89 && kSpecColourSet.step.bytes[7] == 0xD0 && kSpecColourSet.stride == 5 * 8,
+	"the colours' stride is the one their find scales by");
 
 inline const GameBuild* VerifiedBuild()
 {

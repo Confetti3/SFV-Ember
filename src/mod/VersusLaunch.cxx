@@ -10,9 +10,12 @@
 #include "mod/SfvOffsets.hxx"
 
 #include <stdlib.h>
+#include <string.h>
 #include <wchar.h>
 
+#include <array>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <utility>
 
@@ -33,7 +36,6 @@ using GetPlayerSetupFn = void (*)(uint8_t* playerRef, uint8_t* setup);
 using CopyFn = uint8_t* (*)(uint8_t* out, const uint8_t* from);
 using AssignStringFn = void (*)(uint8_t* to, const GameString* from, int extra);
 using FreeFn = void (*)(void* block);
-using FighterInstalledFn = bool (*)(uint8_t* charaAsset, const GameString* code);
 
 // A launch that has not reached the jump's second step by then has failed
 // (the jump is normally there within a few frames).
@@ -168,8 +170,59 @@ std::string ModeDataRefusal(uint8_t* modeData, LaunchTarget target)
 	return {};
 }
 
-// Mode data ModeDataRefusal accepted.
-void WriteFighter(uint8_t* modeData, int player, const FighterPick& pick)
+// A player's fighter and look: as a launch wrote them into the jump, and as
+// the battle setting holds them once the battle has loaded.
+struct PlayerLook {
+	std::string fighter;
+	int costume = -1;
+	int colour = -1;
+	bool operator==(const PlayerLook&) const = default;
+};
+using PlayerLooks = std::array<PlayerLook, jump::kPlayers>;
+
+// The look the battle setting holds for player `player` (sfv::jump's
+// kSettingCostume and the rest); none where the setting has no record for it.
+std::optional<PlayerLook> LoadedLook(int player)
+{
+	uint8_t* gameData = At<GameDataFn>(sfv::kGameData)();
+	uint8_t* ref = gameData ? At<PlayerRefFn>(sfv::kPlayerRef)(gameData, player) : nullptr;
+	uint8_t* records = ref ? Field<uint8_t*>(ref, jump::kRefRecords) : nullptr;
+	const uint32_t index = ref ? Field<uint32_t>(ref, jump::kRefRecord) : jump::kSettingRecords;
+	if (!records || index >= jump::kSettingRecords) return std::nullopt;
+	uint8_t* record = records + (size_t)jump::kSettingRecordSize * index;
+	const char* code = reinterpret_cast<const char*>(record + jump::kSettingCode);
+	return PlayerLook{std::string(code, strnlen(code, jump::kSettingCodeSize)), Field<int32_t>(record, jump::kSettingCostume),
+		Field<int32_t>(record, jump::kSettingColour)};
+}
+
+// Once the battle has loaded, each player's look as the battle setting holds
+// it, in the launch line's words, so two copies' logs can be compared line
+// for line. The battle's load puts a costume whose package this copy lacks
+// back to 0 (sfv::jump's kSettingCostume), and the game's ownership check,
+// where it runs, may too; either shows only on screen. A look that is not
+// the one the launch wrote is said as a warning: the other copy, whose load
+// kept it, shows the players a different look.
+void LogLoadedLooks(const PlayerLooks& written)
+{
+	for (int player = 0; player < jump::kPlayers; player++) {
+		const std::optional<PlayerLook> loaded = LoadedLook(player);
+		if (!loaded) {
+			Log("launch: player %d's loaded look cannot be read from the battle setting", player + 1);
+			continue;
+		}
+		Log("launch: player %d loaded %s costume %d colour %d", player + 1, loaded->fighter.c_str(), loaded->costume,
+			loaded->colour);
+		const PlayerLook& launched = written[(size_t)player];
+		if (*loaded == launched) continue;
+		Log("launch: warning: player %d loaded %s costume %d colour %d, not the %s costume %d colour %d launched; another "
+			"copy that loaded the launched look shows a different one",
+			player + 1, loaded->fighter.c_str(), loaded->costume, loaded->colour, launched.fighter.c_str(), launched.costume,
+			launched.colour);
+	}
+}
+
+// Mode data ModeDataRefusal accepted. Returns what it wrote.
+PlayerLook WriteFighter(uint8_t* modeData, int player, const FighterPick& pick)
 {
 	const uint8_t* current = Virtual<const uint8_t*>(modeData, jump::kDataGetChara, player);
 	alignas(8) uint8_t chara[jump::kCharPkgSize];
@@ -181,14 +234,17 @@ void WriteFighter(uint8_t* modeData, int player, const FighterPick& pick)
 	// then the selected fighter. Both copy the record.
 	Virtual<void>(modeData, jump::kDataSetChara, player, (const uint8_t*)chara);
 	Virtual<void>(modeData, jump::kDataSetCode, player, (const uint8_t*)chara);
+	const PlayerLook written{Narrow(chara + jump::kCharCode), Field<int32_t>(chara, jump::kCharCostume),
+		Field<int32_t>(chara, jump::kCharColour)};
 	// The V-Skill and V-Trigger as the pipe names them, 1 for I and 2 for II.
 	Log("launch: player %d %s -> %s costume %d colour %d vskill %d vtrigger %d", player + 1, before.c_str(),
-		Narrow(chara + jump::kCharCode).c_str(), Field<int32_t>(chara, jump::kCharCostume), Field<int32_t>(chara, jump::kCharColour),
-		Field<int32_t>(chara, jump::kCharVSkill) + 1, Field<int32_t>(chara, jump::kCharVTrigger) + 1);
+		written.fighter.c_str(), written.costume, written.colour, Field<int32_t>(chara, jump::kCharVSkill) + 1,
+		Field<int32_t>(chara, jump::kCharVTrigger) + 1);
 	// What the copy allocated: the code's characters and the items' array
 	// (its 16-byte items hold no pointers: the copy is a memcpy).
 	FreeGameBlock(chara, jump::kCharCode);
 	FreeGameBlock(chara, jump::kCharItems);
+	return written;
 }
 
 void WriteStage(uint8_t* modeData, const MatchPicks& picks)
@@ -213,17 +269,23 @@ void WriteStage(uint8_t* modeData, const MatchPicks& picks)
 // Game thread: from the picks to the battle. The jump state stays current
 // while the game loads; leaving it for the main menu, or never leaving it,
 // means no battle came, which a linked match must hear about rather than
-// wait for.
-void WatchLoading(LaunchFailed onFailed, bool gameCheck)
+// wait for. Leaving it for a battle state means the load is done (the
+// resource load, rva 0x69BC20, put back any costume it would at its start),
+// and the looks it loaded are logged (LogLoadedLooks).
+void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 {
 	auto frames = std::make_shared<int>(0);
-	RunEachGameFrame([onFailed = std::move(onFailed), frames, gameCheck]() mutable {
+	RunEachGameFrame([written = std::move(written), onFailed = std::move(onFailed), frames, gameCheck]() mutable {
 		uint8_t* state = CurrentSceneState();
 		const uintptr_t kind = SceneStateKind(state);
 		// The check runs in the step after the second (sfv::jump::
 		// kJumpCheckResult); its result, once, the first frame after it.
 		if (gameCheck && *frames == 1 && kind == sfv::scene::kJumpStateVtable) {
 			Log("launch: the game's ownership check gave 0x%x", Field<uint32_t>(state, jump::kJumpCheckResult));
+		}
+		if (kind == sfv::scene::kVersusBattleVtable || kind == sfv::scene::kTrainingBattleVtable) {
+			LogLoadedLooks(written);
+			return false;
 		}
 		const char* why = kind == sfv::scene::kMainMenuVtable ? "the game went back to the main menu while loading"
 			: kind != sfv::scene::kJumpStateVtable            ? nullptr
@@ -255,20 +317,16 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	const MatchPicks picks = std::move(s_pending.picks);
 	LaunchFailed onFailed = std::move(s_pending.onFailed);
 	s_pending = Pending{};
-	for (int player = 0; player < jump::kPlayers; player++) WriteFighter(modeData, player, picks.players[player]);
+	PlayerLooks written;
+	for (int player = 0; player < jump::kPlayers; player++) written[player] = WriteFighter(modeData, player, picks.players[player]);
 	WriteStage(modeData, picks);
 	GiveBackGameRef(flow);
 	s_linkedLoading = picks.linked;
 	s_replayLoading = picks.replay;
 	s_linkedPractice = picks.linked && picks.practice;
 	uint8_t* message = Field<uint8_t*>(jumpState, jump::kJumpStateMessage);
-	WatchLoading(std::move(onFailed), message && Field<uint8_t>(message, jump::kMessageCheckOwnership) != 0);
+	WatchLoading(std::move(written), std::move(onFailed), message && Field<uint8_t>(message, jump::kMessageCheckOwnership) != 0);
 	return next;
-}
-
-GameString View(const std::wstring& text)
-{
-	return GameString{text.c_str(), (int32_t)text.size() + 1, (int32_t)text.size() + 1};
 }
 
 bool StagePlayable(uint8_t* singleton, const std::wstring& code)
@@ -287,40 +345,44 @@ bool StagePlayable(uint8_t* singleton, const std::wstring& code)
 	return false;
 }
 
+// Why a battle on this copy would not load the look (LookLoadState), for
+// the refusal after "player N's"; empty for one it loads as picked.
+std::string LookRefusal(LookLoad state)
+{
+	switch (state) {
+	case LookLoad::Loadable: return {};
+	case LookLoad::NoTables: return "fighter cannot be checked: the game's content tables or spec data are not loaded";
+	case LookLoad::NotBattleFighter: return "fighter is not one a battle can load";
+	case LookLoad::FighterNotInstalled: return "fighter is not installed";
+	case LookLoad::CostumeNotInSpec: return "costume is not in the game's spec";
+	case LookLoad::CostumeNotInstalled: return "costume's package is not installed here";
+	case LookLoad::ColourNotInSpec: return "colour is not in the game's spec for that costume";
+	}
+	return "look is not one this copy knows";
+}
+
 // Empty when the game has every pick (no ownership involved: the game's
 // content tables and installed packages), else why not. A launch with
-// content the game does not have would load nothing sensible. Which fighters
-// a battle can load is GameContent's rule (BattleFighter), the same one the
-// catalog is built by, so the pipe's launch cannot reach a fighter a room
-// would never offer; so is how many V-Skills and V-Triggers it has
-// (FighterChoiceCounts). A costume must have a spec row and its package
-// here (CostumeLoadState: the battle's own load would otherwise put it back
-// to 0 without a word), and a colour a spec row (ColourInSpec). Neither asks
-// the account's entitlement cache, so an opponent's costume this copy's
-// account lacks still loads as picked (EMBER_LIBRARY.md section 41).
+// content the game does not have would load nothing sensible. Each look is
+// GameContent's LookLoadState, one lookup of the fighter: a fighter a battle
+// can load (BattleFighter, the rule the catalog is built by, so the pipe's
+// launch cannot reach a fighter a room would never offer) and installed
+// here, a costume with a spec row and its package here (the battle's own
+// load would otherwise put it back to 0 without a word), a colour with a
+// spec row. None of it asks the account's entitlement cache, so an
+// opponent's costume this copy's account lacks still loads as picked
+// (EMBER_LIBRARY.md section 41). How many V-Skills and V-Triggers the fighter
+// has is FighterChoiceCounts'.
 std::string MissingContent(const MatchPicks& picks)
 {
 	uint8_t* singleton = At<GameDataFn>(sfv::kGameData)();
-	uint8_t* fighters = singleton ? Field<uint8_t*>(singleton, sfv::content::kCharaAsset) : nullptr;
-	if (!fighters) return "the game's content tables are not loaded";
+	if (!singleton) return "the game's content tables are not loaded";
 	for (int player = 0; player < jump::kPlayers; player++) {
 		const FighterPick& pick = picks.players[player];
 		if (pick.fighter.empty()) continue;
-		const GameString code = View(pick.fighter);
 		const std::string who = "player " + std::to_string(player + 1) + "'s ";
-		if (!BattleFighter(fighters, pick.fighter)) return who + "fighter is not one a battle can load";
-		if (!At<FighterInstalledFn>(sfv::kFighterInstalled)(fighters, &code)) return who + "fighter is not installed";
-		const int costume = pick.costume < 0 ? 0 : pick.costume;
-		if (pick.costume >= 0) {
-			switch (CostumeLoadState(pick.fighter, costume)) {
-			case CostumeLoad::Loadable: break;
-			case CostumeLoad::NotInSpec: return who + "costume is not in the game's spec";
-			case CostumeLoad::NoPackage: return who + "costume's package is not installed here";
-			case CostumeLoad::NoTables: return "the game's spec data is not loaded";
-			}
-		}
-		if (pick.colour >= 0 && !ColourInSpec(pick.fighter, costume, pick.colour)) {
-			return who + "colour is not in the game's spec for that costume";
+		if (const std::string refusal = LookRefusal(LookLoadState(pick.fighter, pick.costume, pick.colour)); !refusal.empty()) {
+			return who + refusal;
 		}
 		const std::optional<ChoiceCounts> counts = FighterChoiceCounts(pick.fighter);
 		if (!counts) return who + "fighter's V-Skills and V-Triggers are not known (the game's name assets are not there, or did not list it)";

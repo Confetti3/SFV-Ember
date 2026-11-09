@@ -5,13 +5,15 @@
 // fighter, the costume, the colour, the V-Skill, the V-Trigger and the stage
 // (EMBER_LIBRARY.md section 40), rather than SF4's select
 // grid (FighterSelector), which is SF4's art and roster. The rows name
-// everything as the game does (SfvCatalog), and the pane beside them shows
-// the game's own pictures of the pick (SfvArt): the fighter's select-screen
-// banner, the costume and colour by name with the colour's swatch, the
-// V-Skill and V-Trigger in the game's words (SfvLoadoutText), and the
-// stage's picture while the stage row has the focus. The stage row offers
-// Random and the stages both seated players have (EMBER_LIBRARY.md section
-// 38).
+// everything as the game does (SfvCatalog), and the pane beside them
+// (SfvPickPreview) shows the game's own pictures and words for the pick, or,
+// while a choice is open, for the pick with its focused option: the
+// fighter's banner, the costume and every colour of it as swatch chips, the
+// V-Skill and V-Trigger with the game's marks, and the stage's card while
+// the stage row has the focus (EMBER_LIBRARY.md section 43). The stage row
+// offers Random and the stages this copy has; one the opponent lacks is
+// listed but cannot be chosen, with the runtime's reason (sections 38 and
+// 43).
 //
 // Left and Right step a row and keep the change at once; Select on any row
 // opens every choice. Every fighter, costume and colour the game has is a
@@ -29,7 +31,9 @@
 //
 // Render thread, inside the shell's frame.
 
+#include "ember/SfvCatalog.hxx"
 #include "ember/SfvPick.hxx"
+#include "ember/SfvPickPreview.hxx"
 
 #include "ui/ApplicationShell.hxx"
 #include "ui/GameMenu.hxx"
@@ -51,28 +55,37 @@ public:
 	// canEditSelection); `stageEditable`: and so may the stage this player
 	// offers (out of a room, or as P1). `error` says why the pick cannot be
 	// readied, if it cannot. `unavailableStages` (the runtime's): the stages
-	// the stage row leaves out, which offers Random and the rest. Writes a
+	// the stage row cannot offer (SfvCatalog's StageOptions). Writes a
 	// changed pick back to SfvPick.
 	void Draw(bool editable, bool stageEditable, const std::string& error, const std::vector<std::int64_t>& unavailableStages);
 
 	// What Draw shows and does, without drawing, so the pick screen's
 	// journeys can be walked without a frame. The rows for `pick`, with the
 	// stage row (`withStage`, the player's screen; the dummy's has none)
-	// offering `stageChoices`.
+	// listing `stageOptions`.
 	static std::vector<sf4e::ui::MenuEntry> Rows(const PlayerPick& pick, bool editable, bool withStage, bool stageEditable,
-		const std::vector<int>& stageChoices);
+		const std::vector<StageOption>& stageOptions);
 	// The pick with the row's change made; false when the action changes
-	// nothing. A stage is one of `stageChoices`.
-	static bool Apply(const sf4e::ui::MenuAction& action, PlayerPick& pick, const std::vector<int>& stageChoices);
+	// nothing. A stage is one of `stageOptions`' PlayableIds.
+	static bool Apply(const sf4e::ui::MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions);
+	// What the pane shows for the row `rowId`.
+	static PreviewFocus FocusOf(const std::string& rowId);
+	// The pick as the pane shows it while the option `optionId` of the row's
+	// open choice has the focus: that fighter (in its first look this player
+	// can ready, and the loadout fitted to it), costume (keeping the colour
+	// where it has it), colour, part's choice or stage. Nothing is fitted to
+	// what the player can ready beyond that, so an option they cannot choose
+	// is shown as it is. The pick itself for no option, or one that is not
+	// the row's.
+	static PlayerPick Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId);
 
 private:
-	// The pane beside the rows, for the focused row, with `note` (why the
-	// focused choice of an open choice cannot be chosen) under it.
-	static void DrawPreview(const PlayerPick& pick, const std::string& focus, const std::string& note);
-	// Why the focused option of the open choice cannot be chosen: its detail,
-	// or empty with no choice open or nothing to say. The navigation is the
-	// last frame's, the rows this frame's.
-	std::string FocusedChoiceNote(const std::vector<sf4e::ui::MenuEntry>& rows) const;
+	// The pane's contents for the focused row `focus`, or with a choice open,
+	// for its focused option: the pick previewed, and the option's detail
+	// (why it cannot be chosen) as its note. Called while the menu draws the
+	// pane: the navigation as it stands then, the rows this frame's.
+	PickPreview PreviewOf(const PlayerPick& pick, const std::string& focus, const std::vector<sf4e::ui::MenuEntry>& rows,
+		const std::vector<StageOption>& stageOptions) const;
 
 	bool dummy_ = false;
 	sf4e::ui::GameMenu menu_;

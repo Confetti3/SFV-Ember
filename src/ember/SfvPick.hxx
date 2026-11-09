@@ -15,11 +15,11 @@
 // costume or colour the game does not let them pick, or this copy has not
 // installed, becomes their first one they can, and a costume is one they can
 // only in a colour they can, so the fitted pick is always one they can
-// ready while any fighter is). Its stage is Random or one this copy has
-// installed (SfvCatalog's StageInstalled); another becomes the first
-// installed stage. Until anyone picks, it is the first fighter they can play
-// in their first costume and colour, on the first installed stage. Any
-// thread.
+// ready while any fighter is). Its stage is Random or one they are offered
+// (SfvCatalog's StageOffered: installed here and, by default, granted by the
+// account); another becomes the first stage they are offered. Until anyone
+// picks, it is the first fighter they can play in their first costume and
+// colour, on the first stage they are offered. Any thread.
 
 #include "common/SelectionPick.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"

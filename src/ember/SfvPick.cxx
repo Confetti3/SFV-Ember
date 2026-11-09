@@ -15,16 +15,18 @@ std::mutex s_mutex;
 PlayerPick s_pick;
 std::optional<PlayerPick> s_dummy; // none until the player picks one
 
-// Random, or a stage this copy has installed (StageInstalled, the per-copy
-// rule); anything else becomes the first installed stage, never stage 0,
-// which this copy may lack.
+// Random, or a stage this copy's player is offered (StageOffered, the one
+// rule for their own stage offers); anything else becomes the first stage
+// they are offered, never stage 0, which they may not be. With none offered
+// it becomes Random, which then has nothing to roll and the Ready check
+// refuses.
 int FittedStage(int stage)
 {
-	if (stage == picks::kRandomStage || StageInstalled(stage)) return stage;
+	if (stage == picks::kRandomStage || StageOffered(stage)) return stage;
 	for (int id = 0; id < StageCount(); id++) {
-		if (StageInstalled(id)) return id;
+		if (StageOffered(id)) return id;
 	}
-	return 0;
+	return picks::kRandomStage;
 }
 
 // The pick under the catalog's rules and fitted to what this copy's player

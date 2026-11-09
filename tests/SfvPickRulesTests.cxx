@@ -99,52 +99,63 @@ TEST_CASE("Random rolls only stages both seated players have, each as likely, an
 	FillTestCatalog();
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const sf4e::selection::RandomPool pool;
-	// This copy lacks S26 (id 3); the opponent lacks S02 (id 1): the runtime's
-	// unavailable set at the table is both.
-	const std::vector<std::int64_t> unavailable = {1, kUninstalledStage};
+	// This copy lacks S26 (id 3), and the opponent has every stage: the
+	// runtime's unavailable set at the table is S26 alone. S02 (id 1) is
+	// installed here, but the account's cache lacks it, so under the default
+	// rule P1's roll never lands on it (section 41), though the room's set
+	// says nothing of it.
+	const std::vector<std::int64_t> unavailable = {kUninstalledStage};
 	std::vector<int> landed(4, 0);
 	for (std::uint32_t roll = 0; roll < 10000; roll++) {
 		const int stage = catalog.resolveStage(picks::kRandomStage, roll * 2654435761u, pool, nullptr, unavailable);
 		REQUIRE(catalog.validStage(stage)); // never Random itself on the wire
-		CHECK(StageInstalled(stage));
+		CHECK(StageOffered(stage));
 		CHECK(std::find(unavailable.begin(), unavailable.end(), stage) == unavailable.end());
 		landed[(size_t)stage]++;
 	}
 	// Every playable stage is reached, about as often as the other.
 	CHECK(landed[0] > 4500);
 	CHECK(landed[2] > 4500);
-	CHECK(landed[1] == 0);
-	CHECK(landed[3] == 0);
+	CHECK(landed[(size_t)kNotEntitledStage] == 0);
+	CHECK(landed[(size_t)kUninstalledStage] == 0);
+	// The opponent lacking S25 (id 2) as well leaves S01 alone.
+	for (std::uint32_t roll = 0; roll < 100; roll++) {
+		CHECK(catalog.resolveStage(picks::kRandomStage, roll * 2654435761u, pool, nullptr, {2, kUninstalledStage}) == 0);
+	}
 	// With no stage left, Random stays unresolved, which the runtime's Ready
 	// check refuses (runtime.ready.stage_unavailable).
 	CHECK(catalog.resolveStage(picks::kRandomStage, 5, pool, nullptr, {0, 1, 2, 3}) == picks::kRandomStage);
 	CHECK_FALSE(catalog.validStage(catalog.resolveStage(picks::kRandomStage, 5, pool, nullptr, {0, 1, 2, 3})));
-	// A launch that is not a room's (Training) rolls over this copy's own
-	// missing stages, so it never sees Random or a stage this copy lacks.
+	// A launch that is not a room's (Training) rolls over the stages this
+	// player is offered, so it never sees Random, a stage this copy lacks or
+	// one the account's cache lacks.
 	PlayerPick random;
 	random.pick = PickOf(0);
 	random.stage = picks::kRandomStage;
 	for (int i = 0; i < 200; i++) {
 		const std::string code = OfflineStageCode(random.stage);
-		CHECK((code == "S01" || code == "S02" || code == "S25"));
+		CHECK((code == "S01" || code == "S25"));
 	}
 	PlayerPick chosen = random;
 	chosen.stage = 2;
 	CHECK(OfflineStageCode(chosen.stage) == "S25");
 }
 
-TEST_CASE("this player's stored stage is Random or one this copy has installed")
+TEST_CASE("this player's stored stage is Random or one they are offered")
 {
 	FillTestCatalog();
 	PlayerPick pick = CurrentPick();
 	pick.stage = picks::kRandomStage;
 	CHECK(SetPick(pick).stage == picks::kRandomStage);
 	CHECK(PickText(CurrentPick()).find("stage random") != std::string::npos);
-	pick.stage = 1;
-	CHECK(SetPick(pick).stage == 1);
-	// A stage this copy lacks, or none of the universe's, becomes the first
-	// installed stage.
+	pick.stage = 2;
+	CHECK(SetPick(pick).stage == 2);
+	// A stage this copy lacks, one installed here that the account's cache
+	// lacks (section 41), or none of the universe's, becomes the first stage
+	// they are offered.
 	pick.stage = (int)kUninstalledStage;
+	CHECK(SetPick(pick).stage == 0);
+	pick.stage = (int)kNotEntitledStage;
 	CHECK(SetPick(pick).stage == 0);
 	pick.stage = 9;
 	CHECK(SetPick(pick).stage == 0);
@@ -252,7 +263,7 @@ TEST_CASE("a costume the account's cache lacks is not this player's to ready; as
 	CHECK(refused.refusal.log.find("not installed here") != std::string::npos);
 }
 
-TEST_CASE("the costume ownership switch: Entitlements keeps the game's answer, Installed makes every installed look theirs")
+TEST_CASE("the content ownership switch: Entitlements keeps the game's answer, Installed makes every installed look and stage theirs")
 {
 	const mod::ContentLists game = TestContent();
 	// CNL's costume 3: installed here, lacking from the account's cache, and so
@@ -268,29 +279,50 @@ TEST_CASE("the costume ownership switch: Entitlements keeps the game's answer, I
 			for (size_t c = 0; c < a.fighters[f].costumes.size(); c++) {
 				const mod::CostumeContent& x = a.fighters[f].costumes[c];
 				const mod::CostumeContent& y = b.fighters[f].costumes[c];
-				if (x.owned != y.owned || x.ownedColours != y.ownedColours) return false;
+				if (x.owned != y.owned || OwnedColours(x) != OwnedColours(y)) return false;
 			}
 		}
 		return true;
 	};
+	// The stages this copy's player is offered, by code, in order.
+	const auto ownedStages = [](const mod::ContentLists& lists) {
+		std::vector<std::string> codes;
+		for (const mod::StageContent& stage : lists.stages) {
+			if (stage.owned) codes.push_back(stage.code);
+		}
+		return codes;
+	};
+	// S02: installed here, its codes lacking from the account's cache, so the
+	// game's own stage lists leave it out (section 41).
+	REQUIRE(game.stages[(size_t)kNotEntitledStage].installed);
+	REQUIRE_FALSE(game.stages[(size_t)kNotEntitledStage].entitled);
 
 	mod::ContentLists entitlements = TestContent();
-	mod::ApplyCostumeOwnership(entitlements, mod::CostumeOwnership::Entitlements);
-	CHECK(entitlements.ownership.looks == mod::CostumeOwnership::Entitlements);
+	for (mod::StageContent& stage : entitlements.stages) stage.owned = !stage.owned; // the rule alone decides stages
+	mod::ApplyContentOwnership(entitlements, mod::ContentOwnership::Entitlements);
+	CHECK(entitlements.ownership.looks == mod::ContentOwnership::Entitlements);
+	CHECK(entitlements.ownership.stages == mod::ContentOwnership::Entitlements);
 	CHECK(sameOwnership(entitlements, game));
+	// Stages under the default: installed and entitled, what SFV's own stage
+	// lists offered before the universe became the spec's rows.
+	CHECK(ownedStages(entitlements) == std::vector<std::string>{"S01", "S25"});
+	CHECK(ownedStages(entitlements) == ownedStages(game));
 
 	mod::ContentLists installed = TestContent();
-	mod::ApplyCostumeOwnership(installed, mod::CostumeOwnership::Installed);
-	CHECK(installed.ownership.looks == mod::CostumeOwnership::Installed);
+	mod::ApplyContentOwnership(installed, mod::ContentOwnership::Installed);
+	CHECK(installed.ownership.looks == mod::ContentOwnership::Installed);
+	CHECK(installed.ownership.stages == mod::ContentOwnership::Installed);
+	// Every installed stage, S02 included; S26, not installed, under neither.
+	CHECK(ownedStages(installed) == std::vector<std::string>{"S01", "S02", "S25"});
 	CHECK(installed.fighters[1].costumes[2].owned);
-	CHECK(installed.fighters[1].costumes[2].ownedColours == std::vector<int>{0});
+	CHECK(OwnedColours(installed.fighters[1].costumes[2]) == std::vector<int>{0});
 	// Colours too: RYU's EX colours of costume 4, and every colour of his
 	// costume 1, are installed with their costumes.
-	CHECK(installed.fighters[0].costumes[2].ownedColours == std::vector<int>{0, 1, 100, 101});
-	CHECK(installed.fighters[0].costumes[1].ownedColours == installed.fighters[0].costumes[1].colours);
+	CHECK(OwnedColours(installed.fighters[0].costumes[2]) == std::vector<int>{0, 1, 100, 101});
+	CHECK(OwnedColours(installed.fighters[0].costumes[1]) == mod::ColourNumbers(installed.fighters[0].costumes[1]));
 	// What is not installed is not theirs under either rule: BSN's costume 1.
 	CHECK_FALSE(installed.fighters[4].costumes[1].owned);
-	CHECK(installed.fighters[4].costumes[1].ownedColours.empty());
+	CHECK(OwnedColours(installed.fighters[4].costumes[1]).empty());
 	// Fighters keep the game's answer: KEN stays not owned.
 	CHECK_FALSE(installed.fighters[2].owned);
 	// The command line's marks still take a look away under it.
@@ -301,14 +333,58 @@ TEST_CASE("the costume ownership switch: Entitlements keeps the game's answer, I
 	// game's answer stays under either rule.
 	mod::ContentLists restricted = TestContent();
 	restricted.ownership.restricted = true;
-	mod::ApplyCostumeOwnership(restricted, mod::CostumeOwnership::Installed);
+	mod::ApplyContentOwnership(restricted, mod::ContentOwnership::Installed);
 	CHECK(sameOwnership(restricted, game));
+	// ...and the log names the rule that decided, not the switch.
+	CHECK(restricted.ownership.looks == mod::ContentOwnership::Entitlements);
+	CHECK(std::string(mod::LooksRule(restricted.ownership)) == "the battle setup's list");
+	CHECK(std::string(mod::LooksRule(installed.ownership)) == "installed");
+	CHECK(std::string(mod::LooksRule(entitlements.ownership)) == "entitlements");
+	// The asset's restriction is the looks' alone: stages follow the switch.
+	CHECK(restricted.ownership.stages == mod::ContentOwnership::Installed);
+	CHECK(ownedStages(restricted) == ownedStages(installed));
 
 	// The rule is this copy's own: the build id never moves with it.
 	CHECK(ContentFingerprint(installed) == ContentFingerprint(game));
 	CHECK(ContentFingerprint(entitlements) == ContentFingerprint(game));
-	CHECK(std::string(mod::CostumeOwnershipName(mod::CostumeOwnership::Entitlements)) == "entitlements");
-	CHECK(std::string(mod::CostumeOwnershipName(mod::CostumeOwnership::Installed)) == "installed");
+	CHECK(std::string(mod::ContentOwnershipName(mod::ContentOwnership::Entitlements)) == "entitlements");
+	CHECK(std::string(mod::ContentOwnershipName(mod::ContentOwnership::Installed)) == "installed");
+	// The switch's default is Entitlements, which the catalog's fixture (and
+	// the stage offers SfvCatalogTests checks) is shaped by.
+	CHECK(mod::kContentOwnership == mod::ContentOwnership::Entitlements);
+}
+
+TEST_CASE("each colour carries its own facts, and the log's counts are taken from them")
+{
+	const mod::ContentLists lists = TestContent();
+	// RYU's costume 4: colours 0, 1, 100 and 101, the EX ones not his.
+	const mod::CostumeContent& nostalgia = lists.fighters[0].costumes[2];
+	REQUIRE(mod::ColourOf(nostalgia, 100));
+	CHECK(mod::ColourOf(nostalgia, 100)->id == 100);
+	CHECK_FALSE(mod::ColourOf(nostalgia, 100)->owned);
+	CHECK(mod::ColourOf(nostalgia, 1)->owned);
+	CHECK_FALSE(mod::ColourOf(nostalgia, 2));
+	CHECK(mod::ColourNumbers(nostalgia) == std::vector<int>{0, 1, 100, 101});
+
+	const mod::ContentCounts counts = mod::CountContent(lists);
+	CHECK(counts.fighters == 5);
+	CHECK(counts.fightersEntitled == 4);
+	CHECK(counts.fightersNotOwned == 1); // KEN
+	CHECK(counts.costumes == 10);
+	CHECK(counts.costumesInstalled == 9); // all but BSN's costume 1
+	CHECK(counts.costumesEntitled == 8);  // all but CNL's costumes 2 and 3
+	CHECK(counts.costumesNotOwned == 2);
+	CHECK(counts.colours == 28);
+	// RYU's costume 1 in every colour and costume 4's EX colours, and CNL's
+	// costume 3, which the account's cache lacks.
+	CHECK(counts.coloursNotOwned == 13);
+	// Those, and CNL's costume 2, whose colour the cache grants but whose
+	// costume it does not.
+	CHECK(counts.looksNotEntitled == 14);
+	CHECK(counts.stages == 4);
+	CHECK(counts.stagesInstalled == 3);
+	CHECK(counts.stagesNotEntitled == 1); // S02; S26 is not installed
+	CHECK(counts.stagesNotOwned == 2);    // S02 and S26
 }
 
 TEST_CASE("a costume is theirs to ready only in a colour of theirs, for the fitting and the pick screen alike")
@@ -460,7 +536,7 @@ TEST_CASE("the command line marks content unowned for this copy, never owned")
 	CHECK_FALSE(lists.fighters[2].owned);
 	CHECK_FALSE(lists.fighters[0].costumes[2].owned);
 	CHECK(lists.fighters[0].costumes[0].owned);
-	CHECK(lists.fighters[1].costumes[0].ownedColours == std::vector<int>{0});
+	CHECK(OwnedColours(lists.fighters[1].costumes[0]) == std::vector<int>{0});
 	CHECK(lists.ownership.markedUnowned == 3); // ZZZ is no fighter of the lists
 	// Nothing the game does not allow becomes owned.
 	CHECK_FALSE(lists.fighters[1].costumes[1].owned);

@@ -29,13 +29,11 @@ namespace sfve::catalog_fixture {
 inline mod::CostumeContent Costume(int id, std::vector<int> colours, const char* name = "", bool installed = true,
 	bool owned = true, std::vector<int> notOwned = {})
 {
-	std::vector<int> ownedColours;
+	mod::CostumeContent costume{id, {}, name, installed, owned, owned};
 	for (int colour : colours) {
-		if (std::find(notOwned.begin(), notOwned.end(), colour) == notOwned.end()) ownedColours.push_back(colour);
+		const bool theirs = std::find(notOwned.begin(), notOwned.end(), colour) == notOwned.end();
+		costume.colours.push_back({colour, theirs, theirs});
 	}
-	mod::CostumeContent costume{id, std::move(colours), name, installed, owned, std::move(ownedColours)};
-	costume.entitled = owned;
-	costume.entitledColours = costume.ownedColours;
 	return costume;
 }
 
@@ -45,7 +43,19 @@ inline mod::CostumeContent Costume(int id, std::vector<int> colours, const char*
 // 41).
 inline mod::CostumeContent NotEntitled(int id, std::vector<int> colours, const char* name = "")
 {
-	return {id, std::move(colours), name, true, false, {}};
+	mod::CostumeContent costume{id, {}, name, true, false, false};
+	for (int colour : colours) costume.colours.push_back({colour, false, false});
+	return costume;
+}
+
+// The costume's colours this copy's player may pick, by number, in order.
+inline std::vector<int> OwnedColours(const mod::CostumeContent& costume)
+{
+	std::vector<int> owned;
+	for (const mod::ColourContent& colour : costume.colours) {
+		if (colour.owned) owned.push_back(colour.id);
+	}
+	return owned;
 }
 
 inline mod::FighterContent Fighter(const char* code, std::vector<mod::CostumeContent> costumes, const char* name = "",
@@ -65,11 +75,14 @@ inline mod::FighterContent WithChoices(mod::FighterContent fighter, std::vector<
 	return fighter;
 }
 
-// A stage of the spec's universe, installed here and the game's to choose
-// unless said otherwise.
-inline mod::StageContent Stage(const char* code, const char* name = "", bool installed = true, bool owned = true)
+// A stage of the spec's universe, installed here and its codes granted by
+// the account's entitlement cache unless said otherwise. `entitled` is the
+// game's selectable flag, which needs the install as well, and `owned` is
+// what the default rule (ContentOwnership::Entitlements) makes of the two.
+inline mod::StageContent Stage(const char* code, const char* name = "", bool installed = true, bool granted = true)
 {
-	return {code, name, installed, owned};
+	const bool entitled = installed && granted;
+	return {code, name, installed, entitled, entitled};
 }
 
 // A content list shaped as the game's: fighters in the game's order with
@@ -82,7 +95,9 @@ inline mod::StageContent Stage(const char* code, const char* name = "", bool ins
 // marks of each of its colours make it), so no look of it is theirs; a
 // one-colour costume installed here that the account's entitlement cache
 // lacks (CNL's costume 3, as SFV's "EX character" skins are); the
-// stages' names where the game gives one (none for the second), and a fourth
+// stages' names where the game gives one (none for the second); a stage
+// installed here whose codes the account's entitlement cache lacks (S02, id
+// 1), which the default rule does not offer this copy's player; and a fourth
 // stage of the universe this copy has not installed (S26, id 3). The
 // fighters' V-Skills and V-Triggers (section 40) are every mix: RYU and BSN
 // two of each, CNL two V-Skills and one V-Trigger, CMY one V-Skill and two
@@ -101,11 +116,14 @@ inline mod::ContentLists TestContent()
 				Fighter("KEN", {Costume(0, {0})}, "Ken", true, false),
 				WithChoices(Fighter("CMY", {Costume(3, {5, 6})}, "", false), {"Skill One"}, {"Trigger One", "Trigger Two"}),
 				WithChoices(Fighter("BSN", {Costume(0, {0, 1}), Costume(1, {0, 1}, "", false)}, "M. Bison"), {"", ""}, {"", ""})},
-		{Stage("S01", "Stage One"), Stage("S02"), Stage("S25", "Stage Twenty-five"), Stage("S26", "", false)}};
+		{Stage("S01", "Stage One"), Stage("S02", "", true, false), Stage("S25", "Stage Twenty-five"), Stage("S26", "", false)}};
 }
 
 // The id of TestContent's stage this copy has not installed.
 constexpr std::int64_t kUninstalledStage = 3;
+// The id of TestContent's stage installed here that the account's
+// entitlement cache lacks.
+constexpr std::int64_t kNotEntitledStage = 1;
 
 // Lists with only the codes given, each fighter in one costume and colour,
 // every stage installed.
