@@ -19,6 +19,7 @@
 // -windowed (StartGame), so a test's own is not repeated.
 
 #include "launcher/LaunchSteps.hxx"
+#include "SteamSession.hxx"
 
 #include "common/CrashDump.hxx"
 #include "common/ProductIdentity.hxx"
@@ -197,6 +198,12 @@ void BeforeStart(const std::wstring&)
 
 HANDLE StartGame(const StartRequest& request, DWORD& startError)
 {
+	// The game's Steam start needs Steam's record of its client to be right,
+	// or SFV crashes in its online code (launcher/SteamSession.hxx).
+	if (sfve::launcher::EnsureSteamSession() == sfve::launcher::SteamSession::Failed) {
+		startError = ERROR_SERVICE_NOT_ACTIVE;
+		return nullptr;
+	}
 	// The game's command line: its own path, then the mod's settings
 	// (mod/ModConfig.hxx). Rooms and Ember's runtime on; the ownership check
 	// is the mod's own default. -sfve_loader=launcher has the mod start
