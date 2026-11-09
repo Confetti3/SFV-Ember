@@ -7,6 +7,7 @@
 #include <windows.h>
 
 #include <stdio.h>
+#include <wchar.h>
 
 #include <atomic>
 #include <deque>
@@ -237,9 +238,14 @@ int AnnounceDeviceChange()
 		[](HWND hwnd, LPARAM count) -> BOOL {
 			DWORD pid = 0;
 			GetWindowThreadProcessId(hwnd, &pid);
-			if (pid == GetCurrentProcessId() && PostMessageW(hwnd, WM_DEVICECHANGE, 0x0007 /* DBT_DEVNODES_CHANGED */, 0)) {
-				++*reinterpret_cast<int*>(count);
+			if (pid != GetCurrentProcessId() || !PostMessageW(hwnd, WM_DEVICECHANGE, 0x0007 /* DBT_DEVNODES_CHANGED */, 0)) {
+				return TRUE;
 			}
+			// Only the engine's own windows pass the change to its XInput
+			// reader (FWindowsApplication's); the splash screen's
+			// (SplashScreenClass) drops it.
+			wchar_t name[32] = {};
+			if (GetClassNameW(hwnd, name, 32) && wcscmp(name, L"UnrealWindow") == 0) ++*reinterpret_cast<int*>(count);
 			return TRUE;
 		},
 		reinterpret_cast<LPARAM>(&posted));

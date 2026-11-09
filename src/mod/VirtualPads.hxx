@@ -76,7 +76,8 @@ uint64_t NestedPadReads();
 // change (the game reads a slot that was not connected only after
 // WM_DEVICECHANGE, rva 0x11D7C20), so a pad that appears later, virtual or
 // the controller layer's, has to say so. Posts it to every window of this
-// process; the number posted to (0 before the game has a window).
+// process; the number of the engine's own (class UnrealWindow) among them,
+// 0 before the game's window exists (the splash screen's ignores it).
 int AnnounceDeviceChange();
 
 // The calling thread's XInput calls go straight to the library from now on:
