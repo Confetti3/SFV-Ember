@@ -55,7 +55,9 @@ struct OverlayUi {
 	std::function<bool(unsigned message, unsigned key)> takesKey;
 };
 
-// Hooks the swap chain; false (logged) when it cannot.
+// Hooks the swap chain's Present and ResizeBuffers as one set
+// (mod::CommitHookSet); false (logged) when they are not in, and then neither
+// is.
 bool InstallOverlay();
 
 // The interface to show; until one is set the overlay draws nothing and the

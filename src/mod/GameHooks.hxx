@@ -41,25 +41,48 @@ struct HookCalls {
 	MH_STATUS(WINAPI* remove)(LPVOID target) = &MH_RemoveHook;
 };
 
-// The hook a HookTransaction could not install, and MinHook's status for it.
+// A hook of a set, by name, and MinHook's status for the step it failed.
 struct HookFailure {
 	const char* site;
 	MH_STATUS status;
 };
 
-// Code-site hooks that go in together or not at all. Commit creates every
-// hook, then enables them. When one fails, it removes every hook it created
-// (MinHook disables an enabled one first) and puts back the value each
-// original pointer held before, so nothing of the set is left in the game and
-// no pointer is left on a freed trampoline. A hook it did not create (one
-// that was already there) stays as it was.
+// What a HookTransaction's Commit left in the game.
+struct HookCommit {
+	enum class Outcome {
+		Installed,          // every hook of the set is in and enabled
+		RolledBack,         // `failed` could not go in, and every hook the commit created is out again
+		RollbackIncomplete, // `failed` could not go in, and `unremoved` (the first of them) could not be taken out
+	};
+	Outcome outcome = Outcome::Installed;
+	HookFailure failed{};    // unless Installed: the hook that could not be created or enabled
+	HookFailure unremoved{}; // RollbackIncomplete only: the first hook MinHook could not remove
+};
+
+// Hooks that go in together or not at all: code sites of the game, or any
+// function by its address. Commit creates every hook, then enables them.
+// When one fails, it removes every hook it created (MinHook disables an
+// enabled one first) and puts back the value each original pointer held
+// before, so nothing of the set is left in the game and no pointer is left on
+// a freed trampoline. A hook it did not create (one that was already there)
+// stays as it was.
+//
+// A hook that cannot be removed stays in, its original pointer on its
+// trampoline, and the rollback goes on with the rest; the commit then says
+// RollbackIncomplete. With MinHook that happens only to an enabled hook it
+// could not disable (removing one never enabled only frees its trampoline),
+// so part of the set is still live in the game. CommitHookSet is the answer
+// every caller gives to that.
 class HookTransaction {
 public:
 	explicit HookTransaction(HookCalls calls = {}) : calls_(calls) {}
 
+	// `name` is the hook's name in a HookFailure, so it must outlive the set
+	// (a string literal or a CodeSite's name).
+	void Add(const char* name, void* target, void* detour, void** original);
 	void Add(uintptr_t imageBase, const CodeSite& site, void* detour, void** original);
-	// Installs the hooks added since the last Commit: empty when all are in.
-	std::optional<HookFailure> Commit();
+	// Installs the hooks added since the last Commit.
+	HookCommit Commit();
 
 private:
 	struct Hook {
@@ -73,7 +96,15 @@ private:
 	std::vector<Hook> hooks_;
 };
 
-// Hooks one verified code site (a transaction of one); logs a failure.
+// Commits `hooks`, the set called `set` in the log. Empty when every hook is
+// in; otherwise the failure, logged, with nothing of the set left in the game.
+// A set that could not be taken back out ends the process
+// (start::Refusal::HooksStuck) instead of returning: every set is committed
+// from SfveStart, before the game's code runs, and a set left half in would
+// run hooks nothing owns.
+std::optional<HookFailure> CommitHookSet(HookTransaction& hooks, const char* set);
+
+// Hooks one verified code site (a set of one, CommitHookSet).
 bool HookCodeSite(uintptr_t imageBase, const CodeSite& site, void* detour, void** original);
 
 // Adds the listener's hooks (the battle frame and its constructor, the input

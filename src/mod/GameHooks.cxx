@@ -2,6 +2,7 @@
 
 #include "mod/ControlPipe.hxx"
 #include "mod/GameMemory.hxx"
+#include "mod/GuardedStart.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
 
@@ -97,12 +98,17 @@ void* h_GameAlloc(size_t size)
 
 } // namespace
 
-void HookTransaction::Add(uintptr_t imageBase, const CodeSite& site, void* detour, void** original)
+void HookTransaction::Add(const char* name, void* target, void* detour, void** original)
 {
-	hooks_.push_back({site.name, reinterpret_cast<void*>(imageBase + site.rva), detour, original, nullptr});
+	hooks_.push_back({name, target, detour, original, nullptr});
 }
 
-std::optional<HookFailure> HookTransaction::Commit()
+void HookTransaction::Add(uintptr_t imageBase, const CodeSite& site, void* detour, void** original)
+{
+	Add(site.name, reinterpret_cast<void*>(imageBase + site.rva), detour, original);
+}
+
+HookCommit HookTransaction::Commit()
 {
 	std::vector<Hook> hooks = std::move(hooks_);
 	hooks_.clear();
@@ -121,22 +127,52 @@ std::optional<HookFailure> HookTransaction::Commit()
 		const MH_STATUS status = calls_.enable(hooks[i].target);
 		if (status != MH_OK) failure = HookFailure{hooks[i].site, status};
 	}
-	if (!failure) return std::nullopt;
+	if (!failure) return {};
+	HookCommit commit{HookCommit::Outcome::RolledBack, *failure, {}};
 	for (size_t i = 0; i < created; i++) {
-		// A hook MinHook could not remove keeps its trampoline, which the
-		// original pointer still names.
-		if (calls_.remove(hooks[i].target) == MH_OK) *hooks[i].original = hooks[i].before;
+		const MH_STATUS status = calls_.remove(hooks[i].target);
+		if (status == MH_OK) {
+			*hooks[i].original = hooks[i].before;
+		} else if (commit.outcome == HookCommit::Outcome::RolledBack) {
+			// It keeps its trampoline, which the original pointer still names.
+			commit.outcome = HookCommit::Outcome::RollbackIncomplete;
+			commit.unremoved = HookFailure{hooks[i].site, status};
+		}
 	}
-	return failure;
+	return commit;
+}
+
+std::optional<HookFailure> CommitHookSet(HookTransaction& hooks, const char* set)
+{
+	const HookCommit commit = hooks.Commit();
+	switch (commit.outcome) {
+	case HookCommit::Outcome::Installed: return std::nullopt;
+	case HookCommit::Outcome::RolledBack:
+		Log("hooks: nothing of the %s set is in: %s could not be hooked (%d)", set, commit.failed.site,
+			(int)commit.failed.status);
+		return commit.failed;
+	case HookCommit::Outcome::RollbackIncomplete: break;
+	}
+	// Part of the set is still live: an enabled hook MinHook could not
+	// disable, whose detour feeds a set that is not in (a battle listener
+	// whose mode never installs, an overlay that never releases the back
+	// buffer it holds). Playing on would run that untested half; trying the
+	// removal again would count on the memory protection that just failed.
+	// Every set is committed from SfveStart, before the game's code has run,
+	// so ending the process here costs the player one start and nothing of a
+	// match, the same fail-closed answer as an incomplete network guard, with
+	// its own exit code.
+	Log("start refused: %s could not be hooked (%d) and %s could not be taken back out (%d), so part of the %s set "
+		"is still in; closing the game so it never runs half hooked", commit.failed.site, (int)commit.failed.status,
+		commit.unremoved.site, (int)commit.unremoved.status, set);
+	start::EndProcess(start::Refusal::HooksStuck);
 }
 
 bool HookCodeSite(uintptr_t base, const CodeSite& site, void* detour, void** original)
 {
 	HookTransaction hook;
 	hook.Add(base, site, detour, original);
-	const std::optional<HookFailure> failure = hook.Commit();
-	if (failure) Log("hooks: %s failed (%d)", failure->site, (int)failure->status);
-	return !failure;
+	return !CommitHookSet(hook, site.name);
 }
 
 void AddGameHooks(HookTransaction& hooks, uintptr_t base, BattleListener* listener)

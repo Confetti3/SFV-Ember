@@ -11,7 +11,9 @@
 //   4. the build check; on anything but a verified build the mod stays inert;
 //   5. the battle hooks, all of them or none: Ember's netplay (the mode's
 //      install, with its rooms) only when all are in, and otherwise the game
-//      plays offline as SFV.
+//      plays offline as SFV. Every hook set here goes in through
+//      CommitHookSet (mod/GameHooks.hxx), which ends the process when a set
+//      that failed cannot be taken back out.
 
 #include "core/CoreLog.hxx"
 #include "ember/SfvGame.hxx"
@@ -104,7 +106,8 @@ bool RollsBack(sfve::mod::ModMode mode)
 // flow, the allocator that zeroes the battle's memory, the match end and, in
 // the modes that roll back, the projectile release. Without any one of them
 // two copies would drift apart or leave a match their own ways, so they go
-// in together or not at all.
+// in together or not at all; a set that could not be taken back out ends the
+// game (CommitHookSet).
 std::optional<sfve::mod::HookFailure> InstallBattleHooks(uintptr_t base, sfve::mod::BattleDriver& driver)
 {
 	using namespace sfve::mod;
@@ -112,7 +115,7 @@ std::optional<sfve::mod::HookFailure> InstallBattleHooks(uintptr_t base, sfve::m
 	AddGameHooks(hooks, base, &driver);
 	AddMatchEndHook(hooks, base);
 	if (RollsBack(Config().mode)) AddProjectileReleaseHook(hooks, base);
-	return hooks.Commit();
+	return CommitHookSet(hooks, "battle");
 }
 
 } // namespace
@@ -205,7 +208,9 @@ extern "C" int SfveStart(int beforeGameCode)
 	// The HUD's plate labels: the netplay mode's shell names them (SfvHud).
 	InstallHudText(base);
 	// The host for Ember's interface (its shell is plugged in below, with
-	// rooms on); the game's content lists, on the pipe.
+	// rooms on); the game's content lists, on the pipe. Its swap chain hooks
+	// are one set, so without the overlay none of them is live and the pads
+	// stay the game's.
 	if (scene && sfve::overlay::InstallOverlay()) SetPadFilter(&sfve::overlay::FilterGamePad);
 	RegisterCommand("content", [](const std::string&) {
 		RunOnGameThread([] {
@@ -251,8 +256,7 @@ extern "C" int SfveStart(int beforeGameCode)
 	static const std::string battleHooks = missing ? std::string("missing ") + missing->site : std::string("ready");
 	RegisterStatus("battleHooks", [] { return JsonString(battleHooks); });
 	if (missing) {
-		Log("battle hooks: %s could not be hooked (%d), so none are: Ember's netplay is off and the game plays "
-			"offline as SFV", missing->site, (int)missing->status);
+		Log("battle hooks: missing %s, so Ember's netplay is off and the game plays offline as SFV", missing->site);
 		return 1;
 	}
 	Log("battle hooks: battle frame and its constructor, input record, rollback unit, battle flow, allocator and "

@@ -1,9 +1,11 @@
-// The battle's hooks go in whole or not at all (mod/GameHooks.hxx,
+// A hook set goes in whole or not at all (mod/GameHooks.hxx,
 // HookTransaction): a set that fails part way leaves nothing of itself in the
 // game and no original pointer on a freed trampoline, so the mod never runs a
-// battle with half its hooks. MinHook is replaced by a stand-in that records
-// which targets are hooked and fails the step a test names; the targets are
-// addresses that are never called.
+// battle with half its hooks, and a set it could not take back out says so.
+// MinHook is replaced by a stand-in that records which targets are hooked and
+// fails the step a test names; the targets are addresses that are never
+// called. The process's answer to a set left half in (CommitHookSet, which
+// ends it) is not run here.
 
 #include <doctest/doctest.h>
 
@@ -14,8 +16,9 @@
 
 using sfve::mod::CodeSite;
 using sfve::mod::HookCalls;
-using sfve::mod::HookFailure;
+using sfve::mod::HookCommit;
 using sfve::mod::HookTransaction;
+using Outcome = sfve::mod::HookCommit::Outcome;
 
 namespace {
 
@@ -97,6 +100,13 @@ void CheckUntouched(const Originals& originals)
 	CHECK(originals.gameAlloc == Target(kGameAlloc));
 }
 
+void CheckHook(const sfve::mod::HookFailure& hook, const char* site, MH_STATUS status)
+{
+	REQUIRE(hook.site != nullptr);
+	CHECK(std::string(hook.site) == site);
+	CHECK(hook.status == status);
+}
+
 } // namespace
 
 TEST_CASE("a set whose hooks all go in leaves every one enabled")
@@ -105,7 +115,7 @@ TEST_CASE("a set whose hooks all go in leaves every one enabled")
 	Originals originals;
 	HookTransaction hooks(kFake);
 	AddThree(hooks, originals);
-	CHECK_FALSE(hooks.Commit().has_value());
+	CHECK(hooks.Commit().outcome == Outcome::Installed);
 	CHECK(s_fake.enabled == std::set<void*>{Target(kInputRecord), Target(kFlowMessage), Target(kGameAlloc)});
 	CHECK(originals.inputRecord == Trampoline(Target(kInputRecord)));
 	CHECK(originals.gameAlloc == Trampoline(Target(kGameAlloc)));
@@ -118,10 +128,9 @@ TEST_CASE("a hook that cannot be created takes out the hooks created before it")
 	Originals originals;
 	HookTransaction hooks(kFake);
 	AddThree(hooks, originals);
-	const std::optional<HookFailure> failure = hooks.Commit();
-	REQUIRE(failure.has_value());
-	CHECK(std::string(failure->site) == "GameAlloc");
-	CHECK(failure->status == MH_ERROR_NOT_EXECUTABLE);
+	const HookCommit commit = hooks.Commit();
+	CHECK(commit.outcome == Outcome::RolledBack);
+	CheckHook(commit.failed, "GameAlloc", MH_ERROR_NOT_EXECUTABLE);
 	CheckUntouched(originals);
 }
 
@@ -132,11 +141,29 @@ TEST_CASE("a hook that cannot be enabled takes out the whole set, the enabled on
 	Originals originals;
 	HookTransaction hooks(kFake);
 	AddThree(hooks, originals);
-	const std::optional<HookFailure> failure = hooks.Commit();
-	REQUIRE(failure.has_value());
-	CHECK(std::string(failure->site) == "FlowMessage");
-	CHECK(failure->status == MH_ERROR_MEMORY_PROTECT);
+	const HookCommit commit = hooks.Commit();
+	CHECK(commit.outcome == Outcome::RolledBack);
+	CheckHook(commit.failed, "FlowMessage", MH_ERROR_MEMORY_PROTECT);
 	CheckUntouched(originals);
+}
+
+TEST_CASE("functions hooked by address go in as one set, as code sites do")
+{
+	// The overlay's pair: Present without ResizeBuffers must not stay in.
+	s_fake = {};
+	s_fake.failEnable = Target(kFlowMessage);
+	void* present = nullptr;
+	void* resizeBuffers = nullptr;
+	HookTransaction hooks(kFake);
+	hooks.Add("Present", Target(kInputRecord), nullptr, &present);
+	hooks.Add("ResizeBuffers", Target(kFlowMessage), nullptr, &resizeBuffers);
+	const HookCommit commit = hooks.Commit();
+	CHECK(commit.outcome == Outcome::RolledBack);
+	CheckHook(commit.failed, "ResizeBuffers", MH_ERROR_MEMORY_PROTECT);
+	CHECK(s_fake.created.empty());
+	CHECK(s_fake.enabled.empty());
+	CHECK(present == nullptr);
+	CHECK(resizeBuffers == nullptr);
 }
 
 TEST_CASE("a hook that was already there is left as it was")
@@ -148,10 +175,9 @@ TEST_CASE("a hook that was already there is left as it was")
 	Originals originals;
 	HookTransaction hooks(kFake);
 	AddThree(hooks, originals);
-	const std::optional<HookFailure> failure = hooks.Commit();
-	REQUIRE(failure.has_value());
-	CHECK(std::string(failure->site) == "GameAlloc");
-	CHECK(failure->status == MH_ERROR_ALREADY_CREATED);
+	const HookCommit commit = hooks.Commit();
+	CHECK(commit.outcome == Outcome::RolledBack);
+	CheckHook(commit.failed, "GameAlloc", MH_ERROR_ALREADY_CREATED);
 	CHECK(s_fake.created == std::set<void*>{Target(kGameAlloc)});
 	CHECK(s_fake.enabled == std::set<void*>{Target(kGameAlloc)});
 	CHECK(originals.inputRecord == nullptr);
@@ -159,7 +185,7 @@ TEST_CASE("a hook that was already there is left as it was")
 	CHECK(originals.gameAlloc == Target(kGameAlloc));
 }
 
-TEST_CASE("a hook MinHook cannot remove keeps the trampoline its original pointer names")
+TEST_CASE("a hook MinHook cannot remove makes the rollback incomplete, and the rest still come out")
 {
 	s_fake = {};
 	s_fake.failEnable = Target(kGameAlloc);
@@ -167,8 +193,13 @@ TEST_CASE("a hook MinHook cannot remove keeps the trampoline its original pointe
 	Originals originals;
 	HookTransaction hooks(kFake);
 	AddThree(hooks, originals);
-	REQUIRE(hooks.Commit().has_value());
+	const HookCommit commit = hooks.Commit();
+	CHECK(commit.outcome == Outcome::RollbackIncomplete);
+	CheckHook(commit.failed, "GameAlloc", MH_ERROR_MEMORY_PROTECT);
+	CheckHook(commit.unremoved, "InputRecord", MH_ERROR_MEMORY_PROTECT);
+	// Still live, on the trampoline its original pointer names.
 	CHECK(s_fake.created == std::set<void*>{Target(kInputRecord)});
+	CHECK(s_fake.enabled == std::set<void*>{Target(kInputRecord)});
 	CHECK(originals.inputRecord == Trampoline(Target(kInputRecord)));
 	CHECK(originals.flowMessage == nullptr);
 	CHECK(originals.gameAlloc == Target(kGameAlloc));
@@ -180,12 +211,12 @@ TEST_CASE("a commit takes out only what it created, never an earlier commit's ho
 	Originals originals;
 	HookTransaction hooks(kFake);
 	hooks.Add(kBase, kInputRecord, nullptr, &originals.inputRecord);
-	REQUIRE_FALSE(hooks.Commit().has_value());
+	REQUIRE(hooks.Commit().outcome == Outcome::Installed);
 
 	s_fake.failEnable = Target(kGameAlloc);
 	hooks.Add(kBase, kFlowMessage, nullptr, &originals.flowMessage);
 	hooks.Add(kBase, kGameAlloc, nullptr, &originals.gameAlloc);
-	REQUIRE(hooks.Commit().has_value());
+	REQUIRE(hooks.Commit().outcome == Outcome::RolledBack);
 	CHECK(s_fake.enabled == std::set<void*>{Target(kInputRecord)});
 	CHECK(originals.inputRecord == Trampoline(Target(kInputRecord)));
 	CHECK(originals.flowMessage == nullptr);

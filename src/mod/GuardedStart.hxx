@@ -35,6 +35,7 @@ enum class Refusal : UINT {
 	ModUnavailable = 0x5F0E0002,   // the proxy found no sfv_ember.dll to start, or the mod refused
 	EntryPatchFailed = 0x5F0E0003, // a loader could not point the exe's entry point at its start, or put it back
 	StartedLate = 0x5F0E0004,      // the mod was to start after game code had run
+	HooksStuck = 0x5F0E0005,       // a hook set that failed could not be taken back out (mod/GameHooks.hxx, CommitHookSet)
 };
 
 // One line in the mod's log (mod/Log.hxx), in the same file and format, with

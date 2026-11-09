@@ -1,5 +1,6 @@
 #include "overlay/Overlay.hxx"
 
+#include "mod/GameHooks.hxx"
 #include "mod/Log.hxx"
 #include "overlay/TextureUploaderD3D11.hxx"
 
@@ -10,8 +11,6 @@
 #include "ui/SelectionArt.hxx"
 #include "ui/Theme.hxx"
 #include "ui/Win32Input.hxx"
-
-#include <MinHook.h>
 
 #include <d3d11.h>
 #include <dxgi.h>
@@ -337,12 +336,17 @@ bool InstallOverlay()
 		Log("overlay: no Direct3D 11 device to find the swap chain's functions; no overlay");
 		return false;
 	}
-	MH_STATUS st = MH_CreateHook(present, (void*)&h_Present, (void**)&o_present);
-	if (st == MH_OK) st = MH_CreateHook(resizeBuffers, (void*)&h_ResizeBuffers, (void**)&o_resizeBuffers);
-	if (st == MH_OK) st = MH_EnableHook(present);
-	if (st == MH_OK) st = MH_EnableHook(resizeBuffers);
-	Log("overlay: %s", st == MH_OK ? "swap chain hooked" : "could not hook the swap chain");
-	return st == MH_OK;
+	// One set: Present without ResizeBuffers would hold a back buffer that
+	// nothing lets go of before the game resizes it.
+	mod::HookTransaction hooks;
+	hooks.Add("IDXGISwapChain::Present", present, (void*)&h_Present, (void**)&o_present);
+	hooks.Add("IDXGISwapChain::ResizeBuffers", resizeBuffers, (void*)&h_ResizeBuffers, (void**)&o_resizeBuffers);
+	if (mod::CommitHookSet(hooks, "overlay")) {
+		Log("overlay: could not hook the swap chain; no overlay");
+		return false;
+	}
+	Log("overlay: swap chain hooked");
+	return true;
 }
 
 void SetOverlayUi(OverlayUi ui)
