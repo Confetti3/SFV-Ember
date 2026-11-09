@@ -37,6 +37,7 @@ GetManagerFn s_getManager;
 FlowMessageFn o_flowMessage;
 uintptr_t s_stateMessageType;
 FindUnitFn s_findUnit;
+FindUnitFn s_findPart; // the same shape: (unit, out, type, index)
 GetBattleDataFn s_getBattleData;
 GameAllocFn o_gameAlloc;
 std::atomic<uint64_t> s_zeroedAllocs;
@@ -182,6 +183,7 @@ void AddGameHooks(HookTransaction& hooks, uintptr_t base, BattleListener* listen
 	s_getManager = reinterpret_cast<GetManagerFn>(base + sfv::kGetManager.rva);
 	s_stateMessageType = base + sfv::flow::kStateMessageType;
 	s_findUnit = reinterpret_cast<FindUnitFn>(base + sfv::kFindUnit.rva);
+	s_findPart = reinterpret_cast<FindUnitFn>(base + sfv::kFindPart.rva);
 	s_getBattleData = reinterpret_cast<GetBattleDataFn>(base + sfv::kGetBattleData.rva);
 	s_imageBase = base;
 	// The flow's delegates allocate through it even if the hook below is not
@@ -211,6 +213,15 @@ uint8_t* GameFindUnit(uint8_t* anyUnit, uint32_t typeRva, uint32_t index)
 	GameSharedPtr found{};
 	s_findUnit(battle, &found, reinterpret_cast<const void*>(s_imageBase + typeRva), index);
 	// Hand back the reference: the battle keeps the unit alive.
+	if (found.control) ReleaseKeepingAlive(found.control);
+	return found.object;
+}
+
+uint8_t* GameFindPart(uint8_t* unit, uint32_t typeRva, uint32_t index)
+{
+	GameSharedPtr found{};
+	s_findPart(unit, &found, reinterpret_cast<const void*>(s_imageBase + typeRva), index);
+	// Hand back the reference: the unit keeps its parts alive.
 	if (found.control) ReleaseKeepingAlive(found.control);
 	return found.object;
 }

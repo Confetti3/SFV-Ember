@@ -129,5 +129,8 @@ void* GameAlloc(size_t size);
 // way units find each other; `index` counts units of exactly that type in
 // the order the battle added them. Null when there is none.
 uint8_t* GameFindUnit(uint8_t* anyUnit, uint32_t typeRva, uint32_t index = 0);
+// A unit's part of a type (sfv::kFindPart), the way the game's own lookups
+// find one; null when the unit has none.
+uint8_t* GameFindPart(uint8_t* unit, uint32_t typeRva, uint32_t index = 0);
 
 } // namespace sfve::mod

@@ -14,6 +14,8 @@
 
 namespace sfve::mod {
 
+class SfvAdapter;
+
 // Also publishes the current state's kind as the status "scene".
 bool InstallGameScene(uintptr_t imageBase);
 
@@ -53,6 +55,14 @@ struct BattleSeen {
 BattleSeen LastBattleSeen();
 // BattleDriver, after each battle frame update. Game thread.
 void NoteBattleSeen(const BattleSeen& seen);
+
+// A module that reads a bound battle right after each frame update (Ember's
+// frame meter, ember/SfvFrameMeter) watches the updates: one watcher, called
+// with the battle's adapter on the game thread; null removes it. BattleDriver
+// notes each update it ran on a bound battle.
+using BattleWatcher = void (*)(SfvAdapter& adapter);
+void WatchBattleFrames(BattleWatcher watcher);
+void NoteBattleFrame(SfvAdapter& adapter);
 
 // Asks the manager to change to a state of `stateClass` (a UClass*), with an
 // optional init message the new state receives. Game thread only; false

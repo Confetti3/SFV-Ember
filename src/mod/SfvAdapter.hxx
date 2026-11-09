@@ -41,6 +41,9 @@ public:
 	// tells one battle from the next.
 	uint64_t Battle() const { return identity_.Battle(); }
 	void SeeRollbackUnit(uint8_t* rollbackUnit) { rollbackUnit_ = rollbackUnit; }
+	// A unit of this battle, which finds the others (GameFindUnit); null
+	// before the rollback unit's first tick.
+	uint8_t* AnyUnit() const { return rollbackUnit_; }
 
 	// Builds the layout once this battle's objects are known.
 	bool Bind();

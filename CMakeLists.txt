@@ -88,8 +88,10 @@ add_library(sfve_ember STATIC
     src/ember/SfvArt.cxx
     src/ember/SfvCatalog.cxx
     src/ember/SfvFaceCrop.cxx
+    src/ember/SfvFrameMeter.cxx
     src/ember/SfvGame.cxx
     src/ember/SfvHud.cxx
+    src/ember/SfvMeterSample.cxx
     src/ember/SfvPick.cxx
     src/ember/SfvPickSpace.cxx
     src/ember/SfvReplays.cxx
@@ -154,7 +156,7 @@ target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product ember_runtime_x64
 
 # The mod's code the SFV catalog and adapter tests reach without the game.
 set(SFVE_EMBER_TEST_MOD_SOURCES
-    src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/GameArt.cxx src/mod/GameContent.cxx
+    src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/FighterReader.cxx src/mod/GameArt.cxx src/mod/GameContent.cxx
     src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx
     src/mod/ModConfig.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvRegionNames.cxx
@@ -180,6 +182,7 @@ add_executable(sfve_ember_tests
     tests/VirtualPadsTests.cxx
     tests/HookTransactionTests.cxx
     tests/SfvFlowTests.cxx
+    tests/SfvFrameMeterTests.cxx
     ${SFVE_EMBER_TEST_MOD_SOURCES})
 target_link_libraries(sfve_ember_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
 # LocaleOverlayTests reads the library's fonts and locales.json from its checkout.
@@ -227,6 +230,7 @@ add_library(sfv_ember SHARED
     src/mod/GameArt.cxx
     src/mod/GameContent.cxx
     src/mod/GameExit.cxx
+    src/mod/FighterReader.cxx
     src/mod/HudText.cxx)
 target_link_libraries(sfv_ember PRIVATE sfve_ember dbghelp)
 target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")

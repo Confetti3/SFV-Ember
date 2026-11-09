@@ -9,6 +9,7 @@
 // mod touches the game, and leaves it alone otherwise.
 
 #include "mod/BuildCheck.hxx"
+#include "mod/SfvFighterOffsets.hxx"
 
 #include <stdint.h>
 
@@ -414,7 +415,10 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
 	kSpecStages, kMainMenuClass, kSetPlayerParam, kRequestExit, kStageName, kSpecFighters, kSpecCostumes, kPlayableCostumes,
 	kSpecColours, kCostumeName, kTextToString, kCreateText, kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke,
-	kBattleSetupClass, kOwnedFighters, kOwnedCostumes, kOwnedColours, kOwnedStages, kLoggedIn};
+	kBattleSetupClass, kOwnedFighters, kOwnedCostumes, kOwnedColours, kOwnedStages, kLoggedIn,
+	// The fighter state the frame meter reads (SfvFighterOffsets.hxx).
+	kUpdateUntilActionable, kFrameAdvantage, kChangeState, kStateTableInit, kApplyHitStop, kSetScript, kSetScriptFrame,
+	kScriptPosture, kStartAction, kProjectileDie, kDamage};
 
 namespace versus {
 
