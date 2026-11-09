@@ -45,12 +45,14 @@ MOVES = {
     "LP Shoryuken": (930, 3, 12, 30, None, None),
 }
 # P1 faces right at the start: forward is RIGHT. SFV's default layout: X LP,
-# Y MP, RB HP, A LK, B MK, RT HK.
+# Y MP, RB HP, A LK, B MK, RT HK. Each normal walks in first: every hit and
+# block pushes the two apart.
+WALK_IN = "RIGHT:300 -:150 "
 PRESSES = {
-    "standing LP": "X:50",
-    "standing MP": "Y:50",
-    "crouching MK": "DOWN+B:60",
-    "standing HP": "RB:50",
+    "standing LP": WALK_IN + "X:50",
+    "standing MP": WALK_IN + "Y:50",
+    "crouching MK": WALK_IN + "DOWN+B:60",
+    "standing HP": WALK_IN + "RB:50",
     "LP Hadoken": "DOWN:34 DOWN+RIGHT:34 RIGHT+X:50",
     "LP Shoryuken": "RIGHT:34 DOWN:34 DOWN+RIGHT+X:50",
 }
@@ -106,8 +108,14 @@ def play(name: str, shots: Path | None, tag: str, failures: list[str], blocked: 
 
 
 def run(shots: Path | None, failures: list[str]) -> None:
-    training.launch([0], mash=False)
-    training.shell_steps.open_home(0)
+    lib.launch(0, "netplay", ["-sfve_pads=01", "-sfve_background=1", "-sfve_room=1"])
+    # The status names the runtime's host once the mod has started it.
+    training.wait_for("the runtime", 120, lambda: training.status(0).get("ember", {}).get("host") == "running")
+    # The main menu takes a moment to take the pad after the runtime starts.
+    training.wait_for("Ember's Home", 30, lambda: training.shell(0)["shown"] or training.press(0, "START")["shown"])
+    if training.shell(0)["screen"] == "welcome":
+        training.seek(0, "welcome-skip", ["DOWN", "DOWN", "RIGHT"])
+        training.press(0, "A")
     training.seek(0, "training", ["DOWN"], 12)
     training.press(0, "A")
     training.wait_for("Training select", 20, lambda: training.shell(0)["shown"] and training.shell(0)["screen"] == "training")
