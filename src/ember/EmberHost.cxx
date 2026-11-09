@@ -121,10 +121,39 @@ void LogOwnership(const mod::ContentLists& lists, bool gate)
 	}
 	const auto stages = std::count_if(lists.stages.begin(), lists.stages.end(), [](const mod::StageContent& s) { return !s.owned; });
 	const mod::OwnershipSource& source = lists.ownership;
-	mod::Log("ember: ownership gate %s; the game's setup restricted %d (%d entries), filter %d, logged in %d; "
+	mod::Log("ember: ownership gate %s, looks by %s; the game's setup restricted %d (%d entries), filter %d, logged in %d; "
 		"%d marked unowned by -sfve_unowned; not owned: %d fighters, %d costumes, %d colours, %zu of %zu stages",
-		gate ? "on" : "off (development)", source.restricted, source.restrictionEntries, source.filter, source.loggedIn,
-		source.markedUnowned, fighters, costumes, colours, (size_t)stages, lists.stages.size());
+		gate ? "on" : "off (development)", mod::CostumeOwnershipName(source.looks), source.restricted,
+		source.restrictionEntries, source.filter, source.loggedIn, source.markedUnowned, fighters, costumes, colours,
+		(size_t)stages, lists.stages.size());
+}
+
+// The costumes of the pick space against this copy's install and its
+// account's entitlement cache (EMBER_LIBRARY.md section 41): how many the
+// spec has, how many are installed here and how many the cache grants, and
+// what the cache lacks, counting a costume in a colour as a look the cache
+// grants only when it grants both. Neither installs nor the cache enter the
+// build id; the numbers say why a copy offers fewer looks than the spec has.
+void LogCostumes(const mod::ContentLists& lists)
+{
+	int costumes = 0, installed = 0, entitled = 0, lacking = 0, lackingLooks = 0, fighters = 0;
+	for (const mod::FighterContent& fighter : lists.fighters) {
+		fighters += fighter.entitled;
+		for (const mod::CostumeContent& costume : fighter.costumes) {
+			costumes++;
+			installed += costume.installed;
+			entitled += costume.entitled;
+			lacking += !costume.entitled;
+			for (int colour : costume.colours) {
+				const bool granted = costume.entitled &&
+					std::find(costume.entitledColours.begin(), costume.entitledColours.end(), colour) != costume.entitledColours.end();
+				lackingLooks += !granted;
+			}
+		}
+	}
+	mod::Log("ember: costumes %d in the spec, %d installed here, %d in the account cache; account cache lacks: %d costumes, "
+		"%d colours; fighters %zu in the spec, %d in the account cache", costumes, installed, entitled, lacking, lackingLooks,
+		lists.fighters.size(), fighters);
 }
 
 // The catalog's stages for the log: the universe the build id fingerprints,
@@ -215,6 +244,7 @@ bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 		ember::Catalog().fighterCount, lists.stages.size(), named, GetTickCount64() - readStarted, MatchBuildId().c_str());
 	LogStages(lists, marked);
 	LogLoadouts(lists);
+	LogCostumes(lists);
 	LogOwnership(lists, settings.ownershipGate);
 
 	RouteRuntimeLog();

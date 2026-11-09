@@ -59,8 +59,11 @@ bool HasColour(const mod::CostumeContent& costume, int colour)
 	return Contains(costume.colours, colour);
 }
 
-// What this copy's player may pick, by the game's answer (GameContent's
-// `owned`) while the gate is on. Only this copy's own player's picks are
+// What this copy's player may pick, by GameContent's `owned` while the gate
+// is on: the game's answer for fighters, and for looks the answer of
+// GameContent's one switch, kCostumeOwnership (the game's, from the account's
+// entitlement cache, or every look installed here; EMBER_LIBRARY.md section
+// 41). Only this copy's own player's picks are
 // judged so: the opponent's pick plays as picked (LaunchPicks checks the
 // spec alone), as SF4's DLC gate does.
 bool FighterOwned(const mod::FighterContent& fighter)

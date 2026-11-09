@@ -185,19 +185,23 @@ constexpr CodeSite kAssignString{"AssignString", 0x190FF90,
 constexpr CodeSite kGameFree{"GameFree", 0x1130C40,
 	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0xD9, 0x48, 0x8B, 0x0D, 0xA8, 0x67, 0x99, 0x02}};
 
-// The game's content checks (no ownership involved), used to refuse a launch
-// with picks the game does not have rather than load them. All read the game
-// singleton (kGameData) themselves; the first argument of the spec checks is
-// unused.
+// This copy's install (no ownership involved): what GameContent reports as
+// installed, and what a launch checks so it never loads content this copy
+// lacks. Both take the fighter table (content::kCharaAsset) and find the
+// fighter's entry by code (rva 0x57F030, the entry's +80 CostumeDatas).
 // bool FighterInstalled(CharaAsset*, const FString* code): its package exists.
 constexpr CodeSite kFighterInstalled{"FighterInstalled", 0x549180,
 	{0x40, 0x55, 0x56, 0x48, 0x83, 0xEC, 0x48, 0x33, 0xED, 0x89, 0x6C, 0x24, 0x70, 0xE8, 0x9E, 0x5E}};
-// bool CostumeValid(void*, const FString* code, int costume)
-constexpr CodeSite kCostumeValid{"CostumeValid", 0x56B190,
-	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x41, 0x8B, 0xF8, 0x48, 0x8B, 0xDA}};
-// bool ColourValid(void*, const FString* code, int costume, int colour)
-constexpr CodeSite kColourValid{"ColourValid", 0x56B0E0,
-	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x41}};
+// bool CostumePackage(CharaAsset*, const FString* code, int costume): the
+// costume's CostumeDatas entry names a package (more than the empty
+// FString's terminator) and that package exists (rva 0x1411EE840, after
+// rva 0x141243030 makes the path). False for a costume number outside the
+// entry's CostumeDatas. The battle's own load asks exactly this: for each
+// player setting (1424-byte records, the costume at +176) rva 0x7B33B0,
+// reached from the resource load at rva 0x69BC20, sets the costume to 0
+// when it fails, and checks nothing else about the costume.
+constexpr CodeSite kCostumePackage{"CostumePackage", 0x548E40,
+	{0x40, 0x53, 0x55, 0x57, 0x41, 0x57, 0x48, 0x83, 0xEC, 0x38, 0x33, 0xED, 0x49, 0x63, 0xD8, 0x48}};
 
 // VersusBattleState (MatchEnd).
 // void ShowResult(VersusBattleState*): its MatchEnd handler (vtable +0x5F0,
@@ -212,9 +216,9 @@ constexpr CodeSite kRestartBattle{"RestartBattle", 0x684760,
 
 // Content lists (GameContent): the singleton's spec data ("SpecDataAsset"),
 // and bool List(SpecData** spec, TArray<FString>* out, bool includeRandom)
-// for the selectable, installed fighters, and for the spec's stages less
-// those whose package this copy lacks (no ownership). kSpecStages keeps the
-// order of kSpecStageIds' list and only the stages also in a second walk of
+// for the spec's stages less those whose package this copy lacks (no
+// ownership). kSpecStages keeps the order of kSpecStageIds' list and only
+// the stages also in a second walk of
 // the spec's stage map (rva 0x559540), which keeps an entry whose flag at
 // +11 says it needs no package, the code RND, or one whose package the
 // StageAsset entry's +16 path names exists on this install (rva 0x549500,
@@ -223,8 +227,6 @@ constexpr CodeSite kRestartBattle{"RestartBattle", 0x684760,
 // every copy shares (EMBER_LIBRARY.md section 38).
 constexpr CodeSite kSpecData{"SpecData", 0x68E7E0,
 	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x33, 0xDB, 0x48, 0x8B, 0xF9, 0x33}};
-constexpr CodeSite kSelectableFighters{"SelectableFighters", 0x566FC0,
-	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x83, 0x7A, 0x0C, 0x00, 0x48, 0x8B, 0x1A, 0x48, 0x89, 0x6C}};
 constexpr CodeSite kSpecStages{"SpecStages", 0x5672D0,
 	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x83, 0x7A, 0x0C, 0x00, 0x48, 0x8B, 0x1A, 0x48, 0x89, 0x6C}};
 // bool SpecStageIds(SpecData** spec, TArray<int>* out): the stages the spec
@@ -265,42 +267,45 @@ constexpr CodeSite kRequestExit{"RequestExit", 0x11D0580,
 constexpr CodeSite kStageName{"StageName", 0x564550,
 	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0xDA, 0x49, 0x8B, 0xD0, 0xE8, 0xEF, 0x9F, 0xFF}};
 
-// The spec's pick space (GameContent's fighter, costume and colour lists).
-// DA_Spec (/Game/Spec/DA_Spec, loaded at boot, rva 0x691790) holds a TMap
-// keyed by a fighter's CharaUniqueID (spec+328, 136-byte elements, value at
-// +8); a fighter's value holds a TMap of costumes (value+24, 120-byte
-// elements, the costume's own value at +8), and each costume's value a TMap of
-// colours (value+24, 40-byte elements). Each lister below walks one of those
-// maps in its own order and appends the keys whose spec flags allow them:
-// bool List(SpecData** spec, ..., TArray<int>* out).
+// The spec's pick space (GameContent's fighter, costume and colour lists;
+// the map's layout is namespace spec, in SfvMenuLayouts.hxx). The universe
+// is every fighter, costume and colour with a CharaSpec row, found by key
+// with the game's own lookups below, never through the game's listers: those
+// keep only what the account's entitlement cache grants (EMBER_LIBRARY.md
+// section 41).
 //
-// The fighters the spec lets players select (the record's flag at value+2):
-// no package check; the game's kSelectableFighters keeps those of them whose
-// package is installed, or whose flag at value+4 says they need none (rva
-// 0x5591E0, FighterInstalled).
+// bool SpecFighters(SpecData** spec, TArray<int>* out): the fighters whose
+// spec flag at value+2 is set, the "selectable" flag the refresh (rva
+// 0x57CE50) sets from the fighter's package (value+4), its RefAvailableCode
+// and RefVisibleCode in the entitlement cache (value+0, value+1) and a
+// usable costume. So it depends on the install and the account. GameContent
+// asks it only whether the refresh has run (a list that is not empty), since
+// the entitlement flags are set by that step (step 8 of the queue at rva
+// 0x7A2FC0) and the rows a step before it.
 constexpr CodeSite kSpecFighters{"SpecFighters", 0x566AF0,
 	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x48, 0x89, 0x7C, 0x24, 0x18, 0x55}};
-// List(spec, uniqueId, out): the fighter's costumes the spec enables (the
-// costume's flag at value+0), with no package check: the costume settings
-// menu's spin box (rva 0x8CC6E0, case 3) lists these, less the unowned.
-constexpr CodeSite kSpecCostumes{"SpecCostumes", 0x54F1F0,
-	{0x40, 0x55, 0x53, 0x56, 0x57, 0x41, 0x56, 0x48, 0x8B, 0xEC, 0x48, 0x83, 0xEC, 0x70, 0x41, 0x8B}};
-// List(spec, uniqueId, out): kSpecCostumes less those this copy cannot load:
-// a costume whose flag at value+3 is clear needs its CostumeDatas package
-// (rva 0x558DC0, 0x548E40). kCostumeValid is membership in this list.
-constexpr CodeSite kPlayableCostumes{"PlayableCostumes", 0x54FAB0,
-	{0x48, 0x8B, 0xC4, 0x53, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x58, 0x48, 0x89, 0x70, 0x18, 0x48, 0x89}};
-// List(spec, uniqueId, costume, out): the costume's colours the spec enables
-// (flag at value+0) that are either flagged at value+1 or numbered below 128
-// (rva 0x54EE30, 0x558920); no package check. kColourValid is membership in
-// this list. Numbers 0-99 are the colours "01".."99", 100 and up the EX
-// colours "EX01".. (the menu's labels, rva 0x553B80).
-constexpr CodeSite kSpecColours{"SpecColours", 0x54F870,
-	{0x48, 0x8B, 0xC4, 0x53, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x58, 0x48, 0x89, 0x68, 0x10, 0x48, 0x89}};
+// int* Find(TSet* set, int* outIndex, int key): the index of the set's
+// element whose int key (element +0) is `key`, written to *outIndex and
+// returned, or -1 for none. The set is UE4's TSet: +0 the elements' data,
+// +56 the hash's inline bucket, +64 its allocation, +72 its size; a bucket is
+// the key masked by size - 1, and each element holds the next index of its
+// chain. The three share their first bytes and differ in the element's size
+// and where its next index is; each is checked at its own rva.
+// The fighters' set (spec::kFighters): 136-byte elements, next at +128.
+constexpr CodeSite kFindSpecFighter{"FindSpecFighter", 0x54B7D0,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x4C, 0x8B, 0xDA, 0x48, 0x8B, 0xD1, 0x8B, 0x49, 0x48, 0x49, 0x63}};
+// A fighter's costumes (spec::kFighterCostumes): 120-byte elements, next at +112.
+constexpr CodeSite kFindSpecCostume{"FindSpecCostume", 0x54B8F0,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x4C, 0x8B, 0xDA, 0x48, 0x8B, 0xD1, 0x8B, 0x49, 0x48, 0x49, 0x63}};
+// A costume's colours (spec::kCostumeColours): 40-byte elements, next at +32.
+constexpr CodeSite kFindSpecColour{"FindSpecColour", 0x54B860,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x4C, 0x8B, 0xDA, 0x48, 0x8B, 0xD1, 0x8B, 0x49, 0x48, 0x49, 0x63}};
 // FString* CostumeName(void*, FString* out, const FString* code, int costume):
 // the costume's FText (its spec value+8 object, +64) as shown, or
 // "Costume<n>" where the spec has none (rva 0x55C5B0); the first argument is
-// unused. The costume settings menu names its spin box's entries so.
+// unused. It finds the costume by key and reads no flag, so every costume
+// with a row has its name, entitled or not. The costume settings menu names
+// its spin box's entries so.
 constexpr CodeSite kCostumeName{"CostumeName", 0x557870,
 	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x41}};
 // const FString* TextToString(const FText*): the text as shown, rebuilt in
@@ -377,34 +382,45 @@ constexpr CodeSite kHudInvoke{"HudInvoke", 0x73D600,
 // colour), less a set at +104, each entry also passing the filter object at
 // +280 when one is installed (its vtable +8; a BattleSetupState's constructor
 // installs one, rva 0x5A4D50 and 0x574510, from a list it copies from the
-// object rva 0x141E6A740 returns, its +40). With +96 clear the costume and colour lists are the
-// spec's and the install's alone, and the fighters those of the asset's
-// select-grid list at +48 that are installed. None of these paths calls
-// Steam; the only Steam licence query in the exe (rva 0xE112C0: ISteamApps
-// vtable +0x38 for app 475230, BIsDlcInstalled by the layout of the shipped
-// Steamworks, Steamv130) is reached from three menu screens (rva
-// 0xAAC150, 0xAADDE0, 0xAC6310), not from these.
+// object rva 0x141E6A740 returns, its +40). With +96 clear the lists are the
+// game's spec listers' (rva 0x566FC0 fighters, 0x54FAB0 costumes, 0x54F870
+// colours), which keep only what the account's entitlement cache grants (the
+// spec flags at value+0, set by the refresh at rva 0x57CE50 from the cache,
+// UKWEntitlementsData) and, for fighters and costumes, what this copy has
+// installed; the fighters are also those of the asset's select-grid list at
+// +48. None of these paths calls Steam; the only Steam licence query in the
+// exe (rva 0xE112C0: ISteamApps vtable +0x38 for app 475230, BIsDlcInstalled
+// by the layout of the shipped Steamworks, Steamv130) is reached from three
+// menu screens (rva 0xAAC150, 0xAADDE0, 0xAC6310), not from these. The cache
+// is the account's: what Capcom's servers authorised at its last online
+// session, and what it unlocked locally since (EMBER_LIBRARY.md section 41).
 //
 // UClass* BattleSetupClass(const TCHAR* package): the asset's class, cached at
 // rva 0x3AA5C20 (L"/Script/KiwiGame"; the check's IsA test, rva 0x477A70).
 constexpr CodeSite kBattleSetupClass{"BattleSetupClass", 0xC26230,
 	{0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05, 0xE5, 0xF9, 0xE7, 0x02, 0x48, 0x85, 0xC0, 0x75, 0x21}};
 // void OwnedFighters(Setup*, TArray<FString>* out, bool random, bool eleven):
-// kSelectableFighters (installed) that the asset allows (rva 0x55A9B0: its
+// the selectable fighters whose package is installed (rva 0x566FC0, from
+// kSpecFighters' flag) that the asset allows (rva 0x55A9B0: its
 // list at +48 with +96 clear, else the restriction list); Random and ELEVEN
 // appended on request. The check takes a fighter in this list (rva
 // 0x56AF20), or one of a login-gated list's (rva 0x56B3A0, 0x565F20: lists
 // held by the game instance's +144 object, read only with kLoggedIn).
 constexpr CodeSite kOwnedFighters{"OwnedFighters", 0x54E8E0,
 	{0x44, 0x88, 0x4C, 0x24, 0x20, 0x55, 0x53, 0x56, 0x57, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48}};
-// bool OwnedCostumes(Setup*, const FString* code, TArray<int>* out):
-// kPlayableCostumes that the asset allows (rva 0x55AEF0); the costume
+// bool OwnedCostumes(Setup*, const FString* code, TArray<int>* out): the
+// costumes the entitlement cache grants (spec flag value+0, rva 0x54F1F0)
+// whose package is installed (the cached flag value+3, or kCostumePackage:
+// rva 0x54FAB0, 0x558DC0), that the asset allows (rva 0x55AEF0); the costume
 // settings menu's spin box lists these (rva 0x8CC6E0, case 3).
 constexpr CodeSite kOwnedCostumes{"OwnedCostumes", 0x5545B0,
 	{0x48, 0x89, 0x5C, 0x24, 0x20, 0x55, 0x56, 0x57, 0x48, 0x83, 0xEC, 0x40, 0x41, 0x8B, 0x40, 0x0C}};
 // void OwnedColours(Setup*, const FString* code, int costume, TArray<int>*
-// out): kSpecColours with +96 clear, else the restriction list's colours of
-// that costume.
+// out): with +96 clear, the costume's colours the entitlement cache grants
+// (spec flag value+0) that are flagged at value+1 or numbered below 128 (rva
+// 0x54F870, 0x54EE30, 0x558920); else the restriction list's colours of that
+// costume. Numbers 0-99 are the colours "01".."99", 100 and up the EX colours
+// "EX01".. (the menu's labels, rva 0x553B80).
 constexpr CodeSite kOwnedColours{"OwnedColours", 0x55ABA0,
 	{0x4C, 0x89, 0x4C, 0x24, 0x20, 0x44, 0x89, 0x44, 0x24, 0x18, 0x48, 0x89, 0x54, 0x24, 0x10, 0x53}};
 // void OwnedStages(Setup*, TArray<FString>* out, bool random): kSpecStages
@@ -435,9 +451,9 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
-	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
-	kSpecStages, kMainMenuClass, kSetPlayerParam, kRequestExit, kStageName, kSpecFighters, kSpecCostumes, kPlayableCostumes,
-	kSpecColours, kCostumeName, kTextToString, kCreateText, kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke,
+	kFighterInstalled, kCostumePackage, kShowResult, kRestartBattle, kSpecData, kSpecStages, kMainMenuClass,
+	kSetPlayerParam, kRequestExit, kStageName, kSpecFighters, kFindSpecFighter, kFindSpecCostume, kFindSpecColour,
+	kCostumeName, kTextToString, kCreateText, kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke,
 	kBattleSetupClass, kOwnedFighters, kOwnedCostumes, kOwnedColours, kOwnedStages, kLoggedIn, kSpecStageIds,
 	kVersionDataClass};
 

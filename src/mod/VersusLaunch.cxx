@@ -34,8 +34,6 @@ using CopyFn = uint8_t* (*)(uint8_t* out, const uint8_t* from);
 using AssignStringFn = void (*)(uint8_t* to, const GameString* from, int extra);
 using FreeFn = void (*)(void* block);
 using FighterInstalledFn = bool (*)(uint8_t* charaAsset, const GameString* code);
-using CostumeValidFn = bool (*)(void* unused, const GameString* code, int costume);
-using ColourValidFn = bool (*)(void* unused, const GameString* code, int costume, int colour);
 
 // A launch that has not reached the jump's second step by then has failed
 // (the jump is normally there within a few frames).
@@ -295,7 +293,11 @@ bool StagePlayable(uint8_t* singleton, const std::wstring& code)
 // a battle can load is GameContent's rule (BattleFighter), the same one the
 // catalog is built by, so the pipe's launch cannot reach a fighter a room
 // would never offer; so is how many V-Skills and V-Triggers it has
-// (FighterChoiceCounts).
+// (FighterChoiceCounts). A costume must have a spec row and its package
+// here (CostumeLoadState: the battle's own load would otherwise put it back
+// to 0 without a word), and a colour a spec row (ColourInSpec). Neither asks
+// the account's entitlement cache, so an opponent's costume this copy's
+// account lacks still loads as picked (EMBER_LIBRARY.md section 41).
 std::string MissingContent(const MatchPicks& picks)
 {
 	uint8_t* singleton = At<GameDataFn>(sfv::kGameData)();
@@ -309,11 +311,16 @@ std::string MissingContent(const MatchPicks& picks)
 		if (!BattleFighter(fighters, pick.fighter)) return who + "fighter is not one a battle can load";
 		if (!At<FighterInstalledFn>(sfv::kFighterInstalled)(fighters, &code)) return who + "fighter is not installed";
 		const int costume = pick.costume < 0 ? 0 : pick.costume;
-		if (pick.costume >= 0 && !At<CostumeValidFn>(sfv::kCostumeValid)(nullptr, &code, costume)) {
-			return who + "costume is not in the game";
+		if (pick.costume >= 0) {
+			switch (CostumeLoadState(pick.fighter, costume)) {
+			case CostumeLoad::Loadable: break;
+			case CostumeLoad::NotInSpec: return who + "costume is not in the game's spec";
+			case CostumeLoad::NoPackage: return who + "costume's package is not installed here";
+			case CostumeLoad::NoTables: return "the game's spec data is not loaded";
+			}
 		}
-		if (pick.colour >= 0 && !At<ColourValidFn>(sfv::kColourValid)(nullptr, &code, costume, pick.colour)) {
-			return who + "colour is not in the game";
+		if (pick.colour >= 0 && !ColourInSpec(pick.fighter, costume, pick.colour)) {
+			return who + "colour is not in the game's spec for that costume";
 		}
 		const std::optional<ChoiceCounts> counts = FighterChoiceCounts(pick.fighter);
 		if (!counts) return who + "fighter's V-Skills and V-Triggers are not known (the game's name assets are not there, or did not list it)";

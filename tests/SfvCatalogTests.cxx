@@ -23,6 +23,7 @@
 #include <iterator>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace sfve;
@@ -318,7 +319,27 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	translated.fighters[2].owned = true;
 	translated.fighters[1].costumes[1].owned = true;
 	translated.fighters[0].costumes[2].ownedColours = {0};
+	// Nor what the account's entitlement cache grants, nor the rule that
+	// turns it into ownership (EMBER_LIBRARY.md section 41).
+	translated.fighters[1].costumes[2].entitled = true;
+	translated.fighters[1].costumes[2].entitledColours = {0};
+	translated.fighters[0].costumes[2].entitledColours.clear();
+	translated.fighters[0].entitled = false;
+	translated.fighters[4].costumes[0].installed = false;
+	translated.ownership.looks = mod::CostumeOwnership::Installed;
 	CHECK(ContentFingerprint(translated) == fingerprint);
+	// A costume more moves the picks' part of the log's fingerprints, never
+	// the stages' part.
+	const auto parts = [](const mod::ContentLists& lists) {
+		const std::string text = picks::PartFingerprints(PickSpaceOf(lists));
+		const size_t comma = text.find(", ");
+		REQUIRE(comma != std::string::npos);
+		return std::make_pair(text.substr(0, comma), text.substr(comma + 2));
+	};
+	CHECK(parts(costume).first != parts(TestContent()).first);
+	CHECK(parts(costume).second == parts(TestContent()).second);
+	CHECK(parts(colour).first != parts(TestContent()).first);
+	CHECK(parts(translated) == parts(TestContent()));
 	// A code that moved from one list to the other.
 	CHECK(ContentFingerprint(CodesOnly({"RYU", "S01"}, {"S02"})) != ContentFingerprint(CodesOnly({"RYU"}, {"S01", "S02"})));
 	CHECK(ContentFingerprint(CodesOnly({"RY", "U"}, {"S01"})) != ContentFingerprint(CodesOnly({"R", "YU"}, {"S01"})));
@@ -327,6 +348,37 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	CHECK(MatchBuildId() == std::string(kMatchBuild) + "/" + fingerprint);
 	CHECK(ember::game::Game().state.BuildId() == MatchBuildId());
 	CHECK(MatchBuildId().size() <= 128); // the room's limit for a build
+}
+
+// The numbers of SFV's whole universe (EMBER_LIBRARY.md section 41): CHUN-LI
+// has costumes 0 to 34, her "EX character" skin (23) one colour, and EX
+// colours run to 112 (EX13).
+TEST_CASE("every costume SFV has fits the pick space: costume 34, a one-colour costume, EX colours to 112")
+{
+	picks::PickSpace space;
+	picks::Fighter cnl{"CNL", {}, 2, 1};
+	for (int id = 0; id < 35; id++) cnl.costumes.push_back({id, id == 23 ? std::vector<int>{0} : std::vector<int>{0, 1}});
+	cnl.costumes[0].colours = {0, 1, 100, 112};
+	space.fighters = {{"RYU", {{0, {0, 1, 101}}, {24, {0, 1}}}, 2, 2}, cnl};
+	space.stages = {"S01"};
+	CHECK(picks::Problem(space).empty());
+	CHECK(picks::CostumeCount(space, 1) == 35);
+	CHECK(picks::CostumeCount(space, 0) == 25);
+	CHECK(picks::CostumeLimit(space) == 35);
+	CHECK(picks::ColourLimit(space) == 113);
+	CHECK(picks::ValidPick(space, PickOf(1, 23, 0)));
+	CHECK_FALSE(picks::ValidPick(space, PickOf(1, 23, 1)));
+	CHECK(picks::ValidPick(space, PickOf(1, 34, 1)));
+	CHECK_FALSE(picks::ValidPick(space, PickOf(1, 35, 0)));
+	CHECK(picks::ValidPick(space, PickOf(1, 0, 112)));
+	CHECK(picks::ValidPick(space, PickOf(0, 24, 1)));
+	CHECK_FALSE(picks::ValidPick(space, PickOf(0, 24, 2)));
+	CHECK(picks::ValidPick(space, PickOf(0, 0, 101)));
+	// And the room host reads it back as the same build.
+	picks::PickSpace back;
+	std::string build, error;
+	REQUIRE(picks::FromJson(picks::ToJson(space, picks::BuildId(space)), back, build, error));
+	CHECK(picks::Fingerprint(back) == picks::Fingerprint(space));
 }
 
 TEST_CASE("the room host's data is the catalog's pick space, and reads back as the same build")

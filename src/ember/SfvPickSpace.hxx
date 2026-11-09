@@ -33,7 +33,9 @@ namespace sfve::picks {
 // carry the stages their copies lack (EMBER_LIBRARY.md section 38). 0.5:
 // every launch writes both players' V-Skill and V-Trigger, where an earlier
 // copy launched V-Skill I and V-Trigger I whatever the room said (section
-// 40). No earlier copy may meet one of these.
+// 40); and the pick space is every fighter, costume and colour the spec's
+// rows hold, whatever the account's entitlements or the install (section
+// 41). No earlier copy may meet one of these.
 constexpr const char* kMatchBuild = "sfv-ember/13173604/0.5";
 
 // The stage choice that stands for Random (GameCatalog::randomStage): the

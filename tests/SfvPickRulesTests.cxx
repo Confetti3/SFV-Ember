@@ -215,6 +215,102 @@ TEST_CASE("this player readies only what the game lets them pick; the opponent's
 	CHECK_FALSE(catalog.normalizePick(theirsEx, false, nullptr, nullptr));
 }
 
+// The catalog takes lists whose `owned` is already the rule's: a costume the
+// account's cache lacks is not owned under Entitlements, which TestContent's
+// CNL costume 3 is (the game's answer leaves it out).
+TEST_CASE("a costume the account's cache lacks is not this player's to ready; as the opponent's pick it plays")
+{
+	FillTestCatalog();
+	const ember::GameCatalog& catalog = ember::Catalog();
+	const sf4e::selection::Availability cnl = ember::game::Game().state.FighterAvailability(1);
+	CHECK(CostumeIds(1, false) == std::vector<int>{0, 2, 3}); // the spec's, every one listed
+	CHECK(CostumeIds(1, true) == std::vector<int>{0});
+	CHECK(ColourIds(1, 3) == std::vector<int>{0}); // one colour, as SFV's EX character skins have
+	CHECK(ColourIds(1, 3, true).empty());
+	CHECK_FALSE(catalog.availablePick(PickOf(1, 3, 0), false, cnl, nullptr));
+	CHECK(CostumeNotOwned(1, 3)); // the pick screen's NOT OWNED
+	CHECK(ColourNotOwned(1, 3, 0));
+	Pick own = PickOf(1, 3, 0);
+	FitOwnPick(own);
+	CHECK(own.costume == 0);
+	// The opponent's pick in it launches as picked: LaunchPicks asks the spec
+	// and this copy's install, never ownership.
+	RoomMatch match = MatchOf(0, 1, 0);
+	match.picks[1] = PickOf(1, 3, 0);
+	const std::optional<mod::MatchPicks> picks = LaunchPicks(match).picks;
+	REQUIRE(picks);
+	CHECK(picks->players[1].fighter == L"CNL");
+	CHECK(picks->players[1].costume == 3);
+	CHECK(picks->players[1].colour == 0);
+	// The spec's fitting, the same on every copy, keeps it.
+	Pick theirs = PickOf(1, 3, 0);
+	CHECK_FALSE(catalog.normalizePick(theirs, false, nullptr, nullptr));
+	// A costume this copy has not installed is refused whoever picked it.
+	match.picks[1] = PickOf(4, 1, 0);
+	const MatchLaunch refused = LaunchPicks(match);
+	CHECK_FALSE(refused.picks);
+	CHECK(refused.refusal.log.find("not installed here") != std::string::npos);
+}
+
+TEST_CASE("the costume ownership switch: Entitlements keeps the game's answer, Installed makes every installed look theirs")
+{
+	const mod::ContentLists game = TestContent();
+	// CNL's costume 3: installed here, lacking from the account's cache, and so
+	// left out of the game's answer.
+	const mod::CostumeContent& lacking = game.fighters[1].costumes[2];
+	REQUIRE(lacking.id == 3);
+	REQUIRE(lacking.installed);
+	REQUIRE_FALSE(lacking.entitled);
+	REQUIRE_FALSE(lacking.owned);
+	const auto sameOwnership = [](const mod::ContentLists& a, const mod::ContentLists& b) {
+		for (size_t f = 0; f < a.fighters.size(); f++) {
+			if (a.fighters[f].owned != b.fighters[f].owned) return false;
+			for (size_t c = 0; c < a.fighters[f].costumes.size(); c++) {
+				const mod::CostumeContent& x = a.fighters[f].costumes[c];
+				const mod::CostumeContent& y = b.fighters[f].costumes[c];
+				if (x.owned != y.owned || x.ownedColours != y.ownedColours) return false;
+			}
+		}
+		return true;
+	};
+
+	mod::ContentLists entitlements = TestContent();
+	mod::ApplyCostumeOwnership(entitlements, mod::CostumeOwnership::Entitlements);
+	CHECK(entitlements.ownership.looks == mod::CostumeOwnership::Entitlements);
+	CHECK(sameOwnership(entitlements, game));
+
+	mod::ContentLists installed = TestContent();
+	mod::ApplyCostumeOwnership(installed, mod::CostumeOwnership::Installed);
+	CHECK(installed.ownership.looks == mod::CostumeOwnership::Installed);
+	CHECK(installed.fighters[1].costumes[2].owned);
+	CHECK(installed.fighters[1].costumes[2].ownedColours == std::vector<int>{0});
+	// Colours too: RYU's EX colours of costume 4, and every colour of his
+	// costume 1, are installed with their costumes.
+	CHECK(installed.fighters[0].costumes[2].ownedColours == std::vector<int>{0, 1, 100, 101});
+	CHECK(installed.fighters[0].costumes[1].ownedColours == installed.fighters[0].costumes[1].colours);
+	// What is not installed is not theirs under either rule: BSN's costume 1.
+	CHECK_FALSE(installed.fighters[4].costumes[1].owned);
+	CHECK(installed.fighters[4].costumes[1].ownedColours.empty());
+	// Fighters keep the game's answer: KEN stays not owned.
+	CHECK_FALSE(installed.fighters[2].owned);
+	// The command line's marks still take a look away under it.
+	mod::MarkUnowned(installed, {{"CNL", 3, -1}});
+	CHECK_FALSE(installed.fighters[1].costumes[2].owned);
+
+	// While the battle setup asset restricts the picks to its own list, the
+	// game's answer stays under either rule.
+	mod::ContentLists restricted = TestContent();
+	restricted.ownership.restricted = true;
+	mod::ApplyCostumeOwnership(restricted, mod::CostumeOwnership::Installed);
+	CHECK(sameOwnership(restricted, game));
+
+	// The rule is this copy's own: the build id never moves with it.
+	CHECK(ContentFingerprint(installed) == ContentFingerprint(game));
+	CHECK(ContentFingerprint(entitlements) == ContentFingerprint(game));
+	CHECK(std::string(mod::CostumeOwnershipName(mod::CostumeOwnership::Entitlements)) == "entitlements");
+	CHECK(std::string(mod::CostumeOwnershipName(mod::CostumeOwnership::Installed)) == "installed");
+}
+
 TEST_CASE("a costume is theirs to ready only in a colour of theirs, for the fitting and the pick screen alike")
 {
 	FillTestCatalog();

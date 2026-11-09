@@ -972,33 +972,36 @@ SFV Ember's catalog, its pick screen and its pictures now come from SFV's own ta
 **The tables**
 - **Fighter table: `DA_CharaEntry`**, embedded in the exe as text and parsed at boot (rva 0x56D050) into the game singleton's `CharaAsset` (+96): 232-byte entries with +0 `CharaCode`, +16 `CharaProgID`, +20 `CharaUniqueID` (the spec's key), +24 the loaded `PersonalData` object (`KWCharaPersonalDataAsset`), +80 `CostumeDatas` (a TArray of package paths, indexed by costume number), +112 `CostumeColorPreviewDatas` (one name per costume number, e.g. "RYU01", "Z0006").
 - **Spec: `DA_Spec`** (`/Game/Spec/DA_Spec`, loaded at boot, rva 0x691790; the singleton's "SpecDataAsset"). At +328 a TMap keyed by `CharaUniqueID` (136-byte elements, value at +8). A fighter's value holds at +24 a TMap of costumes (120-byte elements, the costume's value at +8); a costume's value holds at +24 a TMap of colours (40-byte elements). Byte flags decide what is listed:
-  - fighter value +2: selectable (rva 0x566AF0); +4: needs no package check (rva 0x5591E0);
+  - fighter value +2: selectable (rva 0x566AF0); +4: its package test, cached (rva 0x5591E0);
   - costume value +0: enabled (rva 0x54F1F0); +3: needs no package check (rva 0x558DC0); +8: a UObject whose FText at +64 is the costume's name (rva 0x55C5B0);
   - colour value +0: enabled (rva 0x54EE30); +1, or a number under 128: listed (rva 0x558920).
+  - *Corrected in section 41:* a fighter's costume map is at value+32, not +24. Every value's +0 is not "enabled" but "the row's code is in the account's entitlement cache", and +8 is the CharaSpec row. A costume's +3 is its cached "package found" flag, not "needs no package check". A fighter's +2 needs its package, both of its codes in the cache and a usable costume.
 - **The game's listers**, each `bool (SpecData** spec, ..., TArray<int>* out)`, walk those maps in their own order. GameContent calls them:
 
-| Lister | rva | What it lists | Install? |
-|---|---|---|---|
-| `kSpecFighters` | 0x566AF0 | the spec's selectable fighters' ids | no |
-| `kSelectableFighters` | 0x566FC0 | those whose package exists or need none, as codes, less Random | **per copy** (FighterInstalled, rva 0x549180) |
-| `kSpecCostumes` | 0x54F1F0 | a fighter's enabled costumes | no |
-| `kPlayableCostumes` | 0x54FAB0 | those this copy can load (flag +3, or the CostumeDatas package exists, rva 0x548E40) | **per copy** |
-| `kSpecColours` | 0x54F870 | a costume's colours | no |
+| Lister | rva | What it lists | Install? | Account? (corrected in section 41) |
+|---|---|---|---|---|
+| `kSpecFighters` | 0x566AF0 | the spec's selectable fighters' ids | **yes**: value+2 needs the package | **yes**: RefAvailableCode and RefVisibleCode in the entitlement cache |
+| `kSelectableFighters` | 0x566FC0 | those whose package exists or need none, as codes, less Random | **per copy** (FighterInstalled, rva 0x549180) | yes, through `kSpecFighters` |
+| `kSpecCostumes` | 0x54F1F0 | a fighter's costumes whose value+0 is set | no | **yes**: value+0 is RefCostumeAvailableCode in the cache |
+| `kPlayableCostumes` | 0x54FAB0 | those this copy can load (flag +3, or the CostumeDatas package exists, rva 0x548E40) | **per copy** | yes, through `kSpecCostumes` |
+| `kSpecColours` | 0x54F870 | a costume's colours whose value+0 is set | no | **yes**: value+0 is RefColorAvailableCode in the cache |
+
+Since section 41 SFV Ember calls none of these for its lists: the pick space is every element with a row, read by key (`kFindSpecFighter`, `kFindSpecCostume`, `kFindSpecColour`).
 
 - **Colour count is per costume**, as the task guessed. Costume numbers have gaps (RYU: 0-3, 5, 6, 9-13), and colours run 0-99 and then 100 and up for EX colours (RYU's default costume: 0-14, 100, 108). The game's labels are "%02d" of the number plus one and "EX%02d" from 100 (rva 0x553B80).
-- **The game's own checks** at launch are membership in those lists: `kCostumeValid` (rva 0x56B190) asks `kPlayableCostumes`, `kColourValid` (0x56B0E0) asks `kSpecColours`; both let the Random fighter through (rva 0x56B6C0).
-- **Ownership** is a third, separate filter: the costume menu lists `kPlayableCostumes` less what the player's entitlements lack (rva 0x5545B0 with 0x55AEF0, whose +96 turns the check on). Ember leaves it to the game's own check at launch (VersusLaunch's `checkOwnership`).
+- **The game's own checks** at launch are membership in those lists: `kCostumeValid` (rva 0x56B190) asks `kPlayableCostumes`, `kColourValid` (0x56B0E0) asks `kSpecColours`; both let the Random fighter through (rva 0x56B6C0). Both are therefore bound to the account's entitlement cache; since section 41 Ember's launch asks the spec's rows and the costume's package instead.
+- **Ownership** is a third, separate filter: the costume menu lists `kPlayableCostumes` less what the player's entitlements lack (rva 0x5545B0 with 0x55AEF0, whose +96 turns the check on). Ember leaves it to the game's own check at launch (VersusLaunch's `checkOwnership`). *Corrected in section 41:* the entitlements are already in `kSpecCostumes` (value+0); the third filter is only the battle setup asset's restriction (+96, section 23).
 - **Names.**
   - A fighter's: its PersonalData's FText at +80, through `FText::ToString` (rva 0x116E270), as the versus screen's "charaName" (rva 0x6DD620). The game gives them in capitals ("CHUN-LI", "M. BISON").
   - A costume's: rva 0x557870, the spec's FText or "Costume<n>" ("DEFAULT", "Story", "Battle Outfit 1", "Mega Man").
   - A stage's: section 14.
 
-On this PC the spec lists 46 selectable fighters (ELEVEN with one costume), 5 to 19 costumes each, and nothing the install lacks.
+On this PC the spec lists 46 selectable fighters (ELEVEN with one costume), 5 to 19 costumes each, and nothing the install lacks. (Those are the costumes this account's entitlement cache grants: 394. The spec's rows hold 875; section 41.)
 
 **How the native screens choose and apply them.** The costume settings menu (rva 0x8CC6E0) builds its spin boxes from these lists: case 3 lists the fighter's costumes (rva 0x5545B0) and names each (0x557870); case 4 lists the costume's colours (0x5539D0) with each one's label (0x553B80) and two swatch colours (0x554750). The battle takes a fighter code, a costume number and a colour number in its CharPkg, which VersusLaunch writes through the mode data's setters (sections 10 and 12).
 
 **What Ember does with them** (`mod/GameContent`, `ember/SfvCatalog`)
-- **The pick space** (the same on every copy of the same game data): the spec's selectable fighters in the game's order, each fighter's spec costumes, each costume's spec colours. A pick carries the game's own costume and colour numbers.
+- **The pick space** (the same on every copy of the same game data): the spec's selectable fighters in the game's order, each fighter's spec costumes, each costume's spec colours. A pick carries the game's own costume and colour numbers. *Corrected in section 41:* those listers keep only what the account's entitlement cache grants, so this pick space, and the build id, depended on the account. The pick space is now every fighter, costume and colour with a row.
 - **A fighter with no battle setup is left out:** one whose `DA_CharaEntry` record has no `SetupData` (entry +48). That is Random and ELEVEN. ELEVEN's record has only `PreviewSetupData`, with no setup and no BattleResourceList, because the select screen decides which fighter Eleven plays as (`bIsDecidedCharaEleven_Left/Right`). A launch with ELV hung at a black screen on both copies (the room logged "load over 60 s"). The rule reads the exe's own table, so every copy leaves out the same fighters: 45 remain on this PC.
 - **`ValidPick`** takes a costume of the fighter and a colour of that costume. **`NormalizePick`** fits a pick to the fighter's first costume, then to that costume's first colour (the game's first, not number 0). The pick store (`SfvPick`) fits every pick it keeps, so the shell and the pipe's `pick` fit alike.
 - **Per copy:** a fighter this copy has not installed is locked (`FighterLocked`), and a costume it cannot load is not available (`AvailablePick`). The pick screen does not step onto either.
@@ -1394,17 +1397,18 @@ The maintainer asked for SFV Ember's ownership check "up to parity with usf4 emb
   - fighters, 0x54E8E0: `kSelectableFighters` (the spec's selectable fighters whose package is installed) that the asset allows (0x55A9B0);
   - costumes, 0x5545B0 with 0x55AEF0: `kPlayableCostumes` that the asset allows. This is section 15's "third, separate filter", and the costume settings menu's list (0x8CC6E0, case 3);
   - colours, 0x55ABA0: the spec's colours of the costume that the asset allows;
+  - *corrected in section 41:* `kSelectableFighters`, `kPlayableCostumes` and the spec's colours keep only what the account's entitlement cache grants (each spec value's +0).
   - stages, 0x550DA0: the spec's stages that the asset lists at +184 and does not exclude at +168.
-- **What "the asset allows" is.** Its +96 byte restricts every list to the asset's own list at +120 (a TArray of 24-byte `KWBattleSetupCostumeColor`: +0 fighter code, +16 costume, +20 colour), less a set at +104, each entry also passing the filter object at +280 when one is installed (vtable +8; a BattleSetupState's constructor installs one, 0x5A4D50 and 0x574510, from a list it copies from the object 0x141E6A740 returns, its +40). With +96 clear, fighters are those of the asset's select-grid list (+48) that are installed, and costumes and colours are the spec's and the install's alone.
-- **Nothing on these paths reads the account.** No Steam call and no saved data. The exe's one Steam licence query (0xE112C0: `ISteamApps` vtable +0x38 for app 475230 only, `BIsDlcInstalled` by the layout of the Steamworks the install ships, Steamv130) is reached from three menu screens (0xAAC150, 0xAADDE0, 0xAC6310), where it sets a menu's new-content mark; the start-up check is vtable +0x30 (`BIsSubscribedApp` by that layout) of 310950, called at 0x10BFF66. A login-gated fighter list (0x565F20: lists held by the game instance's +144 object; the exe also names a `UKWFreeTrial` class, not tied to it here) and the shop's fighter list (0x551E50) are read only while 0x742A20 holds: the default online subsystem (0x73BEC0, the "OnlineSubsystem" module's) reports status 2 for the local user from its interface's vtable +288 (UE4's `ELoginStatus::LoggedIn` is 2). Offline it does not (live: `logged in 0`).
+- **What "the asset allows" is.** Its +96 byte restricts every list to the asset's own list at +120 (a TArray of 24-byte `KWBattleSetupCostumeColor`: +0 fighter code, +16 costume, +20 colour), less a set at +104, each entry also passing the filter object at +280 when one is installed (vtable +8; a BattleSetupState's constructor installs one, 0x5A4D50 and 0x574510, from a list it copies from the object 0x141E6A740 returns, its +40). With +96 clear, fighters are those of the asset's select-grid list (+48) that are installed, and costumes and colours are the spec's and the install's alone. (Corrected in section 41: and the account's entitlement cache's.)
+- **No Steam call on these paths.** *Corrected in section 41:* they do read the account, through the spec's flags. The spec's refresh (0x57CE50) sets each fighter's, costume's and colour's value+0 from the game's entitlement cache (`UKWEntitlementsData`: the ids Capcom's servers authorised at the account's last online session, and those unlocked locally since), and the listers keep only what it grants. The earlier text said "no Steam call and no saved data"; the cache is saved data. The exe's one Steam licence query (0xE112C0: `ISteamApps` vtable +0x38 for app 475230 only, `BIsDlcInstalled` by the layout of the Steamworks the install ships, Steamv130) is reached from three menu screens (0xAAC150, 0xAADDE0, 0xAC6310), where it sets a menu's new-content mark; the start-up check is vtable +0x30 (`BIsSubscribedApp` by that layout) of 310950, called at 0x10BFF66. A login-gated fighter list (0x565F20: lists held by the game instance's +144 object; the exe also names a `UKWFreeTrial` class, not tied to it here) and the shop's fighter list (0x551E50) are read only while 0x742A20 holds: the default online subsystem (0x73BEC0, the "OnlineSubsystem" module's) reports status 2 for the local user from its interface's vtable +288 (UE4's `ELoginStatus::LoggedIn` is 2). Offline it does not (live: `logged in 0`).
 - **The battle jump's own check** (0x5E2D10, run in the step after the second, 0x602790, when the init message's +46 is set) asks the same lists: per player the fighter (0x56AF20, or the login-gated list's, 0x56B3A0), then `kCostumeValid` and `kColourValid` (membership in `kPlayableCostumes` and the spec's colours: the install, not the asset's restriction); then the stage. Its result (jump state +856): 0x210 a fighter it does not allow (that player's costume and colour set to 0, and the jump leaves with the error notice Notice_ERROR_0030, 0x602830), 0x102 a costume set to 0, 0x101 a colour set to 0, 0x108 a stage it does not allow replaced by TRN or S25, in one branch chosen by `rand()` (0x5E3082 to 0x5E360A), 0x400 no setup asset. It judges **both** players by this copy.
-- **The install.** The Steam manifest (`appmanifest_310950.acf`) installs depot 310951 (48.9 GB, every pak) for every owner of the game; this account also has two DLC depots, 1172540 (16.5 MB) and 1474240 (10.2 MB), neither of them fighter or costume packages. Every copy therefore has every fighter's and costume's data, as SF4's installs did, and `kSelectableFighters`/`kPlayableCostumes` agree on every copy of the same build.
+- **The install.** The Steam manifest (`appmanifest_310950.acf`) installs depot 310951 (48.9 GB, every pak) for every owner of the game; this account also has two DLC depots, 1172540 (16.5 MB) and 1474240 (10.2 MB), neither of them fighter or costume packages. Every copy therefore has every fighter's and costume's data, as SF4's installs did. (Corrected in section 41: `kSelectableFighters` and `kPlayableCostumes` agree only between copies whose accounts' entitlement caches agree.)
 
 **What this PC's game reports** (one copy, Steam running, `content` on the pipe; the log line is `content: ... ownership read: setup restricted 0 (0 entries), filter 0, logged in 0`; every copy now logs the same as its catalog is filled, `ember: ownership gate on; ...`)
 - The asset's restriction is off, no filter is installed, the identity is not logged in.
 - Every fighter (45), every costume (394) and every colour of every costume is allowed: `not owned: 0 fighters, 0 costumes, 0 colours`.
 - 10 of the 37 playable stages are outside the asset's stage list (SH4, NZ1, KZ2, RU2, S05, S16, S17, S18, S19, S25: night, seasonal and alternative versions). That list is the asset's, the same on every copy, not the account's. S25, the stage the test tools use, is one: the pipe's `launch versus RYU:0:1 KEN:0:2 S25 1 30` with the game's check on logged `the game's ownership check gave 0x108`, and the battle loaded on the grid instead (`D:\sfv-re\shots\ownership-check-s25.png`).
-- So offline SFV judges only its own data and the install, never the account's purchases: an account that owns no DLC would get the same answer. Whether that is so for a non-owning account was not tried (no such account here); the code paths above read nothing that could differ. SF4's gate has the same gap the other way: it was never run against an account lacking DLC either.
+- So offline SFV judges only its own data and the install, never the account's purchases: an account that owns no DLC would get the same answer. Whether that is so for a non-owning account was not tried (no such account here); the code paths above read nothing that could differ. *Corrected in section 41: this is wrong.* Offline SFV judges by the account's entitlement cache, and an account whose cache lacks a costume gets another answer. On this PC the 394 "every costume" above are the cache's; the spec's rows hold 875. SF4's gate has the same gap the other way: it was never run against an account lacking DLC either.
 
 **Ember's gate** (SFV's catalog; no library change: the shared Ready check, Random and pick fitting already ask the game's catalog)
 - **The truth.** `GameContent` reads the setup asset's lists once with the content lists (`FighterContent::owned`, `CostumeContent::owned` and `ownedColours`, `ContentLists::ownedStages` and `ownership`), on the game thread at the main menu (StaticLoadObject finds the already loaded asset). Without the asset there are no lists at all and Ember's runtime waits, rather than start with lists that say nothing or everything is owned. Ownership never enters the build's fingerprint: the build id is unchanged (`sfv-ember/13173604/0.2/8dafe602f7615d90`).
@@ -1426,7 +1430,7 @@ The maintainer asked for SFV Ember's ownership check "up to parity with usf4 emb
 - The library is unchanged (`feat/sfv-ownership` has no commit): the shared Ready check, Random fighter and pick fitting already ask the game's catalog, and sfv-ember's build compiles the library's x64 runtime from that tree (its `ember_runtime` suite passes).
 
 **Left**
-- **The account's purchases.** Offline SFV does not know them, so the gate refuses nothing on a real account today; it is ready for the day something reports them. Reading them would mean a source outside the game: Steam's DLC licences (a mapping from Steam DLC app ids to fighters and costumes that the exe does not hold, and it would miss what an account bought with Fight Money on Capcom's servers), or Capcom's servers, which SFV Ember never contacts. The maintainer's call.
+- **The account's purchases.** *Corrected in section 41:* offline SFV knows them as far as its entitlement cache holds them (what Capcom's servers authorised at the account's last online session, and local unlocks since), and the gate's default rule refuses the looks the cache lacks (481 costumes on this PC). Anything beyond the cache would need a source outside the game: Steam's DLC licences (a mapping from Steam DLC app ids to fighters and costumes that the exe does not hold, missing what an account bought with Fight Money), or Capcom's servers, which SFV Ember never contacts.
 - Whether to gate stages. The asset's stage list is the same on every copy and a room's stage is P1's choice, so the stages outside it are logged, not gated. S25, the test tools' stage, is outside it.
 - The choice dialog's detail line under a long list is off a 960x540 screen (the library's dialog); SFV's pane repeats it.
 
@@ -2165,3 +2169,88 @@ The maintainer's report: there was no way to change V-Trigger. Ember's pick gave
 - `tools/runroom.ps1 -games 2 -lag 30 -p1 RYU:0:1:2:2 -p2 KEN:0:2:1:2`: both copies log the same two launch lines with the loadouts, 0 differing checkpoints, and the VS screen shows the chosen V-Skill and V-Trigger (shots).
 - `tools/synctest.ps1` with II/II picks for fighters whose V-Triggers spawn objects or stances; a new drift is a `kRunRules` entry, not a layout change.
 - `runshell` shots of the pick screen's rows, the table page's Ultra row, the bar's Ultra button, the post-match row; one `runreplay` of a II/II game; one Practice match with a II/II pick (the V-gauge refills to that V-Trigger's bars).
+
+## 41. Every costume SFV has (2026-11-09)
+
+The maintainer wants players to be able to pick every alternative costume SFV has. The pick space listed 394 costumes over 45 fighters; the game's data has 875. The plan with the evidence is `reviews/2026-11-09-sfv-project/costumes-plan.md`. Every address below is an rva in build 13173604. Section 42 is the public-readiness branch's.
+
+**Why 481 costumes were missing: the account's entitlement cache.**
+- **The CharaSpec table** is in the exe. rva 0x160070 builds its header (`Name,CharaId,RefAvailableCode,RefVisibleCode,CostumeId,RefCostumeAvailableCode,CostumeText,ColorId,RefColorAvailableCode`) and 6,426 rows as embedded strings. DA_Spec's post-init (0x574150, 0x5480A0) parses them into the `CharaSpec` DataTable at spec+40.
+- **The map at spec+328** is built by a queued step list (0x7A2FC0, one step a tick).
+  - Step 7 (0x56C2B0) adds an element for every fighter table entry with a CharaUniqueID of 0 or more, in the table's order. Under each it adds one for every costume number of its CostumeDatas, and under each costume one for every colour 0-127. It then links each CharaSpec row to its element (value+8).
+  - Element sizes: fighter 136 bytes (costume set at value+32), costume 120 (colour set at value+24), colour 40.
+  - Step 8's refresh (0x57CE10, then 0x57CE50) sets each value's +0 from the game's entitlement cache: the row's `RefAvailableCode`, `RefCostumeAvailableCode` or `RefColorAvailableCode` granted (0x543EB0, 0x78CC90; the codes grouped by type by 0x54F680).
+- **The listers keep only what the cache grants.**
+  - `kSpecCostumes` (0x54F1F0) keeps a costume whose value+0 is set.
+  - `kSpecColours` (0x54F870) keeps a colour whose value+0 is set.
+  - `kSpecFighters` (0x566AF0) keeps a fighter whose value+2 is set: its package, both of its codes granted, and a usable costume.
+  - `kPlayableCostumes` (0x54FAB0) adds the package test; its +3 is the cached "package found" flag.
+  - Sections 15 and 23 read these as install-only flags; both are corrected above.
+- **The cache is the account's.** It is `UKWEntitlementsData`: `AuthorizedEntitlementIds` (what Capcom's servers authorised at the last online session), `LocalEntitlementIds` (unlocks earned locally) and its service ids. So the old pick space, and with it the build id, depended on the account's history. Two installs of the same build could differ by account alone.
+- **This PC:** 481 costumes, and 474 EX colours of listed costumes, are not in the cache. Costume 1 of every fighter lacks EX 105 and 106, and costume 0 lacks between 4 and 10 of EX 101-112.
+- **All 481 load.** Every one has its `DA_*_Costume_*` package in the paks (`pakchunk<fighter>`, `pakchunk68` for folders 0C and 0E). The battle's own load (0x69BC20, then 0x7B33B0) checks only that the package exists (0x548E40) and otherwise puts the costume back to 0, without a word. Nothing on that path asks the entitlement cache.
+- **What the new costumes are.**
+  - Nine sets every fighter has: folder 0C (`ID_SYS_BSet_0224`) and folders 30-37 (`ID_SYS_BSet_0240`-`0247`). That is 405 of the 481.
+  - Three "EX character" skins with one colour: CNL 23, NSH 8, Z36 6 (folder 0E). Their text is a character key (`ID_CMN_EXChar_E_SLD`, `_SDW`, `ID_CMN_Char_E_Z36`).
+  - The rest are fighters' own folders.
+  - The pipe's `content` names every costume through `kCostumeName`, which finds the costume by key and reads no flag.
+
+**The pick space is the spec's rows** (`mod/GameContent`).
+- **Fighters.** `ReadFighters` walks the fighter table in its order, the order the builder inserts in and so the listers' order. It keeps an entry with a CharaUniqueID of 0 or more, a row (`kFindSpecFighter`, 0x54B7D0, on spec+328), and a battle setup of its own (`BattleFighter`). That gives the same 45. A disagreement with `kSpecFighters`' order is logged once, since the order is read from the builder, not seen.
+- **Costumes.** Every number 0 to the CostumeDatas count less one whose entry names a package and whose element has a row (`kFindSpecCostume`, 0x54B8F0, on the fighter value's +32).
+- **Colours.** Every colour 0-127 with a row (`kFindSpecColour`, 0x54B860, on the costume value's +24).
+- **The finds** are the game's own: `int* Find(TSet*, int* outIndex, int key)`, the element's index or -1. The three share their first 16 bytes; BuildCheck checks each at its own rva. The layout is `sfv::spec` in `SfvMenuLayouts.hxx`.
+- **Per copy, never fingerprinted.**
+  - `installed`: the fighter's package (`kFighterInstalled`) and each costume's (`kCostumePackage`, 0x548E40, the battle's own test).
+  - `entitled`: value+0 of each fighter, costume and colour (`entitledColours`).
+  - `owned`: the rule below.
+  - The installs and the costumes' names ask the game's package files and text, so they are read last, once the rest of the lists are there.
+- **Readiness.** No lists until `kSpecFighters` lists a fighter, as before: the rows are linked at step 7 but the entitlement flags only at step 8.
+- **Code sites.** `kSelectableFighters`, `kSpecCostumes`, `kPlayableCostumes`, `kSpecColours`, `kCostumeValid` and `kColourValid` are gone, since nothing calls them. Their meaning is kept in the comments of the sites that replace them. BuildCheck verifies 60 sites.
+
+**Ownership: one switch** (`GameContent.hxx`).
+- `enum class CostumeOwnership { Entitlements, Installed }`, and `constexpr CostumeOwnership kCostumeOwnership = CostumeOwnership::Entitlements;` the one line to change.
+- **`Entitlements` (the default).** A look is this player's when the game's answer allows it (`kOwnedCostumes`, `kOwnedColours`), as the game's menus offer it: what the cache grants and this copy has installed. On this PC the 481 new costumes and the 474 EX colours show as NOT OWNED in the pick screen, as any unowned look does, and the player cannot ready them.
+- **`Installed`.** A look is this player's when its costume is installed here, in every colour, whatever the cache holds. While the battle setup asset restricts the picks (+96), the game's answer stays.
+- **Both.** `ApplyCostumeOwnership` applies the rule as the lists are read; it has no game code, so the tests run it with either value. Fighters keep the game's answer (`kOwnedFighters`) under both. `-sfve_unowned` still only takes away, and `-sfve_ownership=0` still turns Ember's gate off.
+- **The opponent's pick plays as picked** under both: `LaunchPicks` asks the pick space and this copy's install, never ownership.
+- No development flag for the strict rule was added: the switch covers it.
+
+**The launch** (`VersusLaunch::MissingContent`).
+- A costume must have a row and its package here (`CostumeLoadState`). The refusals say which: "costume is not in the game's spec" or "costume's package is not installed here".
+- A colour must have a row (`ColourInSpec`).
+- Neither asks the cache, so an opponent's costume this copy's account lacks loads. The old checks (`kCostumeValid`, `kColourValid`) were the entitlement-bound listers and would have refused it.
+- The package test is the one the battle's load makes, so a launch that passes it cannot be put back to costume 0 by that load.
+- A room's match still clears the jump's ownership check (+46). The pipe's `launch` with `-sfve_game_ownership=1` still runs it, and for a costume the cache lacks it gives 0x102 and loads costume 0, as section 23 describes.
+
+**Build id.**
+- The fingerprint hashes costume and colour numbers, so it moves once: 45 fighters, 875 costumes and 6,424 (costume, colour) pairs, against 394 and 4,671. CHUN-LI has costumes 0-34, so `costumeLimit` is 35; `colorLimit` stays 113.
+- Neither `entitled`, `installed` nor the switch enters it.
+- `kMatchBuild` stays 0.5: no 0.5 build has left the laptop, and this shares V-Trigger's bump.
+- `data/pick-space.json` must be exported again (`catalog-export`); until then `RoomHostCatalogTests`' new case (45, 875, 6,424; `RYU:24:1`, `CNL:23:0`, `KEN:11:9`, `RYU:0:101`) fails.
+
+**Logs.**
+- The catalog's line: `ember: costumes U in the spec, I installed here, E in the account cache; account cache lacks: N costumes, M colours; fighters F in the spec, G in the account cache`. M counts looks: a costume in a colour the cache lacks either of. Expected on this PC: 875, 875, 394, 481 and 1,753.
+- The ownership line names the rule (`looks by entitlements`).
+- The pipe's `content` marks `(not in the account cache)` per fighter, costume and colour.
+
+**Tests** (`sfve_ember_tests`).
+- `SfvPickRulesTests`: a costume the cache lacks (the fixture's CNL 3, one colour) is NOT OWNED, not offered and not readied; as the opponent's pick it launches as picked; a costume not installed is refused either way. `ApplyCostumeOwnership` under both values: Entitlements keeps the game's answer; Installed makes CNL 3 and RYU's EX colours of costume 4 theirs, leaves BSN's uninstalled costume 1 out and fighters as they were, gives way to the asset's restriction, and leaves the fingerprint alone.
+- `SfvCatalogTests`: the fingerprint and both of the log's part fingerprints are unmoved by `entitled`, installs and the rule; a costume more moves the picks' part and not the stages'; a hand-made pick space with costume 34, a one-colour costume and EX colour 112 passes `Problem`, with `CostumeCount` 35, `CostumeLimit` 35 and `ColourLimit` 113.
+- `RoomHostCatalogTests`: the exported counts and picks above (needs the export).
+
+**Tools.** `tools/runroom.ps1 -gateOff0 / -gateOff1` start that copy with `-sfve_ownership=0`, so its player can pick a look the cache lacks under the default rule. Each copy's `pick` reply is now printed; "(fitted)" there means the look asked for is not the one played.
+
+**To confirm on the laptop** (launches need the maintainer's yes).
+- One copy, `content` on the pipe: the catalog line's counts above, every new costume named, then `catalog-export` and the counts again.
+- Three pairs of games, `tools/runroom.ps1 -lag 30 -games 2 -gateOff0 -gateOff1` with `-p1 RYU:24:1 -p2 KEN:11:9`, `-p1 CNL:23:0 -p2 RYU:15:1` and `-p1 RYU:0:101 -p2 Z42:13:1`. Pass when:
+  - no pick reply says "(fitted)";
+  - both copies log the same `launch: player N ... -> CODE costume N colour M` lines, with the costumes asked for;
+  - there is no `launch: refused`;
+  - the same frame decides each game and 0 checkpoints differ;
+  - a shot of each intro shows the new costume, not DEFAULT.
+  If CNL 23 misbehaves (missing animations, a T-pose, a crash), the three EX character skins are left out by rule.
+- **The gate**, with no `-gateOff0` and `-gateOff1` (`-p1 RYU:24:1`): copy 0's reply says "(fitted)" and the pick screen shows RYU 24 NOT OWNED. With `-p2 RYU:24:1 -gateOff1`, copy 1's RYU 24 plays on both copies, with 0 differing checkpoints.
+- The pipe's `launch versus RYU:24:1 KEN:0:2 TRN 1 30` with `-sfve_game_ownership=1` logs `the game's ownership check gave 0x102` and loads RYU in DEFAULT. The same launch without that flag loads RYU 24.
+- Training with RYU 24 as the player and KEN 11 as the dummy (gate off).
+- The friend's copy: one log. Its `fingerprints: picks <hex>` must now equal the maintainer's.

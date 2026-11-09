@@ -30,6 +30,24 @@ sfve::picks::PickSpace Embedded(std::string& build)
 	return space;
 }
 
+// The fighter's id in the pick space, by its code; -1 for none.
+int FighterIdOf(const sfve::picks::PickSpace& space, const std::string& code)
+{
+	for (size_t id = 0; id < space.fighters.size(); id++) {
+		if (space.fighters[id].code == code) return (int)id;
+	}
+	return -1;
+}
+
+sf4e::selection::Pick PickOf(int fighter, int costume, int colour)
+{
+	sf4e::selection::Pick pick;
+	pick.fighter = fighter;
+	pick.costume = costume;
+	pick.color = colour;
+	return pick;
+}
+
 sf4e::roomhost::Config ConfigFor(const std::string& game, const std::string& build)
 {
 	sf4e::roomhost::Config config;
@@ -160,4 +178,45 @@ TEST_CASE("SFV's room host takes only the room of the build its pick space makes
 	CHECK(details.fighters == std::vector<int>{3, sf4e::roomhost::NoFighter, catalog.fighterCount - 1, sf4e::roomhost::NoFighter});
 	// SF4's listing of the same room, by mains: RYU for everyone.
 	CHECK(sf4e::roomhost::DetailsOf(snapshot).fighters == std::vector<int>(4, 0));
+}
+
+// The exported pick space is SFV's whole universe (EMBER_LIBRARY.md section
+// 41): every fighter, costume and colour the spec's rows hold, whatever the
+// exporting copy's account or install. Needs data/pick-space.json exported
+// from a copy with the universe reader (catalog-export); the counts are the
+// exe's own CharaSpec rows, computed apart from the game.
+TEST_CASE("SFV's room host data holds every costume and colour SFV has")
+{
+	std::string build;
+	const sfve::picks::PickSpace space = Embedded(build);
+	size_t costumes = 0, looks = 0;
+	for (const sfve::picks::Fighter& fighter : space.fighters) {
+		costumes += fighter.costumes.size();
+		for (const sfve::picks::Costume& costume : fighter.costumes) looks += costume.colours.size();
+	}
+	CHECK(space.fighters.size() == 45);
+	CHECK(costumes == 875);
+	CHECK(looks == 6424);
+	const int ryu = FighterIdOf(space, "RYU"), cnl = FighterIdOf(space, "CNL"), ken = FighterIdOf(space, "KEN");
+	REQUIRE(ryu >= 0);
+	REQUIRE(cnl >= 0);
+	REQUIRE(ken >= 0);
+	// RYU's costumes 0 to 24 and CHUN-LI's 0 to 34, with no gaps.
+	CHECK(sfve::picks::CostumeCount(space, ryu) == 25);
+	CHECK(space.fighters[(size_t)ryu].costumes.size() == 25);
+	CHECK(sfve::picks::CostumeCount(space, cnl) == 35);
+	CHECK(space.fighters[(size_t)cnl].costumes.size() == 35);
+	CHECK(sfve::picks::CostumeLimit(space) == 35);
+	CHECK(sfve::picks::ColourLimit(space) == 113);
+	// Costumes no account's menus offered before: RYU's folder 30 set, KEN's
+	// folder 11, CHUN-LI's EX character skin (one colour) and RYU's EX02 of
+	// DEFAULT.
+	CHECK(sfve::picks::ValidPick(space, PickOf(ryu, 24, 1)));
+	CHECK(sfve::picks::ValidPick(space, PickOf(cnl, 23, 0)));
+	CHECK(sfve::picks::ValidPick(space, PickOf(ken, 11, 9)));
+	CHECK(sfve::picks::ValidPick(space, PickOf(ryu, 0, 101)));
+	CHECK(sfve::picks::ValidPick(space, PickOf(ryu, 15, 1)));
+	CHECK_FALSE(sfve::picks::ValidPick(space, PickOf(ryu, 24, 2)));
+	CHECK_FALSE(sfve::picks::ValidPick(space, PickOf(cnl, 23, 1)));
+	CHECK_FALSE(sfve::picks::ValidPick(space, PickOf(ryu, 25, 0)));
 }

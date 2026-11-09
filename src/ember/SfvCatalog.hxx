@@ -20,8 +20,10 @@
 // that check instead of disagreeing on fighter N or on what a costume is.
 // What this copy's install lacks is per copy: such a fighter is locked and
 // such a costume cannot be readied (FighterLocked, AvailablePick). So is what
-// the game does not let this copy's player pick (GameContent's `owned`, for
-// a costume in a colour together) while Ember's ownership gate is on, and a
+// this copy's player may not pick (GameContent's `owned`, for a costume in a
+// colour together, under its kCostumeOwnership switch: by default the
+// game's answer, from the account's entitlement cache; EMBER_LIBRARY.md
+// section 41) while Ember's ownership gate is on, and a
 // fighter with no costume and colour left to ready is locked too: each
 // player may ready only what their own copy lets them pick, and the
 // opponent's pick plays as picked, whatever this copy owns (LaunchPicks

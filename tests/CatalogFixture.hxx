@@ -24,7 +24,8 @@
 namespace sfve::catalog_fixture {
 
 // A costume the game lets this copy's player pick, in every colour but
-// `notOwned`, unless `owned` says otherwise.
+// `notOwned`, unless `owned` says otherwise. The account's entitlement cache
+// grants what the game's answer gives (that answer is made from the cache).
 inline mod::CostumeContent Costume(int id, std::vector<int> colours, const char* name = "", bool installed = true,
 	bool owned = true, std::vector<int> notOwned = {})
 {
@@ -32,13 +33,27 @@ inline mod::CostumeContent Costume(int id, std::vector<int> colours, const char*
 	for (int colour : colours) {
 		if (std::find(notOwned.begin(), notOwned.end(), colour) == notOwned.end()) ownedColours.push_back(colour);
 	}
-	return {id, std::move(colours), name, installed, owned, std::move(ownedColours)};
+	mod::CostumeContent costume{id, std::move(colours), name, installed, owned, std::move(ownedColours)};
+	costume.entitled = owned;
+	costume.entitledColours = costume.ownedColours;
+	return costume;
+}
+
+// A costume installed here that the account's entitlement cache lacks, in
+// none of its colours: the game's answer leaves it out, as it leaves out
+// the costumes SFV's menus do not offer this copy (EMBER_LIBRARY.md section
+// 41).
+inline mod::CostumeContent NotEntitled(int id, std::vector<int> colours, const char* name = "")
+{
+	return {id, std::move(colours), name, true, false, {}};
 }
 
 inline mod::FighterContent Fighter(const char* code, std::vector<mod::CostumeContent> costumes, const char* name = "",
 	bool installed = true, bool owned = true)
 {
-	return {code, std::move(costumes), name, installed, owned};
+	mod::FighterContent fighter{code, std::move(costumes), name, installed, owned};
+	fighter.entitled = owned;
+	return fighter;
 }
 
 // The fighter with the V-Skills and V-Triggers named, I first.
@@ -64,7 +79,9 @@ inline mod::StageContent Stage(const char* code, const char* name = "", bool ins
 // costume and two colours the game does not let this copy's player pick
 // (KEN; CNL's costume 2; RYU's EX colours of costume 4); a costume the game
 // lets them pick in none of its colours (RYU's costume 1, as -sfve_unowned
-// marks of each of its colours make it), so no look of it is theirs; the
+// marks of each of its colours make it), so no look of it is theirs; a
+// one-colour costume installed here that the account's entitlement cache
+// lacks (CNL's costume 3, as SFV's "EX character" skins are); the
 // stages' names where the game gives one (none for the second), and a fourth
 // stage of the universe this copy has not installed (S26, id 3). The
 // fighters' V-Skills and V-Triggers (section 40) are every mix: RYU and BSN
@@ -78,7 +95,8 @@ inline mod::ContentLists TestContent()
 								 Costume(4, {0, 1, 100, 101}, "Nostalgia", true, true, {100, 101})},
 							 "Ryu"),
 				 {"Skill One", "Skill Two"}, {"Trigger One", "Trigger Two"}),
-				WithChoices(Fighter("CNL", {Costume(0, {0, 1}), Costume(2, {0}, "", true, false)}, "Chun-Li"),
+				WithChoices(Fighter("CNL", {Costume(0, {0, 1}), Costume(2, {0}, "", true, false), NotEntitled(3, {0}, "EX Skin")},
+								"Chun-Li"),
 					{"Skill One", "Skill Two"}, {"Trigger One"}),
 				Fighter("KEN", {Costume(0, {0})}, "Ken", true, false),
 				WithChoices(Fighter("CMY", {Costume(3, {5, 6})}, "", false), {"Skill One"}, {"Trigger One", "Trigger Two"}),

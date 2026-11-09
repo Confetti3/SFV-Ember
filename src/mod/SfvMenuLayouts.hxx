@@ -2,8 +2,8 @@
 
 // The layouts of the game objects outside a battle, in StreetFighterV.exe
 // (Steam build 13173604; SfvOffsets.hxx, which includes this, has the
-// build and its code sites): the versus result screen, the content tables
-// and the V-Skill and V-Trigger name assets, textures, the battle jump and
+// build and its code sites): the versus result screen, the content tables,
+// the spec's pick-space map and the V-Skill and V-Trigger name assets, textures, the battle jump and
 // its records, the scene states, the title screen, and the start-up dialogs.
 // Offsets in bytes; addresses are RVAs.
 
@@ -50,11 +50,54 @@ constexpr uint32_t kCharaStride = 232;
 constexpr uint32_t kCharaUniqueId = 20;
 constexpr uint32_t kCharaPersonal = 24;
 constexpr uint32_t kCharaSetupData = 48;
+// CostumeDatas: a TArray of FStrings (16 bytes each), its count at +88; a
+// costume number is a place in it.
+constexpr uint32_t kCharaCostumeDatas = 80;
+constexpr uint32_t kCharaCostumeCount = 88;
+constexpr uint32_t kGameStringStride = 16;
 // PersonalData: the fighter's name (FText), as the versus screen's
 // "charaName" (rva 0x6DD620).
 constexpr uint32_t kPersonalName = 80;
 
 } // namespace content
+
+// DA_Spec's pick-space map (EMBER_LIBRARY.md section 41). The spec's
+// post-init (rva 0x574150) parses the CharaSpec table embedded in the exe
+// (one row per fighter, costume and colour: Name, CharaId, RefAvailableCode,
+// RefVisibleCode, CostumeId, RefCostumeAvailableCode, CostumeText, ColorId,
+// RefColorAvailableCode). Then a queued step list (rva 0x7A2FC0, one step a
+// tick) builds the map. Step 7 (rva 0x56C2B0) adds an element for every
+// fighter table entry with a CharaUniqueID of 0 or more, in the table's
+// order; under it one for every costume number of its CostumeDatas, and
+// under each costume one for every colour 0-127; and links each CharaSpec
+// row to its element (value +8). Step 8's refresh (rva 0x57CE50) sets each
+// element's flag at value+0 from the account's entitlement cache: the row's
+// RefAvailableCode (a fighter), RefCostumeAvailableCode (a costume) or
+// RefColorAvailableCode (a colour) granted. An element without a row is one
+// the game has no data for; every element with one is in the universe.
+//
+// Each set is a UE4 TSet (+0 its elements' data) found by key with the
+// game's own lookups (sfv::kFindSpecFighter and the others); an element is
+// its int key, then its value at +8.
+namespace spec {
+constexpr uint32_t kFighters = 328; // SpecData: the fighters' set, keyed by CharaUniqueID
+constexpr uint32_t kSetElements = 0;
+constexpr uint32_t kValue = 8;
+constexpr uint32_t kFighterStride = 136;
+constexpr uint32_t kCostumeStride = 120;
+constexpr uint32_t kColourStride = 40;
+// A value's fields, the same for the three kinds.
+constexpr uint32_t kEntitled = 0; // byte: the row's code is in the entitlement cache
+constexpr uint32_t kRow = 8;      // the linked FKWCharaSpec row; null for none
+// A fighter's value: its costumes' set, keyed by costume number. (Its +2 is
+// kSpecFighters' selectable flag, +4 its cached package test.)
+constexpr uint32_t kFighterCostumes = 32;
+// A costume's value: its colours' set, keyed by colour number. (Its +3 is
+// its cached package test, set only for the costumes the refresh asks.)
+constexpr uint32_t kCostumeColours = 24;
+// The builder adds colours 0 to 127 under every costume.
+constexpr int kColourKeys = 128;
+} // namespace spec
 
 // A fighter's V-Trigger and V-Skill names (/Game/Chara/DA_VTriggerNameAsset
 // and DA_VSkillNameAsset, KWVersionDataAsset). The game's lookup (rva
