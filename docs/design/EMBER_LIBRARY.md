@@ -1940,7 +1940,7 @@ The maintainer: "Yes, start it" (Discord + tournaments, the last item of the par
 - **C** done: section 32 (`tools/runmatch.ps1` PASS first to 1 and to 2) and the match link (`tools/runlink.py`, section 32's last list).
 - **D** done with A (brackets: `game` per tournament in the connector config or a desk event's settings, `usf4` unset).
 - **E** partly: Settings › Discord shows only the account row (Connect Discord, used by rankings and tournaments) on a product without the companion (library `1af39bd99`), so SFV no longer shows activity and invitation rows that do nothing; and the companion compiles again (`b73fe0246`: `main.cxx` lacked the product identity's header since 11-04). The per-product Discord application id, the companion started by the mod and the package files wait on the maintainer's Discord application. Not seen in game: the Settings › Discord screen on SFV.
-- **SF4's side of all library changes** (crash dumps, `--join-link` help, B, E, A's Rust suites): the library's full x86 build and ctest on the laptop (a detached worktree at `D:\sf4\ember-library`, `build-current.ps1`) at `b73fe0246`: 236 of 236 passed (VideoEncoder and SpeechWine skipped as always), 1724 s.
+- **SF4's side of all library changes** (crash dumps, `--join-link` help, B, E, A's Rust suites): the library's full x86 build and ctest on the laptop (a detached worktree at `D:\sf4\x86\ember-library`, `build-current.ps1`) at `b73fe0246`: 236 of 236 passed (VideoEncoder and SpeechWine skipped as always), 1724 s.
 
 **The maintainer's calls, with the default used until she says otherwise**
 - SFV Ember's Discord application: needed for presence and invites (default: none; presence and invites off on SFV, the Settings screen hidden).
