@@ -7,6 +7,7 @@
 #include "ember/SfvReplays.hxx"
 #include "ember/SfvShell.hxx"
 #include "ember/SfvTraining.hxx"
+#include "ember/SfvVerification.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/GameScene.hxx"
