@@ -51,14 +51,21 @@ void Mark(std::vector<uint64_t>& marks, size_t unitIndex)
 
 } // namespace
 
-// Zeroes the 8 bytes at every position that holds an address. Positions are
-// the region's 4-byte boundaries by real address: a region may start anywhere
-// in an object, and packed structures keep addresses on 4-byte boundaries.
-// The region is tested in one pass from its start, whatever windows it is
-// read in: `window` holds region bytes at..at+n, the positions from `next`
-// whose whole word lies in it are tested, and the position to test after them
-// is returned for the next window. When the previous window's final address
-// ran past its end (`next` beyond `at`), the rest of it is zeroed here.
+// Zeroes the 8 bytes at every position that holds an address, and nothing
+// else. Positions are the region's 4-byte boundaries by real address: a
+// region may start anywhere in an object, and packed structures keep
+// addresses on 4-byte boundaries. The region is tested in one pass from its
+// start, whatever windows it is read in: `window` holds region bytes
+// at..at+n, the positions from `scan.next` whose whole word lies in it are
+// tested, and the scan carries on in the next window.
+//
+// The scan carries two offsets because they are different facts: the next
+// position to test, and the end of the last address it zeroed. Only the
+// second says what to zero at the start of a window (the rest of an address
+// that ran past the last window's end). The first can lie past a window's
+// start without anything before it being an address: the bytes before the
+// region's first 4-byte boundary, or the end of a word that tested as no
+// address across the window's start. Those bytes are hashed as they are.
 //
 // The position 4 bytes into an address is not tested: its low half is that
 // address's high half, and with a small value after it the pair can look like
@@ -66,21 +73,21 @@ void Mark(std::vector<uint64_t>& marks, size_t unitIndex)
 // 0x204 in one, 0x246 in the other). So the scan resumes after each address,
 // which also means no word it tests holds a byte it has already zeroed. Words
 // cut by the region's own ends are left alone.
-size_t StateLayout::ZeroAddresses(uint8_t* window, size_t at, size_t n, size_t next) const
+void StateLayout::ZeroAddresses(uint8_t* window, size_t at, size_t n, AddressScan& scan) const
 {
-	if (next > at) memset(window, 0, next - at);
-	while (next + 8 <= at + n) {
-		uint8_t* word = window + (next - at);
+	if (scan.zeroedTo > at) memset(window, 0, scan.zeroedTo - at);
+	while (scan.next + 8 <= at + n) {
+		uint8_t* word = window + (scan.next - at);
 		uint64_t value;
 		memcpy(&value, word, 8);
 		if (addressTest_(value)) {
 			memset(word, 0, 8);
-			next += 8;
+			scan.next += 8;
+			scan.zeroedTo = scan.next;
 		} else {
-			next += 4;
+			scan.next += 4;
 		}
 	}
-	return next;
 }
 
 void StateLayout::Clear()
@@ -168,7 +175,7 @@ uint64_t StateLayout::HashRegion(size_t index, const uint8_t* bytes, HashScope s
 	// the chunks fall: the hash is the whole region's, masked and with its
 	// addresses zeroed.
 	uint8_t window[kChunk + kLookahead];
-	size_t next = (4 - (reinterpret_cast<uintptr_t>(r.ptr) & 3)) & 3; // the first 4-byte boundary
+	AddressScan scan{.next = (4 - (reinterpret_cast<uintptr_t>(r.ptr) & 3)) & 3}; // from the first 4-byte boundary
 	for (size_t at = 0; at < r.size; at += kChunk) {
 		const size_t n = std::min(kChunk, r.size - at);
 		const size_t read = std::min(n + kLookahead, r.size - at);
@@ -176,7 +183,7 @@ uint64_t StateLayout::HashRegion(size_t index, const uint8_t* bytes, HashScope s
 		// Masked words and dwords (region-relative) read as zero.
 		ZeroMarked(window, at, read, r.ignore, 8);
 		if (scope == HashScope::Peers) ZeroMarked(window, at, read, r.peerIgnore, 4);
-		if (addressTest_) next = ZeroAddresses(window, at, read, next);
+		if (addressTest_) ZeroAddresses(window, at, read, scan);
 		XXH3_64bits_update(&state, window, n);
 	}
 	return XXH3_64bits_digest(&state);

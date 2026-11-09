@@ -300,3 +300,38 @@ TEST_CASE("a round flow that is part of the rollback state latches the KO where 
 	CHECK(pair.gameA.FlowKoFrame() == reference.FlowKoFrame());
 	CHECK(pair.gameB.FlowKoFrame() == reference.FlowKoFrame());
 }
+
+TEST_CASE("a restore the game cannot complete fails the session, which says why")
+{
+	// SFV's flow record failing to write a restored flow back: the rollback
+	// would go on from bytes without the game they describe. The session
+	// fails inside GGPO's rollback and still lets GGPO count the rollback's
+	// frames, which it checks by exiting the process.
+	LoopbackPair pair(kBugNone, 0);
+	pair.gameA.FailNextRestore();
+	pair.gameB.FailNextRestore();
+	CHECK_FALSE(pair.RunTo(600)); // the first rollback ends it
+	REQUIRE((pair.a.Failed() || pair.b.Failed()));
+	RollbackSession& failed = pair.a.Failed() ? pair.a : pair.b;
+	CHECK(failed.FailureReason() == MockFighter::kStateFailure);
+	CHECK_FALSE(failed.Live());
+	CHECK(failed.Step(0) == RollbackSession::StepResult::Failed);
+}
+
+TEST_CASE("a state failure the game latches while it plays fails the session before another state is kept")
+{
+	LoopbackPair pair(kBugNone, 0);
+	REQUIRE(pair.RunTo(60));
+	pair.gameA.FailState();
+	const int frame = pair.a.Frame();
+	const ULONGLONG start = GetTickCount64();
+	while (!pair.a.Failed() && GetTickCount64() - start < 5000) {
+		pair.a.Step(ScriptedInput(0, pair.a.Frame(), kLoopbackSeed));
+		pair.b.Step(ScriptedInput(1, pair.b.Frame(), kLoopbackSeed));
+		Sleep(1);
+	}
+	REQUIRE(pair.a.Failed());
+	CHECK(pair.a.FailureReason() == MockFighter::kStateFailure);
+	CHECK(pair.a.Frame() == frame); // no save or restore went through after the failure
+	CHECK_FALSE(pair.a.Live());
+}

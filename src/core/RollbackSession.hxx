@@ -302,6 +302,9 @@ private:
 
 	// Aborts now, or latches until the GGPO call on the stack returns.
 	void Fail(const char* reason);
+	// Fails the session (Fail) when the game reports state it can no longer
+	// keep faithful (GameAdapter::StateFailure); true when it did.
+	bool FailedByGame();
 	void CloseNow();
 	bool DrainPendingAbort();
 	bool HandleResult(int ggpoError, const char* call, StepResult* out);

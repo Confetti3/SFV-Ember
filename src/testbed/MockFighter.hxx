@@ -64,6 +64,18 @@ public:
 	// From battle frame `frame` on, this copy's player 1 loses a point of
 	// health every frame: a real desync, which only peers can see.
 	void DesyncFrom(int frame) { desyncFrom_ = frame; }
+	// The mock's state stops being faithful, as SFV's flow record does when it
+	// can no longer mirror or write back the game (GameAdapter::StateFailure):
+	// at once (a capture after an update failing), or at the next restore (a
+	// write-back failing).
+	static constexpr const char* kStateFailure = "the mock's state can no longer be restored";
+	void FailState() { stateFailure_ = kStateFailure; }
+	void FailNextRestore() { failNextRestore_ = true; }
+	void AfterLoad() override
+	{
+		if (failNextRestore_) stateFailure_ = kStateFailure;
+	}
+	const char* StateFailure() const override { return stateFailure_; }
 	// The frame each resimulation started from (each rollback's target).
 	const std::vector<int>& RollbackTargets() const { return rollbackTargets_; }
 
@@ -108,6 +120,8 @@ private:
 	std::vector<int> rollbackTargets_;
 	int ignoreFrom_ = 0, ignoreTo_ = 0;
 	int desyncFrom_ = -1;
+	bool failNextRestore_ = false;
+	const char* stateFailure_ = nullptr;
 	int32_t flowKoFrame_ = -1;   // the round flow (outside the layout with kBugFlowOutsideLayout)
 	std::unique_ptr<int> heapMarker_;
 	StateLayout layout_;

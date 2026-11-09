@@ -70,6 +70,12 @@ public:
 	// equal to the game after every Advance and AfterLoad, so saves and hashes
 	// see it current.
 	virtual void AfterLoad() {}
+
+	// Why the adapter can no longer keep its state faithful to the game (a
+	// record it can no longer mirror or write back), or null. Latched for the
+	// rest of the battle: a session over it fails with this reason, since a
+	// rollback would restore bytes without the game they describe.
+	virtual const char* StateFailure() const { return nullptr; }
 };
 
 } // namespace sfve

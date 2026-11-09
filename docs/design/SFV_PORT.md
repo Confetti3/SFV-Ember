@@ -165,8 +165,12 @@ corrects the guess, left the battle stopped. Now part of the layout:
   delegate the way the game binds one (a closure from the game's allocator,
   freed by the delegate). Bind checks the delegate shape, the state list and
   the class sizes (read from the flow builders' allocations); classes whose
-  own fields hold pointers keep only their base. If a check fails later the
-  record stops touching the game and logs why.
+  own fields hold pointers keep only their base, as does a class not listed.
+  What a state keeps is fixed by its class at bind and never changes. If a
+  check fails later the record stops touching the game, logs why and latches
+  the failure; the adapter reports it (`GameAdapter::StateFailure`) and the
+  rollback session fails with that reason, since a rollback could no longer
+  restore the flow.
 
 No rollback starts outside the fight (intros, round calls, the KO and
 results): the flow there waits on presentation a replay does not repeat the

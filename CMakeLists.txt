@@ -179,6 +179,7 @@ add_executable(sfve_ember_tests
     tests/LocaleOverlayTests.cxx
     tests/VirtualPadsTests.cxx
     tests/HookTransactionTests.cxx
+    tests/SfvFlowTests.cxx
     ${SFVE_EMBER_TEST_MOD_SOURCES})
 target_link_libraries(sfve_ember_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
 # LocaleOverlayTests reads the library's fonts and locales.json from its checkout.

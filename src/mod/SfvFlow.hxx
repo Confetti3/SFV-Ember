@@ -16,9 +16,16 @@
 // delegate frees). Code addresses are kept as rvas, so the record hashes the
 // same in every process and a wrong rebinding shows in the hash.
 //
+// What the record keeps of each state is fixed by its class
+// (flowstate::kClassSizes): the base and its own fields, only the base for a
+// class whose own fields hold pointers, and only the base for a class not
+// listed. It never changes after Bind, so every copy keeps the same fields.
+//
 // Bind checks every assumption the writes rest on (the state list, the
 // delegate shape, the class sizes); Capture and Apply recheck the ones that
-// can change. Once one fails the record stops touching the game (logged).
+// can change. Once one fails the record stops touching the game and the
+// failure is latched (Failure): the adapter reports it to the rollback
+// session, which fails, because a rollback could no longer restore the flow.
 //
 // Entering or leaving a state may also start presentation (announcer, KO
 // banner) that a restore does not take back; the battle state is exact.
@@ -85,6 +92,10 @@ public:
 	void Capture();
 	void Apply();
 
+	// Why the record can no longer mirror or restore the game since Bind, or
+	// null. Latched until the next Bind or Forget.
+	const char* Failure() const { return failure_; }
+
 	struct Stats {
 		uint64_t stateSwitches = 0;   // restores that moved the current state
 		uint64_t delegatesRebound = 0;
@@ -96,23 +107,22 @@ private:
 	struct State {
 		uint8_t* object;
 		uint8_t* control; // its shared_ptr control block in the flow's list
-		size_t kept;      // bytes from the start the record keeps (the base, or the class size)
+		size_t kept;      // bytes from the start the record keeps, by its class (the base, or the class size)
 		uint8_t leftoverWords;
 	};
 
-	bool Usable() const { return flow_ && !broken_; }
+	bool Usable() const { return flow_ && !failure_; }
 	bool StateListUnchanged();
 	bool CaptureDelegate(const State& state, FlowStateRecord& r);
 	void ApplyDelegate(const State& state, const FlowStateRecord& r);
-	void CheckOwnFields(State& state);
 	void SwitchCurrent(int index);
-	void Break(const char* why);
+	void Fail(const char* why);
 
 	uint8_t* flow_ = nullptr;
 	uintptr_t base_ = 0;
 	const GameSharedPtr* listBegin_ = nullptr;
 	const GameSharedPtr* listEnd_ = nullptr;
-	bool broken_ = false;
+	const char* failure_ = nullptr; // a string literal
 	std::vector<State> states_;
 	FlowRecord record_{};
 	Stats stats_;

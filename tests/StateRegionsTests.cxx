@@ -334,3 +334,55 @@ TEST_CASE("the dword after an address that ends a chunk is tested on its own")
 	memcpy(Bytes(two) + 4096, &valueTwo, 4);
 	CHECK(HashWithAddresses(Bytes(one), 8192) != HashWithAddresses(Bytes(two), 8192));
 }
+
+namespace {
+// Fills the region with 0x11 bytes, none of whose 8-byte words is HeapLike
+// (each is above 0x00007FFFFFFFFFFF, and stays so with one byte 0x12), so the
+// address test has nothing to zero. Checks that the region then hashes as it
+// does without an address test, and that a change to each byte of [from, to)
+// changes its hash and still matches the hash without the test.
+void CheckEveryByteCounts(uint8_t* region, size_t size, size_t from, size_t to)
+{
+	memset(region, 0x11, size);
+	StateLayout plain;
+	plain.Add("r", region, size);
+	const uint64_t h = HashWithAddresses(region, size);
+	CHECK(h == plain.HashLive());
+	for (size_t i = from; i < to; i++) {
+		CAPTURE(i);
+		region[i] = 0x12;
+		CHECK(HashWithAddresses(region, size) != h);
+		CHECK(HashWithAddresses(region, size) == plain.HashLive());
+		region[i] = 0x11;
+	}
+}
+} // namespace
+
+TEST_CASE("the bytes before an unaligned region's first 4-byte boundary count")
+{
+	// A region 1 byte past an 8-byte boundary has its first 4-byte boundary
+	// at offset 3: its first three bytes are never tested as an address and
+	// are hashed as they are. Likewise for every other start.
+	for (size_t start = 0; start < 8; start++) {
+		CAPTURE(start);
+		auto words = Words(64 + 8);
+		CheckEveryByteCounts(Bytes(words) + start, 64, 0, 8);
+	}
+}
+
+TEST_CASE("a word that is no address across a chunk edge leaves the bytes after the edge counting")
+{
+	// In a region 1 byte past an 8-byte boundary, the word tested at 4095 is
+	// the first chunk's last and runs 7 bytes into the second. It is no
+	// address, so the next test is at 4099, and bytes 4096..4098 are plain
+	// state of the second chunk. 3 bytes past, the word at 4093 is followed by
+	// 4097. Every start, both chunk edges, and the region's last bytes.
+	for (size_t start = 0; start < 8; start++) {
+		CAPTURE(start);
+		auto words = Words(8300 + 8);
+		uint8_t* region = Bytes(words) + start;
+		CheckEveryByteCounts(region, 8300, 4088, 4104);
+		CheckEveryByteCounts(region, 8300, 8184, 8200);
+		CheckEveryByteCounts(region, 8300, 8292, 8300);
+	}
+}

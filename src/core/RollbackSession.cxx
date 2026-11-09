@@ -350,6 +350,8 @@ RollbackSession::StepResult RollbackSession::StepWatched(const std::function<voi
 		Report(given, matter ? RecordedFrame::kFight : 0);
 		game_.Advance(given, false);
 		stats_.framesAdvanced++;
+		// A watcher saves nothing, so its frames are checked here instead.
+		if (FailedByGame()) return StepResult::Failed;
 	}
 	if (session_) {
 		const GGPOErrorCode advanced = ggpo_advance_frame(session_);
@@ -525,6 +527,14 @@ void RollbackSession::Fail(const char* reason)
 	CloseNow();
 }
 
+bool RollbackSession::FailedByGame()
+{
+	const char* why = game_.StateFailure();
+	if (!why) return false;
+	Fail(why);
+	return true;
+}
+
 bool RollbackSession::DrainPendingAbort()
 {
 	char reason[256];
@@ -636,6 +646,11 @@ bool __cdecl RollbackSession::OnEvent(GGPOEvent* info)
 bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int frame)
 {
 	sf4e::gate::AbortLatch::Scope scope(latch_);
+	// GGPO saves after every frame it advances, a rollback's replays
+	// included, so this is where a failure the game latched while advancing
+	// (or while a held frame changed it) ends the session, before a state it
+	// can no longer restore is kept.
+	if (FailedByGame()) return false;
 	Slot* slot = nullptr;
 	for (Slot& s : pool_) {
 		if (!s.used) {
@@ -701,6 +716,7 @@ bool RollbackSession::Load(unsigned char* buffer)
 	StateLayout& layout = game_.Layout();
 	layout.LoadFrom(slot->bytes.data());
 	game_.AfterLoad();
+	if (FailedByGame()) return false; // the restore did not reach all of the game
 
 	const int depth = frame_ - slot->frame;
 	stats_.rollbacks++;
@@ -737,11 +753,18 @@ FrameInputs RollbackSession::InputsForThisFrame(const FrameInputs& inputs)
 bool RollbackSession::AdvanceFromRollback()
 {
 	sf4e::gate::AbortLatch::Scope scope(latch_);
-	if (!session_ || failed_) return false;
+	if (!session_) return false;
 	FrameInputs inputs;
 	int disconnectFlags = 0;
-	if (ggpo_synchronize_input(session_, inputs.p, sizeof(inputs.p), &disconnectFlags) != GGPO_OK) {
+	if (!failed_ && ggpo_synchronize_input(session_, inputs.p, sizeof(inputs.p), &disconnectFlags) != GGPO_OK) {
 		Fail("synchronize_input failed during a rollback");
+	}
+	if (failed_) {
+		// The session failed during this rollback (a restore the game could
+		// not complete, say) and closes once GGPO returns: the game plays no
+		// more of it. GGPO still counts the frames back to where the rollback
+		// started, and exits the process if they do not add up.
+		ggpo_advance_frame(session_);
 		return false;
 	}
 	if (Held(frame_)) {

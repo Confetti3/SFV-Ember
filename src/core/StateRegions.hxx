@@ -112,7 +112,13 @@ private:
 		return r.checked && (scope == HashScope::Local || r.comparedWithPeers);
 	}
 	uint64_t HashRegion(size_t index, const uint8_t* bytes, HashScope scope) const;
-	size_t ZeroAddresses(uint8_t* window, size_t at, size_t n, size_t next) const;
+	// Where one pass over a region's addresses stands between the windows it
+	// is read in (region offsets).
+	struct AddressScan {
+		size_t next = 0;     // the next 4-byte boundary to test
+		size_t zeroedTo = 0; // the end of the last address found, which may lie past its window
+	};
+	void ZeroAddresses(uint8_t* window, size_t at, size_t n, AddressScan& scan) const;
 
 	std::vector<StateRegion> regions_;
 	size_t totalSize_ = 0;

@@ -117,7 +117,10 @@ bool FlowRollback::Bind(uint8_t* flowUnit, uintptr_t imageBase)
 	listEnd_ = end;
 	record_.stateCount = (int32_t)states_.size();
 	Capture();
-	if (broken_) return false;
+	if (failure_) {
+		Forget(); // not bound: there is nothing a session could restore yet
+		return false;
+	}
 	Log("flow: bound %p with %zu states (current %d)", (void*)flow_, states_.size(), record_.current);
 	return true;
 }
@@ -126,7 +129,7 @@ void FlowRollback::Forget()
 {
 	flow_ = nullptr;
 	listBegin_ = listEnd_ = nullptr;
-	broken_ = false;
+	failure_ = nullptr;
 	states_.clear();
 	const int32_t announced = record_.announced;
 	record_ = {};
@@ -150,11 +153,10 @@ void FlowRollback::Capture()
 	if (!StateListUnchanged()) return;
 	VisitUnitFields(flow_, record_, kToRecord);
 	for (size_t i = 0; i < states_.size(); i++) {
-		State& s = states_[i];
+		const State& s = states_[i];
 		FlowStateRecord& r = record_.states[i];
 		VisitStateFields(s.object, r, kToRecord);
 		if (!CaptureDelegate(s, r)) return;
-		CheckOwnFields(s);
 		memcpy(r.own, s.object + fs::kBaseSize, s.kept - fs::kBaseSize);
 	}
 }
@@ -168,7 +170,7 @@ void FlowRollback::Apply()
 		FlowStateRecord& r = record_.states[i];
 		VisitStateFields(s.object, r, kToGame);
 		ApplyDelegate(s, r);
-		if (broken_) return;
+		if (failure_) return;
 		memcpy(s.object + fs::kBaseSize, r.own, s.kept - fs::kBaseSize);
 	}
 	SwitchCurrent(record_.current);
@@ -183,7 +185,7 @@ bool FlowRollback::StateListUnchanged()
 		Field<const GameSharedPtr*>(flow_, fu::kStatesEnd) == listEnd_) {
 		return true;
 	}
-	Break("the flow's state list changed");
+	Fail("the round flow's state list changed");
 	return false;
 }
 
@@ -201,7 +203,7 @@ bool FlowRollback::CaptureDelegate(const State& state, FlowStateRecord& r)
 	if (rva(d.vtable) != fs::kPhaseDelegateVtable || rva(reinterpret_cast<const void*>(d.destroy)) != fs::kPhaseDelegateDestroy ||
 		rva(d.copy) != fs::kPhaseDelegateCopy || rva(d.invoke) != fs::kPhaseDelegateInvoke || !closure ||
 		closure->state != state.object || closure->function <= base_) {
-		Break("a state's delegate is not a phase binding");
+		Fail("a round flow state's delegate is not a phase binding");
 		return false;
 	}
 	r.boundPhase = (uint32_t)(closure->function - base_);
@@ -228,7 +230,7 @@ void FlowRollback::ApplyDelegate(const State& state, const FlowStateRecord& r)
 	if (r.boundPhase) {
 		auto* closure = static_cast<PhaseClosure*>(GameAlloc(sizeof(PhaseClosure)));
 		if (!closure) {
-			Break("the game's allocator returned nothing");
+			Fail("the game's allocator returned nothing for a round flow delegate");
 			return;
 		}
 		*closure = {base_ + r.boundPhase, state.object};
@@ -239,22 +241,6 @@ void FlowRollback::ApplyDelegate(const State& state, const FlowStateRecord& r)
 		live.destroy = reinterpret_cast<void (*)(void*)>(base_ + fs::kPhaseDelegateDestroy);
 	}
 	stats_.delegatesRebound++;
-}
-
-// A class's own fields are kept as plain data. One that holds an address
-// (an owned allocation a restore would bring back stale) stops being kept,
-// and kClassSizes should say so: this depends on heap contents, so it can
-// differ between copies.
-void FlowRollback::CheckOwnFields(State& state)
-{
-	for (size_t at = fs::kBaseSize, k = 0; at + 8 <= state.kept; at += 8, k++) {
-		if (state.leftoverWords & (1u << k)) continue;
-		if (!LooksLikeAddress(Field<uint64_t>(state.object, (uint32_t)at))) continue;
-		Log("flow: a state of class 0x%llx holds an address at +%zu; only its base is kept from now on",
-			(unsigned long long)(Field<uintptr_t>(state.object, 0) - base_), at);
-		state.kept = fs::kBaseSize;
-		return;
-	}
 }
 
 // Points the flow's current-state shared pointer at state `index`, keeping
@@ -273,10 +259,11 @@ void FlowRollback::SwitchCurrent(int index)
 	stats_.stateSwitches++;
 }
 
-void FlowRollback::Break(const char* why)
+void FlowRollback::Fail(const char* why)
 {
-	if (!broken_) Log("flow: %s; the round flow is no longer restored", why);
-	broken_ = true;
+	if (failure_) return;
+	failure_ = why;
+	Log("flow: %s; the round flow can no longer be restored", why);
 }
 
 } // namespace sfve::mod

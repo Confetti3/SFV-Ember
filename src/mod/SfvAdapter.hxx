@@ -80,6 +80,8 @@ public:
 	// What the game's own Restore does after copying the regions back, then
 	// the flow record written back.
 	void AfterLoad() override;
+	// The flow record's latched failure (FlowRollback::Failure).
+	const char* StateFailure() const override { return flow_.Failure(); }
 
 	std::string Describe() const; // JSON for the status report
 
