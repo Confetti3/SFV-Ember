@@ -435,6 +435,13 @@ void StartSdlPads(bool enabled)
 	}
 }
 
+void NoSdlPads(const char* why)
+{
+	if (s_started.exchange(true)) return;
+	Log("%s", why);
+	SetStatus("{\"state\":\"no hooks\"}");
+}
+
 void RegisterSdlPadStatus()
 {
 	RegisterStatus("sdlPads", [] {

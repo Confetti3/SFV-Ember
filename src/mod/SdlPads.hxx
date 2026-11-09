@@ -22,6 +22,8 @@ namespace sfve::mod {
 // false). Off, it logs that the game reads the pads itself and starts
 // nothing. Any thread; returns at once.
 void StartSdlPads(bool enabled);
+// No layer this run, for `why` (logged; the status says "no hooks").
+void NoSdlPads(const char* why);
 
 // The pipe's "sdlPads" status: the layer's state, SDL's pads and the slot
 // each holds.

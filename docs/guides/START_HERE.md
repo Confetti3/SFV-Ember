@@ -35,8 +35,10 @@ read with SDL3 and reaches the game as an XInput controller, in the first slot
 no Xbox-style controller holds. An Xbox pad, or a stick in its XInput mode,
 reads exactly as before.
 
-SFV Ember's menus and its battles follow the controller in the first slot. With
-an Xbox pad plugged in as well, unplug it (or use it) to play with the other.
+SFV Ember's menus and its battles follow the controller in the first slot. To
+play with a PlayStation pad, unplug any Xbox-style pad before starting SFV
+Ember: a pad keeps the slot it was given, and an Xbox pad plugged in while the
+game runs takes the first slot.
 
 To turn the layer off, set `"controllerLayer": false` in
 `%APPDATA%\SFVEmber\settings.json` and start SFV Ember again. The keyboard

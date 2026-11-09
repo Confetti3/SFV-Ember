@@ -230,7 +230,7 @@ extern "C" int SfveStart(int beforeGameCode)
 	// setting, read once here like Play in the background; whatever the
 	// build check below says, as the pads' hooks are.
 	RegisterSdlPadStatus();
-	if (padHooksMissing) Log("pads: no controller layer without the pad hooks; the game reads the pads itself");
+	if (padHooksMissing) NoSdlPads("pads: no controller layer without the pad hooks; the game reads the pads itself");
 	else StartSdlPads(sfve::adapter::SavedControllerLayer());
 	StartControlPipe(Config().instance);
 
