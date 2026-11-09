@@ -56,12 +56,9 @@ constexpr int kMaxTestInstance = 3;
 int s_instance = 0;
 std::vector<std::string> s_gameOptions;
 
-// The test instance from the raw command line, read before CLI11 parses it
-// (the log and the lock are named first). 0 when absent or out of range; the
-// parse then refuses a bad value.
-int InstanceFromCommandLine()
+// --instance N from the raw command line; 0 when absent or out of range.
+int InstanceArgument()
 {
-	if constexpr (sfve::kBuildKind == sfve::BuildKind::Player) return 0;
 	int count = 0;
 	LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &count);
 	if (!arguments) return 0;
@@ -74,6 +71,14 @@ int InstanceFromCommandLine()
 	}
 	LocalFree(arguments);
 	return instance;
+}
+
+// The test instance, read before CLI11 parses the command line (the log and
+// the lock are named first): a development build's --instance, whose bad
+// value the parse then refuses; a player build is always copy 0.
+int InstanceFromCommandLine()
+{
+	return sfve::kBuildKind == sfve::BuildKind::Development ? InstanceArgument() : 0;
 }
 
 // A test option the game may be given: the mod's own (-sfve_*, ModConfig)
@@ -165,12 +170,13 @@ namespace ember { namespace launch {
 
 void AddOptions(CLI::App& app)
 {
-	if constexpr (sfve::kBuildKind == sfve::BuildKind::Player) return;
-	s_instance = InstanceFromCommandLine();
-	app.add_option("--instance", s_instance, "Test only: start copy N (1-3) of a two-copy test, beside the player's copy.")
-		->check(CLI::Range(1, kMaxTestInstance));
-	app.add_option("--game-option", s_gameOptions, "Test only: pass one -sfve_* option, -windowed, -ResX=N or -ResY=N to the game.")
-		->check([](const std::string& option) { return AllowedGameOption(option) ? std::string() : "not a test option the game takes: " + option; });
+	if constexpr (sfve::kBuildKind == sfve::BuildKind::Development) {
+		s_instance = InstanceFromCommandLine();
+		app.add_option("--instance", s_instance, "Test only: start copy N (1-3) of a two-copy test, beside the player's copy.")
+			->check(CLI::Range(1, kMaxTestInstance));
+		app.add_option("--game-option", s_gameOptions, "Test only: pass one -sfve_* option, -windowed, -ResX=N or -ResY=N to the game.")
+			->check([](const std::string& option) { return AllowedGameOption(option) ? std::string() : "not a test option the game takes: " + option; });
+	}
 }
 
 std::wstring LauncherLogName()

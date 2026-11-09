@@ -68,7 +68,7 @@ TEST_CASE("the launcher's dump channel reaches the mod as three hex handle value
 		CHECK_FALSE(Config().dumpChannel.Present());
 	}
 	CHECK_FALSE(Config().crashCommand);
-	LoadConfigFromCommandLine(L"x -sfve_crash_command=1");
+	LoadConfigFromCommandLine(L"x -sfve_crash_command=1", sfve::BuildKind::Development); // a test option
 	CHECK(Config().crashCommand);
 	LoadConfigFromCommandLine(L"");
 }

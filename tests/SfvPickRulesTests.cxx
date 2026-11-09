@@ -152,7 +152,7 @@ TEST_CASE("this player's stored stage is Random or one this copy has installed")
 
 TEST_CASE("the command line takes stages from this copy's install, never from the universe")
 {
-	mod::LoadConfigFromCommandLine(L"game.exe -sfve_mode=netplay -sfve_uninstalled=S01,s02,S25,TOOLONGCODE");
+	mod::LoadConfigFromCommandLine(L"game.exe -sfve_mode=netplay -sfve_uninstalled=S01,s02,S25,TOOLONGCODE", sfve::BuildKind::Development);
 	REQUIRE(mod::Config().uninstalled == std::vector<std::string>{"S01", "S25"});
 	CHECK(mod::UninstalledProblem() == "S01,s02,S25,TOOLONGCODE");
 	mod::ContentLists lists = TestContent();
@@ -345,7 +345,7 @@ TEST_CASE("Training's dummy is a pick of its own, fitted as the player's, and th
 
 TEST_CASE("the command line marks content unowned for this copy, never owned")
 {
-	mod::LoadConfigFromCommandLine(L"game.exe -sfve_mode=netplay -sfve_unowned=KEN,RYU:4,CNL:0:1,bad:x,ZZZ");
+	mod::LoadConfigFromCommandLine(L"game.exe -sfve_mode=netplay -sfve_unowned=KEN,RYU:4,CNL:0:1,bad:x,ZZZ", sfve::BuildKind::Development);
 	const mod::ModConfig& config = mod::Config();
 	CHECK(config.ownershipGate);
 	CHECK_FALSE(config.gameOwnershipCheck);
@@ -368,7 +368,7 @@ TEST_CASE("the command line marks content unowned for this copy, never owned")
 	CHECK(lists.ownership.markedUnowned == 3); // ZZZ is no fighter of the lists
 	// Nothing the game does not allow becomes owned.
 	CHECK_FALSE(lists.fighters[1].costumes[1].owned);
-	mod::LoadConfigFromCommandLine(L"game.exe -sfve_ownership=0 -sfve_game_ownership=1");
+	mod::LoadConfigFromCommandLine(L"game.exe -sfve_ownership=0 -sfve_game_ownership=1", sfve::BuildKind::Development);
 	CHECK_FALSE(mod::Config().ownershipGate);
 	CHECK(mod::Config().gameOwnershipCheck);
 	CHECK(mod::Config().unowned.empty());
