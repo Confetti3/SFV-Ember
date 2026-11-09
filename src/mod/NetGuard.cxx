@@ -1,5 +1,6 @@
 #include "mod/NetGuard.hxx"
 
+#include "mod/GameHooks.hxx"
 #include "mod/LagSim.hxx"
 #include "mod/Log.hxx"
 
@@ -442,23 +443,22 @@ bool InstallNetGuard()
 		return false;
 	}
 
-	bool ok = true;
+	// One set: every route on a module that loads, or the guard is not in and
+	// the caller ends the process. An export missing from a loaded module
+	// fails the set too (HookTransaction::Add), so no route is left open.
+	HookTransaction guard;
 	for (const HookSpec& h : hooks) {
 		// Loading the module now means a later load by the game finds it
 		// already hooked. A module Windows cannot load, the game cannot use.
-		if (!LoadLibraryW(h.module)) {
+		const HMODULE module = LoadLibraryW(h.module);
+		if (!module) {
 			Log("netguard: %ls not available; nothing to guard there", h.module);
 			continue;
 		}
-		void* target = nullptr;
-		MH_STATUS st = MH_CreateHookApiEx(h.module, h.name, h.detour, h.original, &target);
-		if (st == MH_OK) st = MH_EnableHook(target);
-		if (st != MH_OK) {
-			Log("netguard: could not hook %ls!%s (%d)", h.module, h.name, (int)st);
-			ok = false;
-		}
+		guard.Add(h.name, (void*)GetProcAddress(module, h.name), h.detour, h.original);
 	}
-	Log("netguard: %s; only loopback and allowed peers are reachable", ok ? "installed" : "INCOMPLETE");
+	const bool ok = !CommitHookSet(guard, "network guard");
+	Log("netguard: %s", ok ? "installed; only loopback and allowed peers are reachable" : "NOT installed");
 	return ok;
 }
 

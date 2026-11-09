@@ -21,8 +21,10 @@ namespace sfve::mod {
 
 net::NetPolicy& GuardPolicy();
 
-// Loads the network modules and hooks them. False if any hook on a loaded
-// module failed; the caller must then not let the game run.
+// Loads the network modules and hooks them as one set (CommitHookSet). False
+// if any hook on a loaded module failed, and then none is in; the caller must
+// then not let the game run. A failed set that cannot be taken back out ends
+// the process inside (start::Refusal::HooksStuck).
 bool InstallNetGuard();
 
 uint64_t NetGuardRefusals();

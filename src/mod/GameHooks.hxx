@@ -78,7 +78,9 @@ public:
 	explicit HookTransaction(HookCalls calls = {}) : calls_(calls) {}
 
 	// `name` is the hook's name in a HookFailure, so it must outlive the set
-	// (a string literal or a CodeSite's name).
+	// (a string literal or a CodeSite's name). A null `target` (GetProcAddress
+	// found no such export) fails the set at Commit with
+	// MH_ERROR_FUNCTION_NOT_FOUND.
 	void Add(const char* name, void* target, void* detour, void** original);
 	void Add(uintptr_t imageBase, const CodeSite& site, void* detour, void** original);
 	// Installs the hooks added since the last Commit.

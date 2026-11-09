@@ -3,8 +3,6 @@
 #include "mod/ControlPipe.hxx"
 #include "mod/Log.hxx"
 
-#include <MinHook.h>
-
 #include <windows.h>
 
 #include <stdio.h>
@@ -117,7 +115,17 @@ bool FillVirtualXInput(int slot, void* xinputState)
 // --- XInput hooks: every system XInput library the game may read pads through.
 
 using GetState_t = DWORD(WINAPI*)(DWORD, void*);
-constexpr const wchar_t* kXInputModules[] = {L"xinput1_4.dll", L"xinput1_3.dll", L"xinput9_1_0.dll"};
+// A system XInput library, with the names its two reads have in a HookFailure.
+struct XInputModule {
+	const wchar_t* file;
+	const char* getState;
+	const char* getStateEx;
+};
+constexpr XInputModule kXInputModules[] = {
+	{L"xinput1_4.dll", "xinput1_4!XInputGetState", "xinput1_4!XInputGetStateEx"},
+	{L"xinput1_3.dll", "xinput1_3!XInputGetState", "xinput1_3!XInputGetStateEx"},
+	{L"xinput9_1_0.dll", "xinput9_1_0!XInputGetState", "xinput9_1_0!XInputGetStateEx"},
+};
 constexpr int kModules = sizeof(kXInputModules) / sizeof(kXInputModules[0]);
 GetState_t o_getState[kModules];   // XInputGetState
 GetState_t o_getStateEx[kModules]; // ordinal 100, XInputGetStateEx (adds the guide button)
@@ -158,27 +166,22 @@ DWORD WINAPI HookedGetState(DWORD user, void* state)
 	return result;
 }
 
+// Adds library M's reads to the pads' set, by the library's full path in the
+// system folder (so never the xinput1_3.dll proxy beside the game). A library
+// that is not on this system, or that lacks one of the reads (not every XInput
+// library exports ordinal 100), adds nothing for it: nothing reads through it.
 template <int M>
-bool HookModule()
+void AddXInputHooks(HookTransaction& hooks, const std::wstring& systemFolder)
 {
-	wchar_t path[MAX_PATH];
-	const UINT n = GetSystemDirectoryW(path, MAX_PATH);
-	if (n == 0 || n + 20 >= MAX_PATH) return false;
-	wcscat_s(path, L"\\");
-	wcscat_s(path, kXInputModules[M]);
-	HMODULE module = LoadLibraryW(path);
-	if (!module) return true; // not on this system: nothing reads through it
-	bool ok = true;
-	const auto hook = [&](void* target, void* detour, void** original) {
-		if (!target) return;
-		MH_STATUS st = MH_CreateHook(target, detour, original);
-		if (st == MH_OK) st = MH_EnableHook(target);
-		ok = ok && st == MH_OK;
-	};
-	hook((void*)GetProcAddress(module, "XInputGetState"), (void*)HookedGetState<M, false>, (void**)&o_getState[M]);
-	hook((void*)GetProcAddress(module, MAKEINTRESOURCEA(100)), (void*)HookedGetState<M, true>,
-		(void**)&o_getStateEx[M]);
-	return ok;
+	const XInputModule& library = kXInputModules[M];
+	const HMODULE module = LoadLibraryW((systemFolder + L"\\" + library.file).c_str());
+	if (!module) return;
+	if (void* target = (void*)GetProcAddress(module, "XInputGetState")) {
+		hooks.Add(library.getState, target, (void*)HookedGetState<M, false>, (void**)&o_getState[M]);
+	}
+	if (void* target = (void*)GetProcAddress(module, MAKEINTRESOURCEA(100))) {
+		hooks.Add(library.getStateEx, target, (void*)HookedGetState<M, true>, (void**)&o_getStateEx[M]);
+	}
 }
 
 } // namespace
@@ -208,11 +211,26 @@ PadSeen LastPadState(int slot)
 		(seen & kSeenLeftTrigger) != 0, (seen & kSeenRightTrigger) != 0};
 }
 
-bool InstallVirtualPads()
+std::optional<HookFailure> InstallVirtualPads()
 {
-	const bool ok = HookModule<0>() && HookModule<1>() && HookModule<2>();
-	Log("virtual pads: %s", ok ? "XInput hooked" : "could not hook XInput");
-	return ok;
+	wchar_t folder[MAX_PATH];
+	const UINT n = GetSystemDirectoryW(folder, MAX_PATH);
+	if (n == 0 || n >= MAX_PATH) {
+		Log("virtual pads: no system folder to find XInput in (Win32 %lu); the pads are the game's", GetLastError());
+		return HookFailure{"the system folder", MH_UNKNOWN};
+	}
+	// Every library's reads or none: with only some hooked, a read would get
+	// the virtual pads, the record and the pad filter through one library and
+	// not another.
+	const std::wstring systemFolder(folder, n);
+	HookTransaction hooks;
+	static_assert(kModules == 3, "one AddXInputHooks per library");
+	AddXInputHooks<0>(hooks, systemFolder);
+	AddXInputHooks<1>(hooks, systemFolder);
+	AddXInputHooks<2>(hooks, systemFolder);
+	const std::optional<HookFailure> missing = CommitHookSet(hooks, "virtual pads");
+	Log("virtual pads: %s", missing ? "XInput not hooked; the pads are the game's" : "XInput hooked");
+	return missing;
 }
 
 bool ParseButtons(const std::string& text, PadStep* out)

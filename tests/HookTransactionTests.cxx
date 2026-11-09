@@ -166,6 +166,23 @@ TEST_CASE("functions hooked by address go in as one set, as code sites do")
 	CHECK(resizeBuffers == nullptr);
 }
 
+TEST_CASE("a function with no address (an export its module lacks) fails the set without reaching MinHook")
+{
+	s_fake = {};
+	void* createMutex = nullptr;
+	void* openMutex = nullptr;
+	HookTransaction hooks(kFake);
+	hooks.Add("CreateMutexW", Target(kInputRecord), nullptr, &createMutex);
+	hooks.Add("OpenMutexW", nullptr, nullptr, &openMutex);
+	const HookCommit commit = hooks.Commit();
+	CHECK(commit.outcome == Outcome::RolledBack);
+	CheckHook(commit.failed, "OpenMutexW", MH_ERROR_FUNCTION_NOT_FOUND);
+	CHECK(s_fake.created.empty()); // the stand-in would have recorded a null target it was given
+	CHECK(s_fake.enabled.empty());
+	CHECK(createMutex == nullptr);
+	CHECK(openMutex == nullptr);
+}
+
 TEST_CASE("a hook that was already there is left as it was")
 {
 	s_fake = {};

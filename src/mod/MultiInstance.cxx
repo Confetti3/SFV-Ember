@@ -6,8 +6,6 @@
 
 #include <intrin.h>
 
-#include <MinHook.h>
-
 #include <string>
 
 namespace sfve::mod {
@@ -58,31 +56,30 @@ HANDLE WINAPI h_OpenMutexW(DWORD access, BOOL inherit, LPCWSTR name)
 	return o_OpenMutexW(access, inherit, Rename("OpenMutexW", name).c_str());
 }
 
-bool Hook(const char* name, void* detour, void** original)
-{
-	void* target = nullptr;
-	// kernelbase holds the real implementations; the A variants forward to W.
-	MH_STATUS st = MH_CreateHookApiEx(L"kernelbase.dll", name, detour, original, &target);
-	if (st == MH_OK) st = MH_EnableHook(target);
-	if (st != MH_OK) Log("multi-instance: could not hook %s (%d)", name, (int)st);
-	return st == MH_OK;
-}
-
 } // namespace
 
-bool InstallMultiInstance(int instance)
+std::optional<HookFailure> InstallMultiInstance(int instance)
 {
-	if (instance <= 0) return true;
 	s_suffix = L"-sfve" + std::to_wstring(instance);
 	const auto* base = reinterpret_cast<const uint8_t*>(GetModuleHandleW(nullptr));
 	const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
 	s_exeBegin = reinterpret_cast<uintptr_t>(base);
 	s_exeEnd = s_exeBegin + nt->OptionalHeader.SizeOfImage;
-	const bool ok = Hook("CreateMutexW", (void*)h_CreateMutexW, (void**)&o_CreateMutexW) &&
-		Hook("CreateMutexExW", (void*)h_CreateMutexExW, (void**)&o_CreateMutexExW) &&
-		Hook("OpenMutexW", (void*)h_OpenMutexW, (void**)&o_OpenMutexW);
-	Log("multi-instance: instance %d %s", instance, ok ? "renames named mutexes" : "INCOMPLETE");
-	return ok;
+	// kernelbase (in every process) holds the real implementations; the A
+	// variants forward to W. All three or none: with only some renamed, this
+	// copy would create its own names for some mutexes and open the first
+	// copy's for others.
+	const HMODULE kernelbase = GetModuleHandleW(L"kernelbase.dll");
+	HookTransaction hooks;
+	hooks.Add("CreateMutexW", (void*)GetProcAddress(kernelbase, "CreateMutexW"), (void*)h_CreateMutexW,
+		(void**)&o_CreateMutexW);
+	hooks.Add("CreateMutexExW", (void*)GetProcAddress(kernelbase, "CreateMutexExW"), (void*)h_CreateMutexExW,
+		(void**)&o_CreateMutexExW);
+	hooks.Add("OpenMutexW", (void*)GetProcAddress(kernelbase, "OpenMutexW"), (void*)h_OpenMutexW, (void**)&o_OpenMutexW);
+	const std::optional<HookFailure> missing = CommitHookSet(hooks, "multi-instance");
+	Log("multi-instance: instance %d %s", instance,
+		missing ? "renames no mutex, so the game may find the other copy and quit" : "renames named mutexes");
+	return missing;
 }
 
 } // namespace sfve::mod

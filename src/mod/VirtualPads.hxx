@@ -9,6 +9,8 @@
 // physical pad does. Several game copies on one PC each drive their own
 // virtual pad, so menus can be walked without anyone at the keyboard.
 
+#include "mod/GameHooks.hxx"
+
 #include <stdint.h>
 
 #include <string>
@@ -24,8 +26,11 @@ struct PadStep {
 	uint32_t durationMs = 0;
 };
 
-// Hooks XInput; until then virtual slots have no effect.
-bool InstallVirtualPads();
+// Hooks XInput, every system library's reads as one set (CommitHookSet);
+// until then virtual slots have no effect. Empty when the set is in,
+// including on a PC with no XInput library, where the set has no hooks;
+// otherwise the hook that failed, and none is.
+std::optional<HookFailure> InstallVirtualPads();
 
 // Sees every pad state the game reads (a slot's XINPUT_STATE, physical or
 // virtual) before the game does, and may change it (the overlay keeps a

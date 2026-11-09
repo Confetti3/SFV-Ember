@@ -4,8 +4,6 @@
 
 #include <windows.h>
 
-#include <MinHook.h>
-
 namespace sfve::mod {
 
 namespace {
@@ -93,29 +91,28 @@ DWORD WINAPI SubclassWhenReady(void*)
 	return 1;
 }
 
-bool Hook(const char* name, void* detour, void** original)
-{
-	void* target = nullptr;
-	MH_STATUS st = MH_CreateHookApiEx(L"user32.dll", name, detour, original, &target);
-	if (st == MH_OK) st = MH_EnableHook(target);
-	if (st != MH_OK) Log("background play: could not hook %s (%d)", name, (int)st);
-	return st == MH_OK;
-}
-
 } // namespace
 
-bool InstallBackgroundPlay()
+std::optional<HookFailure> InstallBackgroundPlay()
 {
-	const bool ok =
-		Hook("GetForegroundWindow", (void*)OwnWindowFirst<&o_GetForegroundWindow>, (void**)&o_GetForegroundWindow) &&
-		Hook("GetActiveWindow", (void*)OwnWindowFirst<&o_GetActiveWindow>, (void**)&o_GetActiveWindow) &&
-		Hook("GetFocus", (void*)OwnWindowFirst<&o_GetFocus>, (void**)&o_GetFocus);
-	if (ok) {
+	// user32 is loaded: the mod imports it. All three queries or none: with
+	// only some answering with the game's window, the engine would see itself
+	// in front and not active.
+	const HMODULE user32 = GetModuleHandleW(L"user32.dll");
+	HookTransaction hooks;
+	hooks.Add("GetForegroundWindow", (void*)GetProcAddress(user32, "GetForegroundWindow"),
+		(void*)OwnWindowFirst<&o_GetForegroundWindow>, (void**)&o_GetForegroundWindow);
+	hooks.Add("GetActiveWindow", (void*)GetProcAddress(user32, "GetActiveWindow"),
+		(void*)OwnWindowFirst<&o_GetActiveWindow>, (void**)&o_GetActiveWindow);
+	hooks.Add("GetFocus", (void*)GetProcAddress(user32, "GetFocus"), (void*)OwnWindowFirst<&o_GetFocus>,
+		(void**)&o_GetFocus);
+	const std::optional<HookFailure> missing = CommitHookSet(hooks, "background play");
+	if (!missing) {
 		HANDLE thread = CreateThread(nullptr, 0, SubclassWhenReady, nullptr, 0, nullptr);
 		if (thread) CloseHandle(thread);
 	}
-	Log("background play: %s", ok ? "on" : "INCOMPLETE");
-	return ok;
+	Log("background play: %s", missing ? "off: the game reads its pads only while it is in front" : "on");
+	return missing;
 }
 
 } // namespace sfve::mod

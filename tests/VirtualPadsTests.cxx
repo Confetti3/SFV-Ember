@@ -37,7 +37,7 @@ TEST_CASE("a read through a hooked XInput library that calls another is one read
 {
 	const MH_STATUS init = MH_Initialize();
 	REQUIRE((init == MH_OK || init == MH_ERROR_ALREADY_INITIALIZED));
-	REQUIRE(InstallVirtualPads());
+	REQUIRE_FALSE(InstallVirtualPads()); // empty: every XInput hook is in
 	sfve::mod::SetPadFilter(&CountingFilter);
 
 	wchar_t path[MAX_PATH];

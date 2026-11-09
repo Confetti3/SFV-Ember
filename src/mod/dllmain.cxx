@@ -11,9 +11,14 @@
 //   4. the build check; on anything but a verified build the mod stays inert;
 //   5. the battle hooks, all of them or none: Ember's netplay (the mode's
 //      install, with its rooms) only when all are in, and otherwise the game
-//      plays offline as SFV. Every hook set here goes in through
-//      CommitHookSet (mod/GameHooks.hxx), which ends the process when a set
-//      that failed cannot be taken back out.
+//      plays offline as SFV.
+//
+// Every hook the mod installs, from the network guard on, goes in as part of
+// a set through CommitHookSet (mod/GameHooks.hxx): the whole set or none of
+// it, and the process ends when a set that failed cannot be taken back out.
+// The background play, multi-instance, pad and battle sets each have a status
+// field (RegisterHookSetStatus); the crash record's is crashRecord's
+// dumpWriterHooked.
 
 #include "core/CoreLog.hxx"
 #include "ember/SfvGame.hxx"
@@ -97,6 +102,19 @@ void MigrateSettings()
 	}
 }
 
+// A hook set's field in the status: "off" when this start does not use it,
+// "ready" when every hook of it is in, or "missing <hook>" when it failed, and
+// then none of it is in (CommitHookSet).
+void RegisterHookSetStatus(const char* key, std::string state)
+{
+	sfve::mod::RegisterStatus(key, [state = std::move(state)] { return sfve::mod::JsonString(state); });
+}
+
+std::string HookSetState(const std::optional<sfve::mod::HookFailure>& missing)
+{
+	return missing ? std::string("missing ") + missing->site : std::string("ready");
+}
+
 bool RollsBack(sfve::mod::ModMode mode)
 {
 	return mode == sfve::mod::ModMode::SyncTest || mode == sfve::mod::ModMode::Netplay;
@@ -173,9 +191,13 @@ extern "C" int SfveStart(int beforeGameCode)
 	// Asked for at launch (-sfve_background), or the player's saved Play in
 	// the background (Settings > Player), read once here, after the settings'
 	// move: a change to the setting takes effect at the next start.
-	if (Config().backgroundPlay || sfve::adapter::SavedBackgroundPlay()) InstallBackgroundPlay();
-	InstallMultiInstance(Config().instance);
-	InstallVirtualPads();
+	const bool backgroundPlay = Config().backgroundPlay || sfve::adapter::SavedBackgroundPlay();
+	RegisterHookSetStatus("backgroundPlay", backgroundPlay ? HookSetState(InstallBackgroundPlay()) : "off");
+	// Instance 0 is a player's game, whose mutexes keep their names.
+	const int instance = Config().instance;
+	RegisterHookSetStatus("multiInstance", instance > 0 ? HookSetState(InstallMultiInstance(instance)) : "off");
+	// Without them every slot is the physical pad's, whatever -sfve_pads asked.
+	RegisterHookSetStatus("padHooks", HookSetState(InstallVirtualPads()));
 	for (int slot = 0; slot < kPadSlots; slot++) {
 		if (Config().virtualPadMask & (1u << slot)) SetVirtualPad(slot, true);
 	}
@@ -253,8 +275,7 @@ extern "C" int SfveStart(int beforeGameCode)
 	static BattleDriver driver(MakeMode(Config()));
 	driver.RegisterControl();
 	const std::optional<HookFailure> missing = InstallBattleHooks(base, driver);
-	static const std::string battleHooks = missing ? std::string("missing ") + missing->site : std::string("ready");
-	RegisterStatus("battleHooks", [] { return JsonString(battleHooks); });
+	RegisterHookSetStatus("battleHooks", HookSetState(missing));
 	if (missing) {
 		Log("battle hooks: missing %s, so Ember's netplay is off and the game plays offline as SFV", missing->site);
 		return 1;

@@ -117,7 +117,8 @@ HookCommit HookTransaction::Commit()
 	for (; created < hooks.size(); created++) {
 		Hook& hook = hooks[created];
 		hook.before = *hook.original;
-		const MH_STATUS status = calls_.create(hook.target, hook.detour, hook.original);
+		const MH_STATUS status =
+			hook.target ? calls_.create(hook.target, hook.detour, hook.original) : MH_ERROR_FUNCTION_NOT_FOUND;
 		if (status != MH_OK) {
 			failure = HookFailure{hook.site, status};
 			break;

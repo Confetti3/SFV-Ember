@@ -12,8 +12,13 @@
 // Play in the background (dllmain, as the game starts); it changes nothing
 // else.
 
+#include "mod/GameHooks.hxx"
+
 namespace sfve::mod {
 
-bool InstallBackgroundPlay();
+// Hooks the three window queries as one set (CommitHookSet) and starts the
+// window filter. Empty when they are in; otherwise the hook that failed, and
+// none is.
+std::optional<HookFailure> InstallBackgroundPlay();
 
 } // namespace sfve::mod

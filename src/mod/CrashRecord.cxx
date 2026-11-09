@@ -1,6 +1,7 @@
 #include "mod/CrashRecord.hxx"
 
 #include "mod/ControlPipe.hxx"
+#include "mod/GameHooks.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
 #include "mod/ModConfig.hxx"
@@ -12,7 +13,6 @@
 #include <windows.h>
 #include <dbghelp.h>
 
-#include <MinHook.h>
 #include <ggponet.h>
 
 #include <stdio.h>
@@ -215,15 +215,18 @@ void __cdecl OnGgpoAssertion(const char* message)
 	RecordCrash("ggpo_assertion", nullptr, message, GetCurrentThreadId());
 }
 
+// A set of one (CommitHookSet). A hook that does not go in leaves
+// s_originalWriter as it was, null, so Writer() calls dbghelp's own.
 bool HookDumpWriter()
 {
-	void* target = nullptr;
-	MH_STATUS status = MH_CreateHookApiEx(L"dbghelp", "MiniDumpWriteDump", reinterpret_cast<void*>(&OnMiniDumpWriteDump),
-		reinterpret_cast<void**>(&s_originalWriter), &target);
-	if (status == MH_OK) status = MH_EnableHook(target);
-	if (status != MH_OK) {
-		Log("crash record: MiniDumpWriteDump not hooked (MinHook %d); the game's crashes leave only its own dump", (int)status);
-		s_originalWriter = nullptr;
+	// dbghelp is loaded (the mod imports it). Were it not, the null target
+	// fails the set instead of GetProcAddress searching the game's exe.
+	const HMODULE dbghelp = GetModuleHandleW(L"dbghelp");
+	HookTransaction hook;
+	hook.Add("MiniDumpWriteDump", dbghelp ? (void*)GetProcAddress(dbghelp, "MiniDumpWriteDump") : nullptr,
+		reinterpret_cast<void*>(&OnMiniDumpWriteDump), reinterpret_cast<void**>(&s_originalWriter));
+	if (CommitHookSet(hook, "crash record")) {
+		Log("crash record: MiniDumpWriteDump not hooked; the game's crashes leave only its own dump");
 		return false;
 	}
 	return true;
