@@ -109,10 +109,11 @@ bool InstallOfflineDialogs(uintptr_t imageBase, OfflineDialogs level)
 		return true;
 	}
 	s_imageBase = imageBase;
-	bool ok = HookCodeSite(imageBase, sfv::kShowErrorDialog, (void*)h_ShowError, (void**)&o_showError);
-	if (ok && level == OfflineDialogs::HideAll) {
-		ok = HookCodeSite(imageBase, sfv::kShowNamedDialog, (void*)h_ShowNamedDialog, (void**)&o_showNamedDialog);
-	}
+	// The dialogs the level hides, as one set (GameHooks' one set path).
+	HookTransaction hooks;
+	hooks.Add(imageBase, sfv::kShowErrorDialog, (void*)h_ShowError, (void**)&o_showError);
+	if (level == OfflineDialogs::HideAll) hooks.Add(imageBase, sfv::kShowNamedDialog, (void*)h_ShowNamedDialog, (void**)&o_showNamedDialog);
+	const bool ok = !CommitHookSet(hooks, "dialogs");
 	Log("dialogs: %s%s", ok ? "blocked-download errors suppressed" : "NOT all suppressed",
 		ok && level == OfflineDialogs::HideAll ? ", and the offline notice" : "");
 	return ok;

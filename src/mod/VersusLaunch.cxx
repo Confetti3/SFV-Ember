@@ -448,8 +448,11 @@ bool InstallVersusLaunch(uintptr_t imageBase, bool gameCheckOutsideRooms)
 	s_checkOwnership = gameCheckOutsideRooms;
 	Log("launch: the game's ownership check %s; a room's match never runs it",
 		gameCheckOutsideRooms ? "runs in launches that are not a room's" : "does not run");
-	s_installed = HookCodeSite(imageBase, sfv::kJumpCopyPlayers, (void*)h_JumpCopyPlayers, (void**)&o_jumpCopyPlayers) &&
-		HookCodeSite(imageBase, sfv::kJumpSecondStep, (void*)h_JumpSecondStep, (void**)&o_jumpSecondStep);
+	// Both steps of the battle jump or neither (GameHooks' one set path).
+	HookTransaction hooks;
+	hooks.Add(imageBase, sfv::kJumpCopyPlayers, (void*)h_JumpCopyPlayers, (void**)&o_jumpCopyPlayers);
+	hooks.Add(imageBase, sfv::kJumpSecondStep, (void*)h_JumpSecondStep, (void**)&o_jumpSecondStep);
+	s_installed = !CommitHookSet(hooks, "battle jump");
 	return s_installed;
 }
 
