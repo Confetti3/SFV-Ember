@@ -199,7 +199,7 @@ msgid "runtime.ready.selection_unavailable"
 msgstr "Tento výběr postavy není dostupný. Zvolte dostupný kostým, barvu, V-Skill a V-Trigger."
 
 msgid "runtime.selection_combination_unavailable"
-msgstr "Tato kombinace není podle pravidel místnosti dostupná. Vyberte jinou postavu, kostým nebo barvu."
+msgstr "Tato kombinace není podle pravidel místnosti dostupná. Vyberte jinou postavu, kostým, barvu, V-Skill nebo V-Trigger."
 
 msgid "selection.winner_keeps_fighter"
 msgstr "Poslední set je tvůj, takže si tohoto bojovníka ponecháš. V-Skill, V-Trigger, kostým a barvu můžeš dál měnit."

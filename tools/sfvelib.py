@@ -767,12 +767,16 @@ def set_aside(path: Path) -> bool:
     moved or never there; False when it could not be moved (it is open)."""
     if not path.exists():
         return True
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    target = path.with_name(f"{path.stem}.before-test-{stamp}{path.suffix}")
-    for n in range(2, 100):  # two set-asides in one second keep both
+    # Stamped to the millisecond, so the names sort as the logs were set aside
+    # and the pruning below keeps the newest; a name already taken waits for
+    # the next millisecond rather than overwriting it.
+    while True:
+        now = time.time()
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now)) + f"-{int(now * 1000) % 1000:03d}"
+        target = path.with_name(f"{path.stem}.before-test-{stamp}{path.suffix}")
         if not target.exists():
             break
-        target = path.with_name(f"{path.stem}.before-test-{stamp}-{n}{path.suffix}")
+        time.sleep(0.002)
     # A copy a run has just ended can hold its log for a moment while it exits.
     deadline = time.monotonic() + SET_ASIDE_WAIT_S
     while True:

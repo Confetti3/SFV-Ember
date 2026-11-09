@@ -199,7 +199,7 @@ msgid "runtime.ready.selection_unavailable"
 msgstr "このキャラ選択は使用できません。使用可能なコスチューム、カラー、Vスキル、Vトリガーを選んでください。"
 
 msgid "runtime.selection_combination_unavailable"
-msgstr "この組み合わせはルームのルールで使用できません。別のキャラ、コスチューム、カラーを選んでください。"
+msgstr "この組み合わせはルームのルールで使用できません。別のキャラ、コスチューム、カラー、Vスキル、Vトリガーを選んでください。"
 
 msgid "selection.winner_keeps_fighter"
 msgstr "前のセットに勝ったので、このキャラクターのまま続けます。Vスキル、Vトリガー、コスチューム、カラーは変更できます。"

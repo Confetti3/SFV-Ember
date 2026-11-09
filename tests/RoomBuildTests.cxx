@@ -1,5 +1,5 @@
 // A room's build carries the rollback's layout id as its own part
-// (ember/SfvRoomBuild, mod/SfvLayoutRules; EMBER_LIBRARY.md section 41).
+// (ember/SfvRoomBuild, mod/SfvLayoutRules; EMBER_LIBRARY.md section 42).
 
 #include <doctest/doctest.h>
 

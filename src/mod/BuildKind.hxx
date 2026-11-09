@@ -1,6 +1,6 @@
 #pragma once
 
-// Which kind of build this is (EMBER_LIBRARY.md section 41). A development
+// Which kind of build this is (EMBER_LIBRARY.md section 42). A development
 // build, what scripts\build.ps1 makes by default for the test tools, takes
 // the test switches: Launcher.exe's --instance and --game-option, the mod's
 // -sfve_* test options (the ownership gate off, scripted inputs, lag, a

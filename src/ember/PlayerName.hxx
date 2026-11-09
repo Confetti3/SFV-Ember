@@ -1,6 +1,6 @@
 #pragma once
 
-// The name a copy's player plays under (EMBER_LIBRARY.md section 41). Rooms
+// The name a copy's player plays under (EMBER_LIBRARY.md section 42). Rooms
 // refuse a second member with a name already in them, so every player's
 // copy must play under their own: the profile's saved name, which the
 // launcher gives a first start as SF4 Ember's does ("Player 1234", unique per

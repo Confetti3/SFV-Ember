@@ -456,7 +456,7 @@ SfvServices s_services;
 // export, replay meter or inputs reader yet) and Training (section 27: SFV's
 // own Training mode, SfvTraining); SFV offers no pad setup, Steam profiles
 // or custom content yet, and of the settings features (section 35) only the
-// shortcut hint, "F10 or Start" over the main menu (SfvShell; section 41):
+// shortcut hint, "F10 or Start" over the main menu (SfvShell; section 42):
 // not Ember's input and display fixes, its pad layer, the keyboard, the
 // challenger call, lobby music or character pictures, so Settings leaves
 // their rows out.

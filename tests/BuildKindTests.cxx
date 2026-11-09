@@ -1,5 +1,5 @@
 // What a player build takes and refuses (mod/BuildKind.hxx; EMBER_LIBRARY.md
-// section 41): the mod reads only its launcher's options, the control pipe
+// section 42): the mod reads only its launcher's options, the control pipe
 // answers ping and status alone. Both kinds are checked here whatever this
 // test program was built as. And where the mod's log goes when its usual
 // file cannot be written (mod/Log.hxx).

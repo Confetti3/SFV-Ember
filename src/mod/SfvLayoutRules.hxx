@@ -1,7 +1,7 @@
 #pragma once
 
 // The rules SFV Ember's rollback lays over the game's own snapshot, and their
-// id (EMBER_LIBRARY.md section 41).
+// id (EMBER_LIBRARY.md section 42).
 //
 // A battle's state is every region of the game's rollback manager, which the
 // verified exe (BuildCheck) gives every copy alike, plus what this mod

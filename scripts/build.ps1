@@ -8,7 +8,7 @@
 # builds on (docs/design/EMBER_LIBRARY.md section 4); its overlay triplet gives
 # spdlog the wide file names the library's log sinks open.
 #
-# Two kinds of build (src/mod/BuildKind.hxx; EMBER_LIBRARY.md section 41):
+# Two kinds of build (src/mod/BuildKind.hxx; EMBER_LIBRARY.md section 42):
 #   - by default a development build, what the test tools run: Launcher.exe's
 #     --instance and --game-option, the mod's -sfve_* test options and the
 #     control pipe's commands all work;

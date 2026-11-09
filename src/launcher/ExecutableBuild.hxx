@@ -4,7 +4,7 @@
 // header's TimeDateStamp, the stamp the mod's BuildCheck verifies in the
 // running game. SFV Ember's launcher starts only the build its mod was made
 // for (SfvLaunch's StartGame), never another one and never UE4's starter of
-// the same name in the game's top folder (EMBER_LIBRARY.md section 41).
+// the same name in the game's top folder (EMBER_LIBRARY.md section 42).
 
 #include <stdint.h>
 

@@ -199,7 +199,7 @@ msgid "runtime.ready.selection_unavailable"
 msgstr "Этот выбор бойца недоступен. Выберите доступные костюм, цвет, V-Skill и V-Trigger."
 
 msgid "runtime.selection_combination_unavailable"
-msgstr "Эта комбинация не допускается правилами лобби. Выберите другого бойца, костюм или цвет."
+msgstr "Эта комбинация не допускается правилами лобби. Выберите другого бойца, костюм, цвет, V-Skill или V-Trigger."
 
 msgid "selection.winner_keeps_fighter"
 msgstr "Вы выиграли последний сет, поэтому остаётесь с этим бойцом. V-Skill, V-Trigger, костюм и цвет по-прежнему можно менять."

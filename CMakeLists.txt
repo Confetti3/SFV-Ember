@@ -32,7 +32,7 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
 # A development build takes the test switches (src/mod/BuildKind.hxx): the
 # launcher's --instance and --game-option, the mod's -sfve_* test options and
 # the control pipe's commands. scripts/build.ps1 makes one unless -Player;
-# scripts/package.ps1 packages only a player build (EMBER_LIBRARY.md section 41).
+# scripts/package.ps1 packages only a player build (EMBER_LIBRARY.md section 42).
 option(SFVE_DEV_BUILD "Development build: the test switches work (never in a player package)" ON)
 if(SFVE_DEV_BUILD)
     add_compile_definitions(SFVE_DEV_BUILD=1)

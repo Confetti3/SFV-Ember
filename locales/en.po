@@ -199,7 +199,7 @@ msgid "runtime.ready.selection_unavailable"
 msgstr "This fighter selection is unavailable. Choose an available costume, color, V-Skill and V-Trigger."
 
 msgid "runtime.selection_combination_unavailable"
-msgstr "This combination is unavailable under the room's rules. Choose another fighter, costume or color."
+msgstr "This combination is unavailable under the room's rules. Choose another fighter, costume, color, V-Skill or V-Trigger."
 
 msgid "selection.winner_keeps_fighter"
 msgstr "You won the last set, so you keep this fighter. You can still change the V-Skill, V-Trigger, costume and color."

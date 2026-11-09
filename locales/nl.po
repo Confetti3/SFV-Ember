@@ -199,7 +199,7 @@ msgid "runtime.ready.selection_unavailable"
 msgstr "Deze personagekeuze is niet beschikbaar. Kies een beschikbare outfit, kleur, V-Skill en V-Trigger."
 
 msgid "runtime.selection_combination_unavailable"
-msgstr "Deze combinatie is niet beschikbaar met de kamerregels. Kies een ander personage, een andere outfit of kleur."
+msgstr "Deze combinatie is niet beschikbaar met de kamerregels. Kies een ander personage, een andere outfit, kleur, V-Skill of V-Trigger."
 
 msgid "selection.winner_keeps_fighter"
 msgstr "Je hebt de laatste set gewonnen, dus je houdt deze vechter. V-Skill, V-Trigger, kostuum en kleur kun je nog wel veranderen."

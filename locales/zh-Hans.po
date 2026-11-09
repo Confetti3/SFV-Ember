@@ -199,7 +199,7 @@ msgid "runtime.ready.selection_unavailable"
 msgstr "此角色选择不可用。请选择可用的服装、颜色、V技能和V触发。"
 
 msgid "runtime.selection_combination_unavailable"
-msgstr "此组合不符合房间规则。请选择其他角色、服装或颜色。"
+msgstr "此组合不符合房间规则。请选择其他角色、服装、颜色、V技能或V触发。"
 
 msgid "selection.winner_keeps_fighter"
 msgstr "你赢了上一局，因此保留这个角色。仍可更改V技能、V触发、服装和颜色。"

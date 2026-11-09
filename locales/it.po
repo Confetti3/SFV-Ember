@@ -199,7 +199,7 @@ msgid "runtime.ready.selection_unavailable"
 msgstr "Selezione personaggio non disponibile. Scegli costume, colore, V-Skill e V-Trigger disponibili."
 
 msgid "runtime.selection_combination_unavailable"
-msgstr "Combinazione non disponibile con le regole della sala. Scegli un altro personaggio, costume o colore."
+msgstr "Combinazione non disponibile con le regole della sala. Scegli un altro personaggio, costume, colore, V-Skill o V-Trigger."
 
 msgid "selection.winner_keeps_fighter"
 msgstr "Hai vinto l'ultimo set, quindi tieni questo lottatore. Puoi ancora cambiare V-Skill, V-Trigger, costume e colore."

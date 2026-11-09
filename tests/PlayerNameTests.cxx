@@ -1,6 +1,6 @@
 // Every player plays under their own name, and a test copy never writes its
 // name over theirs (ember/PlayerName, ember/SavedSettings; EMBER_LIBRARY.md
-// section 41).
+// section 42).
 
 #include <doctest/doctest.h>
 
