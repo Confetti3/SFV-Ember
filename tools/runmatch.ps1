@@ -106,7 +106,8 @@ try {
 	# 1. Each copy links to its provider player with a code, as a platform's
 	# player types it into Link account; the provider approves exactly the
 	# claim whose Ember ID and fingerprint are that copy's.
-	$players = foreach ($i in 0, 1) {
+	$players = @()
+	foreach ($i in 0, 1) {
 		$subject = "player$($i + 1)"
 		$intent = Provider POST '/v1/link-intents' @{ subject = $subject; display_label = "Player $($i + 1)" }
 		WaitIdentity $i (Answer (Ctl $i "link $connection $($intent.code)")) 'link claim'
@@ -121,7 +122,7 @@ try {
 			@((Status $i).match.links | Where-Object { $_.connection -eq $connection }).Count -eq 1
 		}
 		"copy $i linked: $subject, participant $($approved.participant_id), fingerprint $fingerprint"
-		[pscustomobject]@{ emberId = $ids[$i]; participant = $approved.participant_id }
+		$players += [pscustomobject]@{ emberId = $ids[$i]; participant = $approved.participant_id }
 	}
 
 	# 2. A USF4 match for the same players: the bridge holds it as theirs,
