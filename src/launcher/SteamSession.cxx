@@ -71,15 +71,81 @@ std::wstring SteamExecutable()
 	return exe;
 }
 
+// The explorer process that owns the desktop, opened to be named as a new
+// process's parent; null when there is no shell (a service, a session
+// without a desktop).
+HANDLE OpenShellProcess()
+{
+	DWORD pid = 0;
+	if (const HWND shell = GetShellWindow()) GetWindowThreadProcessId(shell, &pid);
+	return pid ? OpenProcess(PROCESS_CREATE_PROCESS, FALSE, pid) : nullptr;
+}
+
+// The launcher's environment as a player's Steam would not have it: the game
+// variables BeforeStart set for the game (SteamAppId, SteamGameId) tell a
+// client it was started by a game. The block ends with the extra NUL.
+std::wstring EnvironmentForSteam()
+{
+	std::wstring block;
+	if (wchar_t* const all = GetEnvironmentStringsW()) {
+		for (const wchar_t* entry = all; *entry; entry += lstrlenW(entry) + 1) {
+			const bool game = _wcsnicmp(entry, L"SteamAppId=", 11) == 0 || _wcsnicmp(entry, L"SteamGameId=", 12) == 0;
+			if (!game) block.append(entry, lstrlenW(entry) + 1);
+		}
+		FreeEnvironmentStringsW(all);
+	}
+	block.push_back(L'\0');
+	return block;
+}
+
+// Starts Steam so that it is not the launcher's child. Steam is shared: it
+// outlives the game and the launcher, and the test tools (tools/sfvelib.py)
+// and anything else that ends the launcher's process tree must not take it
+// with them. A player who starts Steam gets explorer as its parent, so the
+// process is created with explorer named as its parent
+// (PROC_THREAD_ATTRIBUTE_PARENT_PROCESS), which is what the tree shows
+// afterwards. ShellExecuteExW does not do this: it creates the process in
+// the caller (or through DDE in an arbitrary running instance). Without a
+// shell to name, or when Windows refuses it, Steam is started the plain way
+// and the launcher is logged as its parent; the tools never end Steam's
+// processes either way.
 bool Run(const std::wstring& exe, const wchar_t* arguments)
 {
 	std::wstring commandLine = L"\"" + exe + L"\"" + (arguments ? std::wstring(L" ") + arguments : std::wstring());
-	const std::wstring folder = exe.substr(0, exe.find_last_of(L'\\'));
-	STARTUPINFOW startup{};
-	startup.cb = sizeof(startup);
+	const std::wstring folder = exe.substr(0, exe.find_last_of(L'\'));
+	std::wstring environment = EnvironmentForSteam();
+	const DWORD flags = DETACHED_PROCESS | CREATE_UNICODE_ENVIRONMENT;
+
 	PROCESS_INFORMATION process{};
-	if (!CreateProcessW(exe.c_str(), commandLine.data(), nullptr, nullptr, FALSE, DETACHED_PROCESS, nullptr, folder.c_str(),
-			&startup, &process)) {
+	bool started = false;
+	if (const HANDLE shell = OpenShellProcess()) {
+		SIZE_T size = 0;
+		InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
+		std::vector<char> storage(size);
+		const auto attributes = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
+		if (InitializeProcThreadAttributeList(attributes, 1, 0, &size)) {
+			HANDLE parent = shell;
+			if (UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, &parent, sizeof(parent), nullptr,
+					nullptr)) {
+				STARTUPINFOEXW startup{};
+				startup.StartupInfo.cb = sizeof(startup);
+				startup.lpAttributeList = attributes;
+				started = CreateProcessW(exe.c_str(), commandLine.data(), nullptr, nullptr, FALSE, flags | EXTENDED_STARTUPINFO_PRESENT,
+					environment.data(), folder.c_str(), &startup.StartupInfo, &process);
+				if (!started) spdlog::warn(L"Steam check: could not start {} under the shell (Win32 {})", exe, GetLastError());
+			}
+			DeleteProcThreadAttributeList(attributes);
+		}
+		CloseHandle(shell);
+	}
+	if (!started) {
+		spdlog::warn("Steam check: starting Steam as the launcher's own child");
+		STARTUPINFOW startup{};
+		startup.cb = sizeof(startup);
+		started = CreateProcessW(exe.c_str(), commandLine.data(), nullptr, nullptr, FALSE, flags, environment.data(), folder.c_str(),
+			&startup, &process);
+	}
+	if (!started) {
 		spdlog::error(L"Steam check: could not run {} {} (Win32 {})", exe, arguments ? arguments : L"", GetLastError());
 		return false;
 	}

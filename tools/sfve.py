@@ -10,6 +10,12 @@
   python tools/sfve.py focus <index>                     bring a copy's window to the front
   python tools/sfve.py mash <index> <slot> <seconds> [seed]  random pad input on a virtual slot
   python tools/sfve.py ps | kill [--all]
+  python tools/sfve.py track <label> <pid>               register a helper process (and its children) for kill
+  python tools/sfve.py runtime-file <name>               path of a runtime file (sf4-net.exe) for the mode, or fail
+
+Every command runs in the run of the shell it was typed in (sfvelib.begin_session),
+or in SFVE_RUN when a runner set it: `kill` ends what `launch` started in the
+same shell; `kill --all` also ends other runs' copies after a run that died.
 """
 
 from __future__ import annotations
@@ -51,6 +57,10 @@ def main(argv: list[str]) -> int:
     mash.add_argument("seconds", type=float)
     mash.add_argument("seed", type=int, nargs="?", default=1)
     sub.add_parser("ps")
+    track = sub.add_parser("track")
+    track.add_argument("label")
+    track.add_argument("pid", type=int)
+    sub.add_parser("runtime-file").add_argument("name")
     sub.add_parser("kill").add_argument("--all", action="store_true", help="also the copies other runs started (after a run that died)")
     # The game's own arguments follow "--" and are split off here: argparse
     # before Python 3.12 leaves "--" unconsumed after a nargs="*" positional.
@@ -63,6 +73,8 @@ def main(argv: list[str]) -> int:
         p.error('only "launch" takes game arguments after "--"')
 
     try:
+        if a.cmd in ("launch", "track", "kill"):  # the commands that start or end processes
+            lib.begin_session("cli")
         if a.cmd == "deploy":
             print("copied:", lib.deploy(a.adopt) or "nothing (already current)")
         elif a.cmd == "undeploy":
@@ -90,6 +102,10 @@ def main(argv: list[str]) -> int:
             print(lib.request(a.index, f"pad {a.slot} {lib.mash_steps(a.seconds, a.seed)}"))
         elif a.cmd == "ps":
             print(lib.running_pids())
+        elif a.cmd == "track":
+            print("tracking:", lib.track(a.label, a.pid))
+        elif a.cmd == "runtime-file":
+            print(lib.runtime_file(a.name))
         elif a.cmd == "kill":
             print("killed:", lib.kill_all(all_runs=a.all))
     except lib.SfveError as e:

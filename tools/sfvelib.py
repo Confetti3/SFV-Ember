@@ -16,14 +16,33 @@ Safety rules this module enforces:
 * A copy is only launched with the mod in place (the proxy and the mod
   deployed, or the launcher, the mod and the helper in the package folder),
   and is killed if its control pipe (which the mod opens only after the
-  network guard is installed) does not answer within GUARD_TIMEOUT_S.
+  network guard is installed) does not answer within GUARD_TIMEOUT_S. Through
+  the launcher the clock has two phases: the launcher's own preparation (the
+  Steam check, up to LAUNCHER_PREP_TIMEOUT_S) ends when the launcher has
+  started the game, and only then does the GUARD_TIMEOUT_S guard deadline run.
 * Nothing here uses the game's online modes.
 * Only copies this module started are killed. A process is known by its id
   and its creation time together (a bare id can be reused), kept in the
-  registry of the run that started it (SFVE_RUN; registry_path): a copy
-  whose pipe answers is ours only when its process is the one just started
-  or descends from it, and kill_all ends a registered process only while
-  its creation time still matches.
+  registry of the run that started it: a copy whose pipe answers is ours
+  only when its process is the one just started or descends from it, and
+  kill_all ends a registered process only while its creation time still
+  matches. Steam is never ended: steam.exe, steamwebhelper.exe and
+  SteamService.exe, and what they started, are outside every process tree
+  this module ends, even when the launcher started them.
+* Every process this module starts or ends belongs to a run, and the run is
+  mandatory: registry_path() raises without one, so there is no shared
+  default registry. A runner script sets SFVE_RUN (localstack.ps1,
+  runroom.ps1) or a Python runner calls begin_run(); the two clients with no
+  runner around them, sfve.py and sfve_mcp.py, call begin_session("cli") and
+  begin_session("mcp"). That names the run after the shell (or MCP client)
+  that started the client, the first ancestor that is not a Python
+  launcher, by its id and creation time: every sfve.py command typed in one
+  shell shares a run, so a later `sfve.py kill` finds what an earlier
+  `sfve.py launch` started, a restarted MCP server finds its predecessor's
+  copies, and the CLI, the MCP server and each runner never meet. Helper
+  processes of a run (a room supervisor and the room hosts it starts) are
+  registered with track(), by id and creation time like the copies. A run
+  that died is cleaned up with `sfve.py kill --all`.
 * The game folder is only written in proxy mode, by deploy, which records
   what it installed in MANIFEST; undeploy removes only the files listed there.
 """
@@ -43,6 +62,7 @@ import time
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 GAME_DIR = Path(os.environ.get(
     "SFVE_GAME_DIR",
@@ -54,6 +74,10 @@ MOD_FILES = ("xinput1_3.dll", "sfv_ember.dll", "sf4-net.exe")  # sf4-net: script
 # flags), which the build copies from the Ember library into its assets/.
 ASSETS = "assets"
 GUARD_TIMEOUT_S = 20.0
+# The launcher's preparation before the game exists: the Steam check waits up
+# to 60 s for the old client to exit and 90 s for the new one's sign-in
+# (src/launcher/SteamSession.cxx), then the game starts.
+LAUNCHER_PREP_TIMEOUT_S = 180.0
 STEAM_APP_ID = "310950"
 VIA = os.environ.get("SFVE_VIA", "proxy")
 PACKAGE_DIR = Path(os.environ.get("SFVE_PACKAGE_DIR", str(BUILD_DIR)))
@@ -66,6 +90,23 @@ MANIFEST = "sfve-deployed.json"
 
 class SfveError(RuntimeError):
     pass
+
+
+def runtime_dir() -> Path:
+    """Where a copy loads its runtime files from, by the one mode switch: the
+    package or build folder through the launcher, the game folder (where
+    deploy puts them) in proxy mode."""
+    return PACKAGE_DIR if VIA == "launcher" else GAME_DIR
+
+
+def runtime_file(name: str) -> Path:
+    """The runtime file `name` (a helper such as sf4-net.exe) in runtime_dir(),
+    which must exist."""
+    path = runtime_dir() / name
+    if not path.is_file():
+        where = "SFVE_VIA=launcher, SFVE_PACKAGE_DIR" if VIA == "launcher" else "SFVE_VIA=proxy, the game folder (deploy first)"
+        raise SfveError(f"{path} is missing ({where})")
+    return path
 
 
 def verdict(failure: str | list[str], pass_text: str = "PASS") -> int:
@@ -270,8 +311,19 @@ def process_identity(pid: int) -> Identity | None:
         _kernel32.CloseHandle(handle)
 
 
-def _process_table() -> dict[int, tuple[int, int]]:
-    """Every process: id -> (parent id, creation time; 0 when unreadable)."""
+class _Process(NamedTuple):
+    parent: int
+    created: int  # creation time; 0 when unreadable
+    name: str     # the exe's file name, lower case
+
+
+# Steam is shared by every game and every player on the PC: a test copy
+# never owns it, even when the launcher's preparation had it started.
+_SHARED_PROCESSES = frozenset({"steam.exe", "steamwebhelper.exe", "steamservice.exe"})
+
+
+def _process_table() -> dict[int, _Process]:
+    """Every running process, by id."""
     snapshot = _kernel32.CreateToolhelp32Snapshot(_TH32CS_SNAPPROCESS, 0)
     if snapshot in (None, ctypes.c_void_p(-1).value):
         raise SfveError("could not list the running processes")
@@ -281,26 +333,32 @@ def _process_table() -> dict[int, tuple[int, int]]:
     try:
         more = _kernel32.Process32FirstW(snapshot, ctypes.byref(entry))
         while more:
-            table[entry.th32ProcessID] = (entry.th32ParentProcessID, (process_identity(entry.th32ProcessID) or (0, 0))[1])
+            table[entry.th32ProcessID] = _Process(entry.th32ParentProcessID, (process_identity(entry.th32ProcessID) or (0, 0))[1],
+                                                  entry.szExeFile.lower())
             more = _kernel32.Process32NextW(snapshot, ctypes.byref(entry))
     finally:
         _kernel32.CloseHandle(snapshot)
     return table
 
 
-def _process_tree(table: dict[int, tuple[int, int]], root: Identity) -> list[Identity]:
+def _process_tree(table: dict[int, _Process], root: Identity, include_shared: bool = False) -> list[Identity]:
     """`root` and every process that descends from it, or [] when `root`
     is not running. A process only descends from a parent that was created
-    before it: a parent id that has since been reused does not count."""
-    if table.get(root[0], (0, 0))[1] != root[1]:
+    before it: a parent id that has since been reused does not count. Steam
+    (_SHARED_PROCESSES) and what it started are not part of the tree unless
+    `include_shared`, which is for asking who descends from whom, never for
+    choosing what to end; a root that is Steam has no tree."""
+    found = table.get(root[0])
+    if found is None or found.created != root[1] or (found.name in _SHARED_PROCESSES and not include_shared):
         return []
     members = {root[0]: root[1]}
     grew = True
     while grew:
         grew = False
-        for pid, (parent, created) in table.items():
-            if pid not in members and created and parent in members and created >= members[parent]:
-                members[pid] = created
+        for pid, p in table.items():
+            if (pid not in members and p.created and p.parent in members and p.created >= members[p.parent]
+                    and (include_shared or p.name not in _SHARED_PROCESSES)):
+                members[pid] = p.created
                 grew = True
     return list(members.items())
 
@@ -324,9 +382,48 @@ def begin_run() -> str:
     return os.environ.setdefault("SFVE_RUN", f"{os.getpid()}-{int(time.time())}")
 
 
+# What sits between a shell (or an MCP client) and the Python that runs a
+# client: the py launcher, uv, the interpreter itself.
+_LAUNCHERS = frozenset({"python.exe", "pythonw.exe", "py.exe", "pyw.exe", "uv.exe", "uvx.exe"})
+
+
+def begin_session(kind: str) -> str:
+    """The run of a client with no runner around it (`kind`: "cli" or "mcp").
+    A SFVE_RUN already set stays. Otherwise the run is named after the first
+    ancestor that is not a Python launcher, by its id and creation time, and
+    set in the environment: the same shell (or MCP client) gets the same run
+    in every process it starts, so a later `sfve.py kill` finds the copies an
+    earlier `sfve.py launch` registered, and no other client or runner shares
+    it. When that ancestor is gone the run is this process's own."""
+    if os.environ.get("SFVE_RUN"):
+        return os.environ["SFVE_RUN"]
+    table = _process_table()
+    me = os.getpid()
+    owner = table[me].parent if me in table else 0
+    for _ in range(len(table)):  # ids cycle once reused: stop after one pass
+        if owner not in table or table[owner].name not in _LAUNCHERS:
+            break
+        owner = table[owner].parent
+    if owner in table and table[owner].created:
+        run = f"{kind}-{owner}-{table[owner].created}"
+    else:
+        run = f"{kind}-{me}-{table[me].created if me in table else int(time.time())}"
+    os.environ["SFVE_RUN"] = run
+    return run
+
+
+def _registry_dir() -> Path:
+    return Path(os.environ.get("TEMP", str(BUILD_DIR)))
+
+
 def registry_path() -> Path:
-    run = re.sub(r"[^A-Za-z0-9_.-]", "_", os.environ.get("SFVE_RUN", "default"))
-    return Path(os.environ.get("TEMP", str(BUILD_DIR))) / f"sfve-launched-{run}.json"
+    """The registry file of this run. Run ownership is mandatory: with no
+    SFVE_RUN there is no registry (see the module docstring), so nothing is
+    started or ended."""
+    run = os.environ.get("SFVE_RUN")
+    if not run:
+        raise SfveError("no run: set SFVE_RUN, or call begin_run() / begin_session() first")
+    return _registry_dir() / f"sfve-launched-{re.sub(r'[^A-Za-z0-9_.-]', '_', run)}.json"
 
 
 def _registered(path: Path) -> dict[str, list[Identity]]:
@@ -339,12 +436,26 @@ def _registered(path: Path) -> dict[str, list[Identity]]:
         return {}
 
 
-def _remember(index: int, *identities: Identity) -> None:
+def _remember(key: int | str, *identities: Identity) -> None:
     path = registry_path()
     started = _registered(path)
-    # Kept beside an earlier copy of the index this run started: it is still ours to end.
-    started[str(index)] = list(dict.fromkeys(started.get(str(index), []) + list(identities)))
+    # Kept beside an earlier entry under the key this run made: it is still ours to end.
+    started[str(key)] = list(dict.fromkeys(started.get(str(key), []) + list(identities)))
     path.write_text(json.dumps(started))
+
+
+def track(label: str, pid: int) -> list[int]:
+    """Registers a process this run started that is not a game (a room
+    supervisor, a bridge) and what descends from it now, by id and creation
+    time, so kill_all ends them: the room hosts a supervisor starts outlive
+    it when it dies, so call this again while it runs. `pid` must be running.
+    Returns the ids registered."""
+    root = process_identity(pid)
+    if root is None:
+        raise SfveError(f"process {pid} is not running: nothing to track as {label}")
+    members = _process_tree(_process_table(), root)
+    _remember(f"track-{label}", *members)
+    return sorted(p for p, _ in members)
 
 
 def _game_options(index: int, mode: str, extra: list[str], windowed: bool) -> list[str]:
@@ -357,7 +468,11 @@ def _game_options(index: int, mode: str, extra: list[str], windowed: bool) -> li
 
 
 def launch(index: int, mode: str = "probe", extra: list[str] | None = None, windowed: bool = True) -> Instance:
-    """Starts one copy and waits until its guard is confirmed (or kills it)."""
+    """Starts one copy and waits until its guard is confirmed (or kills it).
+    Through the launcher that is two waits: the launcher's preparation until
+    it has started the game (LAUNCHER_PREP_TIMEOUT_S), then the game's start-up
+    until the guard answers (GUARD_TIMEOUT_S)."""
+    registry_path()  # the run is mandatory: refuse before anything starts
     options = _game_options(index, mode, extra or [], windowed)
     log_path(index).unlink(missing_ok=True)  # each run starts its own log
     if VIA == "launcher":
@@ -387,6 +502,12 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
         _kill_tree([started])
         return SfveError(f"instance {index} {why}; killed")
 
+    if VIA == "launcher":
+        # The game is the launcher's child once the preparation (the Steam
+        # check) is over; the guard's clock starts then, not at the launcher.
+        problem = _await_game_start(started, index)
+        if problem:
+            raise refuse(problem)
     try:
         reply = request(index, "status", timeout_s=GUARD_TIMEOUT_S)
     except SfveError:
@@ -397,7 +518,7 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
     # The pipe's name is all the instance number gives: whoever answers on it
     # must be the process just started or one it started, not another copy.
     game = process_identity(game_pid)
-    if game is None or game not in _process_tree(_process_table(), started):
+    if game is None or game not in _process_tree(_process_table(), started, include_shared=True):
         raise refuse(f"answered from process {game_pid}, which is not the process just started ({started[0]}) or one it started")
     _remember(index, started, game)
     # The pipe answers as soon as the guard is in; the mode's own commands
@@ -413,22 +534,49 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
     return Instance(index, game_pid)
 
 
+def launcher_log_path(index: int) -> Path:
+    return LOG_DIR / ("launcher.log" if index == 0 else f"launcher.instance{index}.log")
+
+
+def _await_game_start(launcher: Identity, index: int) -> str:
+    """Waits through the launcher's preparation until the launcher has
+    started the game (a StreetFighterV.exe in its process tree), for up to
+    LAUNCHER_PREP_TIMEOUT_S. The process table is the signal: it does not
+    depend on the launcher's log wording. Returns "" once the game exists, or
+    why not: the launcher ended first (a failed Steam check ends it; its log
+    says why) or the preparation took too long."""
+    game = GAME_EXE.name.lower()
+    deadline = time.monotonic() + LAUNCHER_PREP_TIMEOUT_S
+    while True:
+        table = _process_table()
+        tree = _process_tree(table, launcher)
+        if any(table[pid].name == game for pid, _ in tree):
+            return ""
+        if not tree:
+            return f"launcher ended before it started the game (see {launcher_log_path(index)})"
+        if time.monotonic() > deadline:
+            return f"launcher did not start the game within {LAUNCHER_PREP_TIMEOUT_S:.0f} s (see {launcher_log_path(index)})"
+        time.sleep(0.5)
+
+
 def _kill_tree(roots: list[Identity]) -> list[Identity]:
     """Ends each running process `roots` names, with everything it started
-    (a launcher's game and helpers). A root whose id now belongs to another
-    process is left alone. Returns what was ended."""
+    (a launcher's game and helpers) except Steam and what Steam started,
+    however it got there. A root whose id now belongs to another process is
+    left alone. Returns what was ended."""
     table = _process_table()
     victims = {pid: created for root in roots for pid, created in _process_tree(table, root)}
     return [(pid, created) for pid, created in victims.items() if _terminate((pid, created))]
 
 
 def kill_all(timeout_s: float = 15.0, all_runs: bool = False) -> list[int]:
-    """Kills the copies this run started (and their launchers), and waits
+    """Kills the copies this run started (and their launchers) and the helper
+    processes it tracked (track), never Steam, and waits
     until they are gone, their pipes with them. A copy anything else started
     is left running, and so is a process that only has a recorded id's
     number now. `all_runs` also ends the copies other runs' registries
     still list, to clean up after a run that died. Returns the ids ended."""
-    paths = sorted(registry_path().parent.glob("sfve-launched-*.json")) if all_runs else [registry_path()]
+    paths = sorted(_registry_dir().glob("sfve-launched-*.json")) if all_runs else [registry_path()]
     killed = _kill_tree([identity for path in paths for copy in _registered(path).values() for identity in copy])
     deadline = time.monotonic() + timeout_s
     while any(process_identity(pid) == (pid, created) for pid, created in killed) and time.monotonic() < deadline:

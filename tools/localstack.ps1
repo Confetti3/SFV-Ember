@@ -17,7 +17,6 @@ $env:SFVE_RUN = [guid]::NewGuid().ToString('N')
 # The mod logs under %APPDATA%\SFVEmber\logs (mod/Log.cxx), as tools/runroom.ps1 reads them.
 $logs = Join-Path $env:APPDATA 'SFVEmber\logs'
 $logOf = @("$logs\sfv_ember.log", "$logs\sfv_ember.1.log")
-$gameDir = if ($env:SFVE_GAME_DIR) { $env:SFVE_GAME_DIR } else { 'G:\SteamLibrary\steamapps\common\StreetFighterV\StreetFighterV\Binaries\Win64' }
 
 function Ctl([int]$i, [string]$line) { python -I tools\sfve.py ctl $i $line }
 function Status([int]$i) { (Ctl $i status).Substring(3) | ConvertFrom-Json }

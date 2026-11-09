@@ -49,11 +49,15 @@ function Seek([int]$i, [string]$focus, [string[]]$moves, [int]$limit = 12) {
 }
 
 foreach ($exe in $bridgeExe, $roomsExe, $roomHost) { if (!(Test-Path $exe)) { throw "$exe is not built" } }
+# The helper the copies run: from the package or build folder with SFVE_VIA=launcher,
+# from the game folder in proxy mode (tools/sfvelib.py runtime_file), checked before
+# anything starts. The room host is given the same one.
+$helper = (python -I tools\sfve.py runtime-file sf4-net.exe 2>&1 | Out-String).Trim()
+if ($LASTEXITCODE) { throw "no helper for this mode: $helper" }
 $space = Get-Content data\pick-space.json -Raw | ConvertFrom-Json
 $build = $space.build
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
 New-Item -ItemType Directory -Force $work, "$work\bridge" | Out-Null
-$helper = Join-Path $gameDir 'sf4-net.exe'
 $origin = "http://127.0.0.1:$port"
 $roomsPort = $port + 10
 $secret = -join ((1..48) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })
@@ -110,6 +114,9 @@ try {
 	if ($p.failure) { throw "the create was refused: $($p.failure)" }
 	$room = $p.admitted
 	"created room $room"
+	# The room host the supervisor just started is this run's: registered by identity, so `kill` ends it.
+	python -I tools\sfve.py track rooms $processes[0].Id | Out-Null
+	if ($LASTEXITCODE) { throw 'could not register the supervisor and its room host for cleanup' }
 	Answer (Ctl 0 'public enter') | Out-Null
 	WaitFor 'copy 0 in the room' 60 { $s = Status 0; $s.room.room -eq 'joined' -and $s.room.members -eq 1 }
 	if ($shellJoin) {
@@ -289,7 +296,10 @@ try {
 foreach ($i in 0, 1) {
 	if ($ranked -and (Test-Path $logOf[$i])) { Select-String -Path $logOf[$i] -Pattern "art: /Game/CommonAsset/LeagueIcon/|ranks: SFV's leagues" | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
 }
+# Room hosts outlive a supervisor that is killed: register what runs under it now (the
+# supervisor is still up unless it died), so Complete-Run's `kill` ends this run's hosts
+# by identity and no other run's. (-keep leaves the copies and the hosts; `sfve.py kill --all`
+# ends them later.)
+if ($processes.Count -and !$processes[0].HasExited) { python -I tools\sfve.py track rooms $processes[0].Id | Out-Null }
 $passed = Complete-Run $failure $processes $keep.IsPresent "$games game(s) in a public room, no desync"
-# Room hosts the supervisor started outlive it when it is killed: end ours.
-Get-Process sfve-room-host -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $roomHost } | Stop-Process -Force
 exit $(if ($passed) { 0 } else { 1 })
