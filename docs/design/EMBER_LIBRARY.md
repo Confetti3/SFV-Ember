@@ -2120,6 +2120,72 @@ A friend's copy could not join the maintainer's room: its helper refused the inv
 - A third copy watching with `-sfve_uninstalled` for the chosen stage sits that game out with its notice, and watches the next.
 - The friend: one log with the new catalog line before this ships to them.
 
+## 39. The frame meter in SFV's Training (2026-11-09)
+
+Section 27 left SFV with no Ember frame meter: SF4's reads SF4's fighters (`training::ObserveMatch`), and nothing read SFV's. This section feeds the library's meter (`training/FrameMeter.hxx`, the same `FrameMeter` and `FighterSample` SF4 Ember's Training HUD measures with) from SFV's own fighter state, after every tick of SFV's Training battle, and draws it with the library's meter window, as SF4 Ember's Training HUD draws it: each fighter's startup, active and recovery cells, hitstun and blockstun, hitstop left out of the bars, each hit's advantage over the bars, and the numbers beside them (advantage, startup, the state line). It reads the game and writes nothing.
+
+### Where SFV keeps it (our IDA database, checked live)
+
+Every rva below is a `CodeSite` in `src/mod/SfvFighterOffsets.hxx` (included by `SfvOffsets.hxx`, whose `kSites` verifies them with the rest of the build table, so on another build the mod stays inert); the field offsets are its `sfv::fighter` namespace. The live checks were RYU against RYU in Training with a read-only probe of the game's memory (ReadProcessMemory, one line per tick), keyed by the input unit's tick counter.
+
+| What | Where | Evidence |
+|---|---|---|
+| Frames until the fighter can act | `CharaUnit+0x91E`, int16 (the whole frames of the 16.16 at `+0x91C`); 1000 while the game cannot time it | Written each tick by rva 0x386010: the hitstop left, plus what the script still plays up to its interrupt frame (rva 0x2F21F0), the landing time while airborne, or 1000 lying down. Live: st.LP's attacker 10 at its second frame, 16 on the hit (8 of hitstop plus 8), P2 20 on the hit; both reach 0 the tick the fighter's state goes back to standing. |
+| Training's own advantage | rva 0x372E60: opponent's `+0x91E` minus the fighter's, while the fighter's is 1..999 and the opponent's under 1000; cached at `+0xE30` by rva 0x386710 | Its only display caller is the Attack Data panel's frame line (rva 0x449510, `"%d (%+d)"`). The meter does not read it; its log prints it beside the meter's own reading. |
+| Hitstop | `CharaUnit+0x104` elapsed, `+0x108` total, both 16.16 (ActionUnit) | rva 0x2FEA00 sets elapsed 0 and the total from the hit's data on a hit. Live: st.LP 0/8 on the hit's tick, 8/8 eight ticks later, the script frame held at 2 meanwhile. |
+| The fighter's state | `CharaUnit+0xC58` → state machine; `+0x10` the current state, a singleton | rva 0x35D000 (ChangeState) sets `+0x10 = table[kind]`; the table (rva 0x3A66160, 8 bytes a kind) holds 29 singletons whose vtable `+0x20` returns their kind 1..29 (filled by rva 0x13E4F0). The kind is read by the singleton's place in the table: no game function is called. |
+| What the fighter plays | `CharaActionPart` (type 0x3A64A98) `+0xD8` → script player: `+0x40` header, `+0x48` script number, `+0x4C` frame (16.16), `+0x64` time scale (16.16), `+0x68` speed | rva 0x307840 (SetScript) sets the header, the number and the boundaries; rva 0x3099E0 the frame and the phase bits (`+0x6C`: 0x20 startup, 0x40 active, 0x80 recovery, 0x100 interruptible). Live: P2's time scale is 0 through RYU's V-Trigger freeze and 1 otherwise. |
+| An attack's frames | the script header: `+0` first attack frame, `+4` the frame after the last, `+8` interrupt, `+12` total (int16), -1 where there is none; `+0x2E` posture (int16: 0 standing, 1 crouching, 2 airborne, 3 lying, 4 knocked into the air) | SetScript reads them so (a -1 or one past the end becomes none). Live: st.LP `{2, 4, 10, 20}`, Shoryuken `{2, 14, -1, 38}`, Hadoken `{-1, -1, 44, 100}`; st.MP, cr.MK and st.HP first attack on frames 4, 5 and 7, as their startups of 5, 6 and 8 say. |
+| The move an input started | `CharaUnit+0x90C`: the action the last state change started | Written before ChangeState (rva 0x372540 writes 185/186 there). Live: Shoryuken 930 stays 930 through its landing scripts (935 on a whiff, 940 on a hit); cr.LP 619 and its chain 664 each start their own. |
+| A projectile coming out | `ProjectileUnit` (type 0x3A64C20): `+0x100` its side, `+0x2B0` 1 while it is out | Cleared by rva 0x4576B0 (its end) and read alone by rva 0x450410. Live: P1's Hadoken's unit rose on the script's frame 13 (the 14th) and fell on the tick it hit. The reader finds 48 projectile units in a battle with the game's lookup; sixteen of them (eight a side) register snapshot regions. |
+| Vital | `CharaStatusPart` (type 0x3A64B08) `+0xC0`, of `+0xC4`, 16.16 | Section 27; rva 0x361670. |
+
+**State kinds.** Seen in game, and the meter's status for each (`ember/SfvMeterSample`): 1 stand, 2 crouch, 3 jump start, 4 jump, 5 landing, 6 walk forward, 7 walk back, 8 forward dash, 9 back dash, 12 guard (crouching by the script's posture), 14 stand to crouch, 15 crouch to stand, 16 turn standing, 17 turn crouching, 18 turn walking, 19 an attack (normals, specials, throws and V-Skills alike), 22 hit, 23 blockstun, 24 knocked into the air (a launcher, a juggle), 25 and 26 down, 27 getting up, 29 held (thrown). 10, 11, 13, 20, 21 and 28 were not seen (rva 0x372540 enters 21 on a KO); the meter draws a fighter in one as unknown, its advantage reads as unmeasured until it leaves it, and the log names the kind, script and posture once per battle so a run can name it.
+
+**Invincibility** was not located: the meter draws no invincible frames (SF4's does not either).
+
+### How the meter is fed
+
+- **`mod/FighterReader`** finds both fighters (by `CharaUnit+0x758`, their side), their action and status parts and the projectile units once per battle (`GameFindUnit`, and `GameFindPart`, new beside it on the same lookup helper; `ProjectileRelease` uses it in place of its own copy), and the state table. After each tick it reads the fields above into a `FighterFrame`, each read guarded (`TryRead`); it calls no game function after binding. The state is a typed `sfv::fighter::StateKind`.
+- **`ember/SfvMeterSample`** turns a `FighterFrame` into the library's `FighterSample`: the state kind as `ActorStatus`, the script and its frame as the action, the posture, the time scale, the game's frames until actionable (and `basicActionInhibited` while they are above 0), hitstop, the vital lost as the combo damage, the header's boundaries (`BacActionHeader`: SFV's moves are BAC scripts too), and the move the input started as `commandMove` (no attack is action 0, the stand). It sets `hitPhase` itself: from the header where it names an attack, else from the fighter's projectile coming out (that tick is the move's one active frame), else startup before the move's attack and recovery after (a Shoryuken's landing). The game's 1000 ("cannot time it") becomes the meter's `UntimedFrames` by name. `MeterFeed` gives the meter both samples after each update on a count of the battle's ticks: an update that ran more than one tick leaves a gap the meter starts over after. No SFV branch was added to the meter.
+- **`ember/SfvFrameMeter`** watches the battle's updates (`mod::WatchBattleFrames` in `GameScene`, which `BattleDriver` notes after each update it runs on a bound battle) and follows the battle `SfvTraining` follows: while `ReadTrainingView()` says a Training battle is available and its generation is this battle, it binds the reader once, reads both fighters after each update that ran a tick (a paused one runs none) and feeds the meter (`MeterFeed`). The meter is the game thread's; after each tick a copy of its view is published, as SF4's `TrainingRuntime` publishes its meter's, and the render thread draws the latest.
+- **Drawn** by `SfvHud` (`DrawSfvTraining`) with the library's `DrawFrameMeterWindow` and the Training HUD's defaults (angled bars, 60 frames across, the numbers and the state line, standard size, its bottom at 82% of the screen, above SFV's gauges), hidden under the shell and SFV's pause menu.
+- **The log**: each move as the bars count it once it is over (`frame meter: P1's script 600: startup 3, active 2, recovery 7`) and each exchange's advantage with Training's own beside it (`frame meter: P1's hit: P1 +4, P2 -4 (Training's own: P1 +4, P2 +0)`).
+
+### The library
+
+`feat/sfv-frame-meter`: the meter's drawing moved out of SF4's Training HUD (`ui/TrainingMeter.cxx`, 971 lines, SF4-side for the x64 build) into `ui/FrameMeterWindow.{hxx,cxx}`, which the x64 build compiles as neutral: the bars in each style, the numbers, the readings, the colour key, `TrainingFrameData`, and the meter's window (`DrawFrameMeterWindow`, which takes the `MeterView` and an optional strip drawn above the meter, where SF4's Training lab puts its recording strip), with the HUD's size (`FrameMeterHudScale`) and width. `TrainingMeter.cxx` keeps SF4's HUD around it (the challenger banner, the room line, the recording strip, the input displays) and calls the new window; nothing SF4 draws changed. `TrainingHudBackground`, which every HUD window takes, moved to the neutral `TrainingHudLayout.hxx`. No model change: `training/FrameMeter.hxx` is untouched.
+
+### Scope
+
+Training only. `Capabilities::frameMeter` stays off on SFV: it offers Settings' Match frame meter, which is the meter over a rollback match (a Practice room's game, a watched game), and that needs the confirmed-frame feeding SF4's `ObserveMatch` does under rollback; replays (`replayMeter`) likewise. Both are left open below.
+
+### Evidence
+
+In game on this PC at 960x540, one copy through the launcher from the build tree (`D:\sfv-ember-build-fm`), with `tools\runframemeter.py --shots D:\sfv-re\shots\framemeter\run3` (the copys log beside the shots, `sfv_ember.log`): RYU against RYU in Training, SFV's own Attack Data on. Each row is the meter's own log line against RYU's frame data (FAT's SFV data, `raw.githubusercontent.com/D4RKONION/FAT/main/src/js/constants/framedata/SFVFrameData.json`) and against Training's own advantage (its Attack Data's frame line, the game's `+0xE30`). PASS.
+
+| Move (script) | Meter: startup / active / recovery | Frame data | On hit: meter / Training's own / frame data | On block: meter / Training's own / frame data |
+|---|---|---|---|---|
+| st.LP (600) | 3 / 2 / 7 | 3 / 2 / 7 | +4 / +4 / +4 | +2 / +2 / +2 |
+| st.MP (601) | 5 / 3 / 10 | 5 / 3 / 10 | +6 / +6 / +6 | +2 / +2 / +2 |
+| cr.MK (616) | 6 / 3 / 13 | 6 / 3 / 13 | +2 / +2 / +2 | -1 / -1 / -1 |
+| st.HP (602) | 8 / 3 / 20 | 8 / 3 / 20 | +3 / +3 / +3 | -1 / -1 / -1 |
+| LP Hadoken (900) | 14 / 1 / 31 | 14 / - / 31 | | |
+| LP Shoryuken (930, whiffed) | 3 / 12 / 30 | 3 / 12 / 19+11 | | |
+
+The shots (`hit-*.png`, `block-*.png`, `hadoken.png`, `shoryuken.png`) show the meter above SFV's gauges with SFV's own Attack Data panel at the top: after st.LP's hit the meter's P1 reads +4 f and Attack Data's frame line `0 (+4)`. A Hadoken blocked from mid screen reads P1 +29 on the meter: P1 had recovered 29 frames before P2 left its blockstun, both by the game's own count; Training's own number does not cover it (its cache only moves while both fighters are still busy).
+
+Tests: `tests/SfvFrameMeterTests.cxx` runs the state map, the header phases, the feed's gaps, and three traces of ticks recorded in game through `MeterFeed` and the library's meter (st.LP on hit 3/2/7 +4, on block +2, LP Hadoken blocked 14/1/31).
+
+### Left
+
+- **The meter over a match and over a replay.** `Capabilities::frameMeter` and `replayMeter` stay off on SFV. Feeding a rollback match needs the confirmed-frame path SF4's `ObserveMatch` has (a sample per confirmed frame, never a resimulated one); a Practice room's game and a watched game would then show it as SF4 does.
+- **State kinds not seen:** 10, 11, 13, 20, 21 (the KO path) and 28. A fighter in one is drawn as unknown and its exchange's advantage reads as unmeasured; the log names the kind, script and posture the first time, so the next run can name it.
+- **Invincibility and the throw's own boxes** were not located; the meter shows neither (SF4's does not either).
+- **Options.** SFV's Training has no Ember controls page, so the meter draws with the Training HUD's defaults and cannot be hidden from Ember; SFV's own Attack Data still works beside it.
+- **For the maintainer: the run's environment.** The tools' launches have to run outside the agent sandbox: inside it, the registry the launcher reads shows Steam's `ActiveProcess` as 0, the launcher restarts Steam, and the Steam it starts writes its record where the real registry does not see it. That happened once tonight; Steam was shut down and started again outside the sandbox (its record then named it, pid and user), which the memory note says to ask about first. `scripts\build.ps1` refuses under 120 GB free on C: (C: had 116 GB); the builds ran through a copy of it with the task's 106 GB floor.
+- **A vcpkg rebuild.** The last sfv-ember build found every vcpkg package's ABI changed and rebuilt them from source into the shared binary cache; nothing in this branch touches vcpkg.
+
 ## 40. Choosing V-Skill and V-Trigger (2026-11-09)
 
 The maintainer's report: there was no way to change V-Trigger. Ember's pick gave SFV one choice (`ValidPick` wanted `ultra == 0`) and `VersusLaunch` wrote neither choice, so every room match loaded whatever the mode data held: V-Skill I and V-Trigger I, by the accident of a fresh data object. The plan with the evidence is `reviews/2026-11-09-sfv-project/vtrigger-plan.md`. The maintainer chose option A (one game-defined slot, typed at SFV's boundary) with the game's own words. No library, wire, room protocol or SF4 change.

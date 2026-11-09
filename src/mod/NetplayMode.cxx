@@ -2,6 +2,7 @@
 
 #include "ember/EmberHost.hxx"
 #include "ember/RoomCommands.hxx"
+#include "ember/SfvFrameMeter.hxx"
 #include "ember/SfvGame.hxx"
 #include "ember/SfvReplays.hxx"
 #include "ember/SfvShell.hxx"
@@ -48,8 +49,10 @@ void NetplayMode::Install()
 	adapter::InstallEmberHost({config_.instance, config_.ownershipGate, config_.unowned, config_.uninstalled}, *this);
 	adapter::InstallEmberShell();
 	// SFV's Training under Ember: followed once a frame, after Ember's tick
-	// has set the room's call (EMBER_LIBRARY.md section 27).
+	// has set the room's call (EMBER_LIBRARY.md section 27), with Ember's
+	// frame meter fed after each of its ticks (section 39).
 	adapter::InstallSfvTraining();
+	adapter::InstallSfvFrameMeter();
 }
 
 void NetplayMode::NewBattle(SfvAdapter& adapter)

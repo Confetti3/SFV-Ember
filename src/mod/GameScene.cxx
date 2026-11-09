@@ -26,6 +26,7 @@ std::atomic<uintptr_t> s_kind;  // the current state's kind, for other threads
 uintptr_t s_imageBase;
 std::mutex s_seenMutex;
 BattleSeen s_seen;
+std::atomic<BattleWatcher> s_watcher{nullptr};
 
 // Once a frame, before the manager ticks its state (and, when a state has
 // ended, puts the next one in its place): the queued game-thread work runs
@@ -103,6 +104,16 @@ void NoteBattleSeen(const BattleSeen& seen)
 {
 	std::lock_guard lock(s_seenMutex);
 	s_seen = seen;
+}
+
+void WatchBattleFrames(BattleWatcher watcher)
+{
+	s_watcher = watcher;
+}
+
+void NoteBattleFrame(SfvAdapter& adapter)
+{
+	if (const BattleWatcher watch = s_watcher.load()) watch(adapter);
 }
 
 bool ChangeScene(uint8_t* stateClass, uint8_t* initMessage)

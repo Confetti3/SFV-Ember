@@ -1,6 +1,7 @@
 #include "ember/SfvHud.hxx"
 
 #include "ember/EmberHost.hxx"
+#include "ember/SfvFrameMeter.hxx"
 #include "ember/SfvTraining.hxx"
 #include "mod/HudText.hxx"
 #include "mod/Log.hxx"
@@ -195,6 +196,9 @@ void DrawSfvTraining(const facade::PresentationSnapshot& frame, bool shellShown,
 	if (!shellShown && !paused && inRoom && !called) {
 		DrawRoomLine(sf4e::ui::DescribeTrainingRoom(snapshot.Room(), unread));
 	}
+	// Ember's frame meter (section 39), as SF4 Ember's Training HUD draws it,
+	// under neither the shell nor the game's pause menu.
+	if (!shellShown && !paused) DrawSfvFrameMeter();
 	if (!called) return;
 	sf4e::ui::ChallengerCall challenger;
 	if (inRoom) challenger = sf4e::ui::DescribeChallenger(snapshot.Room(), call);
