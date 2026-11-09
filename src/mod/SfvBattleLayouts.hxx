@@ -289,7 +289,14 @@ constexpr uint32_t kNodeFunction = 0x30;
 // 0x32EBD0): two PCs keep different values there while every fight run
 // matches (EMBER_LIBRARY.md section 47: four desyncs between two players'
 // PCs, each this run alone, the 521 others equal, through whole fights
-// once it is left out), so it is the camera's presentation as above; a
+// once it is left out), so it is the camera's presentation as above. Its
+// other runs (+0x318, +0x340, +0x3A0, +0x3D0, +0x450, +0x550) are the same
+// camera's: a V-Trigger's or Critical Art's camera moves them, and a
+// replayed stretch leaves them a few ulps apart while every fight run
+// matches (2026-11-09: the synctest with system moves, 1,162 rollbacks, only
+// +0x450 differing, in four replays, the first 37 frames after a V-Trigger;
+// a players' match ended "diverged" at the checkpoint 13 frames after one),
+// so the whole camera is restored and left out of the hash; a
 // projectile's visual part (ProjectileVisualPart+0xC0 and +0xF0: its UE
 // actor, reconciled after a restore by rva 0x482D10, so a replay can differ
 // in the actor pointer and a frame counter), and a fighter's material part
@@ -342,8 +349,15 @@ struct RunRule {
 };
 constexpr uint32_t kToTheEnd = ~0u;
 constexpr RunRule kRunRules[] = {
+	// The whole camera: every run its snapshot (rva 0x32EBD0) registers.
 	{"CameraUnit", 0x100, ".presentation"},
+	{"CameraUnit", 0x318, ".presentation"},
+	{"CameraUnit", 0x340, ".presentation"},
+	{"CameraUnit", 0x3A0, ".presentation"},
+	{"CameraUnit", 0x3D0, ".presentation"},
+	{"CameraUnit", 0x450, ".presentation"},
 	{"CameraUnit", 0x480, ".presentation"},
+	{"CameraUnit", 0x550, ".presentation"},
 	{"CharaManagerUnit", 0x1C0, "", 16, 32},
 	{"CharaMaterialPart", 0xD8, ".presentation"},
 	{"CharaMaterialPart", 0x3B0, ".presentation"},
