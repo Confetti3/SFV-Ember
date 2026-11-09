@@ -7,6 +7,7 @@
 #include "mod/VirtualPads.hxx"
 #include "mod/XInputHooks.hxx"
 
+#include "common/GamepadRumble.hxx"
 #include "common/SdlPadSource.hxx"
 
 #include <windows.h>
