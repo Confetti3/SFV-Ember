@@ -198,7 +198,9 @@ TEST_CASE("the stage row lists a stage the opponent lacks with the reason, leave
 	const std::vector<StageOption> stages = StageOptions({0, kUninstalledStage});
 	PlayerPick pick = PlayerPickOf(kRyu, kOneOne);
 	pick.stage = picks::kRandomStage;
-	const MenuEntry& row = RowOf(SfvSelectionScreen::Rows(pick, true, true, true, stages), "stage");
+	// The rows outlive the reference RowOf returns into them.
+	const std::vector<MenuEntry> rows = SfvSelectionScreen::Rows(pick, true, true, true, stages);
+	const MenuEntry& row = RowOf(rows, "stage");
 	REQUIRE(row.choices.size() == 3);
 	CHECK(row.choices[1].id == "#0");
 	CHECK_FALSE(row.choices[1].enabled);
