@@ -402,32 +402,47 @@ def _registry_dir() -> Path:
     return Path(os.environ.get("TEMP", str(BUILD_DIR)))
 
 
+def _safe_name(text: str) -> str:
+    return re.sub(r'[^A-Za-z0-9_.-]', '_', text)
+
+
 def registry_path() -> Path:
-    """The registry file of this run. Run ownership is mandatory: with no
+    """The registry folder of this run: one file per entry, so launches that
+    overlap never write the same file. Run ownership is mandatory: with no
     SFVE_RUN there is no registry (see the module docstring), so nothing is
     started or ended."""
     run = os.environ.get("SFVE_RUN")
     if not run:
         raise SfveError("no run: set SFVE_RUN, or call begin_run() / use_run() first")
-    return _registry_dir() / f"sfve-launched-{re.sub(r'[^A-Za-z0-9_.-]', '_', run)}.json"
+    return _registry_dir() / f"sfve-launched-{_safe_name(run)}"
 
 
-def _registered(path: Path) -> dict[str, list[Identity]]:
+def _read_entry(path: Path) -> list[Identity]:
+    try:
+        return [(int(pid), int(created)) for pid, created in json.loads(path.read_text())]
+    except (OSError, ValueError, TypeError):
+        return []
+
+
+def _registered(folder: Path) -> dict[str, list[Identity]]:
     """The copies a run started, by index: the identities of the process
     started and of the game it turned out to be."""
     try:
-        return {index: [(int(pid), int(created)) for pid, created in identities]
-                for index, identities in json.loads(path.read_text()).items()}
-    except (OSError, ValueError, TypeError, AttributeError):
+        return {entry.stem: _read_entry(entry) for entry in folder.glob("*.json")}
+    except OSError:
         return {}
 
 
 def _remember(key: int | str, *identities: Identity) -> None:
-    path = registry_path()
-    started = _registered(path)
+    folder = registry_path()
+    folder.mkdir(parents=True, exist_ok=True)
+    entry = folder / f"{_safe_name(str(key))}.json"
     # Kept beside an earlier entry under the key this run made: it is still ours to end.
-    started[str(key)] = list(dict.fromkeys(started.get(str(key), []) + list(identities)))
-    path.write_text(json.dumps(started))
+    merged = list(dict.fromkeys(_read_entry(entry) + list(identities)))
+    # Written beside the entry and moved over it, so a reader never sees half a file.
+    temp = entry.with_suffix(f".{os.getpid()}.tmp")
+    temp.write_text(json.dumps(merged))
+    os.replace(temp, entry)
 
 
 def track(label: str, pid: int) -> list[int]:
@@ -526,26 +541,30 @@ def launcher_log_path(index: int) -> Path:
 
 
 class _LogCursor:
-    """The lines a log gains after the cursor was made. The launcher opens its
-    log with rotate_on_open, so a launch can replace the file by a smaller
-    one: a new creation time, or a size below the position, starts over at
-    the top."""
+    """The lines a log gains after the cursor was made. The log is deleted
+    first, as launch does for the game's, so the launcher starts a new file
+    and every line of it is read from the top. A log that cannot be deleted
+    (it is open) is read from its current end, and a size below the position
+    (the launcher's rotate_on_open replaced it) starts over at the top."""
 
     def __init__(self, path: Path):
         self.path = path
-        self.created, self.offset = self._stat()
-
-    def _stat(self) -> tuple[int, int]:
         try:
-            st = self.path.stat()
+            path.unlink(missing_ok=True)
+            self.offset = 0
         except OSError:
-            return 0, 0
-        return st.st_ctime_ns, st.st_size  # creation time on Windows
+            self.offset = self._size()
+
+    def _size(self) -> int:
+        try:
+            return self.path.stat().st_size
+        except OSError:
+            return 0
 
     def new_lines(self) -> list[str]:
-        created, size = self._stat()
-        if created != self.created or size < self.offset:
-            self.created, self.offset = created, 0
+        size = self._size()
+        if size < self.offset:
+            self.offset = 0
         if size <= self.offset:
             return []
         try:
@@ -610,13 +629,13 @@ def kill_all(timeout_s: float = 15.0, all_runs: bool = False) -> list[int]:
     is left running, and so is a process that only has a recorded id's
     number now. `all_runs` also ends the copies other runs' registries
     still list, to clean up after a run that died. Returns the ids ended."""
-    paths = sorted(_registry_dir().glob("sfve-launched-*.json")) if all_runs else [registry_path()]
+    paths = [p for p in sorted(_registry_dir().glob("sfve-launched-*")) if p.is_dir()] if all_runs else [registry_path()]
     killed = _kill_tree([identity for path in paths for copy in _registered(path).values() for identity in copy])
     deadline = time.monotonic() + timeout_s
     while any(process_identity(pid) == (pid, created) for pid, created in killed) and time.monotonic() < deadline:
         time.sleep(0.2)
-    for path in paths:
-        path.unlink(missing_ok=True)
+    for folder in paths:
+        shutil.rmtree(folder, ignore_errors=True)
     return sorted(pid for pid, _ in killed)
 
 

@@ -24,9 +24,9 @@ struct SquareCrop {
 };
 
 // The face's square in a picture of 4-byte pixels whose fourth byte is alpha
-// (B8G8R8A8 or R8G8B8A8), rows `rowPitch` bytes apart. Empty when nothing is
-// painted, or the painted rows are narrower than a quarter of the picture,
-// so a picture that is not a card of this shape is drawn whole.
+// (B8G8R8A8 or R8G8B8A8), rows `rowPitch` bytes apart. Empty, so the picture
+// is drawn whole, when nothing is painted or the strip is under a quarter of
+// the width.
 std::optional<SquareCrop> FaceSquare(const std::uint8_t* pixels, int width, int height, std::size_t rowPitch);
 
 } // namespace sfve::adapter

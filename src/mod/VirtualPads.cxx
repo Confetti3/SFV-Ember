@@ -217,7 +217,9 @@ std::optional<HookFailure> InstallVirtualPads()
 	const UINT n = GetSystemDirectoryW(folder, MAX_PATH);
 	if (n == 0 || n >= MAX_PATH) {
 		Log("virtual pads: no system folder to find XInput in (Win32 %lu); the pads are the game's", GetLastError());
-		return HookFailure{"the system folder", MH_UNKNOWN};
+		// Not a hook that failed: no MinHook status exists, and the status reads
+		// "missing XInput (no system folder to find it in)".
+		return HookFailure{"XInput (no system folder to find it in)", MH_UNKNOWN};
 	}
 	// Every library's reads or none: with only some hooked, a read would get
 	// the virtual pads, the record and the pad filter through one library and

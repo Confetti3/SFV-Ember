@@ -192,10 +192,14 @@ extern "C" int SfveStart(int beforeGameCode)
 	// the background (Settings > Player), read once here, after the settings'
 	// move: a change to the setting takes effect at the next start.
 	const bool backgroundPlay = Config().backgroundPlay || sfve::adapter::SavedBackgroundPlay();
-	RegisterHookSetStatus("backgroundPlay", backgroundPlay ? HookSetState(InstallBackgroundPlay()) : "off");
+	std::string backgroundPlayState = "off";
+	if (backgroundPlay) backgroundPlayState = HookSetState(InstallBackgroundPlay());
+	RegisterHookSetStatus("backgroundPlay", std::move(backgroundPlayState));
 	// Instance 0 is a player's game, whose mutexes keep their names.
 	const int instance = Config().instance;
-	RegisterHookSetStatus("multiInstance", instance > 0 ? HookSetState(InstallMultiInstance(instance)) : "off");
+	std::string multiInstanceState = "off";
+	if (instance > 0) multiInstanceState = HookSetState(InstallMultiInstance(instance));
+	RegisterHookSetStatus("multiInstance", std::move(multiInstanceState));
 	// Without them every slot is the physical pad's, whatever -sfve_pads asked.
 	RegisterHookSetStatus("padHooks", HookSetState(InstallVirtualPads()));
 	for (int slot = 0; slot < kPadSlots; slot++) {

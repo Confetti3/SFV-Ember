@@ -99,16 +99,20 @@ TEST_CASE("the face is read row by row at the texture's own pitch")
 	CHECK(face->side == expected->side);
 }
 
-TEST_CASE("a hole in the paint or a ragged top does not move the face")
+TEST_CASE("an unpainted middle row, a hole on a row's edge or a ragged top does not move the face")
 {
 	Picture card = SlantedCard();
 	const std::optional<SquareCrop> clean = card.Face();
-	// CHUN-LI's card has transparent bits inside it, and RYU's hair spikes above its top rows.
-	for (int y = 75; y < 85; y++)
-		for (int x = 65; x < 72; x++) card.Alpha(x, y) = 0;
+	REQUIRE(clean);
+	// CHUN-LI's card has transparent bits in it, and RYU's hair spikes above its top rows.
+	// The square's middle row is unpainted, so the nearest painted row stands in for it.
+	const int middle = clean->y + clean->side / 2;
+	for (int x = 0; x < kWidth; x++) card.Alpha(x, middle) = 0;
+	// A few rows below it lose their first columns: their spans, not the strip's median, change.
+	for (int y = middle + 3; y < middle + 9; y++)
+		for (int x = StripLeft(y) - 1; x < StripLeft(y) + 5; x++) card.Alpha(x, y) = 0;
 	for (int x = 20; x < 40; x += 4) card.Alpha(x, 0) = 255;
 	const std::optional<SquareCrop> marked = card.Face();
-	REQUIRE(clean);
 	REQUIRE(marked);
 	CHECK(std::abs(marked->x - clean->x) <= 1);
 	CHECK(std::abs(marked->y - clean->y) <= 1);

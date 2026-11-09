@@ -445,7 +445,7 @@ bool InstallNetGuard()
 
 	// One set: every route on a module that loads, or the guard is not in and
 	// the caller ends the process. An export missing from a loaded module
-	// fails the set too (HookTransaction::Add), so no route is left open.
+	// fails the set too, at Commit, so no route is left open.
 	HookTransaction guard;
 	for (const HookSpec& h : hooks) {
 		// Loading the module now means a later load by the game finds it
