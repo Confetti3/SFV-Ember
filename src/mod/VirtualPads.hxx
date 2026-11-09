@@ -8,6 +8,10 @@
 // queue of timed steps ("A for 100 ms, nothing for 200 ms"), whatever the
 // physical pad does. Several game copies on one PC each drive their own
 // virtual pad, so menus can be walked without anyone at the keyboard.
+//
+// The same hooks answer for the controller layer (mod/PadLayer): a slot it
+// holds reads its pad, after a virtual pad and before XInput, and its
+// XInputGetCapabilities and XInputSetState are the layer's too.
 
 #include "mod/GameHooks.hxx"
 
@@ -67,6 +71,24 @@ PadSeen LastPadState(int slot);
 // straight through, never counted as reads).
 uint64_t PadReads(int slot);
 uint64_t NestedPadReads();
+
+// UE4 looks for newly connected pads only when Windows reports a device
+// change (the game reads a slot that was not connected only after
+// WM_DEVICECHANGE, rva 0x11D7C20), so a pad that appears later, virtual or
+// the controller layer's, has to say so. Posts it to every window of this
+// process; the number of the engine's own (class UnrealWindow) among them,
+// 0 before the game's window exists (the splash screen's ignores it).
+int AnnounceDeviceChange();
+
+// The calling thread's XInput calls go straight to the library from now on:
+// no virtual pad, no layer slot, no record and no filter. For the controller
+// layer's thread (mod/SdlPads), whose reads are never the game's.
+void PassPadReadsThrough();
+
+// Whether XInput itself has a pad in a slot, read beneath the hooks: a real
+// XInput pad, never a virtual one or the controller layer's. False before the
+// hooks are in. Any thread; reads the hardware, so not on every frame.
+bool PhysicalPadConnected(int slot);
 
 // Button names: A B X Y UP DOWN LEFT RIGHT START BACK LB RB LS RS LT RT.
 bool ParseButtons(const std::string& text, PadStep* out);

@@ -43,6 +43,7 @@
 #include "mod/NetplayMode.hxx"
 #include "mod/OfflineDialogs.hxx"
 #include "mod/ProjectileRelease.hxx"
+#include "mod/SdlPads.hxx"
 #include "mod/SfvOffsets.hxx"
 #include "mod/StartClaim.hxx"
 #include "mod/SyncTestMode.hxx"
@@ -217,11 +218,20 @@ extern "C" int SfveStart(int beforeGameCode)
 	if (instance > 0) multiInstanceState = HookSetState(InstallMultiInstance(instance));
 	RegisterHookSetStatus("multiInstance", std::move(multiInstanceState));
 	// Without them every slot is the physical pad's, whatever -sfve_pads asked.
-	RegisterHookSetStatus("padHooks", HookSetState(InstallVirtualPads()));
+	const std::optional<HookFailure> padHooksMissing = InstallVirtualPads();
+	RegisterHookSetStatus("padHooks", HookSetState(padHooksMissing));
 	for (int slot = 0; slot < kPadSlots; slot++) {
 		if (Config().virtualPadMask & (1u << slot)) SetVirtualPad(slot, true);
 	}
 	RegisterPadCommands();
+	// The controller layer (EMBER_LIBRARY.md section 49): pads the game
+	// cannot read through XInput, read by SDL on a thread of its own and
+	// answered through the pad hooks, so it needs them. The player's saved
+	// setting, read once here like Play in the background; whatever the
+	// build check below says, as the pads' hooks are.
+	RegisterSdlPadStatus();
+	if (padHooksMissing) NoSdlPads("pads: no controller layer without the pad hooks; the game reads the pads itself");
+	else StartSdlPads(sfve::adapter::SavedControllerLayer());
 	StartControlPipe(Config().instance);
 
 	std::string detail;

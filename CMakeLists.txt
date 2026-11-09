@@ -22,6 +22,10 @@ find_package(doctest CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(CLI11 CONFIG REQUIRED)
+# The controller layer's SDL (src/mod/SdlPads.cxx; EMBER_LIBRARY.md section
+# 48), a static library like every package of the triplet: no SDL3.dll
+# comes with the mod.
+find_package(SDL3 CONFIG REQUIRED)
 # Detours starts the game with the mod in its imports (src/launcher/SfvLaunch.cxx).
 find_path(DETOURS_INCLUDE_DIR detours/detours.h REQUIRED)
 find_library(DETOURS_LIBRARY detours REQUIRED)
@@ -180,8 +184,8 @@ add_library(sfve_ember_test_mod OBJECT
     src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/FighterReader.cxx src/mod/GameArt.cxx
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx
-    src/mod/ModConfig.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx src/mod/SfvRegionNames.cxx
-    src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx)
+    src/mod/ModConfig.cxx src/mod/PadLayer.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx
+    src/mod/SfvRegionNames.cxx src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx)
 target_link_libraries(sfve_ember_test_mod PUBLIC sfve_ember minhook::minhook)
 # The runtime under SFV's definitions, with nothing of SF4's roster, stages
 # or custom content: SFV's catalog (SfvCatalog.cxx) answers every pick check.
@@ -206,6 +210,7 @@ add_executable(sfve_ember_tests
     tests/CrashRecordTests.cxx
     tests/LocaleOverlayTests.cxx
     tests/VirtualPadsTests.cxx
+    tests/PadLayerTests.cxx
     tests/HookTransactionTests.cxx
     tests/SfvFlowTests.cxx
     tests/SfvFrameMeterTests.cxx
@@ -246,6 +251,8 @@ add_library(sfv_ember SHARED
     src/mod/CrashRecord.cxx
     src/mod/VersusLaunch.cxx
     src/mod/VirtualPads.cxx
+    src/mod/PadLayer.cxx
+    src/mod/SdlPads.cxx
     src/mod/NetGuard.cxx
     src/mod/OfflineDialogs.cxx
     src/mod/BuildCheck.cxx
@@ -272,7 +279,7 @@ add_library(sfv_ember SHARED
     src/mod/GameExit.cxx
     src/mod/FighterReader.cxx
     src/mod/HudText.cxx)
-target_link_libraries(sfv_ember PRIVATE sfve_ember dbghelp)
+target_link_libraries(sfv_ember PRIVATE sfve_ember dbghelp SDL3::SDL3-static)
 target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")
 # Ember's own pictures the shell draws beside the mod (overlay/Overlay.hxx):
 # the button prompts and the flags, and SFV Ember's own menu backdrop
