@@ -1,4 +1,4 @@
-"""A room link from the browser reaches a running SFV Ember.
+"""Links from the browser reach a running SFV Ember.
 
   python tools/runlink.py [--shots DIR]
 
@@ -15,6 +15,10 @@ Launcher.exe to the game another one started.
    room link arrived from the browser" in the mod's log) while copy 0 stays
    in its room. Its own "Handed the room link to the running game" line is
    printed when it can be found (section 29: the second launcher's log).
+4. The same with a match link, ember-sfv://tournament/open?bridge=..&match=..
+   (section 31), for a made-up service and match: the runtime must take it
+   ("Tournament: a link opened match ...") and, the copy being in a room,
+   hold it for Play, so no bridge is asked.
 
 Prints what it saw, and PASS or FAIL; copy 0 is closed at the end.
 """
@@ -33,9 +37,19 @@ import sfvelib as lib  # noqa: E402
 
 # A code of the right shape (12 Crockford base32 symbols) that no room has.
 CODE = "7Q4M-2KXD-9FNB"
+# A service and a match of the right shape that no bridge has: the copy is in
+# its room, so the link waits for Play and nothing is looked up.
+BRIDGE = "brg_6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5"
+MATCH = "emt_0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d"
 SCHEME = "ember-sfv"
-ARRIVED = "Room: a room link arrived from the browser"
-HANDED = "Handed the room link to the running game"
+# Each link the second launcher hands over: the link, what it is called in
+# the launcher's "Handed the ... to the running game", and the runtime's line
+# when it takes it.
+LINKS = (
+    (f"{SCHEME}://join/{CODE}", "room link", "Room: a room link arrived from the browser"),
+    (f"{SCHEME}://tournament/open?bridge={BRIDGE}&match={MATCH}", "tournament match link",
+     f"Tournament: a link opened match {MATCH}"),
+)
 
 
 def status(index: int) -> dict:
@@ -51,6 +65,32 @@ def wait_for(what: str, timeout_s: float, done) -> None:
     raise lib.SfveError(f"timed out waiting for {what}")
 
 
+def hand_over(launcher: Path, link: str, what: str, arrived: str, failures: list[str]) -> None:
+    """A second Launcher.exe started with `link`, as the browser starts it:
+    it must hand the link to the running game and exit 0, and the game's
+    runtime must take it."""
+    second = subprocess.run([str(launcher), "--join-link", link], capture_output=True, text=True, timeout=60)
+    print(f"{what}: second launcher exit code {second.returncode}")
+    # The second launcher's lines: in the launcher log (each start rotates
+    # it), or on its own output when its log could not be opened.
+    launcher_log = lib.LOG_DIR / "launcher.log"
+    logged = launcher_log.read_text(errors="replace") if launcher_log.exists() else ""
+    text = "\n".join((logged, second.stdout, second.stderr))
+    handed = f"Handed the {what} to the running game"
+    for entry in text.splitlines():
+        if handed in entry or "Started with" in entry or "already running" in entry:
+            print(f"launcher: {entry.strip()}")
+    if second.returncode != 0:
+        failures.append(f"the second launcher exited with {second.returncode} for the {what}")
+    if handed not in text:
+        print(f"note: no '{handed}' line in the launcher's log or the second launcher's output")
+    try:
+        wait_for(f"the runtime to take the {what}", 15, lambda: lib.count_log(0, arrived) > 0)
+        print(f"mod: {arrived}")
+    except lib.SfveError as error:
+        failures.append(str(error))
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="runlink")
     p.add_argument("--shots", type=Path)
@@ -59,7 +99,6 @@ def main(argv: list[str]) -> int:
         print("FAIL: set SFVE_VIA=launcher (and SFVE_PACKAGE_DIR): links go between launchers")
         return 1
     launcher = lib.PACKAGE_DIR / "Launcher.exe"
-    launcher_log = lib.LOG_DIR / "launcher.log"
     failures: list[str] = []
 
     shown = subprocess.run([str(launcher), "--help"], capture_output=True, text=True, timeout=30)
@@ -80,32 +119,12 @@ def main(argv: list[str]) -> int:
         lib.boot_to_menu(0, shot_on_timeout=Path(r"D:\sfv-re\shots\runlink-boot.png"), bring_to_front=False)
         wait_for("the room", 30, lambda: lib.request(0, "room 1 30").startswith("ok"))
         wait_for("copy 0 in its room", 60, lambda: status(0)["room"]["room"] == "joined")
-        log_from = launcher_log.stat().st_size if launcher_log.exists() else 0
-        link = f"{SCHEME}://join/{CODE}"
-        second = subprocess.run([str(launcher), "--join-link", link], capture_output=True, text=True, timeout=60)
-        print(f"second launcher exit code: {second.returncode}")
-        # The second launcher's lines: in the shared log, or, when its log
-        # could not be opened beside the first launcher's, on its own output.
-        text = launcher_log.read_text(errors="replace")[log_from:] if launcher_log.exists() else ""
-        text += "\n" + second.stdout + "\n" + second.stderr
-        for entry in text.splitlines():
-            if "link" in entry or "already running" in entry or "log" in entry.lower():
-                print(f"launcher: {entry.strip()}")
-        if second.returncode != 0:
-            failures.append(f"the second launcher exited with {second.returncode}")
-        if HANDED not in text:
-            print(f"note: no '{HANDED}' line in the launcher's log or the second launcher's output")
-        try:
-            wait_for("the runtime to take the link", 15, lambda: lib.count_log(0, ARRIVED) > 0)
-        except lib.SfveError as error:
-            failures.append(str(error))
-        for entry in lib.tail(0, 400):
-            if "link" in entry.lower():
-                print(f"mod: {entry}")
+        for link, what, arrived in LINKS:
+            hand_over(launcher, link, what, arrived, failures)
         room = status(0)["room"]
         print(f"copy 0 after the link: room {room.get('room')}, notice '{room.get('notice', '')}'")
         if room.get("room") != "joined":
-            failures.append("copy 0 left its room when the link arrived")
+            failures.append("copy 0 left its room when the links arrived")
         if a.shots:
             a.shots.mkdir(parents=True, exist_ok=True)
             time.sleep(1)
@@ -115,7 +134,7 @@ def main(argv: list[str]) -> int:
     finally:
         lib.kill_all()
 
-    print(f"FAIL: {'; '.join(failures)}" if failures else f"PASS: {SCHEME}:// link handed to the running game and taken")
+    print(f"FAIL: {'; '.join(failures)}" if failures else f"PASS: {SCHEME}:// room and match links handed to the running game and taken")
     return 1 if failures else 0
 
 
