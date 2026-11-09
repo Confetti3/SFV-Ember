@@ -23,21 +23,23 @@ namespace sfve::mod {
 
 // Where one battle keeps the state its snapshot leaves out: the rule unit,
 // the match data, the battle frame, the input unit, the exe's base and each
-// fighter's status part.
+// fighter's parts that sfv::kPartRunsOutsideSnapshot names, by its row (0:
+// the fighter has no such part).
+constexpr size_t kMaxPartRuns = 4;
 struct OutsideState {
 	uintptr_t ruleUnit = 0;
 	uintptr_t battleData = 0;
 	uintptr_t battleFrame = 0;
 	uintptr_t inputUnit = 0;
 	uintptr_t base = 0;
-	uintptr_t statusParts[2] = {};
+	uintptr_t fighterParts[2][kMaxPartRuns] = {};
 };
 
 // Adds what a battle tick changes that the game's snapshot leaves out: its
 // netcode manages the counters itself, its own rollback never crossed a
-// round's end, which is where most of the rest changes, and its status
-// part's registration stops short of two holds a move sets
-// (sfv::statuspart). The counters' per-process
+// round's end, which is where most of the rest changes, and some parts'
+// registrations stop short of state a move sets
+// (sfv::kPartRunsOutsideSnapshot). The counters' per-process
 // values (the updates each process ran before binding, a clock reading) are
 // left out of the hash peers compare.
 void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& where);

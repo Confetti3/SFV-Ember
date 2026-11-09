@@ -29,9 +29,12 @@ std::string MakeLayoutRulesId()
 {
 	// The outside state laid out at fixed made-up addresses, so each region's
 	// place in its object (its offset) is hashed with its size, flags and masks.
+	OutsideState where = {0x10000000, 0x20000000, 0x30000000, 0x40000000, 0x50000000};
+	for (size_t fighter = 0; fighter < std::size(where.fighterParts); fighter++) {
+		for (size_t row = 0; row < kMaxPartRuns; row++) where.fighterParts[fighter][row] = 0x60000000 + (fighter * kMaxPartRuns + row) * 0x1000000;
+	}
 	StateLayout outside;
-	AddStateOutsideTheGameSnapshot(outside,
-		{0x10000000, 0x20000000, 0x30000000, 0x40000000, 0x50000000, {0x60000000, 0x70000000}});
+	AddStateOutsideTheGameSnapshot(outside, where);
 	std::string text = "outside " + Hex(outside.LayoutId());
 	for (const StateRegion& region : outside.Regions()) text += " " + region.name + "@" + Hex(reinterpret_cast<uintptr_t>(region.ptr));
 	text += "; runs";
@@ -74,9 +77,14 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 	}
 	layout.Add("battledata.judgement", At(where.battleData, bd::kDecided), bd::kResults + bd::kResultsSize - bd::kDecided);
 	layout.Add("battledata.flowflags", At(where.battleData, bd::kFlowFlags), bd::kFlowFlagsSize);
-	for (size_t i = 0; i < std::size(where.statusParts); i++) {
-		layout.Add("CharaUnit[" + std::to_string(i) + "].CharaStatusPart.holds",
-			At(where.statusParts[i], sfv::statuspart::kHolds), sfv::statuspart::kHoldsSize);
+	static_assert(std::size(sfv::kPartRunsOutsideSnapshot) <= kMaxPartRuns);
+	for (size_t fighter = 0; fighter < std::size(where.fighterParts); fighter++) {
+		for (size_t row = 0; row < std::size(sfv::kPartRunsOutsideSnapshot); row++) {
+			const sfv::PartRun& run = sfv::kPartRunsOutsideSnapshot[row];
+			if (!where.fighterParts[fighter][row]) continue;
+			layout.Add("CharaUnit[" + std::to_string(fighter) + "]." + run.name, At(where.fighterParts[fighter][row], run.offset),
+				run.size);
+		}
 	}
 }
 

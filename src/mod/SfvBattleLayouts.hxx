@@ -146,24 +146,41 @@ namespace ruleunit {
 constexpr uint32_t kJudgeState = 248;
 } // namespace ruleunit
 
-// Two holds of a fighter's CharaStatusPart (fighter::kStatusPartType) that
-// its snapshot leaves out: it registers +0x32C, +0x330 and +0x334 (rva
-// 0x354260) and stops there. +0x338 is set to 1 by a move script's command
-// (rva 0x328D60, in the command table rva 0x317580) and cleared with +0x334
-// by the status reset (rva 0x362850); the fight reads it in "is the
-// V-Trigger running" (rva 0x372940) and in a V-Trigger's per-frame update
-// (rva 0x3C0FF0), which sets or clears bit 0 of +0x110, the hold that stops
-// the V-Trigger timer draining (rva 0x3632E0, 0x361590). A rollback to
-// before the command kept its 1, so the replayed frames held the timer
-// where the played ones had not (2026-11-09 sweep: Z38 against Z39,
-// CharaStatusPart+0xC0's +0x50, that is +0x110, 0 played and 1 replayed,
-// three times). +0x33C is set by rva 0x34F330, cleared by rva 0x351760 and
-// gates the fighter's pending status effects (rva 0x344F40), so it is
-// restored with it.
-namespace statuspart {
-constexpr uint32_t kHolds = 0x338;
-constexpr uint32_t kHoldsSize = 8;
-} // namespace statuspart
+// Fighter state the game's snapshot leaves out, by the part that holds it:
+// each fighter's part of that type, if it has one, gets the run saved,
+// restored and hashed as state outside the snapshot (SfvLayoutRules).
+//
+// CharaStatusPart registers +0x32C, +0x330 and +0x334 (rva 0x354260) and
+// stops there. +0x338 is set to 1 by a move script's command (rva 0x328D60,
+// in the command table rva 0x317580) and cleared with +0x334 by the status
+// reset (rva 0x362850); the fight reads it in "is the V-Trigger running"
+// (rva 0x372940) and in Z39's per-frame V-Trigger update (rva 0x3C0FF0),
+// which sets or clears bit 0 of +0x110, the hold that stops the V-Trigger
+// timer draining (rva 0x3632E0, 0x361590). A rollback to before the command
+// kept its 1, so the replayed frames held the timer where the played ones
+// had not (2026-11-09 sweep: Z38 against Z39, CharaStatusPart+0xC0's +0x50,
+// that is +0x110, 0 played and 1 replayed, three times). +0x33C is set by
+// rva 0x34F330, cleared by rva 0x351760 and gates the fighter's pending
+// status effects (rva 0x344F40).
+//
+// Z39's CharaUniquePart (type 0x3A682D0) registers +0xF0..+0x464 only. Its
+// tick (rva 0x3BF4B0, then 0x3C1300) counts +0x61C down each frame, a delay
+// its moves set (rva 0x3AD7E0, 0x3A8670, 0x3C73F0); rva 0x3C1990 applies a
+// mode change (+0x444 into +0x448, and to a state object in the snapshot
+// through rva 0x43D440) only once it is 0. A rollback kept the later, lower
+// count, so a replay applied the change sooner (2026-11-09 sweep: Z39
+// against Z40, the part's +0x448 0 played and 4 replayed, and that object's
+// 8-byte run 6 and 0x2B, one replay).
+struct PartRun {
+	uint32_t partType; // the part's type id (GameFindPart)
+	uint32_t offset;
+	uint32_t size;
+	const char* name; // the region's name after "CharaUnit[i]."
+};
+constexpr PartRun kPartRunsOutsideSnapshot[] = {
+	{fighter::kStatusPartType, 0x338, 8, "CharaStatusPart.holds"},
+	{0x3A682D0, 0x61C, 4, "CharaUniquePart@0x3A682D0.delay"},
+};
 
 // A projectile's ProjectileVisualPart: its UE particle actor and the state
 // of that actor (+232): 1 to create it, 2 playing, 3 the projectile died

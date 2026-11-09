@@ -63,16 +63,20 @@ bool SfvAdapter::Bind()
 		WaitingToBind(!flowUnit ? "the flow unit" : !ruleUnit ? "the versus rule unit" : "the match data");
 		return false;
 	}
-	uintptr_t statusParts[kPlayers] = {};
+	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	OutsideState outside = {reinterpret_cast<uintptr_t>(ruleUnit), reinterpret_cast<uintptr_t>(battleData),
+		reinterpret_cast<uintptr_t>(battleFrame_), reinterpret_cast<uintptr_t>(inputUnit_), base};
 	for (int index = 0; index < kPlayers; index++) {
 		uint8_t* chara = GameFindUnit(rollbackUnit_, sfv::unit::kCharaUnitType, (uint32_t)index);
-		statusParts[index] = reinterpret_cast<uintptr_t>(chara ? GameFindPart(chara, sfv::fighter::kStatusPartType) : nullptr);
-		if (!statusParts[index]) {
-			WaitingToBind("both fighters' status parts");
+		if (!chara) {
+			WaitingToBind("both fighters");
 			return false;
 		}
+		for (size_t row = 0; row < std::size(sfv::kPartRunsOutsideSnapshot); row++) {
+			outside.fighterParts[index][row] =
+				reinterpret_cast<uintptr_t>(GameFindPart(chara, sfv::kPartRunsOutsideSnapshot[row].partType));
+		}
 	}
-	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
 	gameInstance_ = reinterpret_cast<uint8_t* (*)()>(base + sfv::kGameInstance.rva);
 	if (!flow_.Bind(flowUnit, base)) {
 		WaitingToBind("a flow it can record");
@@ -89,9 +93,7 @@ bool SfvAdapter::Bind()
 	}
 	gameRegions_ = layout_.Regions().size();
 	CollectPostRestore(manager);
-	AddStateOutsideTheGameSnapshot(layout_, {reinterpret_cast<uintptr_t>(ruleUnit), reinterpret_cast<uintptr_t>(battleData),
-		reinterpret_cast<uintptr_t>(battleFrame_), reinterpret_cast<uintptr_t>(inputUnit_), base,
-		{statusParts[0], statusParts[1]}});
+	AddStateOutsideTheGameSnapshot(layout_, outside);
 	flow_.AddTo(layout_);
 	battleData_ = battleData;
 	bound_ = true;
