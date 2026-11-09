@@ -660,7 +660,9 @@ TEST_CASE("the product is SFV Ember, with names of its own")
 	CHECK(std::string(product.branding.gameName) == "Street Fighter V");
 	// Its own look (EMBER_LIBRARY.md section 17): the gold accent, its theme and ground.
 	CHECK(product.branding.accent == 0xDDB961u);
-	CHECK((product.branding.theme != nullptr && product.branding.theme->underlineFocus));
+	CHECK((product.branding.theme != nullptr && product.branding.theme->barFocus));
+	// The focused ground is a step above hover, not the darkest tone (section 36).
+	CHECK(product.branding.theme->header == 0x45433Du);
 	CHECK(std::wstring(product.branding.menuBackdrop) == L"brand/sfv-ember-menu-background.png");
 	CHECK(product.branding.markSize == 128);
 	CHECK(product.branding.mark != nullptr);
