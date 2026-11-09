@@ -14,6 +14,9 @@ namespace sfve {
 namespace {
 
 constexpr size_t kChunk = 4096; // bytes masked and hashed at a time
+// The most of an 8-byte word that starts in a chunk and ends past it: each
+// chunk is read with that much of the next, so its words are tested whole.
+constexpr size_t kLookahead = 7;
 
 // Order-independent combination of one region's hash into the total.
 uint64_t Mix(uint64_t regionHash, uint64_t size)
@@ -48,26 +51,36 @@ void Mark(std::vector<uint64_t>& marks, size_t unitIndex)
 
 } // namespace
 
-// Zeroes the 8 bytes at every 4-byte-aligned position of `bytes` (copied
-// from address `at`) that hold an address: a region may start anywhere in an
-// object, and packed structures keep addresses on 4-byte boundaries. The
-// original bytes are tested, so zeroing one word cannot hide or create
-// another. The position 4 bytes into an address is not tested: its low half
-// is that address's high half, and with a small value after it the pair can
-// look like an address in one process and not in another (a heap address's
-// high half is 0x204 in one, 0x246 in the other). Words cut by the chunk's
-// edges are left alone.
-void StateLayout::ZeroAddresses(uint8_t* bytes, size_t n, uintptr_t at) const
+// Zeroes the 8 bytes at every position that holds an address. Positions are
+// the region's 4-byte boundaries by real address: a region may start anywhere
+// in an object, and packed structures keep addresses on 4-byte boundaries.
+// The region is tested in one pass from its start, whatever windows it is
+// read in: `window` holds region bytes at..at+n, the positions from `next`
+// whose whole word lies in it are tested, and the position to test after them
+// is returned for the next window. When the previous window's final address
+// ran past its end (`next` beyond `at`), the rest of it is zeroed here.
+//
+// The position 4 bytes into an address is not tested: its low half is that
+// address's high half, and with a small value after it the pair can look like
+// an address in one process and not in another (a heap address's high half is
+// 0x204 in one, 0x246 in the other). So the scan resumes after each address,
+// which also means no word it tests holds a byte it has already zeroed. Words
+// cut by the region's own ends are left alone.
+size_t StateLayout::ZeroAddresses(uint8_t* window, size_t at, size_t n, size_t next) const
 {
-	uint8_t original[kChunk];
-	memcpy(original, bytes, n);
-	for (size_t off = (4 - (at & 3)) & 3; off + 8 <= n; off += 4) {
+	if (next > at) memset(window, 0, next - at);
+	while (next + 8 <= at + n) {
+		uint8_t* word = window + (next - at);
 		uint64_t value;
-		memcpy(&value, original + off, 8);
-		if (!addressTest_(value)) continue;
-		memset(bytes + off, 0, 8);
-		off += 4; // past the address's high half
+		memcpy(&value, word, 8);
+		if (addressTest_(value)) {
+			memset(word, 0, 8);
+			next += 8;
+		} else {
+			next += 4;
+		}
 	}
+	return next;
 }
 
 void StateLayout::Clear()
@@ -150,20 +163,21 @@ uint64_t StateLayout::HashRegion(size_t index, const uint8_t* bytes, HashScope s
 	const StateRegion& r = regions_[index];
 	XXH3_state_t state;
 	XXH3_64bits_reset(&state);
-	alignas(8) uint8_t chunk[kChunk];
-	// After the first chunk every chunk starts at a real 8-byte boundary, so
-	// no address word is cut by a chunk edge (only by the region's own ends).
-	const size_t misalignment = reinterpret_cast<uintptr_t>(r.ptr) & 7;
-	size_t n = 0;
-	for (size_t at = 0; at < r.size; at += n) {
-		n = (at == 0 ? kChunk - misalignment : kChunk);
-		if (n > r.size - at) n = r.size - at;
-		memcpy(chunk, bytes + at, n);
+	// Each chunk is read with the start of the next, so an address across
+	// their edge is tested whole, and what is zeroed does not depend on where
+	// the chunks fall: the hash is the whole region's, masked and with its
+	// addresses zeroed.
+	uint8_t window[kChunk + kLookahead];
+	size_t next = (4 - (reinterpret_cast<uintptr_t>(r.ptr) & 3)) & 3; // the first 4-byte boundary
+	for (size_t at = 0; at < r.size; at += kChunk) {
+		const size_t n = std::min(kChunk, r.size - at);
+		const size_t read = std::min(n + kLookahead, r.size - at);
+		memcpy(window, bytes + at, read);
 		// Masked words and dwords (region-relative) read as zero.
-		ZeroMarked(chunk, at, n, r.ignore, 8);
-		if (scope == HashScope::Peers) ZeroMarked(chunk, at, n, r.peerIgnore, 4);
-		if (addressTest_) ZeroAddresses(chunk, n, reinterpret_cast<uintptr_t>(r.ptr) + at);
-		XXH3_64bits_update(&state, chunk, n);
+		ZeroMarked(window, at, read, r.ignore, 8);
+		if (scope == HashScope::Peers) ZeroMarked(window, at, read, r.peerIgnore, 4);
+		if (addressTest_) next = ZeroAddresses(window, at, read, next);
+		XXH3_64bits_update(&state, window, n);
 	}
 	return XXH3_64bits_digest(&state);
 }

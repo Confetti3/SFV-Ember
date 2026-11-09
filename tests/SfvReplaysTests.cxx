@@ -178,9 +178,26 @@ TEST_CASE("the Replays screen lists the saved battles, keeps the player's mark a
 	replays.Start(add, true, true);
 	CHECK(replays.Status().noticeError);
 
+	// A file in a folder that is not there is refused as one that cannot be
+	// read, never thrown out of the request: a parent that was never made...
+	const fs::path nowhere = folder / L"gone" / L"gone.sfvreplay";
+	watch.path = sf4e::platform::WideToUtf8(nowhere.wstring());
+	CHECK_NOTHROW(replays.Start(watch, true, true));
+	CHECK(replays.Status().notice == sf4e::loc::T("inputs.unreadable_detail"));
+	CHECK_NOTHROW(replays.MarkKept(nowhere, true));
+	CHECK_FALSE(fs::exists(folder / L"gone"));
+
+	// ...or the replay folder itself, taken away after it was listed.
 	replays.StopListing();
-	SetEnvironmentVariableW(L"SFVE_REPLAY_DIR", nullptr);
 	fs::remove_all(folder, ignored);
+	REQUIRE_FALSE(fs::exists(folder));
+	CHECK_NOTHROW(replays.MarkKept(fileOne, true));
+	watch.path = sf4e::platform::WideToUtf8(fileOne.wstring());
+	CHECK_NOTHROW(replays.Start(watch, true, true));
+	CHECK(replays.Status().step == sf4e::replaystore::Step::Idle);
+	CHECK_FALSE(fs::exists(folder));
+
+	SetEnvironmentVariableW(L"SFVE_REPLAY_DIR", nullptr);
 }
 
 } // namespace

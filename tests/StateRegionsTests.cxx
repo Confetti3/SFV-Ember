@@ -261,3 +261,76 @@ TEST_CASE("an address's high half and the value after it are not taken for anoth
 	two[8] = 1; // the value itself still counts
 	CHECK(a.HashLive() != b.HashLive());
 }
+
+namespace {
+// Zeroed storage that really is 8-aligned, so a region's real alignment is
+// the offset it is given into it.
+std::vector<uint64_t> Words(size_t bytes) { return std::vector<uint64_t>((bytes + 7) / 8, 0); }
+uint8_t* Bytes(std::vector<uint64_t>& words) { return reinterpret_cast<uint8_t*>(words.data()); }
+
+uint64_t HashWithAddresses(uint8_t* region, size_t size)
+{
+	StateLayout layout;
+	layout.Add("r", region, size);
+	layout.SetAddressTest(HeapLike);
+	return layout.HashLive();
+}
+} // namespace
+
+TEST_CASE("an address across the edge of two hashed chunks hashes as zero, and what follows it still counts")
+{
+	// At offset 4092 of an aligned region, an address's low half ends the
+	// first 4 KB chunk and its high half starts the next. The two processes'
+	// high halves differ as in the test above, and with the value after them
+	// one would pass for an address if read 4 bytes in.
+	auto one = Words(8192), two = Words(8192);
+	const uint64_t addressOne = 0x00000204F5F982A4ull, addressTwo = 0x00000246994182A4ull;
+	const uint32_t value = 0x640;
+	memcpy(Bytes(one) + 4092, &addressOne, 8);
+	memcpy(Bytes(two) + 4092, &addressTwo, 8);
+	memcpy(Bytes(one) + 4100, &value, 4);
+	memcpy(Bytes(two) + 4100, &value, 4);
+	const uint64_t h = HashWithAddresses(Bytes(one), 8192);
+	CHECK(HashWithAddresses(Bytes(two), 8192) == h);
+
+	StateLayout layout;
+	layout.Add("r", Bytes(two), 8192);
+	layout.SetAddressTest(HeapLike);
+	std::vector<uint8_t> saved(layout.TotalSize());
+	layout.SaveTo(saved.data());
+	CHECK(layout.HashSaved(saved.data()) == h);
+
+	Bytes(two)[4100] = 1; // the value right after the address
+	CHECK(HashWithAddresses(Bytes(two), 8192) != h);
+}
+
+TEST_CASE("an address across a chunk edge hashes as zero in an unaligned region too")
+{
+	// A region 1 byte past an 8-byte boundary: its 4-byte boundaries are at
+	// offsets 3, 7, ..., and the address at 4095 has 7 of its bytes in the
+	// second chunk.
+	auto one = Words(8192), two = Words(8192);
+	uint8_t* regionOne = Bytes(one) + 1;
+	uint8_t* regionTwo = Bytes(two) + 1;
+	const uint64_t addressOne = 0x00000204F5F982A4ull, addressTwo = 0x00000246994182A4ull;
+	memcpy(regionOne + 4095, &addressOne, 8);
+	memcpy(regionTwo + 4095, &addressTwo, 8);
+	CHECK(HashWithAddresses(regionOne, 8000) == HashWithAddresses(regionTwo, 8000));
+	regionTwo[4103] = 1; // the byte right after the address
+	CHECK(HashWithAddresses(regionOne, 8000) != HashWithAddresses(regionTwo, 8000));
+}
+
+TEST_CASE("the dword after an address that ends a chunk is tested on its own")
+{
+	// An address ends the first chunk and a small value starts the next. Read
+	// 4 bytes into the address, across the edge, the pair would pass for an
+	// address (high half 0x204, then 0x204 or 0x208) and hide the value.
+	auto one = Words(8192), two = Words(8192);
+	const uint64_t address = 0x00000204F5F982A4ull;
+	const uint32_t valueOne = 0x204, valueTwo = 0x208;
+	memcpy(Bytes(one) + 4088, &address, 8);
+	memcpy(Bytes(two) + 4088, &address, 8);
+	memcpy(Bytes(one) + 4096, &valueOne, 4);
+	memcpy(Bytes(two) + 4096, &valueTwo, 4);
+	CHECK(HashWithAddresses(Bytes(one), 8192) != HashWithAddresses(Bytes(two), 8192));
+}

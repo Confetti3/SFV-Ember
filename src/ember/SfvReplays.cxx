@@ -83,7 +83,10 @@ bool Mark(const fs::path& file, const wchar_t* list, bool on)
 	const fs::path folder = file.parent_path();
 	const fs::path path = folder / list;
 	const auto bytes = ReadFile(path, notes::kMostBytes);
-	if (!bytes && fs::exists(path)) return false; // past the bound, or unreadable: left alone
+	// A list past the bound, unreadable, or not known to be absent is left
+	// alone; only a list that is not there starts empty.
+	std::error_code error;
+	if (!bytes && (fs::exists(path, error) || error)) return false;
 	const std::vector<uint8_t> text = bytes ? *bytes : std::vector<uint8_t>{};
 	const std::string name = NameOf(file);
 	std::unordered_set<std::string> names = notes::Parse(text);
@@ -94,12 +97,14 @@ bool Mark(const fs::path& file, const wchar_t* list, bool on)
 }
 
 // A file the listing may name: an .sfvreplay directly in the replay folder.
+// The folder and the file's own are compared as the file system knows them
+// (however each is spelled); either missing, or unreadable, is not a match.
 bool InReplayFolder(const fs::path& file)
 {
 	const fs::path folder = ReplayFolder();
 	if (folder.empty() || file.extension() != replay::kExtension) return false;
-	std::error_code a, b;
-	return fs::equivalent(fs::weakly_canonical(file.parent_path(), a), fs::weakly_canonical(folder, b)) && !a && !b;
+	std::error_code error;
+	return fs::equivalent(file.parent_path(), folder, error) && !error;
 }
 
 // What the list shows of a battle: the score (a battle of one game, its

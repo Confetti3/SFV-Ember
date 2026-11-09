@@ -23,9 +23,10 @@
 // different order in each process (SFV builds its table in allocation order),
 // so region hashes are combined commutatively, and the per-region hashes peers
 // compare are listed in a canonical order (by size, then hash). An address
-// test (optional) hashes every 8-byte word, aligned to its real address, that
-// holds an address of this process as zero: heap and code addresses differ
-// between processes even when the state they describe is the same.
+// test (optional) hashes every 8-byte word on a 4-byte boundary of its real
+// address that holds an address of this process as zero: heap and code
+// addresses differ between processes even when the state they describe is the
+// same.
 //
 // The layout id combines sizes, flags and masks the same way, so two peers can
 // check they compare the same thing before comparing hashes.
@@ -111,7 +112,7 @@ private:
 		return r.checked && (scope == HashScope::Local || r.comparedWithPeers);
 	}
 	uint64_t HashRegion(size_t index, const uint8_t* bytes, HashScope scope) const;
-	void ZeroAddresses(uint8_t* bytes, size_t n, uintptr_t at) const;
+	size_t ZeroAddresses(uint8_t* window, size_t at, size_t n, size_t next) const;
 
 	std::vector<StateRegion> regions_;
 	size_t totalSize_ = 0;
