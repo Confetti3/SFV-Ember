@@ -1,11 +1,11 @@
 #include "ember/SfvFrameMeter.hxx"
 
 #include "ember/SfvMeterSample.hxx"
+#include "ember/SfvTraining.hxx"
 #include "mod/FighterReader.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvAdapter.hxx"
-#include "mod/SfvOffsets.hxx"
 
 #include "training/FrameMeter.hxx"
 #include "ui/FrameMeterWindow.hxx"
@@ -16,6 +16,7 @@
 #include <windows.h>
 
 #include <array>
+#include <memory>
 #include <mutex>
 
 namespace sfve::adapter {
@@ -24,16 +25,10 @@ namespace {
 
 namespace training = sf4e::training;
 
-// The meter and whether a Training battle's ticks feed it: written on the
-// game thread after each tick, drawn on the render thread.
-std::mutex s_mutex;
-training::FrameMeter s_meter;
-bool s_live = false;
-
 // The log of what the meter measured, the meter's own evidence: each move
 // once it is over (its startup, active and recovery as the bars count them),
 // each exchange's advantage with Training's own beside it, and a state kind
-// section 39 does not name, once a battle per fighter.
+// not seen in game, once a battle per fighter.
 class MeterLog {
 public:
 	void Note(const training::MeterView& view, const std::array<mod::FighterFrame, 2>& fighters);
@@ -46,40 +41,27 @@ private:
 	bool measured_ = false;
 };
 
-// Game thread only: the Training battle followed and its meter's feed.
+// Game thread only: the Training battle the meter follows, its fighters, the
+// meter and its feed.
 struct Followed {
 	uint64_t battle = 0;
 	mod::FighterReader reader;
-	std::array<MeterMove, 2> moves{};
-	int frame = 0;
-	bool readFailed = false;
+	training::FrameMeter meter;
+	MeterFeed feed;
 	MeterLog log;
+	bool readFailed = false;
 };
-Followed s_followed;
+std::unique_ptr<Followed> s_followed;
 
-bool TrainingInFront()
-{
-	return mod::SceneStateKind(mod::CurrentSceneState()) == mod::sfv::scene::kTrainingBattleVtable &&
-		!mod::SceneChangePending();
-}
+// What the render thread draws: the meter as the last tick left it, or
+// nothing outside a followed Training battle.
+std::mutex s_mutex;
+std::shared_ptr<const training::MeterView> s_shown;
 
-// A battle starts or stops feeding the meter: either way it starts over.
-void SetLive(bool live)
+void Show(std::shared_ptr<const training::MeterView> view)
 {
 	std::lock_guard lock(s_mutex);
-	s_live = live;
-	s_meter.Reset();
-}
-
-void Follow(mod::SfvAdapter& adapter)
-{
-	s_followed = {};
-	s_followed.battle = adapter.Battle();
-	const bool bound = adapter.AnyUnit() &&
-		s_followed.reader.Bind(adapter.AnyUnit(), reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)));
-	mod::Log("frame meter: Training battle %llu %s", (unsigned long long)s_followed.battle,
-		bound ? "followed" : "not followed (its fighters were not found)");
-	SetLive(bound);
+	s_shown = std::move(view);
 }
 
 void MeterLog::Note(const training::MeterView& view, const std::array<mod::FighterFrame, 2>& fighters)
@@ -91,50 +73,58 @@ void MeterLog::Note(const training::MeterView& view, const std::array<mod::Fight
 			mod::Log("frame meter: P%d's script %d: startup %d, active %d, recovery %d", side + 1, moveScript_[side],
 				view.startupFrames[side], move.active, move.recovery);
 		moving_[side] = move.live;
-		const int kind = fighters[side].stateKind;
-		if (fighters[side].valid && !MeterStatus(kind, fighters[side].posture) && !unnamed_[side]) {
+		const mod::FighterFrame& fighter = fighters[side];
+		if (fighter.valid && !MeterStatus(fighter.stateKind, fighter.posture) && !unnamed_[side]) {
 			unnamed_[side] = true;
-			mod::Log("frame meter: P%d is in state kind %d (action %d, posture %d), which section 39 does not name", side + 1,
-				kind, fighters[side].script, fighters[side].posture);
+			mod::Log("frame meter: P%d is in state kind %d (script %d, posture %d), which was not seen in game before", side + 1,
+				static_cast<int>(fighter.stateKind), fighter.script, fighter.posture);
 		}
 	}
 	const auto& reading = view.advantage;
-	if (reading.valid && !measured_) {
-		const int attacker = reading.attacker;
-		mod::Log("frame meter: P%d's %s: P1 %+d, P2 %+d (Training's own: P1 %+d, P2 %+d)%s", attacker + 1,
+	if (reading.valid && !measured_)
+		mod::Log("frame meter: P%d's %s: P1 %+d, P2 %+d (Training's own: P1 %+d, P2 %+d)%s", reading.attacker + 1,
 			reading.blocked ? "block" : "hit", reading.frames[0], reading.frames[1], fighters[0].gameAdvantage,
 			fighters[1].gameAdvantage, reading.knockdown ? ", knockdown" : "");
-	}
 	measured_ = reading.valid;
+}
+
+// The battle SfvTraining follows, which the meter follows too: from the
+// update after SfvTraining has seen it until it is no longer available.
+std::unique_ptr<Followed> Follow(mod::SfvAdapter& adapter)
+{
+	auto followed = std::make_unique<Followed>();
+	followed->battle = adapter.Battle();
+	const bool bound = adapter.AnyUnit() &&
+		followed->reader.Bind(adapter.AnyUnit(), reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)));
+	mod::Log("frame meter: Training battle %llu %s", (unsigned long long)followed->battle,
+		bound ? "followed" : "not followed (its fighters were not found)");
+	return followed;
 }
 
 // After every battle frame update (mod::WatchBattleFrames).
 void Watch(mod::SfvAdapter& adapter)
 {
-	if (!TrainingInFront()) {
-		if (s_followed.battle) {
-			mod::Log("frame meter: Training battle %llu is no longer followed", (unsigned long long)s_followed.battle);
-			s_followed = {};
-			SetLive(false);
+	const TrainingView training = ReadTrainingView();
+	if (!training.available || training.generation != adapter.Battle()) {
+		if (s_followed) {
+			s_followed.reset();
+			Show(nullptr);
 		}
 		return;
 	}
-	if (adapter.Battle() != s_followed.battle) Follow(adapter);
+	if (!s_followed || s_followed->battle != adapter.Battle()) s_followed = Follow(adapter);
+	Followed& followed = *s_followed;
 	const uint32_t ticks = adapter.TicksInLastUpdate();
-	// Paused: no tick, nothing to measure. More than one tick in an update
-	// leaves a gap, and the meter starts over after it.
-	if (!s_followed.reader.Bound() || ticks == 0) return;
-	s_followed.frame += static_cast<int>(ticks);
+	// Paused: no tick, nothing to measure.
+	if (!followed.reader.Bound() || ticks == 0) return;
 	std::array<mod::FighterFrame, 2> fighters;
-	if (!s_followed.reader.Read(fighters) && !s_followed.readFailed) {
-		s_followed.readFailed = true;
+	if (!followed.reader.Read(fighters) && !followed.readFailed) {
+		followed.readFailed = true;
 		mod::Log("frame meter: a fighter's state did not read; the meter shows the frame as unknown");
 	}
-	const std::array<training::FighterSample, 2> samples{MeterSample(fighters[0], s_followed.moves[0]),
-		MeterSample(fighters[1], s_followed.moves[1])};
-	std::lock_guard lock(s_mutex);
-	s_meter.Observe(s_followed.frame, samples);
-	s_followed.log.Note(s_meter.View(), fighters);
+	followed.feed.Feed(followed.meter, fighters, ticks);
+	followed.log.Note(followed.meter.View(), fighters);
+	Show(std::make_shared<const training::MeterView>(followed.meter.View()));
 }
 
 } // namespace
@@ -146,14 +136,18 @@ void InstallSfvFrameMeter()
 
 void DrawSfvFrameMeter()
 {
-	std::lock_guard lock(s_mutex);
-	if (!s_live) return;
+	std::shared_ptr<const training::MeterView> view;
+	{
+		std::lock_guard lock(s_mutex);
+		view = s_shown;
+	}
+	if (!view) return;
 	// The Training HUD's own defaults (training::MeterOptions): angled bars,
 	// 60 frames across, the numbers and the state line, the standard size.
 	const training::MeterOptions options;
 	const float hudScale = sf4e::ui::FrameMeterHudScale(options.size);
 	const auto* viewport = ImGui::GetMainViewport();
-	sf4e::ui::DrawFrameMeterWindow(s_meter.View(), hudScale, sf4e::ui::TrainingMeterWidth(hudScale),
+	sf4e::ui::DrawFrameMeterWindow(*view, hudScale, sf4e::ui::TrainingMeterWidth(hudScale),
 		viewport->Pos.y + viewport->Size.y * sf4e::ui::TrainingHudBottom, options);
 }
 

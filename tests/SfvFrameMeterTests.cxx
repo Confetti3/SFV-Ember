@@ -15,12 +15,13 @@
 #include <vector>
 
 using sfve::adapter::HeaderPhase;
+using sfve::adapter::MeterFeed;
 using sfve::adapter::MeterMove;
 using sfve::adapter::MeterSample;
 using sfve::adapter::MeterStatus;
-using sfve::adapter::SfvState;
 using sfve::mod::FighterFrame;
 using sfve::mod::ScriptHeader;
+using sfve::mod::sfv::fighter::StateKind;
 namespace training = sf4e::training;
 using training::ActorStatus;
 
@@ -47,7 +48,7 @@ FighterFrame Frame(const Tick& tick)
 {
 	FighterFrame frame;
 	frame.valid = true;
-	frame.stateKind = tick.kind;
+	frame.stateKind = static_cast<StateKind>(tick.kind);
 	frame.script = tick.script;
 	frame.scriptFrame = tick.frame;
 	frame.header = tick.header;
@@ -62,14 +63,18 @@ FighterFrame Frame(const Tick& tick)
 	return frame;
 }
 
-// The meter after the trace, fed a tick at a time as SfvFrameMeter feeds it.
+std::array<FighterFrame, 2> Frames(const std::array<Tick, 2>& tick)
+{
+	return {Frame(tick[0]), Frame(tick[1])};
+}
+
+// The meter after the trace, fed an update of one tick at a time, as
+// SfvFrameMeter feeds it.
 training::FrameMeter Measure(const Trace& trace)
 {
 	training::FrameMeter meter;
-	std::array<MeterMove, 2> moves{};
-	int frame = 0;
-	for (const auto& tick : trace)
-		meter.Observe(++frame, {MeterSample(Frame(tick[0]), moves[0]), MeterSample(Frame(tick[1]), moves[1])});
+	MeterFeed feed;
+	for (const auto& tick : trace) feed.Feed(meter, Frames(tick), 1);
 	return meter;
 }
 
@@ -255,17 +260,32 @@ const Trace kHadokenBlocked = {
 
 TEST_CASE("every state kind seen in SFV is a status the meter knows")
 {
-	CHECK(MeterStatus(static_cast<int>(SfvState::Stand), 0) == ActorStatus::Stand);
-	CHECK(MeterStatus(static_cast<int>(SfvState::Attack), 0) == ActorStatus::Skill);
-	CHECK(MeterStatus(static_cast<int>(SfvState::Guard), 0) == ActorStatus::GuardStand);
-	CHECK(MeterStatus(static_cast<int>(SfvState::Guard), 1) == ActorStatus::GuardCrouch);
-	CHECK(MeterStatus(static_cast<int>(SfvState::Hit), 0) == ActorStatus::Damage);
-	CHECK(MeterStatus(static_cast<int>(SfvState::GuardHit), 1) == ActorStatus::DamageGuard);
-	CHECK(MeterStatus(static_cast<int>(SfvState::LaunchHit), 4) == ActorStatus::DamageBlow);
-	CHECK(MeterStatus(static_cast<int>(SfvState::LyingDown), 3) == ActorStatus::Down);
-	CHECK(MeterStatus(static_cast<int>(SfvState::Held), 4) == ActorStatus::Sequence);
+	CHECK(MeterStatus(StateKind::Stand, 0) == ActorStatus::Stand);
+	CHECK(MeterStatus(StateKind::Attack, 0) == ActorStatus::Skill);
+	CHECK(MeterStatus(StateKind::Guard, 0) == ActorStatus::GuardStand);
+	CHECK(MeterStatus(StateKind::Guard, 1) == ActorStatus::GuardCrouch);
+	CHECK(MeterStatus(StateKind::Hit, 0) == ActorStatus::Damage);
+	CHECK(MeterStatus(StateKind::GuardHit, 1) == ActorStatus::DamageGuard);
+	CHECK(MeterStatus(StateKind::LaunchHit, 4) == ActorStatus::DamageBlow);
+	CHECK(MeterStatus(StateKind::LyingDown, 3) == ActorStatus::Down);
+	CHECK(MeterStatus(StateKind::Held, 4) == ActorStatus::Sequence);
 	// Kinds never seen in game are not guessed at.
-	for (const int unseen : {0, 10, 11, 13, 20, 21, 28, 30}) CHECK_FALSE(MeterStatus(unseen, 0).has_value());
+	for (const int unseen : {0, 10, 11, 13, 20, 21, 28, 30}) CHECK_FALSE(MeterStatus(static_cast<StateKind>(unseen), 0).has_value());
+}
+
+TEST_CASE("the game's frames until actionable are the meter's, and its untimed is the meter's")
+{
+	MeterMove move;
+	FighterFrame lying;
+	lying.valid = true;
+	lying.stateKind = StateKind::Down;
+	lying.untilActionable = 1000;
+	CHECK(MeterSample(lying, move).untilActionable == training::UntimedFrames);
+	lying.stateKind = StateKind::GuardHit;
+	lying.untilActionable = 18;
+	const auto guarding = MeterSample(lying, move);
+	CHECK(guarding.untilActionable == 18);
+	CHECK(guarding.basicActionInhibited);
 }
 
 TEST_CASE("a script header's attack frames are its startup, active and recovery")
@@ -289,7 +309,7 @@ TEST_CASE("a script with no attack of its own is startup before the move's attac
 	MeterMove move;
 	FighterFrame fireball;
 	fireball.valid = true;
-	fireball.stateKind = static_cast<int>(SfvState::Attack);
+	fireball.stateKind = StateKind::Attack;
 	fireball.script = 900;
 	fireball.startedAction = 900;
 	fireball.header = {-1, -1, 44, 100};
@@ -306,7 +326,7 @@ TEST_CASE("a script with no attack of its own is startup before the move's attac
 	fireball.startedAction = 619;
 	CHECK(MeterSample(fireball, move).hitPhase == 0);
 	// Out of the attack the move is forgotten.
-	fireball.stateKind = static_cast<int>(SfvState::Stand);
+	fireball.stateKind = StateKind::Stand;
 	const auto standing = MeterSample(fireball, move);
 	CHECK(standing.hitPhase == -1);
 	CHECK(standing.commandMove == 0);
@@ -351,4 +371,34 @@ TEST_CASE("RYU's LP Hadoken: 14 frames of startup, 31 of recovery, and the block
 	// P1 was free 39 frames before P2 left its blockstun (both from the game's
 	// own count): the fireball met P2 after P1 had recovered.
 	CHECK(view.lastAdvantage.frames[0] == 39);
+}
+
+TEST_CASE("an update that ran two ticks leaves a gap the meter starts over after")
+{
+	training::FrameMeter meter;
+	MeterFeed feed;
+	// The LP's first half, a tick an update.
+	for (std::size_t at = 0; at < 10; ++at) feed.Feed(meter, Frames(kStandingLpHit[at]), 1);
+	REQUIRE(meter.View().current[0].action == 600);
+	feed.Feed(meter, Frames(kStandingLpHit[10]), 2);
+	// Started over on the frame after the gap: nothing before it is kept.
+	CHECK(meter.View().frames.size() <= 1);
+	CHECK(meter.View().startupFrames[0] == -1);
+}
+
+TEST_CASE("a fighter that did not read is unknown, and its move is forgotten")
+{
+	MeterMove move;
+	FighterFrame fireball;
+	fireball.valid = true;
+	fireball.stateKind = StateKind::Attack;
+	fireball.startedAction = 900;
+	fireball.header = {-1, -1, 44, 100};
+	fireball.projectileOut = true;
+	CHECK(MeterSample(fireball, move).hitPhase == 1);
+	CHECK(move.attacked);
+	const auto unread = MeterSample(FighterFrame{}, move);
+	CHECK_FALSE(unread.valid);
+	CHECK(move.action == -1);
+	CHECK_FALSE(move.attacked);
 }

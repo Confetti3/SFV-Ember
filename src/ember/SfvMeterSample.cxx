@@ -4,6 +4,8 @@ namespace sfve::adapter {
 
 namespace {
 
+namespace training = sf4e::training;
+using mod::sfv::fighter::StateKind;
 using sf4e::training::ActorStatus;
 using sf4e::training::BoundaryProvenance;
 using sf4e::training::FighterSample;
@@ -17,36 +19,38 @@ bool HasAttack(const mod::ScriptHeader& header)
 
 } // namespace
 
-std::optional<unsigned> MeterStatus(int stateKind, int posture)
+std::optional<unsigned> MeterStatus(StateKind kind, int posture)
 {
-	switch (static_cast<SfvState>(stateKind)) {
-	case SfvState::Stand: return ActorStatus::Stand;
-	case SfvState::Crouch: return ActorStatus::Crouch;
-	case SfvState::PreJump: return ActorStatus::StandToJump;
-	case SfvState::Jump: return ActorStatus::Jump;
-	case SfvState::Landing: return ActorStatus::JumpToStand;
-	case SfvState::WalkForward: return ActorStatus::Forward;
-	case SfvState::WalkBack: return ActorStatus::Backward;
-	case SfvState::DashForward: return ActorStatus::FrontDash;
-	case SfvState::DashBack: return ActorStatus::BackDash;
+	switch (kind) {
+	case StateKind::None: return std::nullopt;
+	case StateKind::Stand: return ActorStatus::Stand;
+	case StateKind::Crouch: return ActorStatus::Crouch;
+	case StateKind::PreJump: return ActorStatus::StandToJump;
+	case StateKind::Jump: return ActorStatus::Jump;
+	case StateKind::Landing: return ActorStatus::JumpToStand;
+	case StateKind::WalkForward: return ActorStatus::Forward;
+	case StateKind::WalkBack: return ActorStatus::Backward;
+	case StateKind::DashForward: return ActorStatus::FrontDash;
+	case StateKind::DashBack: return ActorStatus::BackDash;
 	// One guard state stands or crouches as its script's posture does.
-	case SfvState::Guard: return posture == 1 ? ActorStatus::GuardCrouch : ActorStatus::GuardStand;
-	case SfvState::StandToCrouch: return ActorStatus::StandToCrouch;
-	case SfvState::CrouchToStand: return ActorStatus::CrouchToStand;
-	case SfvState::TurnStand: return ActorStatus::TurnStand;
-	case SfvState::TurnCrouch: return ActorStatus::TurnCrouch;
-	case SfvState::TurnWalk: return ActorStatus::TurnWalk;
+	case StateKind::Guard: return posture == 1 ? ActorStatus::GuardCrouch : ActorStatus::GuardStand;
+	case StateKind::StandToCrouch: return ActorStatus::StandToCrouch;
+	case StateKind::CrouchToStand: return ActorStatus::CrouchToStand;
+	case StateKind::TurnStand: return ActorStatus::TurnStand;
+	case StateKind::TurnCrouch: return ActorStatus::TurnCrouch;
+	case StateKind::TurnWalk: return ActorStatus::TurnWalk;
 	// Normals, specials, throws and V-skills alike.
-	case SfvState::Attack: return ActorStatus::Skill;
-	case SfvState::Hit: return ActorStatus::Damage;
-	case SfvState::GuardHit: return ActorStatus::DamageGuard;
+	case StateKind::Attack: return ActorStatus::Skill;
+	case StateKind::Hit: return ActorStatus::Damage;
+	case StateKind::GuardHit: return ActorStatus::DamageGuard;
 	// Knocked into the air: a juggle's hit or a launcher's.
-	case SfvState::LaunchHit: return ActorStatus::DamageBlow;
-	case SfvState::Down: case SfvState::LyingDown: return ActorStatus::Down;
-	case SfvState::Rise: return ActorStatus::Rise;
+	case StateKind::LaunchHit: return ActorStatus::DamageBlow;
+	case StateKind::Down: case StateKind::LyingDown: return ActorStatus::Down;
+	case StateKind::Rise: return ActorStatus::Rise;
 	// Thrown: the thrower's script holds this fighter (the meter's sequence).
-	case SfvState::Held: return ActorStatus::Sequence;
+	case StateKind::Held: return ActorStatus::Sequence;
 	}
+	// A kind in the table that was not seen in game.
 	return std::nullopt;
 }
 
@@ -73,7 +77,8 @@ FighterSample MeterSample(const mod::FighterFrame& fighter, MeterMove& move)
 	sample.actionFrame = fighter.scriptFrame;
 	sample.posture = fighter.posture;
 	sample.timeScale = fighter.timeScale;
-	sample.untilActionable = fighter.untilActionable;
+	// The game's own count, and its "cannot time it" as the meter's.
+	sample.untilActionable = fighter.untilActionable >= mod::sfv::fighter::kUntimed ? training::UntimedFrames : fighter.untilActionable;
 	sample.basicActionInhibited = fighter.untilActionable > 0;
 	sample.hitStop = fighter.hitStop;
 	sample.health = fighter.vital;
@@ -106,6 +111,12 @@ FighterSample MeterSample(const mod::FighterFrame& fighter, MeterMove& move)
 	sample.hitPhase = phase;
 	move.attacked = move.attacked || phase == 1;
 	return sample;
+}
+
+void MeterFeed::Feed(training::FrameMeter& meter, const std::array<mod::FighterFrame, 2>& fighters, uint32_t ticks)
+{
+	tick_ += static_cast<int>(ticks);
+	meter.Observe(tick_, {MeterSample(fighters[0], moves_[0]), MeterSample(fighters[1], moves_[1])});
 }
 
 } // namespace sfve::adapter

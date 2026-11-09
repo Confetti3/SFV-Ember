@@ -2,14 +2,14 @@
 
 // SFV's fighters in the frame meter's terms (EMBER_LIBRARY.md section 39):
 // what mod::FighterReader read after a tick, as the library's
-// training::FighterSample, which training::FrameMeter measures. Pure: no game
-// memory, so the tests run it on recorded ticks.
+// training::FighterSample, which training::FrameMeter measures, and the feed
+// that gives the meter one tick after another. Pure: no game memory, so the
+// tests run it on ticks recorded in game.
 //
 // The meter's vocabulary is the library's (training/FrameMeter.hxx): a status
 // from ActorStatus, an action and its frame, a posture, the frames until the
 // fighter can act, hitstop and an attack's phase. SFV gives each directly:
-//   - the status is the fighter's state kind (sfv::fighter: the state
-//     machine's current state, by its place in the game's state table);
+//   - the status is the fighter's state kind (sfv::fighter::StateKind);
 //   - the attack's phase comes from the script's own header (its first and
 //     last attack frames), or, for a script with no attack of its own, from
 //     the fighter's projectile coming out, and a script the move plays after
@@ -21,21 +21,16 @@
 
 #include "training/FrameMeter.hxx"
 
+#include <stdint.h>
+
+#include <array>
 #include <optional>
 
 namespace sfve::adapter {
 
-// SFV's state kinds (the kind of each state in the game's table), as section
-// 39 lists what each was seen to be in game. A kind not listed was not seen.
-enum class SfvState : int {
-	Stand = 1, Crouch = 2, PreJump = 3, Jump = 4, Landing = 5, WalkForward = 6, WalkBack = 7, DashForward = 8,
-	DashBack = 9, Guard = 12, StandToCrouch = 14, CrouchToStand = 15, TurnStand = 16, TurnCrouch = 17, TurnWalk = 18,
-	Attack = 19, Hit = 22, GuardHit = 23, LaunchHit = 24, Down = 25, LyingDown = 26, Rise = 27, Held = 29
-};
-
 // The meter's status (training::ActorStatus) for a state kind and posture,
-// or none for a kind section 39 does not name.
-std::optional<unsigned> MeterStatus(int stateKind, int posture);
+// or none for a kind not seen in game (sfv::fighter::StateKind).
+std::optional<unsigned> MeterStatus(mod::sfv::fighter::StateKind kind, int posture);
 
 // An attack's phase from the script's header alone (training::FighterSample's
 // hitPhase): 0 before its attack, 1 while its attack is out, 2 before a later
@@ -53,5 +48,18 @@ struct MeterMove {
 // carries on or replaces: a script with no attack of its own needs it, as the
 // move's startup before its attack and its recovery after.
 sf4e::training::FighterSample MeterSample(const mod::FighterFrame& fighter, MeterMove& move);
+
+// Gives the meter both fighters after each update of the battle, on a count
+// of the battle's ticks: an update that ran more than one tick leaves a gap in
+// it, and the meter starts over after the gap (FrameMeter::Observe), since
+// the ticks between were not read.
+class MeterFeed {
+public:
+	void Feed(sf4e::training::FrameMeter& meter, const std::array<mod::FighterFrame, 2>& fighters, uint32_t ticks);
+
+private:
+	std::array<MeterMove, 2> moves_{};
+	int tick_ = 0;
+};
 
 } // namespace sfve::adapter

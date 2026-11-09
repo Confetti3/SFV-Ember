@@ -23,7 +23,8 @@ using InputRecordFn = uint64_t (*)(uint8_t* inputUnit, uint32_t predictRemote);
 using UnitTickFn = void (*)(uint8_t* rollbackUnit);
 using GetManagerFn = uint8_t* (*)(uint8_t* context);
 using FlowMessageFn = uint64_t (*)(uint8_t* receiver, uint8_t* message);
-using FindUnitFn = GameSharedPtr* (*)(uint8_t* battle, GameSharedPtr* out, const void* type, uint32_t index);
+// The game's lookups of a battle's unit (FindUnit) and of a unit's part (FindPart).
+using GameLookupFn = GameSharedPtr* (*)(uint8_t* owner, GameSharedPtr* out, const void* type, uint32_t index);
 using GetBattleDataFn = uint8_t* (*)(uint8_t* context);
 using GameAllocFn = void* (*)(size_t size);
 using BattleFrameCtorFn = uint8_t* (*)(uint8_t* battleFrame);
@@ -36,8 +37,8 @@ UnitTickFn o_unitTick;
 GetManagerFn s_getManager;
 FlowMessageFn o_flowMessage;
 uintptr_t s_stateMessageType;
-FindUnitFn s_findUnit;
-FindUnitFn s_findPart; // the same shape: (unit, out, type, index)
+GameLookupFn s_findUnit;
+GameLookupFn s_findPart;
 GetBattleDataFn s_getBattleData;
 GameAllocFn o_gameAlloc;
 std::atomic<uint64_t> s_zeroedAllocs;
@@ -182,8 +183,8 @@ void AddGameHooks(HookTransaction& hooks, uintptr_t base, BattleListener* listen
 	s_listener = listener;
 	s_getManager = reinterpret_cast<GetManagerFn>(base + sfv::kGetManager.rva);
 	s_stateMessageType = base + sfv::flow::kStateMessageType;
-	s_findUnit = reinterpret_cast<FindUnitFn>(base + sfv::kFindUnit.rva);
-	s_findPart = reinterpret_cast<FindUnitFn>(base + sfv::kFindPart.rva);
+	s_findUnit = reinterpret_cast<GameLookupFn>(base + sfv::kFindUnit.rva);
+	s_findPart = reinterpret_cast<GameLookupFn>(base + sfv::kFindPart.rva);
 	s_getBattleData = reinterpret_cast<GetBattleDataFn>(base + sfv::kGetBattleData.rva);
 	s_imageBase = base;
 	// The flow's delegates allocate through it even if the hook below is not
@@ -205,25 +206,30 @@ void AddGameHooks(HookTransaction& hooks, uintptr_t base, BattleListener* listen
 	});
 }
 
-uint8_t* GameFindUnit(uint8_t* anyUnit, uint32_t typeRva, uint32_t index)
+namespace {
+
+// What a lookup found, with the reference it took given back: the battle
+// keeps its units alive, and a unit its parts.
+uint8_t* Look(GameLookupFn lookup, uint8_t* owner, uint32_t typeRva, uint32_t index)
 {
-	uint8_t* owner = *reinterpret_cast<uint8_t**>(anyUnit + sfv::unit::kContext + sfv::unit::kContextOwner);
-	uint8_t* battle = owner ? *reinterpret_cast<uint8_t**>(owner + sfv::unit::kOwnerBattle) : nullptr;
-	if (!battle) return nullptr;
 	GameSharedPtr found{};
-	s_findUnit(battle, &found, reinterpret_cast<const void*>(s_imageBase + typeRva), index);
-	// Hand back the reference: the battle keeps the unit alive.
+	lookup(owner, &found, reinterpret_cast<const void*>(s_imageBase + typeRva), index);
 	if (found.control) ReleaseKeepingAlive(found.control);
 	return found.object;
 }
 
+} // namespace
+
+uint8_t* GameFindUnit(uint8_t* anyUnit, uint32_t typeRva, uint32_t index)
+{
+	uint8_t* owner = *reinterpret_cast<uint8_t**>(anyUnit + sfv::unit::kContext + sfv::unit::kContextOwner);
+	uint8_t* battle = owner ? *reinterpret_cast<uint8_t**>(owner + sfv::unit::kOwnerBattle) : nullptr;
+	return battle ? Look(s_findUnit, battle, typeRva, index) : nullptr;
+}
+
 uint8_t* GameFindPart(uint8_t* unit, uint32_t typeRva, uint32_t index)
 {
-	GameSharedPtr found{};
-	s_findPart(unit, &found, reinterpret_cast<const void*>(s_imageBase + typeRva), index);
-	// Hand back the reference: the unit keeps its parts alive.
-	if (found.control) ReleaseKeepingAlive(found.control);
-	return found.object;
+	return Look(s_findPart, unit, typeRva, index);
 }
 
 uint8_t* GameGetManager(uint8_t* rollbackUnit)

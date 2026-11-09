@@ -68,11 +68,11 @@ void FighterReader::Forget()
 	states_ = {};
 }
 
-int FighterReader::StateKind(const uint8_t* state) const
+fighter::StateKind FighterReader::KindOf(const uint8_t* state) const
 {
 	for (int kind = 1; kind <= fighter::kStateKinds; kind++)
-		if (states_[kind] == reinterpret_cast<uintptr_t>(state)) return kind;
-	return 0;
+		if (states_[kind] == reinterpret_cast<uintptr_t>(state)) return static_cast<fighter::StateKind>(kind);
+	return fighter::StateKind::None;
 }
 
 bool FighterReader::ReadFighter(const Fighter& f, FighterFrame& out) const
@@ -83,7 +83,9 @@ bool FighterReader::ReadFighter(const Fighter& f, FighterFrame& out) const
 	const int32_t* header = nullptr;
 	int32_t hitStopElapsed = 0, hitStopTotal = 0, frame = 0, timeScale = 0, vital = 0, vitalMax = 0;
 	int16_t untilActionable = 0, posture = 0, total = 0;
-	ScriptHeader boundaries;
+	struct Boundaries {
+		int32_t first, last, interrupt;
+	} boundaries{};
 	if (!ReadField(f.unit, fighter::kStateMachine, &machine) || !ReadField(machine, fighter::kCurrentState, &state) ||
 		!ReadField(f.unit, fighter::kHitStopElapsed, &hitStopElapsed) || !ReadField(f.unit, fighter::kHitStopTotal, &hitStopTotal) ||
 		!ReadField(f.unit, fighter::kStartedAction, &out.startedAction) ||
@@ -98,7 +100,7 @@ bool FighterReader::ReadFighter(const Fighter& f, FighterFrame& out) const
 		!ReadField(f.statusPart, fighter::kVital, &vital) || !ReadField(f.statusPart, fighter::kVitalMax, &vitalMax)) {
 		return false;
 	}
-	out.stateKind = StateKind(state);
+	out.stateKind = KindOf(state);
 	out.scriptFrame = Fixed(frame);
 	// The game reads the total as a short (kSetScript); the header's other
 	// three are whole ints.

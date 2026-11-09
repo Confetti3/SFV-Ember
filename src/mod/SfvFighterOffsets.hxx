@@ -92,10 +92,19 @@ constexpr uint32_t kCurrentState = 0x10;    // state singleton*
 constexpr uintptr_t kStateTable = 0x3A66160; // data rva: [kind] -> singleton, kind 1..kStateKinds
 constexpr int kStateKinds = 29;
 
+// The state kinds, each as it was seen in game (EMBER_LIBRARY.md section 39).
+// 10, 11, 13, 20, 21 and 28 were not seen (rva 0x372540 enters 21 on a KO);
+// None is a state not in the table.
+enum class StateKind : int {
+	None = 0, Stand = 1, Crouch = 2, PreJump = 3, Jump = 4, Landing = 5, WalkForward = 6, WalkBack = 7, DashForward = 8,
+	DashBack = 9, Guard = 12, StandToCrouch = 14, CrouchToStand = 15, TurnStand = 16, TurnCrouch = 17, TurnWalk = 18,
+	Attack = 19, Hit = 22, GuardHit = 23, LaunchHit = 24, Down = 25, LyingDown = 26, Rise = 27, Held = 29
+};
+
 // CharaActionPart (type below) +0xD8: the script player of what the fighter plays.
 constexpr uint32_t kActionPartType = 0x3A64A98;
 constexpr uint32_t kScriptPlayer = 0xD8;
-constexpr uint32_t kScriptHeader = 0x40;    // const int32[4]: first attack frame, last (exclusive), interrupt, total
+constexpr uint32_t kScriptHeader = 0x40;    // const int32[3]: first attack frame, last (exclusive), interrupt; -1 none
 constexpr uint32_t kScriptNumber = 0x48;    // int: the script (action) played
 constexpr uint32_t kScriptFrame = 0x4C;     // 16.16
 constexpr uint32_t kScriptTimeScale = 0x64; // 16.16: 0 while another fighter's freeze holds this one

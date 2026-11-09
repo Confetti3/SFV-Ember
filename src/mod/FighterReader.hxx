@@ -2,9 +2,10 @@
 
 // Both fighters as SFV's battle holds them after a tick, for Ember's frame
 // meter (EMBER_LIBRARY.md section 39; the offsets are SfvFighterOffsets.hxx).
-// It only reads: no game field is written and no game function is called
-// after Bind, so the battle, its rollback state and its hashes are what they
-// would be without it.
+// It only reads: no game field is written, and after Bind (which finds the
+// fighters with the game's own lookups, which take and give back a reference)
+// no game function is called, so the battle, its rollback state and its
+// hashes are what they would be without it.
 
 #include "mod/SfvFighterOffsets.hxx"
 
@@ -25,9 +26,8 @@ struct ScriptHeader {
 // One fighter after a tick.
 struct FighterFrame {
 	bool valid = false;
-	// The fighter's state, as the kind of its state machine's current state
-	// (1..29, sfv::fighter::kStateKinds); 0 when the state is not in the table.
-	int stateKind = 0;
+	// The fighter's state: the kind of its state machine's current state.
+	sfv::fighter::StateKind stateKind = sfv::fighter::StateKind::None;
 	// The script the fighter plays, its frame and header, and the posture the
 	// header gives (0 standing, 1 crouching, 2 airborne, 3 lying, 4 knocked
 	// into the air).
@@ -76,7 +76,7 @@ private:
 		bool live = false;
 	};
 	bool ReadFighter(const Fighter& fighter, FighterFrame& out) const;
-	int StateKind(const uint8_t* state) const;
+	sfv::fighter::StateKind KindOf(const uint8_t* state) const;
 
 	bool bound_ = false;
 	std::array<Fighter, 2> fighters_{};
