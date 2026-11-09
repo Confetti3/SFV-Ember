@@ -16,6 +16,10 @@ TEST_CASE("a player's copy plays under the saved name, a test copy under its own
 	CHECK(sfve::adapter::PlayerNameFor(0, "").empty());
 	CHECK(sfve::adapter::PlayerNameFor(1, "Player 4821") == "SFV 2");
 	CHECK(sfve::adapter::PlayerNameFor(2, "") == "SFV 3");
+	// A saved 0.1.0-beta.1 default is unset here too, so copy 0 never plays
+	// under a test copy's name.
+	CHECK(sfve::adapter::PlayerNameFor(0, "SFV 2").empty());
+	CHECK(sfve::adapter::PlayerNameFor(0, "SFV 5") == "SFV 5");
 }
 
 TEST_CASE("only 0.1.0-beta.1's hard-coded names count as unset")

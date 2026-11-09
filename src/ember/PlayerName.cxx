@@ -1,6 +1,7 @@
 #include "ember/PlayerName.hxx"
 
 #include "ember/SavedSettings.hxx"
+#include "launcher/OldDefaultName.hxx"
 
 namespace sfve::adapter {
 
@@ -11,7 +12,10 @@ bool TestCopy(int instance)
 
 std::string PlayerNameFor(int instance, const std::string& saved)
 {
-	return TestCopy(instance) ? "SFV " + std::to_string(instance + 1) : saved;
+	if (TestCopy(instance)) return "SFV " + std::to_string(instance + 1);
+	// 0.1.0-beta.1's hard-coded names are nobody's choice, and a test copy
+	// plays under one of them: as the launcher does, they count as unset.
+	return launcher::IsOldDefaultName(saved.c_str()) ? std::string() : saved;
 }
 
 std::string SavedDisplayName()

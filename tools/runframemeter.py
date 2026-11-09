@@ -123,9 +123,14 @@ def run(shots: Path | None, failures: list[str]) -> None:
     training.press(0, "A")
     training.wait_for("SFV's Training battle", 90, lambda: training.scene(0) == training.TRAINING_SCENE
                       and training.training(0)["available"] and not training.shell(0)["shown"])
-    if not lib.count_log(0, "frame meter: Training battle 1 followed"):
-        failures.append("the meter does not follow the Training battle")
-        return
+    # The meter follows from the update after Training has seen the battle,
+    # so its line can come a moment after the battle is available.
+    deadline = time.monotonic() + 10
+    while not lib.count_log(0, "frame meter: Training battle 1 followed"):
+        if time.monotonic() >= deadline:
+            failures.append("the meter does not follow the Training battle")
+            return
+        time.sleep(0.25)
     lib.focus(lib.status_pid(0))
     time.sleep(4)
     # Basic Settings: Attack Data is the sixth row.
