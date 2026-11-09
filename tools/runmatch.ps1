@@ -46,7 +46,7 @@ $settings = Join-Path $env:APPDATA 'SFVEmber\settings.json'
 $settingsKept = "$work\settings.json.kept"
 $db = "$work\bridge\bridge.sqlite3"
 $processes = @()
-$failure = ''
+$failure = ''; $passed = $false
 # The shared settings as they were before anything starts: 'kept' (copied to
 # $settingsKept) or 'absent'. A copy that fails stops the run here, before
 # anything is started, so the end only ever restores a state it captured.
@@ -216,7 +216,7 @@ try {
 	$failure = $_.Exception.Message
 } finally {
 	foreach ($i in 0, 1) { try { "copy $i match: " + ((Status $i).match | ConvertTo-Json -Compress -Depth 5) } catch { } }
-	Complete-Run $failure $processes $keep.IsPresent "an organised SFV match, first to $firstTo, completed on the bridge as both copies saw it, no desync"
+	$passed = Complete-Run $failure $processes $keep.IsPresent "an organised SFV match, first to $firstTo, completed on the bridge as both copies saw it, no desync"
 	# Put the settings back as captured, once no copy can write them any more.
 	if ($keep -or (Get-Process StreetFighterV -ErrorAction SilentlyContinue)) {
 		"settings left as the copies saved them (a copy still runs); the ones from before are in $settingsKept"
@@ -226,3 +226,4 @@ try {
 		Remove-Item $settings
 	}
 }
+exit $(if ($passed) { 0 } else { 1 })

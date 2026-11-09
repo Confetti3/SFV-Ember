@@ -43,6 +43,9 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 $ErrorActionPreference = 'Stop'
 # The checkout this script is in, whichever it is.
 Set-Location (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot 'verdict.ps1')
+# The copies this run starts are listed under a run of its own (SFVE_RUN, tools/sfvelib.py), so `sfve.py kill` ends only these.
+$env:SFVE_RUN = [guid]::NewGuid().ToString('N')
 # The mod logs under %APPDATA%\SFVEmber\logs (mod/Log.cxx), whether the launcher or the proxy started it.
 $logs = Join-Path $env:APPDATA 'SFVEmber\logs'
 $logOf = @("$logs\sfv_ember.log", "$logs\sfv_ember.1.log", "$logs\sfv_ember.2.log")
@@ -292,31 +295,21 @@ try {
 }
 foreach ($i in $copies) {
   try { "copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress) } catch { "copy $i is not answering" }
-  Select-String -Path $logOf[$i] -Pattern 'desync|mismatch' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) }
+  if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern 'desync|mismatch' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
 }
 # The copies close here, whatever happened above; the logs stay.
 if (!$keep) { python -I tools\sfve.py kill | Out-Null }
-# Each copy logs its checkpoint hashes (every 60 confirmed frames); a frame
-# number that falls back starts the next game.
-function Checkpoints([int]$i) {
-  $hashes = @{}; $game = 0; $previous = -1
-  foreach ($m in Select-String -Path $logOf[$i] -Pattern 'checkpoint: frame (\d+) hash (\w+)') {
-    $frame = [int]$m.Matches[0].Groups[1].Value
-    if ($frame -lt $previous - 600) { $game++ }
-    $previous = $frame; $hashes["$game/$frame"] = $m.Matches[0].Groups[2].Value
-  }
-  $hashes
-}
-$h0 = Checkpoints 0; $h1 = Checkpoints 1
-$common = @($h0.Keys | Where-Object { $h1.ContainsKey($_) })
-$differing = @($common | Where-Object { $h0[$_] -ne $h1[$_] })
-"checkpoints: $($common.Count) compared, $($differing.Count) differing"
-$desyncs = (Count 0 'desync|mismatch') + (Count 1 'desync|mismatch') + $differing.Count
+# Each copy logs its checkpoint hashes (every 60 confirmed frames); tools/verdict.ps1
+# compares them and holds the verdict rule: PASS needs a compared checkpoint.
+$h0 = Get-Checkpoints $logOf[0]; $h1 = Get-Checkpoints $logOf[1]
+$checkpoints = Compare-Checkpoints $h0 $h1
+"checkpoints: $($checkpoints.Compared) compared, $($checkpoints.Differing) differing"
+$desyncs = (Count 0 'desync|mismatch') + (Count 1 'desync|mismatch') + $checkpoints.Differing
 if ($watchers) {
   # The watcher's battle k is the fighters' game $watchedGames[k]: its
   # checkpoints against copy 0's of that game and frame (copy 0's equal
   # copy 1's above).
-  $h2 = Checkpoints 2
+  $h2 = Get-Checkpoints $logOf[2]
   $watchedKeys = @(); $watcherDiffering = @()
   foreach ($key in $h2.Keys) {
     $battle, $frame = $key -split '/'
@@ -331,4 +324,5 @@ if ($watchers) {
   if (-not $failure -and -not $watchedKeys.Count) { $failure = "no watcher checkpoint could be compared" }
 }
 $played = if ($rematches -ge 0) { $rematches + 1 } else { $games }
-if ($failure)  { "FAIL: $failure" } elseif ($desyncs) { "FAIL: $desyncs desync line(s)" } else { "PASS: $played game(s), no desync" }
+$passed = Write-Verdict $failure $desyncs $checkpoints.Compared "$played game(s), no desync"
+exit $(if ($passed) { 0 } else { 1 })

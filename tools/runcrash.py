@@ -90,9 +90,9 @@ def main(argv: list[str]) -> int:
     p.add_argument("--where", choices=("game", "thread"), default="game")
     p.add_argument("--keep", action="store_true")
     a = p.parse_args(argv)
+    lib.begin_run()
     if not reports_off():
-        print("FAIL: settings.json does not show Send problem reports off; a test crash could be sent. Turn it off first.")
-        return 1
+        return lib.verdict("settings.json does not show Send problem reports off; a test crash could be sent. Turn it off first.")
     via_launcher = lib.VIA == "launcher"
     launcher_log = lib.LOG_DIR / "launcher.log"
     (lib.LOG_DIR / CRASH_LOG).unlink(missing_ok=True)
@@ -171,8 +171,7 @@ def main(argv: list[str]) -> int:
     if not a.keep:
         for dump in new_ours + new_game:
             dump.unlink(missing_ok=True)
-    print(f"FAIL: {'; '.join(failures)}" if failures else f"PASS: crash on the {a.where} recorded and dumped")
-    return 1 if failures else 0
+    return lib.verdict(failures, f"PASS: crash on the {a.where} recorded and dumped")
 
 
 def lib_is_crash_exit(code: int) -> bool:

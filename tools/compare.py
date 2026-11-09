@@ -9,7 +9,9 @@
   checkpoint is logged; a replay logs it again, the last line wins), and
   its unmatched regions while the copies still keep it.
 
-Exit code 1 when the copies differ.
+Prints PASS or FAIL. Exit code 0 only when something was compared and nothing
+differs; 1 when the copies differ, when nothing could be compared, or when a
+copy does not answer.
 """
 
 from __future__ import annotations
@@ -68,25 +70,24 @@ def first_differing_frame(a: int, b: int, checkpoint: int) -> None:
 
 
 def main(a: int = 0, b: int = 1) -> int:
+    """0 only with evidence: at least one frame or logged checkpoint compared on both copies, and none differing."""
     sa, sb = netplay_status(a), netplay_status(b)
     for index, s in ((a, sa), (b, sb)):
         print(f"copy {index}: frame {s['frame']} confirmed {s['confirmed']} rollbacks {s['rollbacks']} "
               f"longest {s['longestRollback']} stalls {s['stalls']} pacing {s['pacing']}")
     confirmed = min(sa["confirmed"], sb["confirmed"])
+    compared = differ = 0
     if confirmed < 1:
         print("nothing confirmed yet")
-        return 0
-
-    first = max(1, confirmed - 60)
-    compared = differ = 0
-    for frame in range(first, confirmed + 1):
-        ha, hb = lib.request(a, f"hash {frame}"), lib.request(b, f"hash {frame}")
-        if ha.startswith("ok") and hb.startswith("ok"):
-            compared += 1
-            differ += ha != hb
-    print(f"frames {first}..{confirmed}: {compared} compared, {differ} differ")
-
-    compare_regions(a, b, confirmed)
+    else:
+        first = max(1, confirmed - 60)
+        for frame in range(first, confirmed + 1):
+            ha, hb = lib.request(a, f"hash {frame}"), lib.request(b, f"hash {frame}")
+            if ha.startswith("ok") and hb.startswith("ok"):
+                compared += 1
+                differ += ha != hb
+        print(f"frames {first}..{confirmed}: {compared} compared, {differ} differ")
+        compare_regions(a, b, confirmed)
 
     la, lb = logged_checkpoints(a), logged_checkpoints(b)
     common = sorted(set(la) & set(lb))
@@ -98,8 +99,17 @@ def main(a: int = 0, b: int = 1) -> int:
         first_differing_frame(a, b, divergent[0])
     elif common:
         print(f"all {len(common)} logged checkpoints match (frames {common[0]}..{common[-1]})")
-    return 1 if differ or divergent else 0
+
+    failures = []
+    if differ or divergent:
+        failures.append(f"{differ} frame hash(es) and {len(divergent)} logged checkpoint(s) differ")
+    if not compared and not common:
+        failures.append("nothing could be compared: no frame hashes on both copies and no common logged checkpoints")
+    return lib.verdict(failures, f"PASS: {compared} frame(s) and {len(common)} logged checkpoint(s) compared, none differ")
 
 
 if __name__ == "__main__":
-    sys.exit(main(*(int(x) for x in sys.argv[1:3])))
+    try:
+        sys.exit(main(*(int(x) for x in sys.argv[1:3])))
+    except lib.SfveError as error:
+        sys.exit(lib.verdict(str(error)))

@@ -274,6 +274,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--replays", type=Path, help="where the copies save their replays (a scratch folder by default)")
     p.add_argument("--keep", action="store_true", help="leave the copies running")
     a = p.parse_args(argv)
+    lib.begin_run()
     if a.shots:
         a.shots.mkdir(parents=True, exist_ok=True)
     root = a.replays or Path(tempfile.mkdtemp(prefix="sfve-replays-"))
@@ -340,8 +341,7 @@ def main(argv: list[str]) -> int:
         lib.kill_all()
         if not a.replays:
             shutil.rmtree(root, ignore_errors=True)
-    print("FAIL: " + failure if failure else f"PASS: {a.rematches + 1} game(s) recorded and played back on both copies")
-    return 1 if failure else 0
+    return lib.verdict(failure, f"PASS: {a.rematches + 1} game(s) recorded and played back on both copies")
 
 
 if __name__ == "__main__":

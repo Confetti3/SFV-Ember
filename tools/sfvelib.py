@@ -18,8 +18,14 @@ Safety rules this module enforces:
   and is killed if its control pipe (which the mod opens only after the
   network guard is installed) does not answer within GUARD_TIMEOUT_S.
 * Nothing here uses the game's online modes.
-* Only copies this module started are killed: their launchers' and games'
-  process ids are kept in LAUNCHED (kill_all).
+* Only copies this module started are killed. A process is known by its id
+  and its creation time together (a bare id can be reused), kept in the
+  registry of the run that started it (SFVE_RUN; registry_path): a copy
+  whose pipe answers is ours only when its process is the one just started
+  or descends from it, and kill_all ends a registered process only while
+  its creation time still matches.
+* The game folder is only written in proxy mode, by deploy, which records
+  what it installed in MANIFEST; undeploy removes only the files listed there.
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ import ctypes.wintypes as wt
 import hashlib
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -53,12 +60,23 @@ PACKAGE_DIR = Path(os.environ.get("SFVE_PACKAGE_DIR", str(BUILD_DIR)))
 LAUNCHER_FILES = ("Launcher.exe", "sfv_ember.dll", "sf4-net.exe")
 # The mod's logs (mod/Log.cxx) and the launcher's, however the game started.
 LOG_DIR = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming"))) / "SFVEmber" / "logs"
-# The copies this module started, by index: {"launcher": pid or 0, "game": pid}.
-LAUNCHED = Path(os.environ.get("TEMP", str(BUILD_DIR))) / "sfve-launched.json"
+# What deploy installed in the game folder (proxy mode), relative to it.
+MANIFEST = "sfve-deployed.json"
 
 
 class SfveError(RuntimeError):
     pass
+
+
+def verdict(failure: str | list[str], pass_text: str = "PASS") -> int:
+    """The one verdict rule of the acceptance runners: prints PASS or
+    FAIL (`failure`: a reason, or a list of them) and returns the exit code.
+    A runner calls it after its cleanup, with a failure for every missing
+    piece of evidence as well as for every difference found."""
+    reasons = [failure] if isinstance(failure, str) else list(failure)
+    reasons = [r for r in reasons if r]
+    print("FAIL: " + "; ".join(reasons) if reasons else pass_text)
+    return 1 if reasons else 0
 
 
 # --- deploy -----------------------------------------------------------------
@@ -74,31 +92,71 @@ def _deployed_files() -> list[str]:
     return list(MOD_FILES) + pictures
 
 
-def deploy() -> list[str]:
-    """Copies the built proxy, mod and assets next to the game exe."""
+def _installed() -> list[str]:
+    """What an earlier deploy recorded as installed, relative to the game folder."""
+    try:
+        return [str(name) for name in json.loads((GAME_DIR / MANIFEST).read_text())["files"]]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+
+
+def _require_game_stopped(action: str) -> None:
+    """The game holds the proxy and the mod open: they cannot be replaced or removed under it."""
+    if running_pids():
+        raise SfveError(f"StreetFighterV is running (pid {', '.join(map(str, running_pids()))}): stop it before {action}")
+
+
+def deploy(adopt: bool = False) -> list[str]:
+    """Copies the built proxy, mod and assets next to the game exe (proxy
+    mode only; the launcher needs nothing in the game folder) and records
+    them in MANIFEST. A file of the same name that deploy did not install is
+    refused, unless `adopt` takes it over. Returns the files copied."""
+    if VIA == "launcher":
+        raise SfveError("SFVE_VIA=launcher starts the game from the package folder: nothing is installed in the game folder")
+    installed = set(_installed())
     copied = []
     for name in _deployed_files():
         src, dst = BUILD_DIR / name, GAME_DIR / name
         if not src.exists():
             raise SfveError(f"{src} is not built")
-        if not dst.exists() or _sha256(src) != _sha256(dst):
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
-            copied.append(name)
+        if dst.exists() and _sha256(src) == _sha256(dst):
+            continue
+        if dst.exists() and name not in installed and not adopt:
+            raise SfveError(f"{dst} was not installed by deploy: remove it, or deploy with --adopt to replace it")
+        copied.append(name)
+    if copied:
+        _require_game_stopped("deploying")
+        # Recorded before the copies, so a deploy that stops half way is still undone.
+        (GAME_DIR / MANIFEST).write_text(json.dumps({"build": str(BUILD_DIR), "files": sorted(installed | set(copied))}, indent=1))
+        for name in copied:
+            (GAME_DIR / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(BUILD_DIR / name, GAME_DIR / name)
     return copied
 
 
 def undeploy() -> list[str]:
-    """Removes the proxy, mod and assets from the game folder (logs stay)."""
+    """Removes the files MANIFEST lists, and the folders deploy made once
+    they are empty (logs and everything else in the game folder stay)."""
+    root = GAME_DIR.resolve()
+    owned = [(name, (GAME_DIR / name).resolve()) for name in _installed()]
+    for name, path in owned:
+        if not path.is_relative_to(root) or path == root:
+            raise SfveError(f"{MANIFEST} lists {name}, which is not inside the game folder: not removing anything")
+    if any(path.is_file() for _, path in owned):
+        _require_game_stopped("removing the mod")
     removed = []
-    for name in MOD_FILES:
-        path = GAME_DIR / name
-        if path.exists():
+    for name, path in owned:
+        if path.is_file():
             path.unlink()
             removed.append(name)
-    if (GAME_DIR / ASSETS).exists():
-        shutil.rmtree(GAME_DIR / ASSETS)
-        removed.append(ASSETS)
+        for folder in path.parents:
+            if folder == root:
+                break
+            try:
+                folder.rmdir()  # only while empty
+            except OSError:
+                break
+    (GAME_DIR / MANIFEST).unlink(missing_ok=True)
     return removed
 
 
@@ -136,11 +194,16 @@ def request(instance: int, line: str, timeout_s: float = 5.0) -> str:
             time.sleep(0.1)
 
 
+def _reply_pid(reply: str) -> int:
+    """The game's own process id in a status reply."""
+    return int(reply.split('"pid":', 1)[1].split(",", 1)[0])
+
+
 def status_pid(index: int) -> int:
     reply = request(index, "status")
     if not reply.startswith("ok "):
         raise SfveError(f"instance {index}: {reply}")
-    return int(reply.split('"pid":', 1)[1].split(",", 1)[0])
+    return _reply_pid(reply)
 
 
 # --- processes ----------------------------------------------------------------
@@ -157,17 +220,131 @@ def running_pids() -> list[int]:
     return [int(line.split('","')[1]) for line in out.splitlines() if line.startswith('"StreetFighterV.exe"')]
 
 
-def _launched() -> dict[str, dict[str, int]]:
+# A process id is reused once its process ends; an id together with the
+# process's creation time (a FILETIME) is not. That pair is an Identity.
+Identity = tuple[int, int]
+
+_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_PROCESS_TERMINATE, _PROCESS_QUERY_LIMITED_INFORMATION = 0x0001, 0x1000
+_TH32CS_SNAPPROCESS, _STILL_ACTIVE = 0x2, 259
+
+
+class _ProcessEntry(ctypes.Structure):  # PROCESSENTRY32W
+    _fields_ = [("dwSize", wt.DWORD), ("cntUsage", wt.DWORD), ("th32ProcessID", wt.DWORD),
+                ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wt.DWORD), ("cntThreads", wt.DWORD),
+                ("th32ParentProcessID", wt.DWORD), ("pcPriClassBase", wt.LONG), ("dwFlags", wt.DWORD),
+                ("szExeFile", wt.WCHAR * 260)]
+
+
+_kernel32.OpenProcess.restype = wt.HANDLE
+_kernel32.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
+_kernel32.CloseHandle.argtypes = [wt.HANDLE]
+_kernel32.GetProcessTimes.argtypes = [wt.HANDLE] + [ctypes.POINTER(wt.FILETIME)] * 4
+_kernel32.GetExitCodeProcess.argtypes = [wt.HANDLE, ctypes.POINTER(wt.DWORD)]
+_kernel32.TerminateProcess.argtypes = [wt.HANDLE, wt.UINT]
+_kernel32.CreateToolhelp32Snapshot.restype = wt.HANDLE
+_kernel32.CreateToolhelp32Snapshot.argtypes = [wt.DWORD, wt.DWORD]
+_kernel32.Process32FirstW.argtypes = [wt.HANDLE, ctypes.POINTER(_ProcessEntry)]
+_kernel32.Process32NextW.argtypes = [wt.HANDLE, ctypes.POINTER(_ProcessEntry)]
+
+
+def _creation_time(handle) -> int:
+    times = [wt.FILETIME() for _ in range(4)]  # creation, exit, kernel, user
+    if not _kernel32.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+        return 0
+    return (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+
+
+def process_identity(pid: int) -> Identity | None:
+    """The identity of the running process `pid`, or None when none runs."""
+    handle = _kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return None
     try:
-        return json.loads(LAUNCHED.read_text())
-    except (OSError, ValueError):
+        code = wt.DWORD()
+        if not _kernel32.GetExitCodeProcess(handle, ctypes.byref(code)) or code.value != _STILL_ACTIVE:
+            return None
+        created = _creation_time(handle)
+        return (pid, created) if created else None
+    finally:
+        _kernel32.CloseHandle(handle)
+
+
+def _process_table() -> dict[int, tuple[int, int]]:
+    """Every process: id -> (parent id, creation time; 0 when unreadable)."""
+    snapshot = _kernel32.CreateToolhelp32Snapshot(_TH32CS_SNAPPROCESS, 0)
+    if snapshot in (None, ctypes.c_void_p(-1).value):
+        raise SfveError("could not list the running processes")
+    entry = _ProcessEntry()
+    entry.dwSize = ctypes.sizeof(entry)
+    table = {}
+    try:
+        more = _kernel32.Process32FirstW(snapshot, ctypes.byref(entry))
+        while more:
+            table[entry.th32ProcessID] = (entry.th32ParentProcessID, (process_identity(entry.th32ProcessID) or (0, 0))[1])
+            more = _kernel32.Process32NextW(snapshot, ctypes.byref(entry))
+    finally:
+        _kernel32.CloseHandle(snapshot)
+    return table
+
+
+def _process_tree(table: dict[int, tuple[int, int]], root: Identity) -> list[Identity]:
+    """`root` and every process that descends from it, or [] when `root`
+    is not running. A process only descends from a parent that was created
+    before it: a parent id that has since been reused does not count."""
+    if table.get(root[0], (0, 0))[1] != root[1]:
+        return []
+    members = {root[0]: root[1]}
+    grew = True
+    while grew:
+        grew = False
+        for pid, (parent, created) in table.items():
+            if pid not in members and created and parent in members and created >= members[parent]:
+                members[pid] = created
+                grew = True
+    return list(members.items())
+
+
+def _terminate(identity: Identity) -> bool:
+    """Ends the process, if it is still the one `identity` names (checked on the handle that ends it)."""
+    handle = _kernel32.OpenProcess(_PROCESS_TERMINATE | _PROCESS_QUERY_LIMITED_INFORMATION, False, identity[0])
+    if not handle:
+        return False
+    try:
+        return _creation_time(handle) == identity[1] and bool(_kernel32.TerminateProcess(handle, 1))
+    finally:
+        _kernel32.CloseHandle(handle)
+
+
+# --- the run's registry -------------------------------------------------------
+
+def begin_run() -> str:
+    """Gives this process (and what it starts) a registry of its own, so
+    runners do not kill each other's copies; a SFVE_RUN already set stays."""
+    return os.environ.setdefault("SFVE_RUN", f"{os.getpid()}-{int(time.time())}")
+
+
+def registry_path() -> Path:
+    run = re.sub(r"[^A-Za-z0-9_.-]", "_", os.environ.get("SFVE_RUN", "default"))
+    return Path(os.environ.get("TEMP", str(BUILD_DIR))) / f"sfve-launched-{run}.json"
+
+
+def _registered(path: Path) -> dict[str, list[Identity]]:
+    """The copies a run started, by index: the identities of the process
+    started and of the game it turned out to be."""
+    try:
+        return {index: [(int(pid), int(created)) for pid, created in identities]
+                for index, identities in json.loads(path.read_text()).items()}
+    except (OSError, ValueError, TypeError, AttributeError):
         return {}
 
 
-def _remember(index: int, launcher: int, game: int) -> None:
-    started = _launched()
-    started[str(index)] = {"launcher": launcher, "game": game}
-    LAUNCHED.write_text(json.dumps(started))
+def _remember(index: int, *identities: Identity) -> None:
+    path = registry_path()
+    started = _registered(path)
+    # Kept beside an earlier copy of the index this run started: it is still ours to end.
+    started[str(index)] = list(dict.fromkeys(started.get(str(index), []) + list(identities)))
+    path.write_text(json.dumps(started))
 
 
 def _game_options(index: int, mode: str, extra: list[str], windowed: bool) -> list[str]:
@@ -194,18 +371,20 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
             args += ["--instance", str(index)]
         args += [f"--game-option={option}" for option in options if not option.startswith("-sfve_instance=")]
         proc = subprocess.Popen(args, cwd=PACKAGE_DIR, creationflags=subprocess.DETACHED_PROCESS)
-        launcher_pid = proc.pid
     else:
         if not deployed_matches_build():
             raise SfveError("the game folder does not hold the current build: run deploy first")
         # Steam sets these when it starts a game; its DRM wrapper exits (0x35) without them.
         env = dict(os.environ, SteamAppId=STEAM_APP_ID, SteamGameId=STEAM_APP_ID)
         proc = subprocess.Popen([str(GAME_EXE)] + options, cwd=GAME_DIR, env=env, creationflags=subprocess.DETACHED_PROCESS)
-        launcher_pid = 0
-    _remember(index, launcher_pid, 0 if launcher_pid else proc.pid)
+    # The process just started: the launcher, or the game itself.
+    started = process_identity(proc.pid)
+    if started is None:
+        raise SfveError(f"instance {index}: the process just started ended at once (exit code {proc.poll()})")
+    _remember(index, started)
 
     def refuse(why: str) -> SfveError:
-        _kill_copy(launcher_pid, 0 if launcher_pid else proc.pid)
+        _kill_tree([started])
         return SfveError(f"instance {index} {why}; killed")
 
     try:
@@ -214,8 +393,13 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
         raise refuse(f"did not confirm its network guard within {GUARD_TIMEOUT_S:.0f} s")
     if not reply.startswith("ok "):
         raise refuse(f"answered '{reply}'")
-    game_pid = int(reply.split('"pid":', 1)[1].split(",", 1)[0])
-    _remember(index, launcher_pid, game_pid)
+    game_pid = _reply_pid(reply)
+    # The pipe's name is all the instance number gives: whoever answers on it
+    # must be the process just started or one it started, not another copy.
+    game = process_identity(game_pid)
+    if game is None or game not in _process_tree(_process_table(), started):
+        raise refuse(f"answered from process {game_pid}, which is not the process just started ({started[0]}) or one it started")
+    _remember(index, started, game)
     # The pipe answers as soon as the guard is in; the mode's own commands
     # (freeze, host, ...) exist once the battle status does.
     if mode != "inert":
@@ -224,37 +408,34 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
             time.sleep(0.2)
             reply = request(index, "status")
         if '"battle":' not in reply:
-            _kill_copy(launcher_pid, game_pid)
+            _kill_tree([started, game])
             raise SfveError(f"instance {index} did not finish starting the mod; killed")
     return Instance(index, game_pid)
 
 
-def kill_pid(pid: int) -> None:
-    subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+def _kill_tree(roots: list[Identity]) -> list[Identity]:
+    """Ends each running process `roots` names, with everything it started
+    (a launcher's game and helpers). A root whose id now belongs to another
+    process is left alone. Returns what was ended."""
+    table = _process_table()
+    victims = {pid: created for root in roots for pid, created in _process_tree(table, root)}
+    return [(pid, created) for pid, created in victims.items() if _terminate((pid, created))]
 
 
-def _kill_copy(launcher: int, game: int) -> None:
-    # The launcher's tree holds its game; a game started directly is alone.
-    if launcher:
-        subprocess.run(["taskkill", "/F", "/T", "/PID", str(launcher)], capture_output=True)
-    if game:
-        kill_pid(game)
-
-
-def kill_all(timeout_s: float = 15.0) -> list[int]:
-    """Kills the copies this module started (and their launchers), and waits
+def kill_all(timeout_s: float = 15.0, all_runs: bool = False) -> list[int]:
+    """Kills the copies this run started (and their launchers), and waits
     until they are gone, their pipes with them. A copy anything else started
-    is left running."""
-    started = _launched()
-    ours = {pid for copy in started.values() for pid in (copy.get("launcher", 0), copy.get("game", 0)) if pid}
-    games = {copy.get("game", 0) for copy in started.values()} - {0}
-    for copy in started.values():
-        _kill_copy(copy.get("launcher", 0), copy.get("game", 0))
+    is left running, and so is a process that only has a recorded id's
+    number now. `all_runs` also ends the copies other runs' registries
+    still list, to clean up after a run that died. Returns the ids ended."""
+    paths = sorted(registry_path().parent.glob("sfve-launched-*.json")) if all_runs else [registry_path()]
+    killed = _kill_tree([identity for path in paths for copy in _registered(path).values() for identity in copy])
     deadline = time.monotonic() + timeout_s
-    while set(running_pids()) & games and time.monotonic() < deadline:
+    while any(process_identity(pid) == (pid, created) for pid, created in killed) and time.monotonic() < deadline:
         time.sleep(0.2)
-    LAUNCHED.unlink(missing_ok=True)
-    return sorted(ours)
+    for path in paths:
+        path.unlink(missing_ok=True)
+    return sorted(pid for pid, _ in killed)
 
 
 # --- menu routes ----------------------------------------------------------------

@@ -91,6 +91,7 @@ def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--shots", type=Path)
     a = p.parse_args(argv)
+    lib.begin_run()
     lib.kill_all()
     for i in (0, 1):
         lib.launch(i, "netplay", ["-sfve_pads=01", "-sfve_background=1", "-sfve_room=1"])
@@ -168,8 +169,7 @@ def main(argv: list[str]) -> int:
     except (lib.SfveError, KeyError, TypeError) as e:
         failure = str(e) or type(e).__name__
     lib.kill_all()
-    print("FAIL: " + failure if failure else "PASS")
-    return 1 if failure else 0
+    return lib.verdict(failure)
 
 
 if __name__ == "__main__":

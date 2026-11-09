@@ -25,6 +25,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
+# The build tree is checked before anything is created: never C:.
+. (Join-Path $PSScriptRoot 'BuildPaths.ps1')
+$BuildDir = Resolve-BuildPath $BuildDir '-BuildDir'
 if (!$EmberRepo) { $EmberRepo = Join-Path (Split-Path -Parent $repo) 'sf4-current' }
 $EmberRepo = (Resolve-Path -LiteralPath $EmberRepo).Path
 $manifest = Join-Path $EmberRepo 'rust\sf4-net\Cargo.toml'

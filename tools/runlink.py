@@ -95,9 +95,9 @@ def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="runlink")
     p.add_argument("--shots", type=Path)
     a = p.parse_args(argv)
+    lib.begin_run()
     if lib.VIA != "launcher":
-        print("FAIL: set SFVE_VIA=launcher (and SFVE_PACKAGE_DIR): links go between launchers")
-        return 1
+        return lib.verdict("set SFVE_VIA=launcher (and SFVE_PACKAGE_DIR): links go between launchers")
     launcher = lib.PACKAGE_DIR / "Launcher.exe"
     failures: list[str] = []
 
@@ -134,8 +134,7 @@ def main(argv: list[str]) -> int:
     finally:
         lib.kill_all()
 
-    print(f"FAIL: {'; '.join(failures)}" if failures else f"PASS: {SCHEME}:// room and match links handed to the running game and taken")
-    return 1 if failures else 0
+    return lib.verdict(failures, f"PASS: {SCHEME}:// room and match links handed to the running game and taken")
 
 
 if __name__ == "__main__":

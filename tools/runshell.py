@@ -217,6 +217,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--unowned", help="copy 0's -sfve_unowned (CODE[:costume[:colour]],...): content its player "
                    "may not pick, to show the pick screen's NOT OWNED")
     a = p.parse_args(argv)
+    lib.begin_run()
     if a.shots:
         a.shots.mkdir(parents=True, exist_ok=True)
     lib.kill_all()
@@ -264,8 +265,7 @@ def main(argv: list[str]) -> int:
             print(f"copy {i} is not answering")
     if not a.keep:
         lib.kill_all()
-    print("FAIL: " + failure if failure else "PASS")
-    return 1 if failure else 0
+    return lib.verdict(failure)
 
 
 if __name__ == "__main__":

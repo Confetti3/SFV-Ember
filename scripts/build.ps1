@@ -23,6 +23,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 
+# Every place this build writes to is checked before anything is created: never C:.
+. (Join-Path $PSScriptRoot 'BuildPaths.ps1')
+$BuildDir = Resolve-BuildPath $BuildDir '-BuildDir'
+$VcpkgCache = Resolve-BuildPath $VcpkgCache '-VcpkgCache'
+
 $freeGb = [math]::Round((Get-PSDrive C).Free / 1GB, 1)
 if ($freeGb -lt 120) { throw "C: has $freeGb GB free; stopping before the build (floor 120 GB)" }
 

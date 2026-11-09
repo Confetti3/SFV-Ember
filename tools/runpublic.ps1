@@ -289,6 +289,7 @@ try {
 foreach ($i in 0, 1) {
 	if ($ranked -and (Test-Path $logOf[$i])) { Select-String -Path $logOf[$i] -Pattern "art: /Game/CommonAsset/LeagueIcon/|ranks: SFV's leagues" | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
 }
-Complete-Run $failure $processes $keep.IsPresent "$games game(s) in a public room, no desync"
+$passed = Complete-Run $failure $processes $keep.IsPresent "$games game(s) in a public room, no desync"
 # Room hosts the supervisor started outlive it when it is killed: end ours.
 Get-Process sfve-room-host -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $roomHost } | Stop-Process -Force
+exit $(if ($passed) { 0 } else { 1 })

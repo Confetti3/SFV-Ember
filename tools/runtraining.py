@@ -453,12 +453,17 @@ def main(argv: list[str]) -> int:
     p.add_argument("--part", default="all", choices=["solo", "call", "practice", "control", "all"])
     p.add_argument("--keep", action="store_true")
     a = p.parse_args(argv)
+    lib.begin_run()
     if a.shots:
         a.shots.mkdir(parents=True, exist_ok=True)
     take_launch_lock()
     failure = ""
     try:
-        lib.deploy()
+        # Stopped before anything is installed. Launcher mode (SFVE_VIA=launcher) runs the
+        # package folder's mod and writes nothing to the game folder.
+        lib.kill_all()
+        if lib.VIA != "launcher":
+            lib.deploy()
         for part, run in (("solo", solo), ("call", call), ("practice", practice), ("control", control)):
             if a.part not in (part, "all"):
                 continue
@@ -478,8 +483,7 @@ def main(argv: list[str]) -> int:
         if not a.keep:
             lib.kill_all()
             release_launch_lock()
-    print("FAIL: " + failure if failure else "PASS")
-    return 1 if failure else 0
+    return lib.verdict(failure)
 
 
 if __name__ == "__main__":

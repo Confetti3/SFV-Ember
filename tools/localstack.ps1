@@ -1,7 +1,8 @@
 # The local stack tools/runpublic.ps1 and tools/runmatch.ps1 share, dot-sourced
 # by both: the control pipe's helpers, a scratch Ember bridge on 127.0.0.1, two
 # copies with Ember IDs of their own that trust it, and the checks and cleanup
-# at the end (the copies' checkpoints compared, PASS or FAIL).
+# at the end (the copies' checkpoints compared, PASS or FAIL; the runner exits
+# nonzero unless Complete-Run returned $true, see tools/verdict.ps1).
 #
 # The copies make their Ember IDs in <work>\ember<N>: the helper must be built
 # with -Features selftest (scripts/build-helper.ps1), which reads
@@ -10,6 +11,9 @@
 # (-sfve_room=1) and seeded random input, and no window is brought forward.
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot 'verdict.ps1')
+# The copies this run starts are listed under a run of its own (SFVE_RUN, tools/sfvelib.py), so `sfve.py kill` ends only these.
+$env:SFVE_RUN = [guid]::NewGuid().ToString('N')
 # The mod logs under %APPDATA%\SFVEmber\logs (mod/Log.cxx), as tools/runroom.ps1 reads them.
 $logs = Join-Path $env:APPDATA 'SFVEmber\logs'
 $logOf = @("$logs\sfv_ember.log", "$logs\sfv_ember.1.log")
@@ -104,32 +108,19 @@ function WaitIdentity([int]$i, [string]$ticket, [string]$what) {
 
 # The end of a run: each copy's room and any desync line, the copies closed
 # (unless $keep), the processes stopped, the checkpoints of every game both
-# logged compared, and PASS ($passText) or FAIL.
+# logged compared, and PASS ($passText) or FAIL. Returns $true only for PASS
+# (tools/verdict.ps1's rule): the caller finishes its own cleanup, then exits
+# nonzero for anything else.
 function Complete-Run([string]$failure, [System.Diagnostics.Process[]]$processes, [bool]$keep, [string]$passText) {
 	foreach ($i in 0, 1) {
-		try { "copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress) } catch { "copy $i is not answering" }
-		if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern 'desync|mismatch' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
+		try { Write-Host ("copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress)) } catch { Write-Host "copy $i is not answering" }
+		if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern 'desync|mismatch' | ForEach-Object { Write-Host ("copy ${i}: " + $_.Line.Substring(24)) } }
 	}
 	if (!$keep) { python -I tools\sfve.py kill | Out-Null }
 	foreach ($process in $processes) { if ($process -and !$process.HasExited) { Stop-Process -Id $process.Id -Force } }
-	$h0 = Checkpoints 0; $h1 = Checkpoints 1
-	$common = @($h0.Keys | Where-Object { $h1.ContainsKey($_) })
-	$differing = @($common | Where-Object { $h0[$_] -ne $h1[$_] })
-	"checkpoints: $($common.Count) compared, $($differing.Count) differing"
-	$desyncs = $differing.Count
+	$checkpoints = Compare-Checkpoints (Get-Checkpoints $logOf[0]) (Get-Checkpoints $logOf[1])
+	Write-Host "checkpoints: $($checkpoints.Compared) compared, $($checkpoints.Differing) differing"
+	$desyncs = $checkpoints.Differing
 	foreach ($i in 0, 1) { if (Test-Path $logOf[$i]) { $desyncs += Count $i 'desync|mismatch' } }
-	if ($failure) { "FAIL: $failure" } elseif ($desyncs) { "FAIL: $desyncs desync line(s)" } elseif ($common.Count -eq 0) { 'FAIL: no checkpoints compared' } else { "PASS: $passText" }
-}
-
-# Copy $i's checkpoint hashes by game and frame: a frame far below the last
-# one starts the next game.
-function Checkpoints([int]$i) {
-	$hashes = @{}; $game = 0; $previous = -1
-	if (!(Test-Path $logOf[$i])) { return $hashes }
-	foreach ($m in Select-String -Path $logOf[$i] -Pattern 'checkpoint: frame (\d+) hash (\w+)') {
-		$frame = [int]$m.Matches[0].Groups[1].Value
-		if ($frame -lt $previous - 600) { $game++ }
-		$previous = $frame; $hashes["$game/$frame"] = $m.Matches[0].Groups[2].Value
-	}
-	$hashes
+	Write-Verdict $failure $desyncs $checkpoints.Compared $passText
 }

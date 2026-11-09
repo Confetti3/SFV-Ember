@@ -1,6 +1,6 @@
 """SFV Ember test driver (command line).
 
-  python tools/sfve.py deploy | undeploy
+  python tools/sfve.py deploy [--adopt] | undeploy
   python tools/sfve.py launch <index> [--mode probe|synctest|netplay] [-- extra game args]
   python tools/sfve.py ctl <index> <command line>        e.g. ctl 0 "pad 0 A:100 -:300"
   python tools/sfve.py shot <index> <out.png>
@@ -9,7 +9,7 @@
   python tools/sfve.py fight <index>                     fresh launch to a P1 vs P2 battle
   python tools/sfve.py focus <index>                     bring a copy's window to the front
   python tools/sfve.py mash <index> <slot> <seconds> [seed]  random pad input on a virtual slot
-  python tools/sfve.py ps | kill
+  python tools/sfve.py ps | kill [--all]
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import sfvelib as lib  # noqa: E402
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="sfve")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("deploy")
+    sub.add_parser("deploy").add_argument("--adopt", action="store_true", help="replace a same-named file deploy did not install")
     sub.add_parser("undeploy")
     launch = sub.add_parser("launch")
     launch.add_argument("index", type=int)
@@ -51,7 +51,7 @@ def main(argv: list[str]) -> int:
     mash.add_argument("seconds", type=float)
     mash.add_argument("seed", type=int, nargs="?", default=1)
     sub.add_parser("ps")
-    sub.add_parser("kill")
+    sub.add_parser("kill").add_argument("--all", action="store_true", help="also the copies other runs started (after a run that died)")
     # The game's own arguments follow "--" and are split off here: argparse
     # before Python 3.12 leaves "--" unconsumed after a nargs="*" positional.
     game_args: list[str] = []
@@ -64,9 +64,10 @@ def main(argv: list[str]) -> int:
 
     try:
         if a.cmd == "deploy":
-            print("copied:", lib.deploy() or "nothing (already current)")
+            print("copied:", lib.deploy(a.adopt) or "nothing (already current)")
         elif a.cmd == "undeploy":
-            print("removed:", lib.undeploy())
+            removed = lib.undeploy()
+            print("removed:", removed or "nothing (only what deploy recorded in the manifest is removed)")
         elif a.cmd == "launch":
             inst = lib.launch(a.index, a.mode, game_args)
             print(f"instance {inst.index} pid {inst.pid}: guard confirmed")
@@ -90,7 +91,7 @@ def main(argv: list[str]) -> int:
         elif a.cmd == "ps":
             print(lib.running_pids())
         elif a.cmd == "kill":
-            print("killed:", lib.kill_all())
+            print("killed:", lib.kill_all(all_runs=a.all))
     except lib.SfveError as e:
         print("error:", e, file=sys.stderr)
         return 1
