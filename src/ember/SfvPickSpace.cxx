@@ -13,11 +13,104 @@
 
 namespace sfve::picks {
 
+int PartNumber(Loadout loadout, LoadoutPart part)
+{
+	return part == LoadoutPart::VSkill ? (int)loadout.vSkill : (int)loadout.vTrigger;
+}
+
+std::optional<Loadout> WithPart(Loadout loadout, LoadoutPart part, int number)
+{
+	if (number < 0 || number >= kPartChoices) return std::nullopt;
+	if (part == LoadoutPart::VSkill) loadout.vSkill = (VSkill)number;
+	else loadout.vTrigger = (VTrigger)number;
+	return loadout;
+}
+
+std::optional<Loadout> LoadoutOfNumbers(int vSkill, int vTrigger)
+{
+	const std::optional<Loadout> withSkill = WithPart({}, LoadoutPart::VSkill, vSkill);
+	return withSkill ? WithPart(*withSkill, LoadoutPart::VTrigger, vTrigger) : std::nullopt;
+}
+
+int LoadoutIndex(Loadout loadout)
+{
+	return PartNumber(loadout, LoadoutPart::VSkill) * kPartChoices + PartNumber(loadout, LoadoutPart::VTrigger);
+}
+
+std::optional<Loadout> LoadoutAt(int index)
+{
+	if (index < 0 || index >= kLoadoutChoices) return std::nullopt;
+	return LoadoutOfNumbers(index / kPartChoices, index % kPartChoices);
+}
+
+std::optional<Loadout> LoadoutIn(const sf4e::selection::Pick& pick)
+{
+	return LoadoutAt(pick.ultra);
+}
+
+Loadout LoadoutOf(const sf4e::selection::Pick& pick)
+{
+	return LoadoutIn(pick).value_or(Loadout{});
+}
+
+void SetLoadout(sf4e::selection::Pick& pick, Loadout loadout)
+{
+	pick.ultra = LoadoutIndex(loadout);
+}
+
+bool SameFitting(const sf4e::selection::Pick& a, const sf4e::selection::Pick& b)
+{
+	return a.fighter == b.fighter && a.costume == b.costume && a.color == b.color && a.ultra == b.ultra &&
+		a.handicap == b.handicap;
+}
+
+std::string LoadoutText(Loadout loadout)
+{
+	const auto numeral = [&](LoadoutPart part) { return PartNumber(loadout, part) == 0 ? "I" : "II"; };
+	return std::string("vskill ") + numeral(LoadoutPart::VSkill) + " vtrigger " + numeral(LoadoutPart::VTrigger);
+}
+
+int PartChoices(const Fighter& fighter, LoadoutPart part)
+{
+	return part == LoadoutPart::VSkill ? fighter.vSkills : fighter.vTriggers;
+}
+
+bool HasLoadout(const Fighter& fighter, Loadout loadout)
+{
+	for (LoadoutPart part : kLoadoutParts) {
+		if (PartNumber(loadout, part) >= PartChoices(fighter, part)) return false;
+	}
+	return true;
+}
+
+Loadout FitLoadout(const Fighter& fighter, Loadout loadout)
+{
+	for (LoadoutPart part : kLoadoutParts) {
+		if (PartNumber(loadout, part) >= PartChoices(fighter, part)) loadout = *WithPart(loadout, part, 0);
+	}
+	return loadout;
+}
+
+std::vector<int> LoadoutIndices(const Fighter& fighter)
+{
+	std::vector<int> indices;
+	for (int index = 0; index < kLoadoutChoices; index++) {
+		if (HasLoadout(fighter, *LoadoutAt(index))) indices.push_back(index);
+	}
+	return indices;
+}
+
 std::string Problem(const PickSpace& space)
 {
 	if (space.fighters.empty() || space.stages.empty()) return "a list is empty";
 	if (space.fighters.size() > (size_t)ember::MaxFighters) return "more fighters than a room carries";
 	for (const Fighter& fighter : space.fighters) {
+		for (LoadoutPart part : kLoadoutParts) {
+			const int choices = PartChoices(fighter, part);
+			if (choices < 1 || choices > kPartChoices) {
+				return fighter.code + " has " + std::to_string(choices) + (part == LoadoutPart::VSkill ? " V-Skills" : " V-Triggers");
+			}
+		}
 		if (fighter.costumes.empty()) return fighter.code + " has no costume";
 		for (const Costume& costume : fighter.costumes) {
 			if (costume.colours.empty()) return fighter.code + " costume " + std::to_string(costume.id) + " has no colour";
@@ -34,7 +127,7 @@ namespace {
 
 // Every list by its length and every code by its length, so no two pick
 // spaces read alike: the fighters, each with its costumes' numbers and each
-// costume's colours.
+// costume's colours, then its V-Skill and V-Trigger counts.
 std::string FightersText(const PickSpace& space)
 {
 	std::string text = std::to_string(space.fighters.size()) + ";";
@@ -45,7 +138,7 @@ std::string FightersText(const PickSpace& space)
 			for (int colour : costume.colours) text += std::to_string(colour) + ",";
 			text += "]";
 		}
-		text += ")";
+		text += ")v" + std::to_string(fighter.vSkills) + "," + std::to_string(fighter.vTriggers) + ";";
 	}
 	return text;
 }
@@ -105,7 +198,9 @@ bool HasColour(const Costume& costume, int colour)
 bool ValidPick(const PickSpace& space, const sf4e::selection::Pick& pick)
 {
 	const Costume* costume = CostumeAt(space, pick.fighter, pick.costume);
-	return costume && HasColour(*costume, pick.color) && pick.ultra == 0 && pick.handicap == 0;
+	const std::optional<Loadout> loadout = LoadoutIn(pick);
+	return costume && HasColour(*costume, pick.color) && loadout && HasLoadout(*FighterAt(space, pick.fighter), *loadout) &&
+		pick.handicap == 0;
 }
 
 bool ValidStage(const PickSpace& space, std::int64_t stage)
@@ -124,10 +219,9 @@ bool FitPick(const PickSpace& space, sf4e::selection::Pick& pick)
 		pick.costume = costume->id;
 	}
 	if (costume && !HasColour(*costume, pick.color)) pick.color = costume->colours.front();
-	pick.ultra = 0;
+	SetLoadout(pick, fighter ? FitLoadout(*fighter, LoadoutOf(pick)) : Loadout{});
 	pick.handicap = 0;
-	return pick.fighter != before.fighter || pick.costume != before.costume || pick.color != before.color ||
-		pick.ultra != before.ultra || pick.handicap != before.handicap;
+	return !SameFitting(pick, before);
 }
 
 int CostumeLimit(const PickSpace& space)
@@ -165,7 +259,8 @@ std::string ToJson(const PickSpace& space, const std::string& build)
 	for (const Fighter& fighter : space.fighters) {
 		nlohmann::json costumes = nlohmann::json::array();
 		for (const Costume& costume : fighter.costumes) costumes.push_back({{"id", costume.id}, {"colours", costume.colours}});
-		fighters.push_back({{"code", fighter.code}, {"costumes", std::move(costumes)}});
+		fighters.push_back({{"code", fighter.code}, {"costumes", std::move(costumes)}, {"v_skills", fighter.vSkills},
+			{"v_triggers", fighter.vTriggers}});
 	}
 	return nlohmann::json{{"build", build}, {"fighters", std::move(fighters)}, {"stages", space.stages}}.dump(1, '\t') + "\n";
 }
@@ -193,11 +288,12 @@ bool FromJson(const std::string& text, PickSpace& space, std::string& build, std
 			return false;
 		}
 		for (const nlohmann::json& fighter : root["fighters"]) {
-			if (!exactly(fighter, {"code", "costumes"}) || !fighter["code"].is_string() || !fighter["costumes"].is_array()) {
-				error = "a fighter is not a code and costumes";
+			if (!exactly(fighter, {"code", "costumes", "v_skills", "v_triggers"}) || !fighter["code"].is_string() ||
+				!fighter["costumes"].is_array() || !integer(fighter["v_skills"]) || !integer(fighter["v_triggers"])) {
+				error = "a fighter is not a code, costumes, and V-Skill and V-Trigger counts";
 				return false;
 			}
-			Fighter entry{fighter["code"].get<std::string>(), {}};
+			Fighter entry{fighter["code"].get<std::string>(), {}, fighter["v_skills"].get<int>(), fighter["v_triggers"].get<int>()};
 			for (const nlohmann::json& costume : fighter["costumes"]) {
 				if (!exactly(costume, {"id", "colours"}) || !integer(costume["id"]) || !costume["colours"].is_array()) {
 					error = entry.code + ": a costume is not an id and colours";

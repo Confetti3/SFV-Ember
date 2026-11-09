@@ -72,7 +72,7 @@ private:
 json PlayerJson(const Player& p)
 {
 	return {{"name", p.name}, {"fighter", p.fighter}, {"costume", p.costume}, {"colour", p.colour}, {"code", p.code},
-		{"launchCostume", p.launchCostume}, {"launchColour", p.launchColour}};
+		{"launchCostume", p.launchCostume}, {"launchColour", p.launchColour}, {"vSkill", p.vSkill}, {"vTrigger", p.vTrigger}};
 }
 
 json HeaderJson(const Header& h)
@@ -116,6 +116,14 @@ T Field(const json& object, const char* name)
 	}
 }
 
+// A field a header written by an earlier version lacks: `absent` then, and
+// otherwise as Field reads it.
+template <class T>
+T FieldOr(const json& object, const char* name, T absent)
+{
+	return object.contains(name) ? Field<T>(object, name) : absent;
+}
+
 Player ReadPlayer(const json& j)
 {
 	Player p;
@@ -126,6 +134,8 @@ Player ReadPlayer(const json& j)
 	p.code = Field<std::string>(j, "code");
 	p.launchCostume = Field<int>(j, "launchCostume");
 	p.launchColour = Field<int>(j, "launchColour");
+	p.vSkill = FieldOr<int>(j, "vSkill", 0);
+	p.vTrigger = FieldOr<int>(j, "vTrigger", 0);
 	return p;
 }
 

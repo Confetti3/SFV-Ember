@@ -2,6 +2,7 @@
 
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvFaceCrop.hxx"
+#include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvRankNames.hxx"
 #include "mod/GameArt.hxx"
 #include "mod/GameContent.hxx"
@@ -321,6 +322,7 @@ void InstallSfvArt()
 		// Loading is synchronous: never while a battle runs.
 		if (!AtMainMenu()) return true;
 		ReadLeagueNames();
+		ReadLoadoutWords();
 		PumpPictures();
 		PumpSwatches();
 		return true;

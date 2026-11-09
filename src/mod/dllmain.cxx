@@ -260,6 +260,7 @@ extern "C" int SfveStart(int beforeGameCode)
 				unownedFighters += !fighter.owned;
 				Log("content: %s \"%s\"%s%s, %zu costumes", fighter.code.c_str(), fighter.name.c_str(),
 					fighter.installed ? "" : " (not installed)", fighter.owned ? "" : " (not owned)", fighter.costumes.size());
+				Log("content:   %s", ChoicesText(fighter).c_str());
 				for (const CostumeContent& costume : fighter.costumes) {
 					std::string colours;
 					for (int colour : costume.colours) {

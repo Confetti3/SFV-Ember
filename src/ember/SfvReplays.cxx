@@ -131,7 +131,9 @@ sf4e::replayinputs::Summary SummaryOf(const replay::Header& h)
 		s.players[side].fighter = p.fighter;
 		s.players[side].costume = p.costume;
 		s.players[side].color = p.colour;
-		s.players[side].ultra = 0; // SFV's one choice (SfvCatalog's ultraChoices)
+		// The Ultra number is the loadout (section 40); a header's numbers out
+		// of range read as the first loadout, as the pick's slot does.
+		s.players[side].ultra = picks::LoadoutIndex(picks::LoadoutOfNumbers(p.vSkill, p.vTrigger).value_or(picks::Loadout{}));
 		s.players[side].handicap = 0;
 	}
 	return s;
@@ -277,7 +279,9 @@ std::optional<mod::MatchPicks> PicksOf(const replay::Header& h)
 		picks.players[side].fighter = sf4e::platform::Utf8ToWide(p.code.c_str());
 		picks.players[side].costume = p.launchCostume;
 		picks.players[side].colour = p.launchColour;
-		if (!FighterId(picks.players[side].fighter) || p.launchCostume < 0 || p.launchColour < 0) return std::nullopt;
+		const std::optional<sfve::picks::Loadout> loadout = sfve::picks::LoadoutOfNumbers(p.vSkill, p.vTrigger);
+		if (!FighterId(picks.players[side].fighter) || p.launchCostume < 0 || p.launchColour < 0 || !loadout) return std::nullopt;
+		picks.players[side].loadout = *loadout;
 	}
 	picks.rules.stage = sf4e::platform::Utf8ToWide(h.stageCode.c_str());
 	const std::optional<int> stage = StageId(picks.rules.stage);
@@ -536,6 +540,9 @@ bool RecordingHeader(int slot, std::uint32_t seed, int delay, replay::Header* ou
 		p.code = sf4e::platform::WideToUtf8(picks->players[side].fighter);
 		p.launchCostume = picks->players[side].costume;
 		p.launchColour = picks->players[side].colour;
+		const sfve::picks::Loadout loadout = picks->players[side].loadout;
+		p.vSkill = sfve::picks::PartNumber(loadout, sfve::picks::LoadoutPart::VSkill);
+		p.vTrigger = sfve::picks::PartNumber(loadout, sfve::picks::LoadoutPart::VTrigger);
 	}
 	h.stage = room->stage;
 	h.stageCode = sf4e::platform::WideToUtf8(picks->rules.stage);

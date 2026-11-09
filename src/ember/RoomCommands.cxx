@@ -175,7 +175,7 @@ std::string Pick(const std::string& args)
 	mod::FighterPick fighter;
 	mod::MatchRules rules;
 	if (!mod::ParseSetup(args, &fighter, &rules) || fighter.fighter.empty()) {
-		return "error usage: pick CODE[:costume[:colour]] [STAGE|RND]";
+		return "error usage: pick CODE[:costume[:colour[:vskill[:vtrigger]]]] [STAGE|RND] (vskill and vtrigger 1|2)";
 	}
 	const std::optional<int> id = FighterId(fighter.fighter);
 	if (!id) return "error that fighter is not in this game's list";
@@ -194,10 +194,13 @@ std::string Pick(const std::string& args)
 	pick.pick.fighter = *id;
 	pick.pick.costume = fighter.costume < 0 ? 0 : fighter.costume;
 	pick.pick.color = fighter.colour < 0 ? 0 : fighter.colour;
-	// The store fits the pick to the catalog, as for the shell's picks.
+	picks::SetLoadout(pick.pick, fighter.loadout);
+	// The store fits the pick to the catalog, as for the shell's picks: a
+	// V-Skill or V-Trigger the fighter does not have becomes I.
 	const PlayerPick asked = pick;
 	pick = SetPick(pick);
-	const bool fitted = pick.pick.costume != asked.pick.costume || pick.pick.color != asked.pick.color;
+	const bool fitted = pick.pick.costume != asked.pick.costume || pick.pick.color != asked.pick.color ||
+		picks::LoadoutOf(pick.pick) != fighter.loadout;
 	if (fitted) mod::Log("room: pick %s fitted to %s", PickText(asked).c_str(), PickText(pick).c_str());
 	return "ok " + PickText(pick) + (fitted ? " (fitted)" : "");
 }

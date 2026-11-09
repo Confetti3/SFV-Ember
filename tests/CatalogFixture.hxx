@@ -41,6 +41,15 @@ inline mod::FighterContent Fighter(const char* code, std::vector<mod::CostumeCon
 	return {code, std::move(costumes), name, installed, owned};
 }
 
+// The fighter with the V-Skills and V-Triggers named, I first.
+inline mod::FighterContent WithChoices(mod::FighterContent fighter, std::vector<std::string> vSkills,
+	std::vector<std::string> vTriggers)
+{
+	fighter.vSkills = std::move(vSkills);
+	fighter.vTriggers = std::move(vTriggers);
+	return fighter;
+}
+
 // A stage of the spec's universe, installed here and the game's to choose
 // unless said otherwise.
 inline mod::StageContent Stage(const char* code, const char* name = "", bool installed = true, bool owned = true)
@@ -57,18 +66,23 @@ inline mod::StageContent Stage(const char* code, const char* name = "", bool ins
 // lets them pick in none of its colours (RYU's costume 1, as -sfve_unowned
 // marks of each of its colours make it), so no look of it is theirs; the
 // stages' names where the game gives one (none for the second), and a fourth
-// stage of the universe this copy has not installed (S26, id 3).
+// stage of the universe this copy has not installed (S26, id 3). The
+// fighters' V-Skills and V-Triggers (section 40) are every mix: RYU and BSN
+// two of each, CNL two V-Skills and one V-Trigger, CMY one V-Skill and two
+// V-Triggers, KEN one of each; BSN's are unnamed.
 inline mod::ContentLists TestContent()
 {
-	return {{Fighter("RYU",
-				 {Costume(0, {0, 1, 2}, "Story"),
-					 Costume(1, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, "", true, true, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}),
-					 Costume(4, {0, 1, 100, 101}, "Nostalgia", true, true, {100, 101})},
-				 "Ryu"),
-				Fighter("CNL", {Costume(0, {0, 1}), Costume(2, {0}, "", true, false)}, "Chun-Li"),
+	return {{WithChoices(Fighter("RYU",
+							 {Costume(0, {0, 1, 2}, "Story"),
+								 Costume(1, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, "", true, true, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}),
+								 Costume(4, {0, 1, 100, 101}, "Nostalgia", true, true, {100, 101})},
+							 "Ryu"),
+				 {"Skill One", "Skill Two"}, {"Trigger One", "Trigger Two"}),
+				WithChoices(Fighter("CNL", {Costume(0, {0, 1}), Costume(2, {0}, "", true, false)}, "Chun-Li"),
+					{"Skill One", "Skill Two"}, {"Trigger One"}),
 				Fighter("KEN", {Costume(0, {0})}, "Ken", true, false),
-				Fighter("CMY", {Costume(3, {5, 6})}, "", false),
-				Fighter("BSN", {Costume(0, {0, 1}), Costume(1, {0, 1}, "", false)}, "M. Bison")},
+				WithChoices(Fighter("CMY", {Costume(3, {5, 6})}, "", false), {"Skill One"}, {"Trigger One", "Trigger Two"}),
+				WithChoices(Fighter("BSN", {Costume(0, {0, 1}), Costume(1, {0, 1}, "", false)}, "M. Bison"), {"", ""}, {"", ""})},
 		{Stage("S01", "Stage One"), Stage("S02"), Stage("S25", "Stage Twenty-five"), Stage("S26", "", false)}};
 }
 
@@ -90,14 +104,21 @@ inline void FillTestCatalog()
 	REQUIRE(adapter::FillCatalog(TestContent()));
 }
 
-inline sf4e::selection::Pick PickOf(int fighter, int costume = 0, int color = 0)
+inline sf4e::selection::Pick PickOf(int fighter, int costume = 0, int color = 0, picks::Loadout loadout = {})
 {
 	sf4e::selection::Pick pick;
 	pick.fighter = fighter;
 	pick.costume = costume;
 	pick.color = color;
+	picks::SetLoadout(pick, loadout);
 	return pick;
 }
+
+// The loadouts by their parts' numerals.
+constexpr picks::Loadout kOneOne{picks::VSkill::I, picks::VTrigger::I};
+constexpr picks::Loadout kOneTwo{picks::VSkill::I, picks::VTrigger::II};
+constexpr picks::Loadout kTwoOne{picks::VSkill::II, picks::VTrigger::I};
+constexpr picks::Loadout kTwoTwo{picks::VSkill::II, picks::VTrigger::II};
 
 // A match of the fighters in their first costume and colour.
 inline adapter::RoomMatch MatchOf(int p1, int p2, std::int64_t stage, int rounds = 3, int seconds = 99)

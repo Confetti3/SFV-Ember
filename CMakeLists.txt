@@ -90,6 +90,7 @@ add_library(sfve_ember STATIC
     src/ember/SfvFaceCrop.cxx
     src/ember/SfvGame.cxx
     src/ember/SfvHud.cxx
+    src/ember/SfvLoadoutText.cxx
     src/ember/SfvPick.cxx
     src/ember/SfvPickSpace.cxx
     src/ember/SfvReplays.cxx
@@ -166,6 +167,7 @@ add_executable(sfve_ember_tests
     tests/EmberAdapterTests.cxx
     tests/SfvCatalogTests.cxx
     tests/SfvPickRulesTests.cxx
+    tests/SfvLoadoutTests.cxx
     tests/GameContentTests.cxx
     tests/ProductIdentityTests.cxx
     tests/GameLocatorTests.cxx

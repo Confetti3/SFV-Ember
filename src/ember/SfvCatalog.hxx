@@ -36,9 +36,18 @@
 // the stage row and Random offer only stages both seated players have.
 // EMBER_LIBRARY.md section 38.
 //
-// What SFV has no use for: Ultras (one choice, 0), editions (a room's
-// edition rule is ignored), personal actions and win quotes (SF4's; the wire
-// carries SF4's values for them). A handicap is refused: SFV's launch has none.
+// A pick's V-Skill and V-Trigger are its loadout (SfvPickSpace's Loadout),
+// which travels in the shared pick's Ultra slot as one of four numbers
+// (ultraChoices): the library sees an Ultra numbered below that, and SFV's
+// codec (picks::LoadoutOf, SetLoadout) alone gives it meaning. A fighter has
+// one or two of each, as the game's name assets list them (GameContent), and
+// a pick holds only parts its fighter has. Shared screens name the loadout as
+// one value (SfvLoadoutText); SFV's pick screen has a row for each part.
+// EMBER_LIBRARY.md section 40.
+//
+// What SFV has no use for: editions (a room's edition rule is ignored),
+// personal actions and win quotes (SF4's; the wire carries SF4's values for
+// them). A handicap is refused: SFV's launch has none.
 // The table rules it offers are the room's that SFV plays: 1, 3, 5 or 7
 // rounds of 30, 60, 99 or 300 seconds (VersusLaunch's PlayableRounds and
 // RoundClockFrames), filled with the lists. A table's Instant rematch plays:
@@ -152,6 +161,19 @@ void FitOwnPick(sf4e::selection::Pick& pick);
 // ("01", "EX01").
 std::string CostumeName(std::int64_t fighter, int costume);
 std::string ColourName(int colour);
+
+// How many choices the fighter has of a loadout part (1 or 2; 0 for a
+// fighter the catalog does not have), the game's name for choice `number`
+// (empty where the game gave none), and the fighter's loadouts by
+// picks::LoadoutIndex, in that order (what the table page steps through).
+int PartChoices(std::int64_t fighter, picks::LoadoutPart part);
+std::string MoveName(std::int64_t fighter, picks::LoadoutPart part, int number);
+std::vector<int> LoadoutIndices(std::int64_t fighter);
+
+// The pick as a launch names it (VersusLaunch's FighterPick): the fighter's
+// code, the costume and colour numbers, and the loadout. The one place a
+// pick becomes a launch's, for a room's match, Training and its dummy.
+mod::FighterPick FighterPickOf(const sf4e::selection::Pick& pick);
 
 // The other way, from a code as a launch names it (L"RYU", VersusLaunch's
 // FighterPick): its id, empty for one not listed.

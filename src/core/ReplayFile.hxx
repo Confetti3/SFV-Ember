@@ -55,6 +55,12 @@ struct Player {
 	std::string code;
 	int launchCostume = -1;
 	int launchColour = -1;
+	// The V-Skill and V-Trigger launched, as the game numbers them (0 is I, 1
+	// is II; EMBER_LIBRARY.md section 40). A header written before they were
+	// recorded has neither, and reads 0: such a file's build is one a
+	// playback refuses anyway, so only its listing reads them.
+	int vSkill = 0;
+	int vTrigger = 0;
 };
 
 // One game of the battle, as the game judged it on its match end's frame.

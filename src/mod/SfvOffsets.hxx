@@ -329,6 +329,12 @@ constexpr CodeSite kTexture2DClass{"Texture2DClass", 0x1F3CF10,
 // (rva 0x53D1D0, with flags 0 and reconcile true).
 constexpr CodeSite kStaticLoadObject{"StaticLoadObject", 0x1242910,
 	{0x4C, 0x8B, 0xDC, 0x55, 0x53, 0x49, 0x8D, 0xAB, 0x18, 0xFE, 0xFF, 0xFF, 0x48, 0x81, 0xEC, 0xD8}};
+// UClass* VersionDataClass(const TCHAR* package): KWVersionDataAsset's class,
+// cached at rva 0x3AA6370 (L"/Script/KiwiGame"). The game loads its
+// V-Trigger and V-Skill name assets as such (rva 0x76AFD0, 0x76AB40); see
+// namespace choices.
+constexpr CodeSite kVersionDataClass{"VersionDataClass", 0xC27870,
+	{0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05, 0xF5, 0xEA, 0xE7, 0x02, 0x48, 0x85, 0xC0, 0x75, 0x21}};
 // bool ColourSwatch(CharaAsset*, const FString* code, int costume, int
 // colour, uint32 out[2]): the two colours the costume settings menu shows for
 // a colour (rva 0x8CC6E0, case 4), as 0xRRGGBB. It finds, or loads, the
@@ -432,7 +438,8 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kFighterInstalled, kCostumeValid, kColourValid, kShowResult, kRestartBattle, kSpecData, kSelectableFighters,
 	kSpecStages, kMainMenuClass, kSetPlayerParam, kRequestExit, kStageName, kSpecFighters, kSpecCostumes, kPlayableCostumes,
 	kSpecColours, kCostumeName, kTextToString, kCreateText, kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke,
-	kBattleSetupClass, kOwnedFighters, kOwnedCostumes, kOwnedColours, kOwnedStages, kLoggedIn, kSpecStageIds};
+	kBattleSetupClass, kOwnedFighters, kOwnedCostumes, kOwnedColours, kOwnedStages, kLoggedIn, kSpecStageIds,
+	kVersionDataClass};
 
 namespace versus {
 
@@ -478,6 +485,20 @@ constexpr uint32_t kCharaSetupData = 48;
 constexpr uint32_t kPersonalName = 80;
 
 } // namespace content
+
+// A fighter's V-Trigger and V-Skill names (/Game/Chara/DA_VTriggerNameAsset
+// and DA_VSkillNameAsset, KWVersionDataAsset). The game's lookup (rva
+// 0x567EA0) walks the asset's array and, for each entry whose code matches
+// (ignoring case), takes its names; their count is the fighter's number of
+// choices, and the select and VS screens index them by CharPkg +48 and +56.
+namespace choices {
+constexpr uint32_t kEntries = 40; // asset: TArray data, then int count at +48
+constexpr uint32_t kCount = 48;
+constexpr uint32_t kEntryStride = 32; // entry: +0 FString fighter code
+constexpr uint32_t kNames = 16;       // entry: TArray data, then int count at +24
+constexpr uint32_t kNameCount = 24;
+constexpr uint32_t kNameStride = 40; // an FText
+} // namespace choices
 
 // A loaded UTexture2D (UE 4.7.6) and its render resource.
 namespace texture {
@@ -544,14 +565,22 @@ constexpr uint32_t kDataGetChara = 72;  // const CharPkg* (int player)
 constexpr uint32_t kDataSetSpec = 104;  // void (const SpecPkg*)
 constexpr uint32_t kDataGetSpec = 112;  // const SpecPkg* ()
 
-// CharPkg: +0 FString fighter code, +16 costume, +20 colour, +24 TArray of
-// 16-byte items, then ints and two bytes. SpecPkg: +0 byte, +4 time,
-// +8 rounds, +16 FString stage code, +32..+34 bytes.
+// CharPkg (CopyCharPkg copies every field): +0 FString fighter code, +16
+// costume, +20 colour, +24 TArray of 16-byte items, +40 int (default 1),
+// +44 int (default -1), +48 V-Trigger, +52 int, +56 V-Skill (0 is I, 1 is
+// II), +60 and +61 bytes. The select screen's ChangeCostume (rva 0x592C50)
+// stores the two choices at +48 and +56 and applies the record through the
+// same two setters WriteFighter calls (rva 0x6C8540); the battle setting
+// copies them to its player record's +220 and +228 (rva 0x7CAA40). A fresh
+// mode data object's default record holds 0 in both (rva 0x70C180).
+// SpecPkg: +0 byte, +4 time, +8 rounds, +16 FString stage code, +32..+34 bytes.
 constexpr uint32_t kCharPkgSize = 64;
 constexpr uint32_t kCharCode = 0;
 constexpr uint32_t kCharCostume = 16;
 constexpr uint32_t kCharColour = 20;
 constexpr uint32_t kCharItems = 24;
+constexpr uint32_t kCharVTrigger = 48;
+constexpr uint32_t kCharVSkill = 56;
 constexpr uint32_t kSpecPkgSize = 40;
 constexpr uint32_t kSpecTime = 4;
 constexpr uint32_t kSpecRounds = 8;

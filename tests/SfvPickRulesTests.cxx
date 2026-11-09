@@ -54,12 +54,12 @@ TEST_CASE("a pick is fitted to the spec: the fighter's first costume, then that 
 	FillTestCatalog();
 	const ember::GameCatalog& catalog = ember::Catalog();
 	Pick pick = PickOf(5, 40, 99);
-	pick.ultra = 2;
+	pick.ultra = 7; // no loadout
 	CHECK(catalog.normalizePick(pick, false, nullptr, nullptr));
 	CHECK(pick.fighter == 0);
 	CHECK(pick.costume == 0);
 	CHECK(pick.color == 0);
-	CHECK(pick.ultra == 0);
+	CHECK(picks::LoadoutIn(pick) == kOneOne);
 	CHECK_FALSE(catalog.normalizePick(pick, false, nullptr, nullptr));
 	// A fighter with few costumes at a high costume number, and a costume
 	// with few colours at a high colour number.

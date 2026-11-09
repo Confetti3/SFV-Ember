@@ -161,14 +161,14 @@ void WriteFighter(uint8_t* modeData, int player, const FighterPick& pick)
 	At<CopyFn>(sfv::kCopyCharPkg)(chara, current);
 	const std::string before = Narrow(chara + jump::kCharCode);
 	if (!pick.fighter.empty()) AssignString(chara + jump::kCharCode, pick.fighter);
-	if (pick.costume >= 0) Field<int32_t>(chara, jump::kCharCostume) = pick.costume;
-	if (pick.colour >= 0) Field<int32_t>(chara, jump::kCharColour) = pick.colour;
+	FillCharPkg(chara, pick);
 	// The game's own order (rva 0x602C80, 0x6C8540): the fighter's setup,
 	// then the selected fighter. Both copy the record.
 	Virtual<void>(modeData, jump::kDataSetChara, player, (const uint8_t*)chara);
 	Virtual<void>(modeData, jump::kDataSetCode, player, (const uint8_t*)chara);
-	Log("launch: player %d %s -> %s costume %d colour %d", player + 1, before.c_str(), Narrow(chara + jump::kCharCode).c_str(),
-		Field<int32_t>(chara, jump::kCharCostume), Field<int32_t>(chara, jump::kCharColour));
+	Log("launch: player %d %s -> %s costume %d colour %d %s", player + 1, before.c_str(), Narrow(chara + jump::kCharCode).c_str(),
+		Field<int32_t>(chara, jump::kCharCostume), Field<int32_t>(chara, jump::kCharColour),
+		picks::LoadoutText(pick.loadout).c_str());
 	// What the copy allocated: the code's characters and the items' array
 	// (its 16-byte items hold no pointers: the copy is a memcpy).
 	FreeGameBlock(chara, jump::kCharCode);
@@ -278,7 +278,8 @@ bool StagePlayable(uint8_t* singleton, const std::wstring& code)
 // content the game does not have would load nothing sensible. Which fighters
 // a battle can load is GameContent's rule (BattleFighter), the same one the
 // catalog is built by, so the pipe's launch cannot reach a fighter a room
-// would never offer.
+// would never offer; so is how many V-Skills and V-Triggers it has
+// (HasLoadout).
 std::string MissingContent(const MatchPicks& picks)
 {
 	uint8_t* singleton = At<GameDataFn>(sfv::kGameData)();
@@ -298,6 +299,7 @@ std::string MissingContent(const MatchPicks& picks)
 		if (pick.colour >= 0 && !At<ColourValidFn>(sfv::kColourValid)(nullptr, &code, costume, pick.colour)) {
 			return who + "colour is not in the game";
 		}
+		if (!HasLoadout(pick.fighter, pick.loadout)) return who + "fighter has no " + sfve::picks::LoadoutText(pick.loadout);
 	}
 	if (!picks.rules.stage.empty() && !StagePlayable(singleton, picks.rules.stage)) return "the stage is not a playable stage";
 	return std::string();
@@ -398,21 +400,46 @@ bool ParseTime(const std::string& text, int* frames)
 	return true;
 }
 
-// "CODE[:costume[:colour]]" or "-".
+// A V-Skill or V-Trigger as the game calls it, "1" for I or "2" for II, into
+// its number; "-"/nothing for I.
+bool ParsePart(const std::string& text, int* number)
+{
+	if (text.empty() || text == "-") return *number = 0, true;
+	if (text != "1" && text != "2") return false;
+	*number = text[0] - '1';
+	return true;
+}
+
+// "CODE[:costume[:colour[:vskill[:vtrigger]]]]" or "-".
 bool ParsePick(const std::string& word, FighterPick* pick)
 {
 	*pick = FighterPick{};
 	if (word.empty() || word == "-") return true;
 	std::istringstream in(word);
-	std::string code, costume, colour, extra;
+	std::string code, costume, colour, vSkill, vTrigger, extra;
 	std::getline(in, code, ':');
 	std::getline(in, costume, ':');
 	std::getline(in, colour, ':');
-	return !std::getline(in, extra, ':') && ParseCode(code, &pick->fighter) && ParseVariant(costume, &pick->costume) &&
-		ParseVariant(colour, &pick->colour);
+	std::getline(in, vSkill, ':');
+	std::getline(in, vTrigger, ':');
+	int skill = 0, trigger = 0;
+	if (std::getline(in, extra, ':') || !ParseCode(code, &pick->fighter) || !ParseVariant(costume, &pick->costume) ||
+		!ParseVariant(colour, &pick->colour) || !ParsePart(vSkill, &skill) || !ParsePart(vTrigger, &trigger)) {
+		return false;
+	}
+	pick->loadout = *picks::LoadoutOfNumbers(skill, trigger);
+	return true;
 }
 
 } // namespace
+
+void FillCharPkg(uint8_t* chara, const FighterPick& pick)
+{
+	if (pick.costume >= 0) Field<int32_t>(chara, jump::kCharCostume) = pick.costume;
+	if (pick.colour >= 0) Field<int32_t>(chara, jump::kCharColour) = pick.colour;
+	Field<int32_t>(chara, jump::kCharVSkill) = picks::PartNumber(pick.loadout, picks::LoadoutPart::VSkill);
+	Field<int32_t>(chara, jump::kCharVTrigger) = picks::PartNumber(pick.loadout, picks::LoadoutPart::VTrigger);
+}
 
 bool PlayableRounds(int rounds)
 {
@@ -510,8 +537,8 @@ void RegisterVersusLaunchCommands()
 		if (!ParsePick(p1, &picks.players[0]) || !ParsePick(p2, &picks.players[1]) ||
 			(!stage.empty() && !ParseCode(stage, &picks.rules.stage)) || !ParseRounds(rounds, &picks.rules.rounds) ||
 			!ParseTime(time, &picks.rules.timeFrames)) {
-			return std::string("error a player is CODE[:costume[:colour]] or -, a stage CODE or -, rounds 1|3|5|7, "
-							   "time 30-546 s or inf");
+			return std::string("error a player is CODE[:costume[:colour[:vskill[:vtrigger]]]] (vskill and vtrigger 1|2) or -, "
+							   "a stage CODE or -, rounds 1|3|5|7, time 30-546 s or inf");
 		}
 		QueueLaunch(picks);
 		return std::string("ok queued");

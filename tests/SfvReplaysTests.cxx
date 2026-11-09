@@ -41,7 +41,7 @@ replay::Replay Battle(uint64_t startedAt, int slot, std::vector<replay::Game> ga
 	r.header.startedAt = startedAt;
 	r.header.slot = slot;
 	r.header.players[0] = {"player1", 0, 0, 1, "RYU", 0, 1};
-	r.header.players[1] = {"player2", 1, 0, 2, "CNL", 0, 2};
+	r.header.players[1] = {"player2", 1, 0, 2, "CNL", 0, 2, 1, 0}; // V-Skill II, V-Trigger I
 	r.header.stage = 0;
 	r.header.stageCode = "S25";
 	r.header.rounds = 3;
@@ -126,6 +126,9 @@ TEST_CASE("the Replays screen lists the saved battles, keeps the player's mark a
 	CHECK(older.summary->rounds == 3u);
 	CHECK(older.summary->frames == 250u); // the frames that read inputs
 	CHECK(older.summary->players[1].color == 2);
+	// Each side's Ultra is its loadout's number (section 40).
+	CHECK(older.summary->players[0].ultra == picks::LoadoutIndex({picks::VSkill::I, picks::VTrigger::I}));
+	CHECK(older.summary->players[1].ultra == picks::LoadoutIndex({picks::VSkill::II, picks::VTrigger::I}));
 	// Two games in place: the games' score.
 	REQUIRE(newest.summary);
 	CHECK(newest.summary->scored);
@@ -226,6 +229,35 @@ TEST_CASE("Watch now refuses a replay of this build whose stage this copy has no
 	replays.Start(watch, true, true);
 	CHECK(replays.Status().notice == sf4e::loc::T("inputs.unreadable_detail"));
 	CHECK(replays.Status().noticeError);
+	CHECK(replays.Status().step == sf4e::replaystore::Step::Idle);
+	CHECK_FALSE(replays.Playback().playback);
+	replays.StopListing();
+	fs::remove_all(folder, ignored);
+	SetEnvironmentVariableW(L"SFVE_REPLAY_DIR", nullptr);
+}
+
+TEST_CASE("Watch now refuses a replay of this build whose V-Skill or V-Trigger is no choice")
+{
+	// A file this build wrote always holds 0 or 1 (section 40); anything else
+	// is not a battle this copy can launch.
+	catalog_fixture::FillTestCatalog();
+	wchar_t temp[MAX_PATH];
+	REQUIRE(GetTempPathW(MAX_PATH, temp) > 0);
+	const fs::path folder = fs::path(temp) / (L"sfve-replays-loadout-test-" + std::to_wstring(GetCurrentProcessId()));
+	std::error_code ignored;
+	fs::remove_all(folder, ignored);
+	REQUIRE(SetEnvironmentVariableW(L"SFVE_REPLAY_DIR", folder.c_str()));
+	replay::Replay battle = Battle(1'762'501'800, 0, {{true, 1, {1, 2}, 3, 3, 380}});
+	battle.header.build = adapter::MatchBuildId();
+	battle.header.players[0].vTrigger = 2;
+	const fs::path file = adapter::SaveReplay(battle);
+	REQUIRE(fs::exists(file));
+	ember::game::Replays& replays = adapter::SfvReplays();
+	sf4e::replay::Request watch;
+	watch.mode = sf4e::replay::Mode::Watch;
+	watch.path = sf4e::platform::WideToUtf8(file.wstring());
+	replays.Start(watch, true, true);
+	CHECK(replays.Status().notice == sf4e::loc::T("inputs.unreadable_detail"));
 	CHECK(replays.Status().step == sf4e::replaystore::Step::Idle);
 	CHECK_FALSE(replays.Playback().playback);
 	replays.StopListing();

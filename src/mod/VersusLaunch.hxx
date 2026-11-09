@@ -17,6 +17,8 @@
 //     into that data object through its own setters.
 // The game then loads the stage and fighters and enters the battle itself.
 
+#include "ember/SfvPickSpace.hxx"
+
 #include <stdint.h>
 
 #include <functional>
@@ -32,12 +34,21 @@ enum class LaunchTarget {
 };
 
 // An empty fighter, a negative costume or colour, or an empty stage keeps
-// what the mode's data object already holds (the profile's defaults).
+// what the mode's data object already holds (the profile's defaults). The
+// loadout never does: every launch writes both players' V-Skill and
+// V-Trigger, so no battle inherits them from an earlier one.
 struct FighterPick {
 	std::wstring fighter; // the game's three-letter code, e.g. L"KEN"
 	int costume = -1;
 	int colour = -1;
+	picks::Loadout loadout{};
 };
+
+// The pick's costume and colour (where given) and its loadout, into the
+// game's per-fighter record (a CharPkg, sfv::jump::kCharPkgSize bytes): the
+// fields WriteFighter sets besides the code, which the game's own setters
+// then copy. No game code.
+void FillCharPkg(uint8_t* chara, const FighterPick& pick);
 
 // The match's rules, as the versus battle settings offer them; negative
 // keeps what the mode's data holds (the player's own settings).
@@ -67,11 +78,12 @@ struct MatchPicks {
 };
 
 // A player's setup as the pipe's commands name it, space separated:
-// "CODE[:costume[:colour]]", then "STAGE ROUNDS TIME": a stage code, the
-// rounds (1, 3, 5 or 7) and the round time in seconds (30 to 546) or "inf".
-// A costume and a colour are the game's numbers, 0 to 255 (EX colours are 100
-// and up). "-" keeps a default. Codes are 1 to 8 capital letters or digits.
-// False for anything else.
+// "CODE[:costume[:colour[:vskill[:vtrigger]]]]", then "STAGE ROUNDS TIME": a
+// stage code, the rounds (1, 3, 5 or 7) and the round time in seconds (30 to
+// 546) or "inf". A costume and a colour are the game's numbers, 0 to 255 (EX
+// colours are 100 and up); a V-Skill and a V-Trigger are 1 or 2, as the game
+// calls them I and II. "-" keeps a default (I for a V-Skill or V-Trigger).
+// Codes are 1 to 8 capital letters or digits. False for anything else.
 bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rules);
 
 // The rounds and round time SFV plays, as ParseSetup checks them too: best of
@@ -128,7 +140,7 @@ bool TakeLinkedBattle(bool* practice = nullptr);
 bool TakeReplayBattle();
 
 // Control command: "launch [versus|cpu|training] [P1] [P2] [stage]", a player
-// as CODE[:costume[:colour]] or "-" to keep the default.
+// as CODE[:costume[:colour[:vskill[:vtrigger]]]] or "-" to keep the default.
 void RegisterVersusLaunchCommands();
 
 } // namespace sfve::mod

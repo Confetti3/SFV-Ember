@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <string_view>
+#include <utility>
 
 namespace sfve::mod {
 
@@ -47,6 +48,10 @@ using LoggedInFn = bool (*)();
 // battle jump's check loads (rva 0x551520).
 constexpr const wchar_t* kBattleSetupPath =
 	L"/Game/GameFlow/CommonSceneStates/BattleSetup/BattleSetupDataAsset.BattleSetupDataAsset";
+// The fighters' V-Trigger and V-Skill names (sfv::choices), the assets the
+// game's own readers load (rva 0x76AFD0, 0x76AB40).
+constexpr const wchar_t* kVTriggerNamesPath = L"/Game/Chara/DA_VTriggerNameAsset.DA_VTriggerNameAsset";
+constexpr const wchar_t* kVSkillNamesPath = L"/Game/Chara/DA_VSkillNameAsset.DA_VSkillNameAsset";
 // UKWBattleSetupDataAsset's fields (sfv::kBattleSetupClass).
 constexpr uint32_t kSetupRestricted = 96;
 constexpr uint32_t kSetupRestrictionCount = 128;
@@ -292,13 +297,69 @@ std::vector<StageContent> ReadStages(uint8_t* singleton, uint8_t* spec)
 	return stages;
 }
 
-// The battle setup asset, found or loaded; null when the game has no such
-// object (the class or the asset is missing).
+// A data asset of the class `getter` returns, found or loaded; null when the
+// game has no such object (the class or the asset is missing).
+uint8_t* LoadAsset(const CodeSite& getter, const wchar_t* path)
+{
+	uint8_t* assetClass = At<ClassFn>(getter)(L"/Script/KiwiGame");
+	if (!assetClass) return nullptr;
+	return At<LoadObjectFn>(sfv::kStaticLoadObject)(assetClass, nullptr, path, nullptr, 0, nullptr, true);
+}
+
 uint8_t* BattleSetup()
 {
-	uint8_t* setupClass = At<ClassFn>(sfv::kBattleSetupClass)(L"/Script/KiwiGame");
-	if (!setupClass) return nullptr;
-	return At<LoadObjectFn>(sfv::kStaticLoadObject)(setupClass, nullptr, kBattleSetupPath, nullptr, 0, nullptr, true);
+	return LoadAsset(sfv::kBattleSetupClass, kBattleSetupPath);
+}
+
+// The names a choice name asset gives the fighter `code`, in order, as the
+// game's lookup collects them (rva 0x567EA0): those of every entry with that
+// code, compared ignoring case. Read in place: the game's lookup would copy
+// the texts and free the code it is given.
+std::vector<std::string> ChoiceNames(uint8_t* asset, std::wstring_view code)
+{
+	std::vector<std::string> names;
+	uint8_t* entries = Field<uint8_t*>(asset, sfv::choices::kEntries);
+	const int count = Field<int32_t>(asset, sfv::choices::kCount);
+	for (int i = 0; entries && i < count; i++) {
+		uint8_t* entry = entries + (size_t)sfv::choices::kEntryStride * i;
+		const std::wstring_view own = TextOf(Field<GameString>(entry, 0));
+		if (own.size() != code.size() || _wcsnicmp(own.data(), code.data(), code.size()) != 0) continue;
+		uint8_t* texts = Field<uint8_t*>(entry, sfv::choices::kNames);
+		const int textCount = Field<int32_t>(entry, sfv::choices::kNameCount);
+		for (int t = 0; texts && t < textCount; t++) {
+			const GameString* name = At<TextToStringFn>(sfv::kTextToString)(texts + (size_t)sfv::choices::kNameStride * t);
+			names.push_back(name ? Utf8(*name) : std::string());
+		}
+	}
+	return names;
+}
+
+// The two name assets, V-Skills first; either null while it is not there.
+std::pair<uint8_t*, uint8_t*> ChoiceAssets()
+{
+	return {LoadAsset(sfv::kVersionDataClass, kVSkillNamesPath), LoadAsset(sfv::kVersionDataClass, kVTriggerNamesPath)};
+}
+
+// How many choices Ember offers for a part the asset names `given` of: one
+// to picks::kPartChoices (FitChoices).
+size_t FittedCount(size_t given)
+{
+	return std::clamp<size_t>(given, 1, (size_t)picks::kPartChoices);
+}
+
+// Each fighter's V-Skills and V-Triggers from the game's name assets
+// (FitChoices). False, with nothing changed, when either asset is not there:
+// the lists wait for it rather than give every fighter one of each.
+bool ReadChoices(std::vector<FighterContent>& fighters)
+{
+	const auto [vSkills, vTriggers] = ChoiceAssets();
+	if (!vSkills || !vTriggers) return false;
+	for (FighterContent& fighter : fighters) {
+		const std::wstring code(fighter.code.begin(), fighter.code.end());
+		fighter.vSkills = FitChoices(ChoiceNames(vSkills, code), "V-Skill", fighter.code);
+		fighter.vTriggers = FitChoices(ChoiceNames(vTriggers, code), "V-Trigger", fighter.code);
+	}
+	return true;
 }
 
 // What the game lets this copy's player pick, as its menus and the battle
@@ -370,6 +431,12 @@ ContentLists ReadContentLists()
 		logged = true;
 		return {};
 	}
+	if (!ReadChoices(lists.fighters)) {
+		static bool logged = false;
+		if (!logged) Log("content: the V-Skill or V-Trigger name asset is not there yet; the lists wait for it");
+		logged = true;
+		return {};
+	}
 
 	// The names only once both lists are there: each may load a stage's data,
 	// so only an installed stage's is asked for (one this copy lacks is never
@@ -380,6 +447,36 @@ ContentLists ReadContentLists()
 		if (stage.installed) stage.name = StageName(stageAsset, stage.code);
 	}
 	return lists;
+}
+
+std::vector<std::string> FitChoices(std::vector<std::string> names, const char* part, const std::string& fighter)
+{
+	const size_t given = names.size();
+	names.resize(FittedCount(given));
+	if (names.size() != given) {
+		Log("content: %s has %zu %s names in the game's asset; Ember offers %zu", fighter.c_str(), given, part, names.size());
+	}
+	return names;
+}
+
+std::string ChoicesText(const FighterContent& fighter)
+{
+	const auto list = [](const char* part, const std::vector<std::string>& names) {
+		std::string text = std::string(part) + " " + std::to_string(names.size()) + " (";
+		for (size_t i = 0; i < names.size(); i++) text += (i ? ", \"" : "\"") + names[i] + "\"";
+		return text + ")";
+	};
+	return list("V-Skills", fighter.vSkills) + ", " + list("V-Triggers", fighter.vTriggers);
+}
+
+bool HasLoadout(std::wstring_view code, picks::Loadout loadout)
+{
+	const auto [vSkills, vTriggers] = ChoiceAssets();
+	if (!vSkills || !vTriggers) return false;
+	picks::Fighter counts;
+	counts.vSkills = (int)FittedCount(ChoiceNames(vSkills, code).size());
+	counts.vTriggers = (int)FittedCount(ChoiceNames(vTriggers, code).size());
+	return picks::HasLoadout(counts, loadout);
 }
 
 int MarkUninstalled(ContentLists& lists, const std::vector<std::string>& codes)

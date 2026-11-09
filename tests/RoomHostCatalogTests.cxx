@@ -67,7 +67,7 @@ TEST_CASE("SFV's room host takes only the room of the build its pick space makes
 	CHECK(catalog.fighterCount == (int)space.fighters.size());
 	CHECK(catalog.costumeLimit == sfve::picks::CostumeLimit(space));
 	CHECK(catalog.colorLimit == sfve::picks::ColourLimit(space));
-	CHECK(catalog.ultraChoices == 1);
+	CHECK(catalog.ultraChoices == sfve::picks::kLoadoutChoices); // V-Skill and V-Trigger (section 40)
 	CHECK_FALSE(catalog.editions);
 	CHECK(ember::PlayableRoundCount(3));
 	CHECK_FALSE(ember::PlayableRoundCount(15));
@@ -88,10 +88,29 @@ TEST_CASE("SFV's room host takes only the room of the build its pick space makes
 			}
 		}
 	}
-	// What an SF4 client sends is not: an Ultra, a handicap, a fighter past the
-	// roster, a costume or colour the fighter's spec does not have.
+	// A loadout is a pick exactly where the fighter has both its parts, as
+	// the exported counts say, and the host fits one the fighter lacks.
+	for (int fighter = 0; fighter < (int)space.fighters.size(); fighter++) {
+		const sfve::picks::Fighter& content = space.fighters[(size_t)fighter];
+		for (int index = 0; index < sfve::picks::kLoadoutChoices; index++) {
+			sf4e::selection::Pick pick;
+			pick.fighter = fighter;
+			pick.costume = content.costumes.front().id;
+			pick.color = content.costumes.front().colours.front();
+			sfve::picks::SetLoadout(pick, *sfve::picks::LoadoutAt(index));
+			const bool has = sfve::picks::HasLoadout(content, *sfve::picks::LoadoutAt(index));
+			CHECK(catalog.validPick(pick, false) == has);
+			CHECK(catalog.normalizePick(pick, false, nullptr, nullptr) == !has);
+			CHECK(catalog.validPick(pick, false));
+		}
+	}
+	// What an SF4 client sends is not: an Ultra past the four loadouts, a
+	// handicap, a fighter past the roster, a costume or colour the fighter's
+	// spec does not have.
 	sf4e::selection::Pick ultra;
-	ultra.ultra = 1;
+	ultra.ultra = sfve::picks::kLoadoutChoices;
+	CHECK_FALSE(catalog.validPick(ultra, true));
+	ultra.ultra = -1;
 	CHECK_FALSE(catalog.validPick(ultra, true));
 	sf4e::selection::Pick handicap;
 	handicap.handicap = 1;

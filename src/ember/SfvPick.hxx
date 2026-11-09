@@ -1,7 +1,8 @@
 #pragma once
 
-// The player's pick for the next Ready: the fighter, costume and colour, and
-// the stage it offers when it plays P1, as ids of SFV's catalog
+// The player's pick for the next Ready: the fighter, costume and colour, the
+// V-Skill and V-Trigger (the loadout, which a fighter's change fits as the
+// costume is), and the stage it offers when it plays P1, as ids of SFV's catalog
 // (SfvCatalog). One pick, owned here: Ember's shell edits it on its pick
 // screen and table page (SfvShell), and the pipe's test command `pick` sets it
 // (RoomCommands); both Ready with it.
@@ -49,8 +50,8 @@ PlayerPick SetDummy(const PlayerPick& dummy);
 // carries it.
 void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command);
 
-// "RYU costume 0 colour 1 stage S25", by the game's codes, for the status
-// and the logs ("stage random" for Random).
+// "RYU costume 0 colour 1 vskill II vtrigger I stage S25", by the game's
+// codes, for the status and the logs ("stage random" for Random).
 std::string PickText(const PlayerPick& pick);
 
 // The stage code a launch that is not a room's (Training) plays the pick on:

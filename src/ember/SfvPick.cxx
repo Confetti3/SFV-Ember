@@ -81,7 +81,8 @@ void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command)
 std::string PickText(const PlayerPick& pick)
 {
 	return FighterCode(pick.pick.fighter) + " costume " + std::to_string(pick.pick.costume) + " colour " +
-		std::to_string(pick.pick.color) + " stage " + (pick.stage == picks::kRandomStage ? "random" : StageCode(pick.stage));
+		std::to_string(pick.pick.color) + " " + picks::LoadoutText(picks::LoadoutOf(pick.pick)) + " stage " +
+		(pick.stage == picks::kRandomStage ? "random" : StageCode(pick.stage));
 }
 
 std::string OfflineStageCode(const PlayerPick& pick)

@@ -142,6 +142,16 @@ void LogStages(const mod::ContentLists& lists, int marked)
 		picks::PartFingerprints(PickSpaceOf(lists)).c_str());
 }
 
+// Each fighter's V-Skills and V-Triggers as the game's name assets give
+// them (EMBER_LIBRARY.md section 40): the counts the build id fingerprints,
+// and the names this copy shows.
+void LogLoadouts(const mod::ContentLists& lists)
+{
+	for (const mod::FighterContent& fighter : lists.fighters) {
+		mod::Log("ember: %s %s", fighter.code.c_str(), mod::ChoicesText(fighter).c_str());
+	}
+}
+
 // Discord's companion (ProductIdentity::discordExe, beside the mod): the
 // player's activity and invitations, as SF4 Ember's launcher starts it for
 // the game. Started for the player's copy only: a test's second copy would
@@ -188,6 +198,7 @@ bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 	mod::Log("ember: catalog of %d fighters and %zu stages (%zu named by the game; read in %llu ms), build %s",
 		ember::Catalog().fighterCount, lists.stages.size(), named, GetTickCount64() - readStarted, MatchBuildId().c_str());
 	LogStages(lists, marked);
+	LogLoadouts(lists);
 	LogOwnership(lists, settings.ownershipGate);
 
 	RouteRuntimeLog();

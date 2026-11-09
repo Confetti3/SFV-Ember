@@ -4,22 +4,28 @@
 // The labels are the game's: a stage and a costume by the game's own names
 // for them (their code or number where the game has none; SfvCatalog's
 // StageName and CostumeName; Random as the shared "Random"), a colour as the game's costume menu labels it
-// ("01", "EX01"; ColourName). SFV has no Ultra, so its label is empty.
+// ("01", "EX01"; ColourName). The Ultra number is SFV's loadout, a V-Skill
+// and a V-Trigger, named in the game's words (SfvLoadoutText,
+// EMBER_LIBRARY.md section 40).
 //
 // The pictures are the game's own (SfvArt): a fighter's portrait is the
 // square of the head in its select grid's slanted face (SfvFaceCrop), and a
 // stage's its stage-select picture. The game has no
 // picture of a fighter in a costume or colour (its select screens show the
-// 3D model), no Ultra and no ranking emblems, so those report missing.
+// 3D model), none Ember draws of a V-Skill or V-Trigger, and no ranking
+// emblems, so those report missing.
 
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvLoadoutText.hxx"
 
+#include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "common/SelectionAssetPath.hxx"
 #include "ui/SelectionArt.hxx"
 #include "ui/SelectionLabels.hxx"
 
+#include <optional>
 #include <string>
 
 namespace sf4e::selection {
@@ -55,9 +61,14 @@ std::string ShortAppearanceLabel(const selection::Pick& pick, const selection::I
 	return loc::Tf("home.selection_appearance", CostumeLabel(pick, installed), sfve::adapter::ColourName(pick.color));
 }
 
-const char* UltraLabel(int) { return ""; }
-const char* ShortUltraLabel(int) { return ""; }
-std::string UltraMove(int, int) { return {}; }
+// The Ultra number is the loadout (picks::LoadoutAt): its label and its moves.
+const char* UltraLabel(int ultra) { return sfve::adapter::LoadoutLabel(ultra); }
+const char* ShortUltraLabel(int ultra) { return sfve::adapter::ShortLoadoutLabel(ultra); }
+std::string UltraMove(int fighter, int ultra)
+{
+	const std::optional<sfve::picks::Loadout> loadout = sfve::picks::LoadoutAt(ultra);
+	return loadout && ember::ValidFighter(fighter) ? sfve::adapter::LoadoutMoves(fighter, *loadout) : std::string();
+}
 
 namespace {
 SelectionImage Missing()

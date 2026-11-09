@@ -18,7 +18,10 @@
 #include <windows.h>
 #include <xxhash.h>
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
+#include <cstring>
 #include <optional>
 #include <string>
 
@@ -132,6 +135,53 @@ TEST_CASE("a replay file reads back as written, and anything else is refused")
 		b = replay::Encode(bad);
 		CHECK_FALSE(replay::Decode(b.data(), b.size(), &back, &error));
 	}
+}
+
+TEST_CASE("a replay's header keeps each side's V-Skill and V-Trigger, and one written without them reads 0")
+{
+	replay::Replay r = SampleReplay();
+	r.header.players[0].vSkill = 1;
+	r.header.players[1].vTrigger = 1;
+	const std::vector<uint8_t> bytes = replay::Encode(r);
+	replay::Replay back;
+	std::string error;
+	REQUIRE_MESSAGE(replay::Decode(bytes.data(), bytes.size(), &back, &error), error);
+	CHECK(back.header.players[0].vSkill == 1);
+	CHECK(back.header.players[0].vTrigger == 0);
+	CHECK(back.header.players[1].vSkill == 0);
+	CHECK(back.header.players[1].vTrigger == 1);
+
+	// The file with another header (after the magic and the version: the
+	// header's length and text), the rest as it was and the hash made good.
+	uint32_t length = 0;
+	std::memcpy(&length, bytes.data() + 12, 4);
+	nlohmann::json header = nlohmann::json::parse(bytes.begin() + 16, bytes.begin() + 16 + length);
+	const auto withHeader = [&](const nlohmann::json& replaced) {
+		const std::string text = replaced.dump();
+		std::vector<uint8_t> file(bytes.begin(), bytes.begin() + 12);
+		for (int i = 0; i < 4; i++) file.push_back((uint8_t)((uint32_t)text.size() >> (8 * i)));
+		file.insert(file.end(), text.begin(), text.end());
+		file.insert(file.end(), bytes.begin() + 16 + length, bytes.end() - 8);
+		const uint64_t hash = XXH64(file.data(), file.size(), 0);
+		for (int i = 0; i < 8; i++) file.push_back((uint8_t)(hash >> (8 * i)));
+		return file;
+	};
+	// As a build before section 40 wrote it: no V-Skill or V-Trigger.
+	for (nlohmann::json& player : header["players"]) {
+		player.erase("vSkill");
+		player.erase("vTrigger");
+	}
+	const std::vector<uint8_t> old = withHeader(header);
+	REQUIRE_MESSAGE(replay::Decode(old.data(), old.size(), &back, &error), error);
+	for (const replay::Player& player : back.header.players) {
+		CHECK(player.vSkill == 0);
+		CHECK(player.vTrigger == 0);
+	}
+	CHECK(back.frames == r.frames);
+	// A value of the wrong kind is refused, as any other field's is.
+	header["players"][0]["vSkill"] = "II";
+	const std::vector<uint8_t> bad = withHeader(header);
+	CHECK_FALSE(replay::Decode(bad.data(), bad.size(), &back, &error));
 }
 
 TEST_CASE("the recorder keeps a frame's last report, and only frames made final")

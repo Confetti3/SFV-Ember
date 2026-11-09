@@ -2,6 +2,8 @@
 
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvLoadoutText.hxx"
+#include "ember/SfvPickSpace.hxx"
 
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
@@ -30,8 +32,17 @@ namespace loc = sf4e::loc;
 constexpr const char* kFighter = "fighter";
 constexpr const char* kCostume = "costume";
 constexpr const char* kColour = "color";
+constexpr const char* kVSkill = "vskill";
+constexpr const char* kVTrigger = "vtrigger";
 constexpr const char* kStage = "stage";
 constexpr const char* kDone = "done";
+
+// The loadout's rows, one per part, in SFV's own order.
+struct LoadoutRow {
+	const char* id;
+	picks::LoadoutPart part;
+};
+constexpr LoadoutRow kLoadoutRows[] = {{kVSkill, picks::LoadoutPart::VSkill}, {kVTrigger, picks::LoadoutPart::VTrigger}};
 
 // The fighter's banner (CharaSelectIcon_l) is 380x258 and a stage's picture
 // (StageSelectBG) 2048x512: the shapes their frames keep while they load.
@@ -82,6 +93,56 @@ MenuEntry StepRow(const char* id, const char* label, std::string value, const ch
 	row.choices = std::move(choices);
 	if (chosen >= 0) row.chosen = OptionId(chosen);
 	return row;
+}
+
+// The loadout part a row stands for; none for any other row.
+std::optional<picks::LoadoutPart> PartOfRow(const std::string& id)
+{
+	for (const LoadoutRow& row : kLoadoutRows) {
+		if (id == row.id) return row.part;
+	}
+	return std::nullopt;
+}
+
+// The part's choice numbers the fighter has: 0, and 1 where it has two.
+std::vector<int> PartNumbers(std::int64_t fighter, picks::LoadoutPart part)
+{
+	std::vector<int> numbers;
+	for (int number = 0; number < PartChoices(fighter, part); number++) numbers.push_back(number);
+	return numbers;
+}
+
+// A part's row, labelled in the game's words: I or II, each choice with the
+// game's name for its move; one the fighter has only one of cannot change.
+MenuEntry PartRow(const LoadoutRow& row, const sf4e::selection::Pick& pick, bool editable, const char* adjusts)
+{
+	const int chosen = picks::PartNumber(picks::LoadoutOf(pick), row.part);
+	const std::vector<int> numbers = PartNumbers(pick.fighter, row.part);
+	std::vector<MenuChoice> choices;
+	for (int number : numbers) {
+		choices.push_back({OptionId(number), Numeral(number), ChoiceText(number, MoveName(pick.fighter, row.part, number)), editable});
+	}
+	MenuEntry entry = sf4e::ui::Value(row.id, PartLabel(row.part), Numeral(chosen), loc::T(adjusts), editable && numbers.size() > 1);
+	entry.choices = std::move(choices);
+	entry.chosen = OptionId(chosen);
+	return entry;
+}
+
+// The pick with the part's row's change made (Left and Right, or a choice);
+// true when the loadout changed. Only a choice the fighter has is taken.
+bool ApplyPart(const MenuAction& action, picks::LoadoutPart part, sf4e::selection::Pick& pick)
+{
+	const picks::Loadout before = picks::LoadoutOf(pick);
+	const std::vector<int> numbers = PartNumbers(pick.fighter, part);
+	int number = picks::PartNumber(before, part);
+	if (action.kind == MenuAction::Adjust) sf4e::ui::Step(number, numbers, action.delta);
+	else if (action.kind == MenuAction::Chosen) {
+		const std::optional<int> option = OptionOf(action.text);
+		if (option && Contains(numbers, *option)) number = *option;
+	}
+	const picks::Loadout after = *picks::WithPart(before, part, number);
+	picks::SetLoadout(pick, after);
+	return after != before;
 }
 
 ImU32 Rgb(std::uint32_t rgb)
@@ -143,6 +204,7 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 		std::move(costumes), pick.pick.costume));
 	rows.push_back(StepRow(kColour, "selection.color_row", ColourName(pick.pick.color), adjusts, editable, std::move(colours),
 		pick.pick.color));
+	for (const LoadoutRow& row : kLoadoutRows) rows.push_back(PartRow(row, pick.pick, editable, adjusts));
 	if (!dummy_) {
 		rows.push_back(StepRow(kStage, "selection.stage", sf4e::ui::StageLabel(pick.stage),
 			!editable ? "selection.locked_detail" : stageEditable ? "selection.p1_stage" : "selection.only_p1_stage",
@@ -154,14 +216,16 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 
 bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const std::vector<int>& stageChoices)
 {
+	if (const std::optional<picks::LoadoutPart> part = PartOfRow(action.id)) return ApplyPart(action, *part, pick.pick);
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const PlayerPick before = pick;
 	// Left and Right go through what this copy's player can ready: the
 	// fighters they can play, the fighter's costumes with a look they can
 	// ready, and that costume's colours making one. A costume or colour the
 	// new fighter or costume lacks, or that is not theirs, is fitted as the
-	// pick is stored (SetPick). A choice they cannot ready is refused here
-	// too, whatever the list let through.
+	// pick is stored (SetPick), and so is a loadout part the new fighter
+	// lacks. A choice they cannot ready is refused here too, whatever the
+	// list let through.
 	if (action.kind == MenuAction::Adjust) {
 		if (action.id == kFighter) sf4e::ui::Step(pick.pick.fighter, PlayableRoster(), action.delta);
 		else if (action.id == kCostume) sf4e::ui::Step(pick.pick.costume, CostumeIds(pick.pick.fighter, true), action.delta);
@@ -199,7 +263,14 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 			: openOn == SelectionStart::Stage      ? kStage
 			: openOn == SelectionStart::Costumes   ? kCostume
 												   : "";
-		if (!openOn_.empty()) nav.Prefer(openOn_);
+		// The room's Ultra (the loadout) and a winner's look and loadout are
+		// more than one row's change: the screen starts on the first of them
+		// and stays open until Done or Back.
+		const char* first = !openOn_.empty()            ? openOn_.c_str()
+			: openOn == SelectionStart::Ultras    ? kVSkill
+			: openOn == SelectionStart::LookUltra ? kCostume
+												  : nullptr;
+		if (first) nav.Prefer(first);
 	}
 	const char* title = loc::T(dummy_ ? "training.dummy" : "screen.selection");
 	menu_.rootName = title;
@@ -262,14 +333,23 @@ void SfvSelectionScreen::DrawPreview(const PlayerPick& pick, const std::string& 
 	// The colour by the costume menu's label, then its two swatch colours.
 	const std::string colour = std::string(loc::T("selection.color_row")) + " " + ColourName(pick.pick.color);
 	draw->AddText(at, colors.muted, colour.c_str());
-	const auto swatch = Swatch(pick.pick.fighter, pick.pick.costume, pick.pick.color);
-	if (!swatch) return;
-	const float side = ImGui::GetTextLineHeight();
-	float x = at.x + ImGui::CalcTextSize(colour.c_str()).x + gap;
-	for (const std::uint32_t rgb : {swatch->first, swatch->second}) {
-		draw->AddRectFilled(ImVec2(x, at.y), ImVec2(x + side, at.y + side), Rgb(rgb), 3 * s);
-		draw->AddRect(ImVec2(x, at.y), ImVec2(x + side, at.y + side), colors.border, 3 * s, 0, s);
-		x += side + 4 * s;
+	if (const auto swatch = Swatch(pick.pick.fighter, pick.pick.costume, pick.pick.color)) {
+		const float side = ImGui::GetTextLineHeight();
+		float x = at.x + ImGui::CalcTextSize(colour.c_str()).x + gap;
+		for (const std::uint32_t rgb : {swatch->first, swatch->second}) {
+			draw->AddRectFilled(ImVec2(x, at.y), ImVec2(x + side, at.y + side), Rgb(rgb), 3 * s);
+			draw->AddRect(ImVec2(x, at.y), ImVec2(x + side, at.y + side), colors.border, 3 * s, 0, s);
+			x += side + 4 * s;
+		}
+	}
+	// The V-Skill and the V-Trigger, each as the game words its choice.
+	const picks::Loadout loadout = picks::LoadoutOf(pick.pick);
+	for (const LoadoutRow& row : kLoadoutRows) {
+		at.y += line;
+		const int number = picks::PartNumber(loadout, row.part);
+		const std::string text =
+			std::string(PartLabel(row.part)) + " " + ChoiceText(number, MoveName(pick.pick.fighter, row.part, number));
+		draw->AddText(at, colors.muted, text.c_str());
 	}
 }
 

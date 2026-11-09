@@ -9,6 +9,9 @@
 //
 // The host is no player: no fighter is locked, every valid pick is available,
 // and a pick is fitted by the pick space alone. Names are the game's codes.
+// A pick's Ultra number is its V-Skill and V-Trigger (SfvPickSpace's
+// Loadout), valid only where the fighter has both (EMBER_LIBRARY.md section
+// 40).
 #include "ember/SfvPickSpace.hxx"
 
 #include "common/GameCatalog.hxx"
@@ -74,8 +77,8 @@ int CostumeCount(int fighter)
 	return sfve::picks::CostumeCount(s_space, fighter);
 }
 
-ember::GameCatalog s_catalog = {0, 0, 0, 1, &ValidPick, &ValidStage, {0, 1, 2, 3}, sfve::picks::kRandomStage, &FighterLocked, &AvailablePick,
-	&NormalizePick, &ResolveStage, &FighterName, &CostumeCount, nullptr, sfve::picks::kRoundCounts,
+ember::GameCatalog s_catalog = {0, 0, 0, sfve::picks::kLoadoutChoices, &ValidPick, &ValidStage, {0, 1, 2, 3},
+	sfve::picks::kRandomStage, &FighterLocked, &AvailablePick, &NormalizePick, &ResolveStage, &FighterName, &CostumeCount, nullptr, sfve::picks::kRoundCounts,
 	(int)std::size(sfve::picks::kRoundCounts), sfve::picks::kRoundTimes, (int)std::size(sfve::picks::kRoundTimes), false, true};
 
 } // namespace

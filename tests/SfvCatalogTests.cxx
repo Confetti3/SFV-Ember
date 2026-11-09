@@ -39,7 +39,7 @@ TEST_CASE("the catalog holds the game's fighters, costumes, colours and stages, 
 	// One past the highest costume (RYU's 4) and colour (RYU's EX02, 101).
 	CHECK(catalog.costumeLimit == 5);
 	CHECK(catalog.colorLimit == 102);
-	CHECK(catalog.ultraChoices == 1);
+	CHECK(catalog.ultraChoices == picks::kLoadoutChoices); // the loadouts (section 40)
 	// The table rules the shell offers: the room's that SFV plays.
 	CHECK_FALSE(catalog.editions);
 	CHECK(catalog.rematchInPlace); // the post-match prompt over the held WIN (RoomBattle)
@@ -116,8 +116,17 @@ TEST_CASE("a pick names a fighter of the roster, one of its costumes and one of 
 	CHECK_FALSE(valid(PickOf(1, 1, 0), false));   // a costume of another fighter
 	CHECK_FALSE(valid(PickOf(3, 0, 0), false));   // CMY's only costume is 3
 	CHECK_FALSE(valid(PickOf(0, -1, 0), false));
+	// An Ultra number is a loadout the fighter has (section 40): every one of
+	// RYU's, CNL's V-Skill II but not its V-Trigger II, and no number past
+	// the four loadouts.
+	CHECK(valid(PickOf(0, 0, 0, kTwoTwo), false));
+	CHECK(valid(PickOf(1, 0, 0, kTwoOne), false));
+	CHECK_FALSE(valid(PickOf(1, 0, 0, kOneTwo), false));
+	CHECK_FALSE(valid(PickOf(2, 0, 0, kTwoOne), false)); // KEN has one of each
 	Pick ultra = PickOf(0);
-	ultra.ultra = 1;
+	ultra.ultra = picks::kLoadoutChoices;
+	CHECK_FALSE(valid(ultra, false));
+	ultra.ultra = -1;
 	CHECK_FALSE(valid(ultra, false));
 	Pick handicap = PickOf(0);
 	handicap.handicap = 2;
@@ -263,6 +272,17 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	moved.fighters[0].costumes[0].colours = {0, 1};
 	moved.fighters[0].costumes[1].colours.push_back(2);
 	CHECK(ContentFingerprint(moved) != fingerprint);
+	// A fighter with a V-Trigger or a V-Skill more or less is another pick
+	// space (section 40), and so is one whose counts swap.
+	mod::ContentLists trigger = TestContent();
+	trigger.fighters[1].vTriggers.push_back("Trigger Two");
+	CHECK(ContentFingerprint(trigger) != fingerprint);
+	mod::ContentLists skill = TestContent();
+	skill.fighters[0].vSkills.pop_back();
+	CHECK(ContentFingerprint(skill) != fingerprint);
+	mod::ContentLists swapped = TestContent();
+	std::swap(swapped.fighters[1].vSkills, swapped.fighters[1].vTriggers);
+	CHECK(ContentFingerprint(swapped) != fingerprint);
 	// Names follow each copy's language, and what is installed or owned is
 	// each copy's own: none of them changes the build.
 	mod::ContentLists translated = TestContent();
@@ -274,6 +294,8 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	translated.stages[2].owned = false;
 	translated.fighters[0].name = "Ryu, translated";
 	translated.fighters[0].costumes[0].name = "Story, translated";
+	translated.fighters[0].vSkills[1] = "Skill Two, translated";
+	translated.fighters[1].vTriggers[0] = "Trigger One, translated";
 	translated.fighters[3].installed = true;
 	translated.fighters[4].costumes[1].installed = true;
 	translated.fighters[2].owned = true;
@@ -312,6 +334,14 @@ TEST_CASE("the room host's data is the catalog's pick space, and reads back as t
 				CHECK(picks::ValidPick(space, pick) == ember::Catalog().validPick(pick, false));
 			}
 		}
+		for (int ultra = -1; ultra <= picks::kLoadoutChoices; ultra++) {
+			Pick pick = PickOf(fighter);
+			ember::Catalog().normalizePick(pick, false, nullptr, nullptr);
+			pick.ultra = ultra;
+			CHECK(picks::ValidPick(space, pick) == ember::Catalog().validPick(pick, false));
+		}
+		CHECK(space.fighters[(size_t)fighter].vSkills == (int)TestContent().fighters[(size_t)fighter].vSkills.size());
+		CHECK(space.fighters[(size_t)fighter].vTriggers == (int)TestContent().fighters[(size_t)fighter].vTriggers.size());
 	}
 	CHECK(picks::CostumeLimit(space) == ember::Catalog().costumeLimit);
 	CHECK(picks::ColourLimit(space) == ember::Catalog().colorLimit);
@@ -325,6 +355,23 @@ TEST_CASE("the room host's data is the catalog's pick space, and reads back as t
 	nlohmann::json stages = nlohmann::json::parse(text);
 	stages.erase("stages");
 	CHECK_FALSE(picks::FromJson(stages.dump(), space, build, error));
+	// A fighter without its V-Skill or V-Trigger count is refused, and the
+	// data's counts read back as written; a count outside 1 and 2 reads, and
+	// Problem refuses it, as it refuses one in lists made by hand.
+	nlohmann::json counts = nlohmann::json::parse(text);
+	counts["fighters"][0].erase("v_triggers");
+	CHECK_FALSE(picks::FromJson(counts.dump(), space, build, error));
+	counts = nlohmann::json::parse(text);
+	counts["fighters"][1]["v_skills"] = "2";
+	CHECK_FALSE(picks::FromJson(counts.dump(), space, build, error));
+	counts = nlohmann::json::parse(text);
+	counts["fighters"][2]["v_skills"] = 3;
+	REQUIRE(picks::FromJson(counts.dump(), space, build, error));
+	CHECK(space.fighters[2].vSkills == 3);
+	CHECK_FALSE(picks::Problem(space).empty());
+	counts["fighters"][2]["v_skills"] = 0;
+	REQUIRE(picks::FromJson(counts.dump(), space, build, error));
+	CHECK_FALSE(picks::Problem(space).empty());
 	CHECK_FALSE(picks::FromJson("not json", space, build, error));
 }
 

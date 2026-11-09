@@ -2,11 +2,13 @@
 
 // SFV's pick screen inside Ember's shell (ember::ShellGame::DrawSelection):
 // value rows of Ember's GameMenu over SFV's catalog, one each for the
-// fighter, the costume, the colour and the stage, rather than SF4's select
+// fighter, the costume, the colour, the V-Skill, the V-Trigger and the stage
+// (EMBER_LIBRARY.md section 40), rather than SF4's select
 // grid (FighterSelector), which is SF4's art and roster. The rows name
 // everything as the game does (SfvCatalog), and the pane beside them shows
 // the game's own pictures of the pick (SfvArt): the fighter's select-screen
-// banner, the costume and colour by name with the colour's swatch, and the
+// banner, the costume and colour by name with the colour's swatch, the
+// V-Skill and V-Trigger in the game's words (SfvLoadoutText), and the
 // stage's picture while the stage row has the focus. The stage row offers
 // Random and the stages both seated players have (EMBER_LIBRARY.md section
 // 38).
@@ -18,7 +20,9 @@
 // what the game does not let them pick). Back from the screen hands Close
 // to the shell, as an embedded screen does (GameMenu's EmbeddedReturn), and
 // so does Done. When the shell opened the screen for one change (the room's
-// Fighter or Stage row), the screen starts on that row.
+// Fighter or Stage row), the screen starts on that row; for the room's Ultra
+// (the loadout) it starts on the V-Skill row. A fighter with one V-Skill or
+// one V-Trigger shows that row, but it cannot change.
 //
 // Render thread, inside the shell's frame.
 

@@ -5,6 +5,7 @@
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvHud.hxx"
+#include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPick.hxx"
 #include "ember/SfvReplays.hxx"
 #include "ember/SfvSelectionScreen.hxx"
@@ -70,13 +71,6 @@ constexpr unsigned short kXInputView = 0x0020;
 // thread's window procedure), as SF4 Ember's overlay takes it.
 sf4e::ui::GoNowKey s_goNowKey;
 
-// The codes a launch names a pick by (VersusLaunch's FighterPick).
-mod::FighterPick LaunchPick(const PlayerPick& pick)
-{
-	const std::string code = FighterCode(pick.pick.fighter);
-	return {std::wstring(code.begin(), code.end()), pick.pick.costume, pick.pick.color};
-}
-
 // "RYU / DEFAULT / Color 01", as the room's pick is summed up (FillView).
 std::string Summary(const PlayerPick& pick)
 {
@@ -108,9 +102,11 @@ public:
 		view.selectionSummary = view.fighterName + " / " + view.appearanceName;
 		view.stageName = sf4e::ui::StageLabel(pick.stage);
 		view.colorSteps = ColourIds(pick.pick.fighter, pick.pick.costume, true).size() > 1;
-		// SFV's fighters have no Ultra (the catalog's one choice) and no fighter
-		// options (SF4's personal action and win quote): the table page shows
-		// neither row.
+		// The table page's Ultra row is the loadout, one value naming the
+		// V-Skill and the V-Trigger (section 40). SFV's fighters have no
+		// fighter options (SF4's personal action and win quote): no such row.
+		view.ultraName = LoadoutName(pick.pick.fighter, picks::LoadoutOf(pick.pick));
+		view.ultraSteps = LoadoutIndices(pick.pick.fighter).size() > 1;
 		view.fighterOptions = false;
 		if (snapshot.atMainMenu && !available) view.selectionError = loc::T("runtime.selection_unavailable");
 		// Training select's Dummy row (EMBER_LIBRARY.md section 27).
@@ -120,12 +116,23 @@ public:
 	}
 
 	// The table page's Appearance row steps the colour, through the costume's
-	// own colours this player can ready; there is no Ultra.
+	// own colours this player can ready; its Ultra row, and the post-match
+	// prompt's, step the loadout through the fighter's own, in Ultra number
+	// order. Like SF4's, the Ultra also changes over the WIN until the
+	// prompt is answered (canChangeUltra).
 	bool StepSelection(const sf4e::ui::ShellAction::SelectionStep& step, const RuntimeSnapshot& snapshot) override
 	{
-		if (!snapshot.canEditSelection || step.field != sf4e::ui::ShellAction::SelectionStep::Field::Color) return false;
+		using Field = sf4e::ui::ShellAction::SelectionStep::Field;
+		const bool loadout = step.field == Field::Ultra;
+		if (!(loadout ? snapshot.canChangeUltra : snapshot.canEditSelection) || (!loadout && step.field != Field::Color)) return false;
 		PlayerPick pick = CurrentPick();
-		sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), step.delta);
+		if (loadout) {
+			int index = picks::LoadoutIndex(picks::LoadoutOf(pick.pick));
+			sf4e::ui::Step(index, LoadoutIndices(pick.pick.fighter), step.delta);
+			picks::SetLoadout(pick.pick, *picks::LoadoutAt(index));
+		} else {
+			sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), step.delta);
+		}
 		SetPick(pick);
 		return true;
 	}
@@ -137,7 +144,7 @@ public:
 	{
 		const PlayerPick player = CurrentPick();
 		const std::string stage = OfflineStageCode(player);
-		LaunchTraining(LaunchPick(player), LaunchPick(CurrentDummy()), std::wstring(stage.begin(), stage.end()),
+		LaunchTraining(FighterPickOf(player.pick), FighterPickOf(CurrentDummy().pick), std::wstring(stage.begin(), stage.end()),
 			"Training select's Start", "home.training_unavailable");
 	}
 

@@ -49,11 +49,6 @@ std::wstring Wide(const std::string& code)
 	return std::wstring(code.begin(), code.end());
 }
 
-mod::FighterPick LaunchPick(const PlayerPick& pick)
-{
-	return {Wide(FighterCode(pick.pick.fighter)), pick.pick.costume, pick.pick.color};
-}
-
 void Publish(const TrainingView& view, bool paused)
 {
 	std::lock_guard lock(s_mutex);
@@ -130,8 +125,8 @@ public:
 			return;
 		}
 		const PlayerPick player = CurrentPick();
-		LaunchTraining(LaunchPick(player), LaunchPick(CurrentDummy()), Wide(OfflineStageCode(player)), "a room's Wait in Training",
-			"room.training.unavailable");
+		LaunchTraining(FighterPickOf(player.pick), FighterPickOf(CurrentDummy().pick), Wide(OfflineStageCode(player)),
+			"a room's Wait in Training", "room.training.unavailable");
 	}
 	bool ControlsAvailable() override { return ReadTrainingView().available; }
 	// A Practice room's game while its session is live (RoomBattle's launch
@@ -206,7 +201,8 @@ void LaunchTraining(const mod::FighterPick& player, const mod::FighterPick& dumm
 	picks.players[0] = player;
 	picks.players[1] = dummy;
 	picks.rules.stage = stage;
-	mod::Log("training: %s: %ls vs %ls on %ls", why, player.fighter.c_str(), dummy.fighter.c_str(), stage.c_str());
+	mod::Log("training: %s: %ls (%s) vs %ls (%s) on %ls", why, player.fighter.c_str(), sfve::picks::LoadoutText(player.loadout).c_str(),
+		dummy.fighter.c_str(), sfve::picks::LoadoutText(dummy.loadout).c_str(), stage.c_str());
 	mod::QueueLaunch(picks, [notice](const std::string& failure) {
 		mod::Log("training: the Training battle could not be loaded: %s", failure.c_str());
 		facade::PushAlert(sf4e::loc::T(notice), sf4e::NoticeSeverity::Warning);

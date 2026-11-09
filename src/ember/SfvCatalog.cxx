@@ -147,7 +147,9 @@ bool AvailablePick(const sf4e::selection::Pick& pick, bool editionSelect, const 
 // look they can ready, that costume's first colour making one. A part
 // already theirs stays. A fighter not locked always has such a costume, and
 // such a costume such a colour, so the pick ends ready; only with no fighter
-// they may play does it stay as it is (and a Ready of it is refused).
+// they may play does it stay as it is (and a Ready of it is refused). No
+// ownership gates a loadout (SFV's own menus gate none): only the fighter's
+// own count does.
 void FitOwned(sf4e::selection::Pick& pick)
 {
 	if (FighterLocked(pick.fighter, {})) {
@@ -162,23 +164,25 @@ void FitOwned(sf4e::selection::Pick& pick)
 		pick.costume = costume->id;
 	}
 	if (!LookReady(*costume, pick.color)) pick.color = ReadyColours(*costume).front();
+	// The loadout through the fighter's change, as picks::FitPick keeps it:
+	// each part the new fighter lacks becomes I.
+	picks::SetLoadout(pick, picks::FitLoadout(*picks::FighterAt(s_space, pick.fighter), picks::LoadoutOf(pick)));
 }
 
 // Each part SFV refuses becomes the game's first of its kind, in this order
 // so that each is fitted to the one before it: fighter 0; the fighter's first
-// costume; that costume's first colour; no Ultra and no handicap. Only the
-// spec decides, so every copy fits a pick the same way. With `availability`
-// given the pick is this copy's own player's (their stored pick, a Random
-// roll's look), and is then also fitted to what they can ready (FitOwned),
-// which is per copy.
+// costume; that costume's first colour; each loadout part the fighter lacks
+// I; no handicap. Only the spec decides, so every copy fits a pick the same
+// way. With `availability` given the pick is this copy's own player's (their
+// stored pick, a Random roll's look), and is then also fitted to what they
+// can ready (FitOwned), which is per copy.
 bool NormalizePick(sf4e::selection::Pick& pick, bool, const sf4e::selection::Availability* availability,
 	const sf4e::selection::InstalledContent*)
 {
 	const sf4e::selection::Pick before = pick;
 	picks::FitPick(s_space, pick);
 	if (availability && FighterAt(pick.fighter)) FitOwned(pick);
-	return pick.fighter != before.fighter || pick.costume != before.costume || pick.color != before.color ||
-		pick.ultra != before.ultra || pick.handicap != before.handicap;
+	return !picks::SameFitting(pick, before);
 }
 
 // Random (kRandomStage) becomes a stage of the universe that is not
@@ -219,8 +223,8 @@ int CostumeCount(int fighter)
 }
 
 // Empty until FillCatalog. The public rooms setup card's faces are the first
-// four fighters of the roster.
-constinit ember::GameCatalog s_catalog = {0, 0, 0, 1, &ValidPick, &ValidStage, {0, 1, 2, 3}, picks::kRandomStage, &FighterLocked,
+// four fighters of the roster. The Ultra numbers are the loadouts.
+constinit ember::GameCatalog s_catalog = {0, 0, 0, picks::kLoadoutChoices, &ValidPick, &ValidStage, {0, 1, 2, 3}, picks::kRandomStage, &FighterLocked,
 	&AvailablePick, &NormalizePick, &ResolveStage, &FighterName, &CostumeCount, nullptr, nullptr, 0, nullptr, 0, false,
 	true};
 
@@ -300,7 +304,7 @@ picks::PickSpace PickSpaceOf(const mod::ContentLists& lists)
 {
 	picks::PickSpace space;
 	for (const mod::FighterContent& fighter : lists.fighters) {
-		picks::Fighter entry{fighter.code, {}};
+		picks::Fighter entry{fighter.code, {}, (int)fighter.vSkills.size(), (int)fighter.vTriggers.size()};
 		for (const mod::CostumeContent& costume : fighter.costumes) entry.costumes.push_back({costume.id, costume.colours});
 		space.fighters.push_back(std::move(entry));
 	}
@@ -430,6 +434,31 @@ std::string ColourName(int colour)
 	return text;
 }
 
+int PartChoices(std::int64_t fighter, picks::LoadoutPart part)
+{
+	const picks::Fighter* content = picks::FighterAt(s_space, fighter);
+	return content ? picks::PartChoices(*content, part) : 0;
+}
+
+std::string MoveName(std::int64_t fighter, picks::LoadoutPart part, int number)
+{
+	const mod::FighterContent* content = FighterAt(fighter);
+	if (!content) return {};
+	const std::vector<std::string>& names = part == picks::LoadoutPart::VSkill ? content->vSkills : content->vTriggers;
+	return number >= 0 && number < (int)names.size() ? names[(size_t)number] : std::string();
+}
+
+std::vector<int> LoadoutIndices(std::int64_t fighter)
+{
+	const picks::Fighter* content = picks::FighterAt(s_space, fighter);
+	return content ? picks::LoadoutIndices(*content) : std::vector<int>();
+}
+
+mod::FighterPick FighterPickOf(const sf4e::selection::Pick& pick)
+{
+	return {WideCode(FighterCode(pick.fighter)), pick.costume, pick.color, picks::LoadoutOf(pick)};
+}
+
 std::optional<int> FighterId(const std::wstring& code)
 {
 	for (size_t id = 0; id < s_lists.fighters.size(); id++) {
@@ -475,10 +504,7 @@ std::optional<mod::MatchPicks> LaunchPicks(const RoomMatch& match)
 	if (!LaunchRefusal(match).empty()) return std::nullopt;
 	const int clock = *mod::RoomClockFrames(match.roundSeconds);
 	mod::MatchPicks picks;
-	for (int side = 0; side < 2; side++) {
-		const sf4e::selection::Pick& pick = match.picks[side];
-		picks.players[side] = {WideCode(FighterCode(pick.fighter)), pick.costume, pick.color};
-	}
+	for (int side = 0; side < 2; side++) picks.players[side] = FighterPickOf(match.picks[side]);
 	picks.rules.stage = WideCode(StageCode(match.stage));
 	picks.rules.rounds = match.rounds;
 	picks.rules.timeFrames = clock;

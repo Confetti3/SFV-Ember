@@ -19,7 +19,12 @@
 // Stage names are the stage's data asset's FText (sfv::kStageName); fighter
 // names the fighter's PersonalData FText; costume names the spec's (where it
 // has none, the game's own "Costume<n>"). EMBER_LIBRARY.md section 15.
+//
+// How many V-Skills and V-Triggers a fighter has, and their names, come from
+// the game's name assets (sfv::choices), as its select and VS screens count
+// and name them; the count is part of the pick space (section 40).
 
+#include "ember/SfvPickSpace.hxx"
 #include "mod/ModConfig.hxx"
 
 #include <stdint.h>
@@ -49,6 +54,12 @@ struct FighterContent {
 	std::string name;                     // UTF-8, display only; empty where the game has none
 	bool installed = false;               // this copy has the fighter's package (sfv::kSelectableFighters)
 	bool owned = false;                   // the game lets this copy's player pick the fighter (sfv::kOwnedFighters)
+	// The fighter's V-Skills and V-Triggers, I first, by the game's names for
+	// them (UTF-8, display only; empty where the game has none). How many
+	// there are is part of the pick space; the names are not. Always one or
+	// two (FitChoices); one unnamed until read.
+	std::vector<std::string> vSkills{std::string()};
+	std::vector<std::string> vTriggers{std::string()};
 };
 
 // Where `owned` came from, for the log and the status.
@@ -86,12 +97,28 @@ struct ContentLists {
 	OwnershipSource ownership;
 };
 
-// Game thread. Empty lists until the game's content tables and its battle
-// setup asset are loaded, and while the spec's stage universe is empty or
-// this copy has none of its stages installed. The setup asset is found, or
-// loaded, with StaticLoadObject, so call it at the main menu (never in a
-// battle).
+// Game thread. Empty lists until the game's content tables, its battle
+// setup asset and its V-Trigger and V-Skill name assets are loaded, and
+// while the spec's stage universe is empty or this copy has none of its
+// stages installed. Those assets are found, or loaded, with
+// StaticLoadObject, so call it at the main menu (never in a battle).
 ContentLists ReadContentLists();
+
+// A fighter's V-Skill or V-Trigger names as the game's name asset gave them,
+// made one or two choices (picks::kPartChoices): none becomes one unnamed
+// choice, more than two the first two. A change is logged with the fighter's
+// code and `part` ("V-Skill") and the count the asset gave, so a count
+// Ember did not expect shows in the log rather than refusing the roster.
+std::vector<std::string> FitChoices(std::vector<std::string> names, const char* part, const std::string& fighter);
+
+// For the log: `V-Skills 2 ("A", "B"), V-Triggers 1 ("C")`.
+std::string ChoicesText(const FighterContent& fighter);
+
+// Whether the fighter `code` names has both parts of the loadout, counted
+// from the game's name assets as ReadContentLists counts them, so the pipe's
+// launch cannot load a choice the game would show as "noname". False while
+// either asset is not there. Game thread, at the main menu.
+bool HasLoadout(std::wstring_view code, picks::Loadout loadout);
 
 // Whether a battle can load the fighter `code` names: the game's fighter
 // table (`charaAsset`, the game data's CharaAsset, sfv::content::kCharaAsset)
