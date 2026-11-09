@@ -7,6 +7,8 @@
 
 #include <stdio.h>
 
+#include <iterator>
+
 namespace sfve::mod {
 
 namespace {
@@ -28,13 +30,15 @@ std::string MakeLayoutRulesId()
 	// The outside state laid out at fixed made-up addresses, so each region's
 	// place in its object (its offset) is hashed with its size, flags and masks.
 	StateLayout outside;
-	AddStateOutsideTheGameSnapshot(outside, {0x10000000, 0x20000000, 0x30000000, 0x40000000, 0x50000000});
+	AddStateOutsideTheGameSnapshot(outside,
+		{0x10000000, 0x20000000, 0x30000000, 0x40000000, 0x50000000, {0x60000000, 0x70000000}});
 	std::string text = "outside " + Hex(outside.LayoutId());
 	for (const StateRegion& region : outside.Regions()) text += " " + region.name + "@" + Hex(reinterpret_cast<uintptr_t>(region.ptr));
 	text += "; runs";
 	for (const sfv::manager::RunRule& rule : sfv::manager::kRunRules) {
 		text += " " + std::string(rule.owner) + "+" + std::to_string(rule.offset) + rule.kind + "[" +
 			std::to_string(rule.maskFrom) + "," + std::to_string(rule.maskTo) + ")";
+		if (rule.maskEvery) text += "/" + std::to_string(rule.maskEvery);
 	}
 	// The flow record (SfvFlow): what each state class restores and which of
 	// its words peers leave out.
@@ -70,6 +74,10 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 	}
 	layout.Add("battledata.judgement", At(where.battleData, bd::kDecided), bd::kResults + bd::kResultsSize - bd::kDecided);
 	layout.Add("battledata.flowflags", At(where.battleData, bd::kFlowFlags), bd::kFlowFlagsSize);
+	for (size_t i = 0; i < std::size(where.statusParts); i++) {
+		layout.Add("CharaUnit[" + std::to_string(i) + "].CharaStatusPart.holds",
+			At(where.statusParts[i], sfv::statuspart::kHolds), sfv::statuspart::kHoldsSize);
+	}
 }
 
 const std::string& LayoutRulesId()

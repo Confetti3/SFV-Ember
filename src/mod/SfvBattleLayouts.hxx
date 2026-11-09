@@ -146,6 +146,25 @@ namespace ruleunit {
 constexpr uint32_t kJudgeState = 248;
 } // namespace ruleunit
 
+// Two holds of a fighter's CharaStatusPart (fighter::kStatusPartType) that
+// its snapshot leaves out: it registers +0x32C, +0x330 and +0x334 (rva
+// 0x354260) and stops there. +0x338 is set to 1 by a move script's command
+// (rva 0x328D60, in the command table rva 0x317580) and cleared with +0x334
+// by the status reset (rva 0x362850); the fight reads it in "is the
+// V-Trigger running" (rva 0x372940) and in a V-Trigger's per-frame update
+// (rva 0x3C0FF0), which sets or clears bit 0 of +0x110, the hold that stops
+// the V-Trigger timer draining (rva 0x3632E0, 0x361590). A rollback to
+// before the command kept its 1, so the replayed frames held the timer
+// where the played ones had not (2026-11-09 sweep: Z38 against Z39,
+// CharaStatusPart+0xC0's +0x50, that is +0x110, 0 played and 1 replayed,
+// three times). +0x33C is set by rva 0x34F330, cleared by rva 0x351760 and
+// gates the fighter's pending status effects (rva 0x344F40), so it is
+// restored with it.
+namespace statuspart {
+constexpr uint32_t kHolds = 0x338;
+constexpr uint32_t kHoldsSize = 8;
+} // namespace statuspart
+
 // A projectile's ProjectileVisualPart: its UE particle actor and the state
 // of that actor (+232): 1 to create it, 2 playing, 3 the projectile died
 // (set by the battle tick, rva 0x4576B0), 4 fading out, 0 gone. The visual
@@ -345,14 +364,30 @@ constexpr uint32_t kNodeFunction = 0x30;
 // fighters start a move on the same frame the result depends on which writes
 // last, and the two copies (or a replay) can differ; only the Combo event's
 // statistics listener reads it (rva 0x4B27D0).
+//
+// Masked in every slot: a projectile group's run at +0x500 (1408 bytes,
+// registered at rva 0x480670) is 8 spawn requests of 176 bytes (walked at
+// rva 0x47FDA0, 0x47C4A0 and 0x482480: +160 taken, +164 delay, +168 frame).
+// A projectile that spawns another fills one from a stack request (rva
+// 0x469390) that its constructor (rva 0x44C730) sets only through +144, and
+// rva 0x48D000 copies all 160 bytes, so +148..+159 of the slot are whatever
+// that stack held: a counter, a heap or image pointer, or zero, different on
+// a replay and between two PCs (2026-11-09 sweep: three pairs, slot 0's
+// +0x94..+0x9B alone, after Critical Arts and V-Triggers). No writer sets
+// them (the slot resets rva 0x4709E0, 0x482850, 0x4781F0 and the direct
+// fills rva 0x37F550, 0x453270 stop at +144) and nothing reads them: the
+// spawn (rva 0x470FB0) reads up to +140. The word at +144 is masked with
+// them; it holds the -1 every request starts with.
 struct RunRule {
 	const char* owner; // RegionNames' owner type
 	uint32_t offset;   // the run's start in its owner, or kAnyRun: every run it has
 	const char* kind;  // non-empty: not hashed at all; the region name's suffix
 	// Otherwise the run-relative bytes [maskFrom, maskTo) are not hashed
-	// (8-byte words; maskTo past the run's end means to its end).
+	// (8-byte words; maskTo past the run's end means to its end), and again
+	// every maskEvery bytes after them to the run's end when it is not 0.
 	uint32_t maskFrom = 0;
 	uint32_t maskTo = 0;
+	uint32_t maskEvery = 0;
 };
 constexpr uint32_t kToTheEnd = ~0u;
 constexpr uint32_t kAnyRun = ~0u;
@@ -371,6 +406,7 @@ constexpr RunRule kRunRules[] = {
 	{"ReplayUnit", 0xF8, ".replaycount"},
 	{"CharaUnit", 0x764, "", 88, 112},
 	{"CharaStatusPart", 0x238, "", 0x88, 0x90},
+	{"ProjectileGroupUnit", 0x500, "", 0x90, 0xA0, 176},
 };
 } // namespace manager
 
