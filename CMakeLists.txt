@@ -181,7 +181,7 @@ target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product ember_runtime_x64
 # The mod's code the SFV catalog and adapter tests reach without the game,
 # compiled once for the three test programs that link it.
 add_library(sfve_ember_test_mod OBJECT
-    src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/FighterReader.cxx src/mod/GameArt.cxx
+    src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/FighterReader.cxx src/mod/GameArt.cxx src/mod/GameInput.cxx
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx
     src/mod/ModConfig.cxx src/mod/PadLayer.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx
@@ -216,6 +216,7 @@ add_executable(sfve_ember_tests
     tests/SfvFrameMeterTests.cxx
     tests/RoomBuildTests.cxx
     tests/BuildKindTests.cxx
+    tests/GameInputTests.cxx
     tests/ExecutableBuildTests.cxx
     tests/PlayerNameTests.cxx
     tests/SteamRecordTests.cxx

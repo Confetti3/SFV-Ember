@@ -81,19 +81,6 @@ void CheckpointExchange::Reset()
 
 namespace {
 
-// The checkpoint's regions by name, size and the hash the peers compare, so
-// the two copies' logs show which regions differ (only on a mismatch).
-void LogRegions(const RollbackSession& session, int frame)
-{
-	std::vector<RegionHash> hashes;
-	if (!session.RegionHashesAt(frame, &hashes)) return;
-	const std::vector<StateRegion>& regions = session.Layout().Regions();
-	for (const RegionHash& h : hashes) {
-		mod::Log("desync: checkpoint %d region %s, %llu bytes, hash %016llx", frame, regions[h.region].name.c_str(),
-			(unsigned long long)h.size, (unsigned long long)h.hash);
-	}
-}
-
 // The room client's check for the battle in play.
 class SfvVerifier final : public sf4e::session::BattleVerifier {
 public:
@@ -114,7 +101,7 @@ public:
 		mod::Log("desync: checkpoint %d is %016llx here and %016llx at the other player; %s", mismatch->frame,
 			(unsigned long long)mismatch->local, (unsigned long long)mismatch->remote,
 			player ? "the fight ends" : "this copy only watches");
-		LogRegions(*session, mismatch->frame);
+		LogCheckpointRegions(*session, mismatch->frame);
 		sf4e::NetplayFacade::PushDesyncNotice(!player);
 		if (player) ember::game::Game().battle.Fail();
 	}
@@ -126,6 +113,17 @@ private:
 };
 
 } // namespace
+
+void LogCheckpointRegions(const RollbackSession& session, int frame)
+{
+	std::vector<RegionHash> hashes;
+	if (!session.RegionHashesAt(frame, &hashes)) return;
+	const std::vector<StateRegion>& regions = session.Layout().Regions();
+	for (const RegionHash& h : hashes) {
+		mod::Log("desync: checkpoint %d region %s, %llu bytes, hash %016llx", frame, regions[h.region].name.c_str(),
+			(unsigned long long)h.size, (unsigned long long)h.hash);
+	}
+}
 
 } // namespace sfve::adapter
 

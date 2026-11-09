@@ -156,7 +156,8 @@ bool SfvAdapter::AddGameRegions(uint8_t* manager)
 		const sfv::manager::RunRule* rule = nullptr;
 		for (size_t k = 0; run.owner && k < std::size(sfv::manager::kRunRules); k++) {
 			const sfv::manager::RunRule& candidate = sfv::manager::kRunRules[k];
-			if (strcmp(candidate.owner, run.owner) != 0 || candidate.offset != run.offset) continue;
+			if (strcmp(candidate.owner, run.owner) != 0) continue;
+			if (candidate.offset != sfv::manager::kAnyRun && candidate.offset != run.offset) continue;
 			rule = &candidate;
 			applied[k]++;
 		}

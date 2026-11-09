@@ -12,6 +12,9 @@
 //   -sfve_mash=N         drive this copy's player (synctest: both) with seeded random inputs
 //   -sfve_mash_from=F    ...starting at session frame F (no input before)
 //   -sfve_mash_pad=1     ...and the pad's input before F (a test's scripted presses first)
+//   -sfve_moves=1        ...playing the game's system moves (input::Script::Moves)
+//   -sfve_practice=1     synctest, netplay: Training's refilling gauges from the first frame
+//   -sfve_replay_regions=F  replay playback: log each checkpoint's region hashes from frame F
 //   -sfve_distance=N     synctest rollback distance (default 7)
 //   -sfve_pads=0,1       XInput slots that are virtual pads from the start
 //   -sfve_background=1   keep playing and reading pads while unfocused
@@ -50,6 +53,7 @@
 // launcher's -sfve_loader=launcher is EarlyStart's, read before this.)
 
 #include "mod/BuildKind.hxx"
+#include "mod/GameInput.hxx"
 
 #include <stdint.h>
 
@@ -84,15 +88,12 @@ struct ModConfig {
 	uint16_t port = 7000;
 	uint16_t peerPort = 7001;
 	int delay = 0;
-	uint32_t mashSeed = 0; // 0: no mashing
-	int mashFrom = 0;
-	bool mashPad = false; // the pad plays before mashFrom
-	// The mash plays the game's system moves (input::Moves): V-Skill,
-	// V-Trigger, V-Reversal, Critical Art motions, EX moves and throws.
-	bool mashMoves = false;
-	// Synctest: Training's refilling gauges from the battle's first frame,
-	// as a Practice room's match has them, so every V-Trigger and Critical
-	// Art the mash asks for is played.
+	// Scripted play for automated tests (-sfve_mash, -sfve_mash_from,
+	// -sfve_mash_pad, -sfve_moves): the seed 0 leaves the pad playing.
+	input::ScriptConfig script;
+	// Training's refilling gauges from the battle's first frame on both
+	// players, as a Practice room's match has them, so every V-Trigger and
+	// Critical Art a script asks for is played (synctest and netplay).
 	bool practiceGauges = false;
 	int distance = 7;
 	uint32_t virtualPadMask = 0; // bit i: slot i is virtual from the start

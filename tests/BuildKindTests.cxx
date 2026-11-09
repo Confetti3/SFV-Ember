@@ -38,8 +38,8 @@ TEST_CASE("a player build reads only its launcher's options")
 	CHECK(player.dumpChannel.Present());
 	CHECK(player.instance == 0);
 	CHECK(player.ownershipGate);
-	CHECK(player.mashSeed == 0);
-	CHECK_FALSE(player.mashPad);
+	CHECK(player.script.seed == 0);
+	CHECK_FALSE(player.script.padBefore);
 	CHECK_FALSE(player.perturb);
 	CHECK(player.lagMs == 0);
 	CHECK_FALSE(player.crashCommand);
@@ -59,7 +59,7 @@ TEST_CASE("a player build reads only its launcher's options")
 	const sfve::mod::ModConfig& development = Config();
 	CHECK(development.instance == 1);
 	CHECK_FALSE(development.ownershipGate);
-	CHECK(development.mashSeed == 7);
+	CHECK(development.script.seed == 7);
 	CHECK(development.lagMs == 60);
 	CHECK(development.crashCommand);
 	CHECK(development.unowned.size() == 1);

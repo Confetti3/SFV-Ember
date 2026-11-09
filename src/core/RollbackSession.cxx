@@ -695,8 +695,8 @@ void RollbackSession::RecordHash(Slot& slot, int frame, long long copyTicks)
 		}
 	}
 	if (checkpoint) {
-		if (config_.onCheckpoint) config_.onCheckpoint(frame, slot.hash);
 		layout.PeerRegionHashesSaved(slot.bytes.data(), checkpoints_[frame]); // a replay overwrites it
+		if (config_.onCheckpoint) config_.onCheckpoint(frame, slot.hash); // RegionHashesAt(frame) answers
 		QueryPerformanceFrequency(&perSecond);
 		const auto us = [&](long long ticks) { return ticks * 1000000 / perSecond.QuadPart; };
 		CoreLog("checkpoint: frame %d hash %016llx (copy %lld us, hash %lld us)", frame, (unsigned long long)slot.hash,

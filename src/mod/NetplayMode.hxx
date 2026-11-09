@@ -110,6 +110,7 @@ private:
 	static constexpr uint32_t kSessionSeed = 0x5F0E5EED;
 
 	const ModConfig& config_;
+	input::ScriptedInput script_{config_.script, config_.player}; // the local player's, for tests
 	mutable std::mutex mutex_; // the game thread steps, the pipe thread reads
 	std::unique_ptr<RollbackSession> session_;
 	// P1's last session, kept after its battle for the watchers still
@@ -148,8 +149,6 @@ private:
 	std::shared_ptr<const replay::Replay> replay_;
 	std::string replayEnd_;
 	// The last checkpoint whose regions a playback logged (-sfve_replay_regions).
-	int regionsLogged_ = -1;
-	void LogPlaybackRegions();
 };
 
 } // namespace sfve::mod

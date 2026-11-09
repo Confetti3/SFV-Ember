@@ -1,6 +1,9 @@
 #include "mod/GameInput.hxx"
 
+#include "mod/Log.hxx"
+
 #include <iterator>
+#include <span>
 
 namespace sfve::mod::input {
 
@@ -20,10 +23,17 @@ uint32_t Scramble(uint32_t x)
 	return x;
 }
 
-// Directions relative to the fighter's facing; Moves turns them into the
-// input's left and right for the block's side.
+PackedInput Buttons(uint32_t seed, int frame)
+{
+	const uint32_t h = Scramble(seed * 0x9E3779B9U ^ (uint32_t)(frame / kHoldFrames));
+	PackedInput in = kDirections[h % std::size(kDirections)];
+	if ((h >> 8) % 3 == 0) in |= kAttacks[(h >> 12) % std::size(kAttacks)];
+	return in;
+}
+
+// Directions relative to the fighter's facing; the block's coin turns them
+// into the input's left and right.
 constexpr uint8_t U = 1, D = 2, B = 4, F = 8;
-constexpr PackedInput kPunches = kLP | kMP | kHP, kKicks = kLK | kMK | kHK;
 
 struct Step {
 	uint8_t dirs;
@@ -31,44 +41,70 @@ struct Step {
 	uint8_t frames;
 };
 
+// A motion is its directions; the press comes with the last one. Every move
+// starts from two neutral frames, so its buttons are a fresh press.
+constexpr Step kNeutral{0, 0, 2};
+constexpr Step kVSkill[] = {kNeutral, {0, kMP | kMK, 4}};
+constexpr Step kVSkillHold[] = {kNeutral, {0, kMP | kMK, 45}};
+constexpr Step kVTrigger[] = {kNeutral, {0, kHP | kHK, 4}};
+constexpr Step kVTriggerTwice[] = {kNeutral, {0, kHP | kHK, 4}, {0, 0, 30}, {0, kHP | kHK, 4}};
+constexpr Step kVTriggerHeld[] = {kNeutral, {0, kHP | kHK, 40}};
+constexpr Step kVReversalP[] = {{B, 0, 40}, {F, kLP | kMP | kHP, 4}};
+constexpr Step kVReversalK[] = {{B, 0, 40}, {F, kLK | kMK | kHK, 4}};
+constexpr Step kQcfQcfP[] = {kNeutral, {D, 0, 2}, {D | F, 0, 2}, {F, 0, 2}, {D, 0, 2}, {D | F, 0, 2}, {F, kHP, 4}};
+constexpr Step kQcfQcfK[] = {kNeutral, {D, 0, 2}, {D | F, 0, 2}, {F, 0, 2}, {D, 0, 2}, {D | F, 0, 2}, {F, kHK, 4}};
+constexpr Step kChargeP[] = {{D | B, 0, 50}, {F, 0, 2}, {B, 0, 2}, {F, kHP, 4}};
+constexpr Step kChargeK[] = {{D | B, 0, 50}, {F, 0, 2}, {B, 0, 2}, {F, kHK, 4}};
+constexpr Step k720P[] = {{F, 0, 2}, {D | F, 0, 2}, {D, 0, 2}, {D | B, 0, 2}, {B, 0, 2}, {U | B, 0, 2}, {U, 0, 1},
+	{U | F, 0, 1}, {F, 0, 2}, {D | F, 0, 2}, {D, 0, 2}, {D | B, 0, 2}, {B, 0, 2}, {U | B, 0, 1}, {U, kHP, 3}};
+constexpr Step k720K[] = {{F, 0, 2}, {D | F, 0, 2}, {D, 0, 2}, {D | B, 0, 2}, {B, 0, 2}, {U | B, 0, 2}, {U, 0, 1},
+	{U | F, 0, 1}, {F, 0, 2}, {D | F, 0, 2}, {D, 0, 2}, {D | B, 0, 2}, {B, 0, 2}, {U | B, 0, 1}, {U, kHK, 3}};
+constexpr Step kExQcf[] = {kNeutral, {D, 0, 2}, {D | F, 0, 2}, {F, kLP | kMP, 4}};
+constexpr Step kExDp[] = {kNeutral, {F, 0, 2}, {D, 0, 2}, {D | F, kLP | kMP, 4}};
+constexpr Step kExQcb[] = {kNeutral, {D, 0, 2}, {D | B, 0, 2}, {B, kLK | kMK, 4}};
+constexpr Step kExCharge[] = {{B, 0, 45}, {F, kLP | kMP, 4}};
+constexpr Step kThrow[] = {kNeutral, {F, kLP | kLK, 4}};
+constexpr Step kVTriggerThenCa[] = {kNeutral, {0, kHP | kHK, 4}, {0, 0, 20}, {D, 0, 2}, {D | F, 0, 2}, {F, 0, 2},
+	{D, 0, 2}, {D | F, 0, 2}, {F, kHP, 4}};
+
 struct Move {
 	const char* name;
-	Step steps[16];
+	std::span<const Step> steps;
 };
 
-// Motions at two frames a step; the button comes with the last direction.
+// Facing is the block's coin, so a quarter circle forward covers back too.
 constexpr Move kMoves[] = {
-	{"v-skill", {{0, 0, 2}, {0, kMP | kMK, 4}}},
-	{"v-skill hold", {{0, 0, 2}, {0, kMP | kMK, 45}}},
-	{"v-trigger", {{0, 0, 2}, {0, kHP | kHK, 4}}},
-	{"v-trigger twice", {{0, 0, 2}, {0, kHP | kHK, 4}, {0, 0, 30}, {0, kHP | kHK, 4}}},
-	{"v-trigger held", {{0, 0, 2}, {0, kHP | kHK, 40}}},
-	{"v-reversal punch", {{B, 0, 40}, {F, kPunches, 4}}},
-	{"v-reversal kick", {{B, 0, 40}, {F, kKicks, 4}}},
-	{"critical art qcf qcf p",
-		{{D, 0, 2}, {D | F, 0, 2}, {F, 0, 2}, {D, 0, 2}, {D | F, 0, 2}, {F, kHP, 4}}},
-	{"critical art qcf qcf k",
-		{{D, 0, 2}, {D | F, 0, 2}, {F, 0, 2}, {D, 0, 2}, {D | F, 0, 2}, {F, kHK, 4}}},
-	{"critical art qcb qcb p",
-		{{D, 0, 2}, {D | B, 0, 2}, {B, 0, 2}, {D, 0, 2}, {D | B, 0, 2}, {B, kHP, 4}}},
-	{"critical art qcb qcb k",
-		{{D, 0, 2}, {D | B, 0, 2}, {B, 0, 2}, {D, 0, 2}, {D | B, 0, 2}, {B, kHK, 4}}},
-	{"critical art charge p", {{D | B, 0, 50}, {F, 0, 2}, {B, 0, 2}, {F, kHP, 4}}},
-	{"critical art charge k", {{D | B, 0, 50}, {F, 0, 2}, {B, 0, 2}, {F, kHK, 4}}},
-	{"critical art 720 p",
-		{{F, 0, 2}, {D | F, 0, 2}, {D, 0, 2}, {D | B, 0, 2}, {B, 0, 2}, {U | B, 0, 2}, {U, 0, 1}, {U | F, 0, 1},
-			{F, 0, 2}, {D | F, 0, 2}, {D, 0, 2}, {D | B, 0, 2}, {B, 0, 2}, {U | B, 0, 1}, {U, kHP, 3}}},
-	{"critical art 720 k",
-		{{F, 0, 2}, {D | F, 0, 2}, {D, 0, 2}, {D | B, 0, 2}, {B, 0, 2}, {U | B, 0, 2}, {U, 0, 1}, {U | F, 0, 1},
-			{F, 0, 2}, {D | F, 0, 2}, {D, 0, 2}, {D | B, 0, 2}, {B, 0, 2}, {U | B, 0, 1}, {U, kHK, 3}}},
-	{"ex qcf pp", {{D, 0, 2}, {D | F, 0, 2}, {F, kLP | kMP, 4}}},
-	{"ex dp pp", {{F, 0, 2}, {D, 0, 2}, {D | F, kLP | kMP, 4}}},
-	{"ex qcb kk", {{D, 0, 2}, {D | B, 0, 2}, {B, kLK | kMK, 4}}},
-	{"ex charge pp", {{B, 0, 45}, {F, kLP | kMP, 4}}},
-	{"throw", {{0, 0, 2}, {F, kLP | kLK, 4}}},
-	{"v-trigger then critical art",
-		{{0, kHP | kHK, 4}, {0, 0, 20}, {D, 0, 2}, {D | F, 0, 2}, {F, 0, 2}, {D, 0, 2}, {D | F, 0, 2}, {F, kHP, 4}}},
+	{"v-skill", kVSkill},
+	{"v-skill hold", kVSkillHold},
+	{"v-trigger", kVTrigger},
+	{"v-trigger twice", kVTriggerTwice},
+	{"v-trigger held", kVTriggerHeld},
+	{"v-reversal punch", kVReversalP},
+	{"v-reversal kick", kVReversalK},
+	{"critical art qcf qcf p", kQcfQcfP},
+	{"critical art qcf qcf k", kQcfQcfK},
+	{"critical art charge p", kChargeP},
+	{"critical art charge k", kChargeK},
+	{"critical art 720 p", k720P},
+	{"critical art 720 k", k720K},
+	{"ex qcf pp", kExQcf},
+	{"ex dp pp", kExDp},
+	{"ex qcb kk", kExQcb},
+	{"ex charge pp", kExCharge},
+	{"throw", kThrow},
+	{"v-trigger then critical art", kVTriggerThenCa},
 };
+
+consteval bool EveryMoveFitsItsBlock()
+{
+	for (const Move& move : kMoves) {
+		int frames = 0;
+		for (const Step& step : move.steps) frames += step.frames;
+		if (frames > kMoveBlockFrames) return false;
+	}
+	return true;
+}
+static_assert(EveryMoveFitsItsBlock(), "a move longer than its block would be cut off by the Buttons that follow it");
 
 PackedInput Directions(uint8_t dirs, bool facingRight)
 {
@@ -80,38 +116,51 @@ PackedInput Directions(uint8_t dirs, bool facingRight)
 	return in;
 }
 
-uint32_t BlockHash(uint32_t seed, int frame)
+// The move a block plays and the way it faces.
+struct Planned {
+	const Move& move;
+	bool facingRight;
+};
+
+Planned PlanAt(uint32_t seed, int block)
 {
-	return Scramble(seed * 0x85EBCA6BU ^ 0x6D6F7665U ^ (uint32_t)(frame / kMoveBlockFrames));
+	const uint32_t h = Scramble(seed * 0x85EBCA6BU ^ 0x6D6F7665U ^ (uint32_t)block);
+	return {kMoves[h % std::size(kMoves)], ((h >> 16) & 1) != 0};
+}
+
+PackedInput Moves(uint32_t seed, int frame)
+{
+	const Planned plan = PlanAt(seed, frame / kMoveBlockFrames);
+	int at = frame % kMoveBlockFrames;
+	for (const Step& step : plan.move.steps) {
+		if (at < step.frames) return Directions(step.dirs, plan.facingRight) | step.buttons;
+		at -= step.frames;
+	}
+	return Buttons(seed, frame);
 }
 
 } // namespace
 
-PackedInput Moves(uint32_t seed, int frame)
+ScriptedInput::ScriptedInput(const ScriptConfig& config, int player)
+	// A second seed for P2 that no P1 seed shares by accident of small numbers.
+	: config_(config), seed_(player == 0 ? config.seed : config.seed * 2654435761u + 1), player_(player)
 {
-	const uint32_t h = BlockHash(seed, frame);
-	const Move& move = kMoves[h % std::size(kMoves)];
-	const bool facingRight = (h >> 16) & 1;
-	int at = frame % kMoveBlockFrames;
-	for (const Step& step : move.steps) {
-		if (!step.frames) break;
-		if (at < step.frames) return Directions(step.dirs, facingRight) | step.buttons;
-		at -= step.frames;
+}
+
+std::optional<PackedInput> ScriptedInput::At(int frame)
+{
+	if (!config_.seed) return std::nullopt;
+	if (frame < config_.from) return config_.padBefore ? std::nullopt : std::optional<PackedInput>(0);
+	const int played = frame - config_.from;
+	if (config_.script == Script::Buttons) return Buttons(seed_, played);
+	const int block = played / kMoveBlockFrames;
+	if (block != loggedBlock_) {
+		loggedBlock_ = block;
+		const Planned plan = PlanAt(seed_, block);
+		Log("moves: P%d frame %d: %s, facing %s", player_ + 1, frame, plan.move.name,
+			plan.facingRight ? "right" : "left");
 	}
-	return Mash(seed, frame);
-}
-
-const char* MoveName(uint32_t seed, int frame)
-{
-	return kMoves[BlockHash(seed, frame) % std::size(kMoves)].name;
-}
-
-PackedInput Mash(uint32_t seed, int frame)
-{
-	const uint32_t h = Scramble(seed * 0x9E3779B9U ^ (uint32_t)(frame / kHoldFrames));
-	PackedInput in = kDirections[h % std::size(kDirections)];
-	if ((h >> 8) % 3 == 0) in |= kAttacks[(h >> 12) % std::size(kAttacks)];
-	return in;
+	return Moves(seed_, played);
 }
 
 } // namespace sfve::mod::input

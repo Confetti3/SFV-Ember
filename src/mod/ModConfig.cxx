@@ -188,10 +188,10 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.port = (uint16_t)options.Number(L"sfve_port", 7000 + 2 * c.instance);
 	c.peerPort = (uint16_t)options.Number(L"sfve_peer_port", c.instance == 0 ? 7002 : 7000);
 	c.delay = (int)options.Number(L"sfve_delay", 0);
-	c.mashSeed = (uint32_t)options.Number(L"sfve_mash", 0);
-	c.mashFrom = (int)options.Number(L"sfve_mash_from", 0);
-	c.mashPad = options.Number(L"sfve_mash_pad", 0) != 0;
-	c.mashMoves = options.Number(L"sfve_moves", 0) != 0;
+	c.script.seed = (uint32_t)options.Number(L"sfve_mash", 0);
+	c.script.from = (int)options.Number(L"sfve_mash_from", 0);
+	c.script.padBefore = options.Number(L"sfve_mash_pad", 0) != 0;
+	c.script.script = options.Number(L"sfve_moves", 0) != 0 ? input::Script::Moves : input::Script::Buttons;
 	c.practiceGauges = options.Number(L"sfve_practice", 0) != 0;
 	c.distance = (int)options.Number(L"sfve_distance", 7);
 	c.backgroundPlay = options.Number(L"sfve_background", 0) != 0;

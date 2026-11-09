@@ -71,4 +71,10 @@ private:
 	bool mismatchReported_ = false; // this battle's mismatch was returned already
 };
 
+// A checkpoint's regions by name, size and the hash the peers compare, one
+// "desync: checkpoint F region R, N bytes, hash H" line each (the form
+// tools/runcross.py and tools/compare.py read): a room match's mismatch,
+// and a replay's playback with -sfve_replay_regions.
+void LogCheckpointRegions(const RollbackSession& session, int frame);
+
 } // namespace sfve::adapter

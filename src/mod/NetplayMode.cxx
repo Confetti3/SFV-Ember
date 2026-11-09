@@ -178,15 +178,8 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	const int frame = session_->Frame();
 	// Sent as the player plays; frames whose inputs the game ignores (outside
 	// the fight) get neutral ones in RollbackSession, whatever was sent.
-	const PackedInput local = !config_.mashSeed ? adapter.Sampled(0)
-		: frame >= config_.mashFrom              ? (config_.mashMoves ? input::Moves(config_.mashSeed, frame)
-																		  : input::Mash(config_.mashSeed, frame))
-		: config_.mashPad                        ? adapter.Sampled(0)
-												 : 0;
-	if (config_.mashSeed && config_.mashMoves && frame >= config_.mashFrom &&
-		(frame % input::kMoveBlockFrames == 0 || frame == config_.mashFrom)) {
-		Log("moves: frame %d: %s", frame, input::MoveName(config_.mashSeed, frame));
-	}
+	const PackedInput local = script_.At(frame).value_or(adapter.Sampled(0));
+
 	// The game's judgement, the same on both copies (it is restored with the
 	// rest of the state on rollback): both copies hold the battle for the
 	// WIN's answers from this same confirmed frame.
@@ -258,7 +251,6 @@ bool NetplayMode::WatchFrame(SfvAdapter& adapter)
 	}
 	last_ = session_->Step(0);
 	const bool advanced = last_ == RollbackSession::StepResult::Advanced;
-	if (advanced && replay_ && config_.replayRegionsFrom > 0) LogPlaybackRegions();
 	if (advanced && replay_) {
 		const int played = session_->Frame() - 1;
 		adapter::NotePlaybackFrame(played >= 0 && replay_->frames[(size_t)played].Fight(), room_.GamesInPlace());
@@ -357,30 +349,19 @@ void NetplayMode::Leave()
 	if (!leaving_ && !retry) Log("netplay: could not leave the battle yet (no scene manager); asking again each frame");
 }
 
-void NetplayMode::LogPlaybackRegions()
-{
-	const int checkpoint = session_->LatestCheckpoint(session_->Frame());
-	if (checkpoint < config_.replayRegionsFrom || checkpoint <= regionsLogged_) return;
-	regionsLogged_ = checkpoint;
-	std::vector<RegionHash> hashes;
-	if (!session_->RegionHashesAt(checkpoint, &hashes)) return;
-	const std::vector<StateRegion>& regions = session_->Layout().Regions();
-	for (const RegionHash& h : hashes) {
-		Log("desync: checkpoint %d region %s, %llu bytes, hash %016llx", checkpoint, regions[h.region].name.c_str(),
-			(unsigned long long)h.size, (unsigned long long)h.hash);
-	}
-}
-
 bool NetplayMode::StartSession(SfvAdapter& adapter)
 {
-	regionsLogged_ = -1;
+	script_ = input::ScriptedInput(config_.script, config_.player);
 	RollbackSession::Config c;
 	uint32_t seed = kSessionSeed;
 	int delay = config_.delay;
 	if (replay_) {
 		// A replay: its own frames, seed and checkpoints, and no network.
 		c.replay = &replay_->frames;
-		c.onCheckpoint = [](int frame, uint64_t hash) { adapter::NotePlaybackCheckpoint(frame, hash); };
+		c.onCheckpoint = [this](int frame, uint64_t hash) {
+			adapter::NotePlaybackCheckpoint(frame, hash);
+			if (config_.replayRegionsFrom > 0 && frame >= config_.replayRegionsFrom) adapter::LogCheckpointRegions(*session_, frame);
+		};
 		seed = replay_->header.seed;
 		delay = 0;
 	} else if (room_.Active()) {
@@ -412,7 +393,9 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
 	// A Practice room's game: Training's refilling gauges on both copies at
 	// this same frame, before anything is simulated (EMBER_LIBRARY.md 27).
-	if (room_.Practice() && !adapter.SetPracticeGauges()) Log("netplay: the Practice match plays with a match's gauges");
+	// A test's -sfve_practice does the same outside rooms.
+	const bool practice = room_.Practice() || config_.practiceGauges;
+	if (practice && !adapter.SetPracticeGauges()) Log("netplay: the Practice match plays with a match's gauges");
 	seed_ = seed;
 	startTime_ = adapter.StartTime();
 	// A room battle is recorded from its first frame (EMBER_LIBRARY.md
@@ -420,7 +403,7 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	// A watched one only with Settings' "Save matches you watch", and never a
 	// Practice room's (its refilling gauges are set outside the frames, and
 	// it reaches no result), as SF4's (UserApp's recordReplay).
-	const bool record = room_.Active() && !replay_ && !room_.Practice() &&
+	const bool record = room_.Active() && !replay_ && !practice &&
 		(!room_.Watching() || sf4e::NetplayFacade::GetRuntimeSnapshotShared()->preferences.recordWatched);
 	if (record) {
 		recorder_.Start();
