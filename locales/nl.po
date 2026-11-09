@@ -209,3 +209,9 @@ msgstr "Zoals in een echte speelhal blijft de winnaar van een set bij de vechter
 
 msgid "menu.hint.save_ultra"
 msgstr "V-Skill en V-Trigger opslaan"
+
+msgid "training.close_controls.detail"
+msgstr "Sluit Ember en daarna eventueel het SFV-pauzemenu om verder te spelen."
+
+msgid "controllers.detail_steam"
+msgstr "Steam Input beheert deze controller, dus de knoppen volgen je Steam-instellingen. Start Ember buiten Steam of schakel Steam Input voor Street Fighter V in Steam uit om Ember de controller te laten beheren."

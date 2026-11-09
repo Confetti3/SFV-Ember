@@ -209,3 +209,9 @@ msgstr "Jako ve skutečné herně zůstává vítěz setu u bojovníka, se kter�
 
 msgid "menu.hint.save_ultra"
 msgstr "Uložit V-Skill a V-Trigger"
+
+msgid "training.close_controls.detail"
+msgstr "Zavřete Ember a pak případně i nabídku pauzy SFV, aby hra pokračovala."
+
+msgid "controllers.detail_steam"
+msgstr "Tento ovladač spravuje Steam Input, takže jeho tlačítka odpovídají vašemu nastavení Steam. Pokud ho má spravovat Ember, spusťte Ember mimo Steam nebo vypněte Steam Input pro Street Fighter V ve službě Steam."

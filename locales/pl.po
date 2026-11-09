@@ -209,3 +209,9 @@ msgstr "Jak w prawdziwym salonie gier zwycięzca seta zostaje przy postaci, któ
 
 msgid "menu.hint.save_ultra"
 msgstr "Zapisz V-Skill i V-Trigger"
+
+msgid "training.close_controls.detail"
+msgstr "Zamknij Ember, a potem zamknij menu pauzy SFV, jeśli jest otwarte, aby wznowić grę."
+
+msgid "controllers.detail_steam"
+msgstr "Steam Input obsługuje ten kontroler, więc jego przyciski korzystają z ustawień Steam. Aby obsługiwał go Ember, uruchom Ember poza Steam lub wyłącz Steam Input dla Street Fighter V w Steam."

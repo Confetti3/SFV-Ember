@@ -156,6 +156,9 @@ constexpr ember::ProductIdentity SfvEmber = {
 	// Its public rooms are SFV's, apart from SF4 Ember's on the same bridge
 	// (EMBER_LIBRARY.md section 24).
 	"sfv",
+	// Its rooms' short links open SFV Ember: the site's /v page hands the
+	// code to ember-sfv://join/ (EMBER_LIBRARY.md section 46).
+	"https://embernetplay.link/v#",
 	// Stable and Beta releases come from the public repository (EMBER_LIBRARY.md
 	// section 44). The update check refuses a redirect, so this must stay the
 	// repository's exact name. SFV Ember has no Nightly line: that channel has

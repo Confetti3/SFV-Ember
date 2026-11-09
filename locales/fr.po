@@ -209,3 +209,9 @@ msgstr "Comme dans une vraie salle d'arcade, le vainqueur d'un set garde le comb
 
 msgid "menu.hint.save_ultra"
 msgstr "Enregistrer V-Skill et V-Trigger"
+
+msgid "training.close_controls.detail"
+msgstr "Fermez Ember, puis le menu pause de SFV s'il est ouvert pour reprendre."
+
+msgid "controllers.detail_steam"
+msgstr "Steam Input gère cette manette, donc ses boutons suivent vos paramètres Steam. Pour laisser Ember la gérer, lancez Ember hors de Steam ou désactivez Steam Input pour Street Fighter V dans Steam."

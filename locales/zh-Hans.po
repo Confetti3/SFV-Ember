@@ -209,3 +209,9 @@ msgstr "就像真正的街机厅，一局的胜者继续使用获胜的角色，
 
 msgid "menu.hint.save_ultra"
 msgstr "保存V技能和V触发"
+
+msgid "training.close_controls.detail"
+msgstr "关闭 Ember。如 SFV 暂停菜单仍打开，请将其关闭以继续。"
+
+msgid "controllers.detail_steam"
+msgstr "Steam Input 正在处理此控制器，因此按钮遵循你的 Steam 设置。要让 Ember 处理它，请在 Steam 外启动 Ember，或在 Steam 中关闭 Street Fighter V 的 Steam Input。"

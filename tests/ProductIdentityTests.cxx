@@ -7,6 +7,7 @@
 #include "ember/SfvRankNames.hxx"
 
 #include "common/Localization.hxx"
+#include "common/JoinLink.hxx"
 #include "common/ProductIdentity.hxx"
 #include "launcher/update/github_release_client.hxx"
 #include "ui/NameMarks.hxx"
@@ -50,6 +51,11 @@ TEST_CASE("the product is SFV Ember, with names of its own")
 	CHECK(std::wstring(product.gameLog) == L"sfv_ember.log");
 	CHECK(std::string(product.urlScheme) == "ember-sfv");
 	CHECK(std::string(product.roomGame) == "sfv");
+	// A room's short link is SFV Ember's /v# form, which the site opens in
+	// SFV Ember; the helper's /j# link is shown in it.
+	CHECK(std::string(product.roomLinkPrefix) == "https://embernetplay.link/v#");
+	CHECK(sf4e::join_link::ShortLink("7K3M0X1RT9PZ") == "https://embernetplay.link/v#7K3M-0X1R-T9PZ");
+	CHECK(sf4e::join_link::ProductShortLink("https://embernetplay.link/j#7K3M-0X1R-T9PZ") == "https://embernetplay.link/v#7K3M-0X1R-T9PZ");
 	CHECK(ember::KernelObjectName(L"JoinLink") == L"Local\\SFVEmberJoinLink");
 	CHECK(ember::SchemeLink("join/ABC") == "ember-sfv://join/ABC");
 	for (const char* text : {product.branding.productName, product.branding.shortName, product.urlScheme,

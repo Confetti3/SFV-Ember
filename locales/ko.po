@@ -209,3 +209,9 @@ msgstr "실제 오락실처럼 세트 승자는 이긴 캐릭터로 계속합니
 
 msgid "menu.hint.save_ultra"
 msgstr "V스킬과 V트리거 저장"
+
+msgid "training.close_controls.detail"
+msgstr "Ember를 닫고, SFV 일시정지 메뉴가 열려 있다면 닫아 재개하세요."
+
+msgid "controllers.detail_steam"
+msgstr "Steam Input이 이 컨트롤러를 처리하므로 버튼은 Steam 설정을 따릅니다. Ember가 처리하게 하려면 Steam 밖에서 Ember를 실행하거나 Steam에서 Street Fighter V의 Steam Input을 끄세요."

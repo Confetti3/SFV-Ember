@@ -209,3 +209,9 @@ msgstr "Como num fliperama de verdade, quem vence o set continua com o lutador c
 
 msgid "menu.hint.save_ultra"
 msgstr "Salvar V-Skill e V-Trigger"
+
+msgid "training.close_controls.detail"
+msgstr "Feche o Ember e depois o menu de pausa do SFV para continuar, se estiver aberto."
+
+msgid "controllers.detail_steam"
+msgstr "O Steam Input gerencia este controle, então seus botões seguem suas configurações do Steam. Para deixar o Ember gerenciá-lo, inicie o Ember fora do Steam ou desligue o Steam Input para Street Fighter V no Steam."

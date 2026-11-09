@@ -209,3 +209,12 @@ msgstr "Как в настоящем игровом зале, победител
 
 msgid "menu.hint.save_ultra"
 msgstr "Сохранить V-Skill и V-Trigger"
+
+msgid "home.offline_detail"
+msgstr "Возврат в оригинальное меню SFV"
+
+msgid "training.close_controls.detail"
+msgstr "Закройте Ember, затем меню паузы SFV, если оно открыто."
+
+msgid "controllers.detail_steam"
+msgstr "Steam Input управляет этим контроллером, поэтому его кнопки следуют настройкам Steam. Чтобы им управлял Ember, запустите Ember вне Steam или выключите Steam Input для Street Fighter V в Steam."

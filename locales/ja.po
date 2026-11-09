@@ -209,3 +209,9 @@ msgstr "本物のゲームセンターのように、セットの勝者は勝っ
 
 msgid "menu.hint.save_ultra"
 msgstr "VスキルとVトリガーを保存"
+
+msgid "training.close_controls.detail"
+msgstr "Emberを閉じ、SFVのポーズメニューが開いていたら閉じて再開してください。"
+
+msgid "controllers.detail_steam"
+msgstr "Steam Inputがこのコントローラーを扱うため、ボタンはSteamの設定に従います。Emberに扱わせるには、Steamの外からEmberを起動するか、SteamでStreet Fighter VのSteam Inputをオフにしてください。"
