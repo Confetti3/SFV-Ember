@@ -48,11 +48,17 @@ function Initialize-TestBridge([string]$bridgeExe, [string]$dir, [int]$port, [ha
 }
 
 # Serves the bridge $config names, its output in $work\bridge.log and
-# bridge.out, until its profile answers. Returns the process.
+# bridge.out, until its profile answers. Returns the process; one that never
+# answers is stopped here, before the error goes on.
 function Start-TestBridge([string]$bridgeExe, [string]$config, [string]$work) {
 	$origin = (Get-Content $config -Raw | ConvertFrom-Json).origin
 	$process = Start-Process $bridgeExe -ArgumentList 'serve', "`"$config`"" -PassThru -WindowStyle Hidden -RedirectStandardError "$work\bridge.log" -RedirectStandardOutput "$work\bridge.out"
-	WaitFor 'the bridge' 30 { try { (Invoke-RestMethod "$origin/.well-known/ember-bridge.json").bridge_id } catch { $null } }
+	try {
+		WaitFor 'the bridge' 30 { try { (Invoke-RestMethod "$origin/.well-known/ember-bridge.json").bridge_id } catch { $null } }
+	} catch {
+		if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
+		throw
+	}
 	$process
 }
 

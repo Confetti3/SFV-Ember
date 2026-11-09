@@ -46,27 +46,19 @@ std::string Submit(facade::RuntimeCommand command)
 	return "ok submitted (the room's answer shows in the status's \"room\")";
 }
 
-// A command carrying the player's settings with these table rules, as the
-// Create room page and Settings write them: an error when SFV cannot play
-// them (the catalog's rules) or the settings would not be valid.
-std::optional<std::string> WithTableRules(facade::RuntimeCommand& command, int rounds, int seconds, int rematch, int firstTo)
+// The player's settings with tables of these rounds and seconds, every other
+// setting kept: an error when SFV cannot play them (the catalog's rules).
+std::optional<std::string> SetRounds(sf4e::netplay::PlayerPreferences& preferences, int rounds, int seconds)
 {
-	if (!sf4e::room::ValidSetFormat(firstTo)) return "error the set is first to 1-10 games, or 0 for unlimited";
 	if (!ember::PlayableRoundCount(rounds)) return "error SFV plays 1, 3, 5 or 7 rounds";
 	if (!ember::PlayableRoundTime(seconds)) return "error SFV rooms play rounds of 30, 60, 99 or 300 s";
-	command.preferences = facade::GetRuntimeSnapshotShared()->preferences;
-	sf4e::room::Rules& rules = command.preferences.tableRules;
+	sf4e::room::Rules& rules = preferences.tableRules;
 	rules.roundCount = (std::uint8_t)rounds;
 	rules.roundTime = (std::uint16_t)seconds;
 	rules.editionSelect = false; // SFV has no editions
-	// A game goes on in place over its WIN only with Instant rematch on
-	// (RoomBattle; off by default here, so a test asks for it).
-	rules.instantRematch = rematch != 0;
-	rules.format = static_cast<sf4e::room::SetFormat>(firstTo);
-	command.preferences.lobby.roundCount = rounds;
-	command.preferences.lobby.roundTime = seconds;
-	command.preferences.lobby.editionSelect = false;
-	if (!command.preferences.Valid()) return "error the room's settings are not valid";
+	preferences.lobby.roundCount = rounds;
+	preferences.lobby.roundTime = seconds;
+	preferences.lobby.editionSelect = false;
 	return std::nullopt;
 }
 
@@ -79,13 +71,21 @@ std::string Host(const std::string& args)
 	if (!in.eof() && !(in >> rematch)) return usage;
 	if (!in.eof() && !(in >> firstTo)) return usage;
 	if (rematch < 0 || rematch > 1) return usage;
+	if (!sf4e::room::ValidSetFormat(firstTo)) return "error the set is first to 1-10 games, or 0 for unlimited";
 	facade::RuntimeCommand command = CommandFor(CommandKind::HostRoom);
-	if (const auto refused = WithTableRules(command, rounds, seconds, rematch, firstTo)) return *refused;
+	command.preferences = facade::GetRuntimeSnapshotShared()->preferences;
+	if (const auto refused = SetRounds(command.preferences, rounds, seconds)) return *refused;
+	// A game goes on in place over its WIN only with Instant rematch on
+	// (RoomBattle; off by default here, so a test asks for it).
+	command.preferences.tableRules.instantRematch = rematch != 0;
+	command.preferences.tableRules.format = static_cast<sf4e::room::SetFormat>(firstTo);
+	if (!command.preferences.Valid()) return "error the room's settings are not valid";
 	return Submit(std::move(command));
 }
 
-// `rules <rounds> <seconds>`: the table rules saved in the player's settings,
-// as Settings saves them. A room this player opens later plays them, an
+// `rules <rounds> <seconds>`: the rounds and round time saved in the player's
+// settings, as Settings saves them; Instant rematch, the set and every other
+// setting stay as saved. A room this player opens later plays them, an
 // organised match's room among them (the runtime opens that room from the
 // saved settings; EMBER_LIBRARY.md section 32). Only at the main menu with
 // no room, as Settings allows.
@@ -95,7 +95,9 @@ std::string SaveRules(const std::string& args)
 	std::istringstream in(args);
 	if (!(in >> rounds >> seconds) || !(in >> std::ws).eof()) return "error usage: rules <rounds> <seconds>";
 	facade::RuntimeCommand command = CommandFor(CommandKind::SavePreferences);
-	if (const auto refused = WithTableRules(command, rounds, seconds, 0, 0)) return *refused;
+	command.preferences = facade::GetRuntimeSnapshotShared()->preferences;
+	if (const auto refused = SetRounds(command.preferences, rounds, seconds)) return *refused;
+	if (!command.preferences.Valid()) return "error the settings are not valid";
 	command.displayName = command.preferences.displayName;
 	return Submit(std::move(command));
 }

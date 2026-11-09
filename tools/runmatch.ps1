@@ -47,6 +47,10 @@ $settingsKept = "$work\settings.json.kept"
 $db = "$work\bridge\bridge.sqlite3"
 $processes = @()
 $failure = ''
+# The shared settings as they were before anything starts: 'kept' (copied to
+# $settingsKept) or 'absent'. A copy that fails stops the run here, before
+# anything is started, so the end only ever restores a state it captured.
+$settingsBefore = if (Test-Path $settings) { Copy-Item $settings $settingsKept; 'kept' } else { 'absent' }
 
 # The provider's calls, with its credential. A refusal throws the bridge's
 # error body.
@@ -93,7 +97,6 @@ try {
 	$processes += Start-TestBridge $bridgeExe $config $work
 	$bridgeId = (Invoke-RestMethod "$origin/.well-known/ember-bridge.json").bridge_id
 	"bridge $bridgeId at $origin; provider $connection; build $build"
-	if (Test-Path $settings) { Copy-Item $settings $settingsKept }
 
 	Start-Copies $work @($seed0, $seed1) $mashFrom $lag
 	$ids = Connect-Copies $origin
@@ -211,10 +214,15 @@ try {
 	}
 } catch {
 	$failure = $_.Exception.Message
-}
-foreach ($i in 0, 1) { try { "copy $i match: " + ((Status $i).match | ConvertTo-Json -Compress -Depth 5) } catch { } }
-Complete-Run $failure $processes $keep.IsPresent "an organised SFV match, first to $firstTo, completed on the bridge as both copies saw it, no desync"
-# The copies are closed, so nothing writes the settings any more: put them back.
-if (!$keep) {
-	if (Test-Path $settingsKept) { Copy-Item $settingsKept $settings -Force } elseif (Test-Path $settings) { Remove-Item $settings }
+} finally {
+	foreach ($i in 0, 1) { try { "copy $i match: " + ((Status $i).match | ConvertTo-Json -Compress -Depth 5) } catch { } }
+	Complete-Run $failure $processes $keep.IsPresent "an organised SFV match, first to $firstTo, completed on the bridge as both copies saw it, no desync"
+	# Put the settings back as captured, once no copy can write them any more.
+	if ($keep -or (Get-Process StreetFighterV -ErrorAction SilentlyContinue)) {
+		"settings left as the copies saved them (a copy still runs); the ones from before are in $settingsKept"
+	} elseif ($settingsBefore -eq 'kept') {
+		Copy-Item $settingsKept $settings -Force
+	} elseif (Test-Path $settings) {
+		Remove-Item $settings
+	}
 }
