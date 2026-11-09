@@ -1,5 +1,5 @@
 {
-	"build": "sfv-ember/13173604/0.4/8dafe602f7615d90",
+	"build": "sfv-ember/13173604/0.5/73bc997ca0e95c35",
 	"fighters": [
 		{
 			"code": "RYU",
@@ -186,7 +186,9 @@
 					],
 					"id": 13
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "VEG",
@@ -328,7 +330,9 @@
 					],
 					"id": 10
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "CNL",
@@ -635,7 +639,9 @@
 					],
 					"id": 24
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "KEN",
@@ -777,7 +783,9 @@
 					],
 					"id": 9
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "KRN",
@@ -979,7 +987,9 @@
 					],
 					"id": 12
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "ZGF",
@@ -1121,7 +1131,9 @@
 					],
 					"id": 9
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "DSM",
@@ -1233,7 +1245,9 @@
 					],
 					"id": 6
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "NSH",
@@ -1375,7 +1389,9 @@
 					],
 					"id": 11
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "BLR",
@@ -1517,7 +1533,9 @@
 					],
 					"id": 10
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "JRI",
@@ -1763,7 +1781,9 @@
 					],
 					"id": 15
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "BRD",
@@ -1890,7 +1910,9 @@
 					],
 					"id": 8
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "RMK",
@@ -2077,7 +2099,9 @@
 					],
 					"id": 11
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "RSD",
@@ -2219,7 +2243,9 @@
 					],
 					"id": 10
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "FAN",
@@ -2346,7 +2372,9 @@
 					],
 					"id": 6
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "LAR",
@@ -2518,7 +2546,9 @@
 					],
 					"id": 10
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "NCL",
@@ -2630,7 +2660,9 @@
 					],
 					"id": 6
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "CMY",
@@ -2862,7 +2894,9 @@
 					],
 					"id": 18
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "GUL",
@@ -3003,7 +3037,9 @@
 					],
 					"id": 10
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "IBK",
@@ -3204,7 +3240,9 @@
 					],
 					"id": 11
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "BSN",
@@ -3330,7 +3368,9 @@
 					],
 					"id": 9
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "URN",
@@ -3471,7 +3511,9 @@
 					],
 					"id": 7
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "ALX",
@@ -3642,7 +3684,9 @@
 					],
 					"id": 9
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z21",
@@ -3768,7 +3812,9 @@
 					],
 					"id": 13
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z20",
@@ -3969,7 +4015,9 @@
 					],
 					"id": 12
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z22",
@@ -4125,7 +4173,9 @@
 					],
 					"id": 9
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z23",
@@ -4341,7 +4391,9 @@
 					],
 					"id": 13
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z24",
@@ -4467,7 +4519,9 @@
 					],
 					"id": 6
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z25",
@@ -4608,7 +4662,9 @@
 					],
 					"id": 7
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z26",
@@ -4779,7 +4835,9 @@
 					],
 					"id": 10
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z27",
@@ -4920,7 +4978,9 @@
 					],
 					"id": 7
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z28",
@@ -5091,7 +5151,9 @@
 					],
 					"id": 9
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z29",
@@ -5247,7 +5309,9 @@
 					],
 					"id": 8
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z30",
@@ -5358,7 +5422,9 @@
 					],
 					"id": 5
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z31",
@@ -5484,7 +5550,9 @@
 					],
 					"id": 9
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z32",
@@ -5595,7 +5663,9 @@
 					],
 					"id": 6
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z33",
@@ -5766,7 +5836,9 @@
 					],
 					"id": 9
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z34",
@@ -5892,7 +5964,9 @@
 					],
 					"id": 7
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z35",
@@ -6048,7 +6122,9 @@
 					],
 					"id": 11
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z36",
@@ -6159,7 +6235,9 @@
 					],
 					"id": 5
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z37",
@@ -6300,7 +6378,9 @@
 					],
 					"id": 10
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z38",
@@ -6410,7 +6490,9 @@
 					],
 					"id": 5
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z39",
@@ -6550,7 +6632,9 @@
 					],
 					"id": 8
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z40",
@@ -6645,7 +6729,9 @@
 					],
 					"id": 4
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z41",
@@ -6770,7 +6856,9 @@
 					],
 					"id": 6
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		},
 		{
 			"code": "Z42",
@@ -6865,7 +6953,9 @@
 					],
 					"id": 4
 				}
-			]
+			],
+			"v_skills": 2,
+			"v_triggers": 2
 		}
 	],
 	"stages": [
