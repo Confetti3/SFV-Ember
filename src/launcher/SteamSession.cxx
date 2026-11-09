@@ -112,7 +112,7 @@ std::wstring EnvironmentForSteam()
 bool Run(const std::wstring& exe, const wchar_t* arguments)
 {
 	std::wstring commandLine = L"\"" + exe + L"\"" + (arguments ? std::wstring(L" ") + arguments : std::wstring());
-	const std::wstring folder = exe.substr(0, exe.find_last_of(L'\'));
+	const std::wstring folder = exe.substr(0, exe.find_last_of(L'\\'));
 	std::wstring environment = EnvironmentForSteam();
 	const DWORD flags = DETACHED_PROCESS | CREATE_UNICODE_ENVIRONMENT;
 
