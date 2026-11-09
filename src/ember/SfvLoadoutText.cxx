@@ -4,11 +4,13 @@
 #include "mod/GameContent.hxx"
 #include "mod/Log.hxx"
 
-#include <algorithm>
+#include <windows.h>
+
 #include <array>
 #include <atomic>
-#include <cctype>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace sfve::adapter {
 
@@ -87,14 +89,30 @@ const char* PartLabel(picks::LoadoutPart part)
 
 std::string RowCase(std::string label)
 {
-	if (std::any_of(label.begin(), label.end(), [](char c) { return (unsigned char)c >= 0x80; })) return label;
-	bool inWord = false;
-	for (char& c : label) {
-		const bool letter = std::isalpha((unsigned char)c) != 0;
-		if (letter) c = (char)(inWord ? std::tolower((unsigned char)c) : std::toupper((unsigned char)c));
-		inWord = letter;
+	const int length = (int)label.size();
+	const int units = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, label.data(), length, nullptr, 0);
+	if (units <= 0) return label; // empty, or not UTF-8: nothing to case
+	std::wstring text((size_t)units, L'\0');
+	MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, label.data(), length, text.data(), units);
+	// The invariant locale's simple case mapping, one UTF-16 unit for one, so
+	// the three strings line up; Unicode's character types for the words.
+	std::wstring upper(text.size(), L'\0'), lower(text.size(), L'\0');
+	std::vector<WORD> types(text.size());
+	if (!LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_UPPERCASE, text.data(), units, upper.data(), units, nullptr, nullptr, 0) ||
+		!LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_LOWERCASE, text.data(), units, lower.data(), units, nullptr, nullptr, 0) ||
+		!GetStringTypeW(CT_CTYPE1, text.data(), units, types.data())) {
+		return label;
 	}
-	return label;
+	bool inWord = false;
+	for (size_t i = 0; i < text.size(); i++) {
+		if (types[i] & C1_ALPHA) text[i] = inWord ? lower[i] : upper[i];
+		inWord = (types[i] & (C1_ALPHA | C1_DIGIT)) != 0;
+	}
+	const int bytes = WideCharToMultiByte(CP_UTF8, 0, text.data(), units, nullptr, 0, nullptr, nullptr);
+	if (bytes <= 0) return label;
+	std::string out((size_t)bytes, '\0');
+	WideCharToMultiByte(CP_UTF8, 0, text.data(), units, out.data(), bytes, nullptr, nullptr);
+	return out;
 }
 
 std::string FormatChoice(const std::string& pattern, const char* numeral, const std::string& move)

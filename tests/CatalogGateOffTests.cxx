@@ -25,6 +25,8 @@ using namespace sfve::catalog_fixture;
 TEST_CASE("with the gate off this player is offered every stage installed here, and what the account grants does not count")
 {
 	REQUIRE(FillCatalog(TestContent(), false));
+	// A filled catalog keeps its gate: the same lists with the gate on are refused.
+	CHECK_FALSE(FillCatalog(TestContent()));
 	// S02 is installed here and the account's cache lacks it: offered now.
 	// S26 is not installed: never offered, gate or not.
 	CHECK(StageOffered(0));
@@ -42,12 +44,8 @@ TEST_CASE("with the gate off this player is offered every stage installed here, 
 	PlayerPick pick = CurrentPick();
 	pick.stage = (int)kNotEntitledStage;
 	CHECK(SetPick(pick).stage == (int)kNotEntitledStage);
-	int stage = 0;
-	CHECK_FALSE(NameStage(L"S02", stage).has_value());
-	CHECK(stage == (int)kNotEntitledStage);
-	const std::optional<std::string> notInstalled = NameStage(L"S26", stage);
-	REQUIRE(notInstalled.has_value());
-	CHECK(notInstalled->find("not installed") != std::string::npos);
+	CHECK(NameStage(L"S02", 0) == NamedStage{(int)kNotEntitledStage});
+	CHECK(NameStage(L"S26", 0) == NamedStage{0, StageRefusal::NotInstalled});
 	// What the room hears this copy lacks is the install's, as with the gate on.
 	CHECK(MissingStages() == std::vector<std::int64_t>{kUninstalledStage});
 }

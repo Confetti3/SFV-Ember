@@ -63,11 +63,24 @@ std::string PickText(const PlayerPick& pick);
 // is Random, which then has nothing to roll and the Ready check refuses.
 int FittedStage(int stage, const std::vector<int>& choices);
 
+// Why a stage the pipe's `pick` names cannot be this player's stage
+// (NameStage); RoomCommands words it.
+enum class StageRefusal {
+	None,
+	NotInGame,    // the code is outside the universe
+	NotInstalled, // this copy has not installed it
+	NotOffered,   // not theirs to choose (SfvCatalog's StageOffered)
+};
+struct NamedStage {
+	int stage = 0; // the stage the pick keeps
+	StageRefusal refusal = StageRefusal::None;
+	bool operator==(const NamedStage&) const = default;
+};
 // The pipe's `pick` stage, by the game's code ("S01", or RND, the game's own
-// code for Random), made `stage`: Random, or a stage this player is offered
-// (SfvCatalog's StageOffered). For a code outside the universe, a stage not
-// installed here or one not theirs to choose, the pipe's error, and `stage`
-// as it was. An empty code leaves it too.
-std::optional<std::string> NameStage(const std::wstring& code, int& stage);
+// code for Random), for a pick whose stage is `stage`: Random, or a stage this
+// player is offered (SfvCatalog's StageOffered). For a code outside the
+// universe, a stage not installed here or one not theirs to choose, the
+// refusal, and `stage` as it was. An empty code keeps it too.
+NamedStage NameStage(const std::wstring& code, int stage);
 
 } // namespace sfve::adapter

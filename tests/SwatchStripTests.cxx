@@ -147,17 +147,17 @@ TEST_CASE("each chip carries its own colour's swatch, and none while it loads")
 TEST_CASE("at the smallest window the pane's picture gives way, so every line of the look and the loadout shows")
 {
 	// The pane at 960x540 and the default interface size, as the laptop's
-	// pick screen shot measures it: 346 tall inside its padding, lines 26
-	// apart, the banner 236 tall at the pane's 348, a gap of 10, and RYU's
-	// 17 colours in two rows of 27.
-	const float room = 346, line = 26, natural = 236, gap = 10, strip = 2 * 27;
-	const float words = LookWordsHeight(line, strip);
-	CHECK(words == 3 * line + strip + 2 * line); // names, colour line, V-Skill and V-Trigger
+	// pick screen shot measures it: 346 tall inside its padding, the banner
+	// 236 tall at the pane's 348, a gap of 10, and 184 for the words the pane
+	// measures under it (its two names, RYU's 17 colours in two rows of chips,
+	// the colour's line and the two loadout lines, lines 26 apart and chip
+	// rows 27).
+	const float room = 346, natural = 236, gap = 10, words = 184;
 	const float picture = (std::min)(natural, PictureRoom(room, words, gap));
 	CHECK(picture == 152);
 	CHECK(picture + gap + words <= room);
 	// Three rows of chips: the picture gives way again.
-	CHECK(PictureRoom(room, LookWordsHeight(line, 3 * 27), gap) == 125);
+	CHECK(PictureRoom(room, words + 27, gap) == 125);
 	// At 1280x720 the pane is taller than it needs: the banner at its size.
 	CHECK(PictureRoom(532, words, gap) >= natural);
 	// Words that fill the pane leave no room for a picture, never less.

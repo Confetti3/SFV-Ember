@@ -34,9 +34,11 @@ void ReadLoadoutWords();
 // English).
 const char* PartLabel(picks::LoadoutPart part);
 // A label in the case of Ember's rows: each word's first letter a capital,
-// the rest small ("V-TRIGGER" reads "V-Trigger"). A label with any letter
-// outside ASCII (Japanese's, an accented capital) is kept as written: its
-// case is not Ember's to guess.
+// the rest small ("V-TRIGGER" reads "V-Trigger", "DÉCLENCHEUR" reads
+// "Déclencheur"). A word is a run of letters and digits ("2ND" reads "2nd").
+// Letters are cased by Unicode's simple mapping, whatever their script; one
+// with no case (Japanese's kana and kanji) is kept as written. A label that
+// is not UTF-8 is kept whole.
 std::string RowCase(std::string label);
 // A choice as the game's select screen words it: its pattern for that
 // number with the move's name (FormatChoice), the numeral picks::Numeral.

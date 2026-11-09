@@ -320,7 +320,7 @@ TEST_CASE("a choice is worded by the game's pattern for it, with the move's name
 	CHECK(LoadoutMoves(4, kOneTwo) == "V-Skill I \xC2\xB7 V-Trigger II");
 }
 
-TEST_CASE("the game's two labels are set in Ember's case, and a label outside ASCII is kept as the game wrote it")
+TEST_CASE("the game's two labels are set in Ember's case, in every script that has case")
 {
 	// The game's English labels differ in case; Ember's rows read "Fighter",
 	// "Costume", "Color".
@@ -329,9 +329,15 @@ TEST_CASE("the game's two labels are set in Ember's case, and a label outside AS
 	CHECK(RowCase("v-trigger") == "V-Trigger");
 	CHECK(RowCase("HABILIDAD V") == "Habilidad V");
 	CHECK(RowCase("") == "");
-	// Japanese, and an accented capital, are not Ember's to recase.
+	// A digit is part of its word.
+	CHECK(RowCase("2ND V") == "2nd V");
+	// An accented capital and Cyrillic are cased as ASCII is, so two labels
+	// of one language read alike.
+	CHECK(RowCase("D\xC3\x89" "CLENCHEUR V") == "D\xC3\xA9" "clencheur V");
+	CHECK(RowCase("V-\xD0\xA2\xD0\xA0\xD0\x98\xD0\x93\xD0\x93\xD0\x95\xD0\xA0") ==
+		"V-\xD0\xA2\xD1\x80\xD0\xB8\xD0\xB3\xD0\xB3\xD0\xB5\xD1\x80");
+	// Japanese has no case: it passes through as the game wrote it.
 	CHECK(RowCase("V\xE3\x82\xB9\xE3\x82\xAD\xE3\x83\xAB") == "V\xE3\x82\xB9\xE3\x82\xAD\xE3\x83\xAB");
-	CHECK(RowCase("D\xC3\x89" "CLENCHEUR V") == "D\xC3\x89" "CLENCHEUR V");
 }
 
 TEST_CASE("a loaded look differs from the launched one by its costume, its colour or its code, whose case does not count")

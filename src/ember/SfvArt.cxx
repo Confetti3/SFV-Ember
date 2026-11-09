@@ -12,6 +12,7 @@
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
 
+#include "common/GameCatalog.hxx"
 #include "common/ProductIdentity.hxx"
 
 #include <d3d11.h>
@@ -313,12 +314,14 @@ sf4e::ui::SelectionImage LeagueImage(const std::string& name)
 
 CostumePalette CostumeSwatches(int fighter, int costume)
 {
+	// Until the catalog is filled there are no colours to keep, and an empty
+	// palette kept now would stay empty for the session.
+	if (!ember::Usable(ember::Catalog())) return {};
 	std::lock_guard lock(s_mutex);
 	auto [at, added] = s_swatches.try_emplace({fighter, costume});
 	if (added) {
-		// The catalog is filled before Ember's runtime starts, and so before
-		// any of its screens asks: the colours and what this player can
-		// ready are read once, here.
+		// The catalog is final once filled: the colours and what this player
+		// can ready are read once, here.
 		const std::vector<int> ready = ColourIds(fighter, costume, true);
 		for (int colour : ColourIds(fighter, costume)) {
 			at->second.colours.push_back({colour, std::find(ready.begin(), ready.end(), colour) != ready.end(), std::nullopt});

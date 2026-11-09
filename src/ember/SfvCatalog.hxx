@@ -85,7 +85,9 @@ using picks::kMatchBuild;
 // and nothing changed, when the lists make no pick space (a list empty, a
 // roster longer than ember::MaxFighters, a fighter with no costume or a
 // costume with no colour, a number past the wire's byte) or the catalog
-// already holds another pick space; true again for the same one. Game thread,
+// already holds another pick space, or holds it with the gate the other way
+// (a filled catalog keeps its gate); true again for the same one with the
+// same gate. Game thread,
 // before Ember's runtime starts: once SealCatalog has run, it logs and
 // refuses, because the runtime's threads read the catalog without a lock.
 bool FillCatalog(const mod::ContentLists& lists, bool ownershipGate = true);
@@ -195,12 +197,16 @@ sf4e::selection::Availability OwnedAvailability(std::int64_t fighter);
 // ready (NormalizePick with their availability): the pick store's rule, so
 // a stored pick they cannot ready falls back to one they can.
 void FitOwnPick(sf4e::selection::Pick& pick);
+// The pick fitted to the spec alone (picks::FitPick, the loadout among it),
+// as every copy fits any pick: what the catalog's normalizePick does with no
+// availability. The pick screen previews a costume this player cannot ready
+// so.
+void FitToSpec(sf4e::selection::Pick& pick);
 // The same fitting kept to the pick's own fighter: the pick fitted to the
-// spec (picks::FitPick, the loadout among it), then, for a fighter this
-// player may play, to a look they can ready as FitOwnPick would. For a
-// fighter they may not play, the spec's fitting alone. The pick screen's
-// preview of a fighter or costume (SfvSelectionScreen's Previewed) is so what
-// choosing it stores.
+// spec (FitToSpec), then, for a fighter this player may play, to a look they
+// can ready as FitOwnPick would. For a fighter they may not play, the spec's
+// fitting alone. The pick screen's preview of a fighter or costume
+// (SfvSelectionScreen's Previewed) is so what choosing it stores.
 void FitLookWithin(sf4e::selection::Pick& pick);
 // A costume as the game names it, in its language (its number where the
 // game gave no name), and a colour as the game's costume menu labels it

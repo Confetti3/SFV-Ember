@@ -59,8 +59,8 @@ struct PlayerLook {
 	int colour = -1;
 };
 // The loaded look is not the one the launch wrote. Codes compare as the game
-// compares them, ignoring case: one side is the launch's FString narrowed,
-// the other the setting record's own code.
+// compares them, ignoring case (GameContent's SameCode): one side is the
+// launch's FString narrowed, the other the setting record's own code.
 bool LookMismatch(const PlayerLook& written, const PlayerLook& loaded);
 
 // The match's rules, as the versus battle settings offer them; negative

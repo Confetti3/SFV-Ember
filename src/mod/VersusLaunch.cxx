@@ -280,20 +280,20 @@ void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 			LogLoadedLooks(written);
 			return false;
 		}
-		const char* why = kind == sfv::scene::kMainMenuVtable ? "the game went back to the main menu while loading"
-			: kind != sfv::scene::kJumpStateVtable            ? nullptr
-			: ++*frames >= kLoadFrames                        ? "the battle did not load within a minute"
-															  : "";
 		// Another state after the jump (not a battle's, whose looks are read
 		// back above): the watch ends, and says so, so that two copies' logs
 		// show a missing read-back rather than nothing.
-		if (!why) Log("launch: left the jump for state 0x%llX; looks not read back", (unsigned long long)kind);
-		if (why && !*why) return true; // still loading
-		if (why) {
-			Log("launch: failed: %s", why);
-			s_linkedLoading = s_replayLoading = false; // no battle came for it
-			if (onFailed) onFailed(why);
+		if (kind != sfv::scene::kMainMenuVtable && kind != sfv::scene::kJumpStateVtable) {
+			Log("launch: left the jump for state 0x%llX; looks not read back", (unsigned long long)kind);
+			return false;
 		}
+		const char* why = kind == sfv::scene::kMainMenuVtable ? "the game went back to the main menu while loading"
+			: ++*frames >= kLoadFrames                        ? "the battle did not load within a minute"
+															  : nullptr;
+		if (!why) return true; // still loading
+		Log("launch: failed: %s", why);
+		s_linkedLoading = s_replayLoading = false; // no battle came for it
+		if (onFailed) onFailed(why);
 		return false;
 	});
 }
@@ -525,9 +525,7 @@ void FillCharPkg(uint8_t* chara, const FighterPick& pick)
 
 bool LookMismatch(const PlayerLook& written, const PlayerLook& loaded)
 {
-	const bool sameFighter = written.fighter.size() == loaded.fighter.size() &&
-		_strnicmp(written.fighter.c_str(), loaded.fighter.c_str(), written.fighter.size()) == 0;
-	return !sameFighter || written.costume != loaded.costume || written.colour != loaded.colour;
+	return !SameCode(written.fighter, loaded.fighter) || written.costume != loaded.costume || written.colour != loaded.colour;
 }
 
 bool PlayableRounds(int rounds)

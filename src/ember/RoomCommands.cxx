@@ -169,6 +169,18 @@ std::string StopWatching()
 	return Submit(std::move(command));
 }
 
+// The pipe's words for a stage `pick` cannot take (NameStage); empty for none.
+std::string StageRefusalText(StageRefusal refusal)
+{
+	switch (refusal) {
+	case StageRefusal::None: return {};
+	case StageRefusal::NotInGame: return "error that stage is not in this game's list";
+	case StageRefusal::NotInstalled: return "error that stage is not installed in this copy";
+	case StageRefusal::NotOffered: return "error that stage is not this player's to choose (the account's entitlement cache lacks it)";
+	}
+	return {};
+}
+
 std::string Pick(const std::string& args)
 {
 	if (!EmberRuntimeRunning()) return "error Ember's runtime is not running, so the catalog is not filled";
@@ -184,7 +196,9 @@ std::string Pick(const std::string& args)
 	// (NameStage). Whether the opponent has it is the room's to say: the
 	// runtime's Ready check refuses one they lack.
 	PlayerPick pick = CurrentPick();
-	if (std::optional<std::string> refused = NameStage(rules.stage, pick.stage)) return *refused;
+	const NamedStage stage = NameStage(rules.stage, pick.stage);
+	if (stage.refusal != StageRefusal::None) return StageRefusalText(stage.refusal);
+	pick.stage = stage.stage;
 	pick.pick.fighter = *id;
 	pick.pick.costume = fighter.costume < 0 ? 0 : fighter.costume;
 	pick.pick.color = fighter.colour < 0 ? 0 : fighter.colour;

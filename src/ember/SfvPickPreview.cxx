@@ -17,7 +17,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <iterator>
 #include <optional>
 #include <string>
 #include <vector>
@@ -74,12 +73,17 @@ float DrawPicture(ImDrawList* draw, const sf4e::ui::SelectionImage& image, ImVec
 }
 
 // The look's picture: the shop's picture of the costume where SfvPictureSpec
-// allows it and the shop has one, else the fighter's banner.
-float DrawLookPicture(ImDrawList* draw, const PlayerPick& shown, ImVec2 at, float width, float tallest, float alpha)
+// allows it and the shop has one, else the fighter's banner; dimmed where
+// this player does not own the look (NOT OWNED).
+float DrawLookPicture(ImDrawList* draw, const PlayerPick& shown, ImVec2 at, float width, float tallest)
 {
-	const sf4e::ui::SelectionImage costume = CostumeImage(shown.pick.fighter, shown.pick.costume);
+	const int fighter = shown.pick.fighter;
+	const bool locked = FighterNotOwned(fighter) || CostumeNotOwned(fighter, shown.pick.costume) ||
+		ColourNotOwned(fighter, shown.pick.costume, shown.pick.color);
+	const float alpha = locked ? kLocked : 1.f;
+	const sf4e::ui::SelectionImage costume = CostumeImage(fighter, shown.pick.costume);
 	if (!costume.missing) return DrawPicture(draw, costume, at, width, kShopCostumeShape, tallest, alpha);
-	return DrawPicture(draw, FighterImage(shown.pick.fighter, FighterPicture::Banner), at, width, kBannerShape, tallest, alpha);
+	return DrawPicture(draw, FighterImage(fighter, FighterPicture::Banner), at, width, kBannerShape, tallest, alpha);
 }
 
 // The game's EX colours' prefix ("EX01"), as ColourName writes it.
@@ -143,29 +147,23 @@ void DrawStrip(ImDrawList* draw, const Strip& strip, ImVec2 at)
 	}
 }
 
-// The look: the picture, the fighter's and the costume's names, the colour
-// chips and the colour's label; dimmed where this player cannot ready it.
-// `room` is the pane's height from `at`, which the loadout's lines under the
-// look share: the picture gives way so that every line shows.
-float DrawLook(ImDrawList* draw, const PlayerPick& shown, ImVec2 at, float width, float room)
+// The look's words under its picture: the fighter's and the costume's names,
+// the colour chips (`strip`) and the colour's label. With no draw list it
+// only measures, as v2::Paragraph does. The height it takes.
+float DrawLookWords(ImDrawList* draw, const PlayerPick& shown, const Strip& strip, ImVec2 at)
 {
 	const auto& colors = v2::Colors();
-	const float gap = 10 * sf4e::ui::Scale(), line = ImGui::GetTextLineHeightWithSpacing();
+	const float line = ImGui::GetTextLineHeightWithSpacing(), top = at.y;
 	const int fighter = shown.pick.fighter;
-	const bool locked = FighterNotOwned(fighter) || CostumeNotOwned(fighter, shown.pick.costume) ||
-		ColourNotOwned(fighter, shown.pick.costume, shown.pick.color);
-	const Strip strip = LayOutStrip(shown, width);
-	const float top = at.y, tallest = PictureRoom(room, LookWordsHeight(line, strip.layout.height), gap);
-	at.y += DrawLookPicture(draw, shown, at, width, tallest, locked ? kLocked : 1.f) + gap;
-	draw->AddText(at, colors.text, ember::Catalog().fighterName(fighter));
-	at.y += line;
-	draw->AddText(at, colors.muted, CostumeName(fighter, shown.pick.costume).c_str());
-	at.y += line;
-	DrawStrip(draw, strip, at);
+	const auto text = [&](ImU32 tone, const std::string& words) {
+		if (draw) draw->AddText(at, tone, words.c_str());
+		at.y += line;
+	};
+	text(colors.text, ember::Catalog().fighterName(fighter));
+	text(colors.muted, CostumeName(fighter, shown.pick.costume));
+	if (draw) DrawStrip(draw, strip, at);
 	at.y += strip.layout.height;
-	const std::string colour = std::string(loc::T("selection.color_row")) + " " + ColourName(shown.pick.color);
-	draw->AddText(at, colors.muted, colour.c_str());
-	at.y += line;
+	text(colors.muted, std::string(loc::T("selection.color_row")) + " " + ColourName(shown.pick.color));
 	return at.y - top;
 }
 
@@ -192,7 +190,8 @@ void DrawMark(ImDrawList* draw, picks::LoadoutPart part, int number, ImVec2 at, 
 }
 
 // One line per loadout part: its mark, then its label and its choice in the
-// game's words. `focused`: the part whose line is brighter, if any.
+// game's words. `focused`: the part whose line is brighter, if any. With no
+// draw list it only measures (and asks for no mark). The height it takes.
 float DrawLoadout(ImDrawList* draw, const PlayerPick& shown, std::optional<picks::LoadoutPart> focused, ImVec2 at)
 {
 	const auto& colors = v2::Colors();
@@ -201,11 +200,13 @@ float DrawLoadout(ImDrawList* draw, const PlayerPick& shown, std::optional<picks
 	const picks::Loadout loadout = picks::LoadoutOf(shown.pick);
 	const float top = at.y;
 	for (const picks::LoadoutPart part : picks::kLoadoutParts) {
-		const int number = loadout.choice[part];
-		DrawMark(draw, part, number, ImVec2(std::floor(at.x), std::floor(at.y)), width, height);
-		const std::string text =
-			std::string(PartLabel(part)) + "  " + ChoiceText(number, MoveName(shown.pick.fighter, part, number));
-		draw->AddText(ImVec2(at.x + width + Whole(8 * s), at.y), focused == part ? colors.text : colors.muted, text.c_str());
+		if (draw) {
+			const int number = loadout.choice[part];
+			DrawMark(draw, part, number, ImVec2(std::floor(at.x), std::floor(at.y)), width, height);
+			const std::string text =
+				std::string(PartLabel(part)) + "  " + ChoiceText(number, MoveName(shown.pick.fighter, part, number));
+			draw->AddText(ImVec2(at.x + width + Whole(8 * s), at.y), focused == part ? colors.text : colors.muted, text.c_str());
+		}
 		at.y += line;
 	}
 	return at.y - top;
@@ -232,12 +233,6 @@ void DrawStage(ImDrawList* draw, const PickPreview& preview, ImVec2 at, float wi
 
 } // namespace
 
-float LookWordsHeight(float line, float strip)
-{
-	// Two names, the colour's line and a line per loadout part.
-	return (3 + (float)std::size(picks::kLoadoutParts)) * line + strip;
-}
-
 float PictureRoom(float room, float words, float gap)
 {
 	return (std::max)(0.f, room - words - gap);
@@ -258,10 +253,17 @@ void DrawPickPreview(const PickPreview& preview)
 		DrawStage(draw, preview, at, width, bottom - at.y);
 		return;
 	}
-	at.y += DrawLook(draw, preview.pick, at, width, bottom - at.y);
+	const PlayerPick& shown = preview.pick;
 	const std::optional<picks::LoadoutPart> focused =
 		preview.focus == PreviewFocus::Loadout ? std::optional<picks::LoadoutPart>(preview.part) : std::nullopt;
-	DrawLoadout(draw, preview.pick, focused, at);
+	// Every line under the picture keeps its room: the look's words and the
+	// loadout's lines are measured as they are drawn (no draw list), and the
+	// picture takes what is left, as the stage's card does.
+	const Strip strip = LayOutStrip(shown, width);
+	const float words = DrawLookWords(nullptr, shown, strip, at) + DrawLoadout(nullptr, shown, focused, at);
+	at.y += DrawLookPicture(draw, shown, at, width, PictureRoom(bottom - at.y, words, gap)) + gap;
+	at.y += DrawLookWords(draw, shown, strip, at);
+	DrawLoadout(draw, shown, focused, at);
 }
 
 } // namespace sfve::adapter

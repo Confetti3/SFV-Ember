@@ -354,8 +354,8 @@ PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::stri
 		// A costume this player can ready as choosing it would store it; one
 		// they cannot is shown as it is, in the colour the spec fits to it.
 		look.costume = *option;
-		if (Contains(CostumeIds(look.fighter, true), *option)) FitLookWithin(look);
-		else ember::Catalog().normalizePick(look, false, nullptr, nullptr);
+		const bool ready = Contains(CostumeIds(look.fighter, true), *option);
+		ready ? FitLookWithin(look) : FitToSpec(look);
 	} else if (rowId == kColour && Contains(ColourIds(look.fighter, look.costume), *option)) {
 		look.color = *option;
 	} else if (rowId == kStage) {

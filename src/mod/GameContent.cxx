@@ -1,6 +1,5 @@
 #include "mod/GameContent.hxx"
 
-#include "ember/SfvPickSpace.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -149,12 +148,6 @@ bool Unplayable(const std::string& stage)
 std::wstring_view TextOf(const GameString& s)
 {
 	return s.data && s.count > 0 ? std::wstring_view(s.data, wcsnlen(s.data, (size_t)s.count)) : std::wstring_view();
-}
-
-// Two codes are the same as the game compares its FStrings: ignoring case.
-bool SameCode(std::wstring_view a, std::wstring_view b)
-{
-	return a.size() == b.size() && _wcsnicmp(a.data(), b.data(), a.size()) == 0;
 }
 
 // The code a record starts with (its +0 FString) is `code`.
@@ -501,13 +494,6 @@ std::pair<uint8_t*, uint8_t*> ChoiceAssets()
 	return {LoadAsset(sfv::kVersionDataClass, kVSkillNamesPath), LoadAsset(sfv::kVersionDataClass, kVTriggerNamesPath)};
 }
 
-// How many choices Ember offers for a part the asset names `given` of: one
-// to picks::kPartChoices (FitChoices).
-size_t FittedCount(size_t given)
-{
-	return std::clamp<size_t>(given, 1, (size_t)picks::kPartChoices);
-}
-
 // Each fighter's V-Skills and V-Triggers from the game's name assets
 // (FitChoices). False, with nothing changed, when either asset is not there
 // or is past what Ember reads (ChoiceNames).
@@ -595,82 +581,11 @@ ContentLists Never(std::string why)
 
 } // namespace
 
-const ColourContent* ColourOf(const CostumeContent& costume, int id)
-{
-	const auto colour = std::find_if(costume.colours.begin(), costume.colours.end(), [id](const ColourContent& c) { return c.id == id; });
-	return colour == costume.colours.end() ? nullptr : &*colour;
-}
-
-std::vector<int> ColourNumbers(const CostumeContent& costume)
-{
-	std::vector<int> numbers;
-	for (const ColourContent& colour : costume.colours) numbers.push_back(colour.id);
-	return numbers;
-}
-
 bool BattleFighter(uint8_t* charaAsset, std::wstring_view code)
 {
 	if (!charaAsset || code.empty()) return false;
 	uint8_t* entry = EntryWithCode(charaAsset, code);
 	return entry && NamesSetup(entry);
-}
-
-void ApplyContentOwnership(ContentLists& lists, ContentOwnership policy)
-{
-	const bool byInstall = policy == ContentOwnership::Installed;
-	lists.ownership.stages = policy;
-	for (StageContent& stage : lists.stages) stage.owned = stage.installed && (byInstall || stage.entitled);
-	const bool looksByInstall = byInstall && !lists.ownership.restricted;
-	lists.ownership.looks = looksByInstall ? ContentOwnership::Installed : ContentOwnership::Entitlements;
-	if (!looksByInstall) return;
-	for (FighterContent& fighter : lists.fighters) {
-		for (CostumeContent& costume : fighter.costumes) {
-			costume.owned = costume.installed;
-			for (ColourContent& colour : costume.colours) colour.owned = costume.installed;
-		}
-	}
-}
-
-const char* ContentOwnershipName(ContentOwnership policy)
-{
-	switch (policy) {
-	case ContentOwnership::Entitlements: return "entitlements";
-	case ContentOwnership::Installed: return "installed";
-	}
-	return "?";
-}
-
-const char* LooksRule(const OwnershipSource& source)
-{
-	return source.restricted ? "the battle setup's list" : ContentOwnershipName(source.looks);
-}
-
-ContentCounts CountContent(const ContentLists& lists)
-{
-	ContentCounts counts;
-	for (const FighterContent& fighter : lists.fighters) {
-		counts.fighters++;
-		counts.fightersEntitled += fighter.entitled;
-		counts.fightersNotOwned += !fighter.owned;
-		for (const CostumeContent& costume : fighter.costumes) {
-			counts.costumes++;
-			counts.costumesInstalled += costume.installed;
-			counts.costumesEntitled += costume.entitled;
-			counts.costumesNotOwned += !costume.owned;
-			for (const ColourContent& colour : costume.colours) {
-				counts.colours++;
-				counts.coloursNotOwned += !colour.owned;
-				counts.looksNotEntitled += !(costume.entitled && colour.entitled);
-			}
-		}
-	}
-	for (const StageContent& stage : lists.stages) {
-		counts.stages++;
-		counts.stagesInstalled += stage.installed;
-		counts.stagesNotEntitled += stage.installed && !stage.entitled;
-		counts.stagesNotOwned += !stage.owned;
-	}
-	return counts;
 }
 
 LookLoad LookLoadState(std::wstring_view code, int costume, int colour)
@@ -737,26 +652,6 @@ ContentLists ReadContentLists()
 	return lists;
 }
 
-std::vector<std::string> FitChoices(std::vector<std::string> names, const char* part, const std::string& fighter)
-{
-	const size_t given = names.size();
-	names.resize(FittedCount(given));
-	if (names.size() != given) {
-		Log("content: %s has %zu %s names in the game's asset; Ember offers %zu", fighter.c_str(), given, part, names.size());
-	}
-	return names;
-}
-
-std::string ChoicesText(const FighterContent& fighter)
-{
-	const auto list = [](const char* part, const std::vector<std::string>& names) {
-		std::string text = std::string(part) + " " + std::to_string(names.size()) + " (";
-		for (size_t i = 0; i < names.size(); i++) text += (i ? ", \"" : "\"") + names[i] + "\"";
-		return text + ")";
-	};
-	return list("V-Skills", fighter.vSkills) + ", " + list("V-Triggers", fighter.vTriggers);
-}
-
 std::optional<ChoiceCounts> FighterChoiceCounts(std::wstring_view code)
 {
 	if (!s_choiceCounts.empty()) {
@@ -769,43 +664,6 @@ std::optional<ChoiceCounts> FighterChoiceCounts(std::wstring_view code)
 	for (wchar_t c : code) fighter[0].code += (char)c;
 	if (!ReadChoices(fighter)) return std::nullopt;
 	return CountsOf(fighter[0]);
-}
-
-int MarkUninstalled(ContentLists& lists, const std::vector<std::string>& codes)
-{
-	int cleared = 0;
-	for (const std::string& code : codes) {
-		const auto installed = [](const StageContent& stage) { return stage.installed; };
-		const auto stage = std::find_if(lists.stages.begin(), lists.stages.end(),
-			[&](const StageContent& s) { return s.code == code && s.installed; });
-		if (stage == lists.stages.end() || std::count_if(lists.stages.begin(), lists.stages.end(), installed) < 2) continue;
-		stage->installed = false;
-		cleared++;
-	}
-	return cleared;
-}
-
-void MarkUnowned(ContentLists& lists, const std::vector<UnownedContent>& marks)
-{
-	for (const UnownedContent& mark : marks) {
-		for (FighterContent& fighter : lists.fighters) {
-			if (fighter.code != mark.fighter) continue;
-			lists.ownership.markedUnowned++;
-			if (mark.costume < 0) {
-				fighter.owned = false;
-				continue;
-			}
-			for (CostumeContent& costume : fighter.costumes) {
-				if (costume.id != mark.costume) continue;
-				if (mark.colour < 0) costume.owned = false;
-				else {
-					for (ColourContent& colour : costume.colours) {
-						if (colour.id == mark.colour) colour.owned = false;
-					}
-				}
-			}
-		}
-	}
 }
 
 std::string LocalizedText(const wchar_t* textNamespace, const wchar_t* key)

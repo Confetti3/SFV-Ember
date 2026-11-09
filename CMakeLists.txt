@@ -158,13 +158,15 @@ unset(index)
 sf4e_embed_brand_mark(sfve_product "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
 target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
 
-# The mod's code the SFV catalog and adapter tests reach without the game.
-set(SFVE_EMBER_TEST_MOD_SOURCES
-    src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/FighterReader.cxx src/mod/GameArt.cxx src/mod/GameContent.cxx
-    src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
+# The mod's code the SFV catalog and adapter tests reach without the game,
+# compiled once for the three test programs that link it.
+add_library(sfve_ember_test_mod OBJECT
+    src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/FighterReader.cxx src/mod/GameArt.cxx
+    src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx
     src/mod/ModConfig.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvRegionNames.cxx
     src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx)
+target_link_libraries(sfve_ember_test_mod PUBLIC sfve_ember minhook::minhook)
 # The runtime under SFV's definitions, with nothing of SF4's roster, stages
 # or custom content: SFV's catalog (SfvCatalog.cxx) answers every pick check.
 add_executable(sfve_ember_tests
@@ -190,19 +192,18 @@ add_executable(sfve_ember_tests
     tests/VirtualPadsTests.cxx
     tests/HookTransactionTests.cxx
     tests/SfvFlowTests.cxx
-    tests/SfvFrameMeterTests.cxx
-    ${SFVE_EMBER_TEST_MOD_SOURCES})
-target_link_libraries(sfve_ember_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
+    tests/SfvFrameMeterTests.cxx)
+target_link_libraries(sfve_ember_tests PRIVATE sfve_ember_test_mod sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
 # LocaleOverlayTests reads the library's fonts and locales.json from its checkout.
 file(TO_CMAKE_PATH "${SFVE_EMBER_SOURCE_ROOT}" sfve_ember_root_forward)
 target_compile_definitions(sfve_ember_tests PRIVATE SFVE_EMBER_SOURCE_ROOT="${sfve_ember_root_forward}")
 
 # The catalog's life (empty, filled once, sealed) changes the process for good: a program of its own.
-add_executable(sfve_catalog_lifecycle_tests tests/main.cxx tests/CatalogLifecycleTests.cxx ${SFVE_EMBER_TEST_MOD_SOURCES})
-target_link_libraries(sfve_catalog_lifecycle_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
+add_executable(sfve_catalog_lifecycle_tests tests/main.cxx tests/CatalogLifecycleTests.cxx)
+target_link_libraries(sfve_catalog_lifecycle_tests PRIVATE sfve_ember_test_mod sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
 # The catalog filled with Ember's ownership gate off (-sfve_ownership=0), which a filled catalog keeps: a program of its own.
-add_executable(sfve_catalog_gate_off_tests tests/main.cxx tests/CatalogGateOffTests.cxx ${SFVE_EMBER_TEST_MOD_SOURCES})
-target_link_libraries(sfve_catalog_gate_off_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
+add_executable(sfve_catalog_gate_off_tests tests/main.cxx tests/CatalogGateOffTests.cxx)
+target_link_libraries(sfve_catalog_gate_off_tests PRIVATE sfve_ember_test_mod sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
 
 # The in-game mod. Loads inert: it blocks every non-loopback connection first,
 # then does nothing else unless the exe is the exact build it was made for.
@@ -240,6 +241,7 @@ add_library(sfv_ember SHARED
     src/mod/LagSim.cxx
     src/mod/GameArt.cxx
     src/mod/GameContent.cxx
+    src/mod/ContentRules.cxx
     src/mod/GameExit.cxx
     src/mod/FighterReader.cxx
     src/mod/HudText.cxx)

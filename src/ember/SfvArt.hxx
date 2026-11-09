@@ -74,7 +74,8 @@ struct CostumePalette {
 	std::vector<StripColour> colours;
 };
 // Any thread: the costume's palette, asked for once and then read; empty for
-// a costume the catalog does not have.
+// a costume the catalog does not have, and, without being kept, while the
+// catalog is not filled (ember::Usable).
 CostumePalette CostumeSwatches(int fighter, int costume);
 
 // Game thread, once: the loader that answers the requests.

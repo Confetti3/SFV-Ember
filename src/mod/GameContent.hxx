@@ -31,6 +31,11 @@
 // How many V-Skills and V-Triggers a fighter has, and their names, come from
 // the game's name assets (sfv::choices), as its select and VS screens count
 // and name them; the count is part of the pick space (section 40).
+//
+// The rules over the lists that read no game memory (the codes' comparison,
+// ColourOf and ColourNumbers, ApplyContentOwnership and its names,
+// CountContent, FitChoices and ChoicesText, MarkUnowned and MarkUninstalled)
+// are ContentRules.cxx's; GameContent.cxx reads the game.
 
 #include "mod/ModConfig.hxx"
 
@@ -42,6 +47,13 @@
 #include <vector>
 
 namespace sfve::mod {
+
+// Two of the game's codes ("RYU", L"S01") are the same as the game compares
+// its FStrings: ignoring case. The one comparison for codes, narrow or wide:
+// the content reads and the launch's read-back (VersusLaunch's LookMismatch)
+// both ask it.
+bool SameCode(std::wstring_view a, std::wstring_view b);
+bool SameCode(std::string_view a, std::string_view b);
 
 // Which looks (a costume in one of its colours) and which stages this copy's
 // player may pick. The opponent's look always plays as picked, and so does

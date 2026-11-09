@@ -285,7 +285,7 @@ bool FillCatalog(const mod::ContentLists& lists, bool ownershipGate)
 			lists.stages.size());
 		return false;
 	}
-	if (s_catalog.fighterCount > 0) return ContentFingerprint(lists) == ContentFingerprint(s_lists);
+	if (s_catalog.fighterCount > 0) return ownershipGate == s_gate && ContentFingerprint(lists) == ContentFingerprint(s_lists);
 	picks::PickSpace space = PickSpaceOf(lists);
 	if (const std::string problem = picks::Problem(space); !problem.empty()) {
 		mod::Log("catalog: the game's lists make no pick space: %s", problem.c_str());
@@ -465,10 +465,16 @@ void FitOwnPick(sf4e::selection::Pick& pick)
 	NormalizePick(pick, false, &availability, nullptr);
 }
 
-void FitLookWithin(sf4e::selection::Pick& pick)
+void FitToSpec(sf4e::selection::Pick& pick)
 {
 	if (s_catalog.fighterCount == 0) return;
 	picks::FitPick(s_space, pick);
+}
+
+void FitLookWithin(sf4e::selection::Pick& pick)
+{
+	// With the catalog empty FitToSpec leaves the pick, and every fighter is locked.
+	FitToSpec(pick);
 	if (!FighterLocked(pick.fighter, {})) FitReadyLook(pick);
 }
 

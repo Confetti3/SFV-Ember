@@ -9,6 +9,7 @@
 
 #include "CatalogFixture.hxx"
 
+#include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 
 #include "common/GameCatalog.hxx"
@@ -26,6 +27,8 @@ TEST_CASE("the catalog is empty until the game's lists fill it, takes one pick s
 	CHECK_FALSE(ember::ValidFighter(0));
 	// The shell names fighter 0 before the lists are filled.
 	CHECK(std::string(ember::Catalog().fighterName(0)) == "?");
+	// A costume's palette asked for before the fill is empty, and not kept.
+	CHECK(CostumeSwatches(0, 4).colours.empty());
 	CHECK_FALSE(FillCatalog(CodesOnly({}, {"S01"})));
 	CHECK_FALSE(FillCatalog(CodesOnly({"RYU"}, {})));
 	// A pick space needs a costume for every fighter and a colour for every
@@ -45,9 +48,13 @@ TEST_CASE("the catalog is empty until the game's lists fill it, takes one pick s
 	FillTestCatalog();
 	CHECK(ember::Usable(ember::Catalog()));
 	CHECK(ember::Catalog().fighterCount == 5);
+	// The palette asked for before is read now: RYU's costume 4 has four colours.
+	CHECK(CostumeSwatches(0, 4).colours.size() == 4);
 
-	// Filled once: the same lists again are fine, other lists are refused.
+	// Filled once: the same lists again are fine, other lists are refused, and
+	// so are the same lists with the ownership gate the other way.
 	CHECK(FillCatalog(TestContent()));
+	CHECK_FALSE(FillCatalog(TestContent(), false));
 	mod::ContentLists renamed = TestContent(); // names and installs are this copy's
 	renamed.fighters[0].name = "Ryu in another language";
 	renamed.fighters[3].installed = true;

@@ -182,24 +182,14 @@ TEST_CASE("with no stage offered the stored stage is Random, never a stage they 
 TEST_CASE("the pipe's pick takes Random or a stage this player is offered, and refuses any other with why")
 {
 	FillTestCatalog();
-	int stage = 2;
-	CHECK_FALSE(NameStage(L"", stage).has_value()); // no stage named: it stays
-	CHECK(stage == 2);
-	CHECK_FALSE(NameStage(L"RND", stage).has_value());
-	CHECK(stage == picks::kRandomStage);
-	CHECK_FALSE(NameStage(L"S01", stage).has_value());
-	CHECK(stage == 0);
+	CHECK(NameStage(L"", 2) == NamedStage{2}); // no stage named: it stays
+	CHECK(NameStage(L"RND", 2) == NamedStage{picks::kRandomStage});
+	CHECK(NameStage(L"S01", 2) == NamedStage{0});
 	// S02 is installed here but the account's cache lacks it (section 41).
-	const std::optional<std::string> notTheirs = NameStage(L"S02", stage);
-	REQUIRE(notTheirs.has_value());
-	CHECK(notTheirs->find("not this player's to choose") != std::string::npos);
-	const std::optional<std::string> notInstalled = NameStage(L"S26", stage);
-	REQUIRE(notInstalled.has_value());
-	CHECK(notInstalled->find("not installed") != std::string::npos);
-	const std::optional<std::string> unknown = NameStage(L"XYZ", stage);
-	REQUIRE(unknown.has_value());
-	CHECK(unknown->find("not in this game's list") != std::string::npos);
-	CHECK(stage == 0); // every refusal leaves it
+	// Every refusal keeps the stage the pick had.
+	CHECK(NameStage(L"S02", 0) == NamedStage{0, StageRefusal::NotOffered});
+	CHECK(NameStage(L"S26", 0) == NamedStage{0, StageRefusal::NotInstalled});
+	CHECK(NameStage(L"XYZ", 0) == NamedStage{0, StageRefusal::NotInGame});
 }
 
 TEST_CASE("the command line takes stages from this copy's install, never from the universe")

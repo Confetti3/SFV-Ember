@@ -80,19 +80,15 @@ int FittedStage(int stage, const std::vector<int>& choices)
 	return first == choices.end() ? picks::kRandomStage : *first;
 }
 
-std::optional<std::string> NameStage(const std::wstring& code, int& stage)
+NamedStage NameStage(const std::wstring& code, int stage)
 {
-	if (code.empty()) return std::nullopt;
-	if (code == L"RND") {
-		stage = picks::kRandomStage;
-		return std::nullopt;
-	}
+	if (code.empty()) return {stage};
+	if (code == L"RND") return {picks::kRandomStage};
 	const std::optional<int> id = StageId(code);
-	if (!id) return "error that stage is not in this game's list";
-	if (!StageInstalled(*id)) return "error that stage is not installed in this copy";
-	if (!StageOffered(*id)) return "error that stage is not this player's to choose (the account's entitlement cache lacks it)";
-	stage = *id;
-	return std::nullopt;
+	if (!id) return {stage, StageRefusal::NotInGame};
+	if (!StageInstalled(*id)) return {stage, StageRefusal::NotInstalled};
+	if (!StageOffered(*id)) return {stage, StageRefusal::NotOffered};
+	return {*id};
 }
 
 } // namespace sfve::adapter

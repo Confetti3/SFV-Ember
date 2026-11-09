@@ -53,14 +53,11 @@ struct PickPreview {
 void DrawPickPreview(const PickPreview& preview);
 
 // The pane's arithmetic, in its pixels, apart from ImGui so that the tests
-// check it at the smallest window. The look's words under its picture: the
-// fighter's and the costume's names, the colour chips (`strip`, their
-// SfvSwatchStrip height), the colour's line and one line per loadout part,
-// each `line` tall.
-float LookWordsHeight(float line, float strip);
-// The tallest a picture may be drawn with `room` left in the pane, `words`
-// under it and `gap` between the two: what is left once the words have
-// theirs, and none when nothing is.
+// check it at the smallest window. The tallest a picture may be drawn with
+// `room` left in the pane, `words` under it (measured by drawing them with no
+// draw list: the look's lines and chips and the loadout's lines, or the
+// stage's name and sentence) and `gap` between the two: what is left once the
+// words have theirs, and none when nothing is.
 float PictureRoom(float room, float words, float gap);
 
 } // namespace sfve::adapter
