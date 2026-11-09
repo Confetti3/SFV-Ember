@@ -13,9 +13,11 @@
   python tools/sfve.py track <label> <pid>               register a helper process (and its children) for kill
   python tools/sfve.py runtime-file <name>               path of a runtime file (sf4-net.exe) for the mode, or fail
 
-Every command runs in the run of the shell it was typed in (sfvelib.begin_session),
-or in SFVE_RUN when a runner set it: `kill` ends what `launch` started in the
-same shell; `kill --all` also ends other runs' copies after a run that died.
+Every command runs in the run named by SFVE_RUN, or in the fixed run "cli" when
+it is not set (sfvelib.use_run), however the command is started: `kill` ends
+what `launch` started, even from another shell. Set SFVE_RUN to keep separate
+callers' copies apart; `kill --all` also ends other runs' copies after a run
+that died.
 """
 
 from __future__ import annotations
@@ -74,7 +76,7 @@ def main(argv: list[str]) -> int:
 
     try:
         if a.cmd in ("launch", "track", "kill"):  # the commands that start or end processes
-            lib.begin_session("cli")
+            lib.use_run("cli")
         if a.cmd == "deploy":
             print("copied:", lib.deploy(a.adopt) or "nothing (already current)")
         elif a.cmd == "undeploy":

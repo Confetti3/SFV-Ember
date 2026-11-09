@@ -15,10 +15,10 @@ import sfvelib as lib  # noqa: E402
 from mcp.server.fastmcp import FastMCP, Image  # noqa: E402
 
 mcp = FastMCP("sfve")
-# This server's own run (sfvelib module docstring): named after the MCP client
-# that started it, so a restarted server still finds, and stop_all still ends,
-# the copies its predecessor launched; the command line and runners never share it.
-lib.begin_session("mcp")
+# This server's own run (sfvelib module docstring): SFVE_RUN, or the fixed run
+# "mcp", so a restarted server still finds, and stop_all still ends, the copies
+# its predecessor launched; the command line and runners never share it.
+lib.use_run("mcp")
 
 
 @mcp.tool()

@@ -19,7 +19,9 @@ Safety rules this module enforces:
   network guard is installed) does not answer within GUARD_TIMEOUT_S. Through
   the launcher the clock has two phases: the launcher's own preparation (the
   Steam check, up to LAUNCHER_PREP_TIMEOUT_S) ends when the launcher has
-  started the game, and only then does the GUARD_TIMEOUT_S guard deadline run.
+  started the game, or when its log reports the Steam check as failed (the
+  launcher then stays up on a recovery window), and only then does the
+  GUARD_TIMEOUT_S guard deadline run.
 * Nothing here uses the game's online modes.
 * Only copies this module started are killed. A process is known by its id
   and its creation time together (a bare id can be reused), kept in the
@@ -33,16 +35,17 @@ Safety rules this module enforces:
   mandatory: registry_path() raises without one, so there is no shared
   default registry. A runner script sets SFVE_RUN (localstack.ps1,
   runroom.ps1) or a Python runner calls begin_run(); the two clients with no
-  runner around them, sfve.py and sfve_mcp.py, call begin_session("cli") and
-  begin_session("mcp"). That names the run after the shell (or MCP client)
-  that started the client, the first ancestor that is not a Python
-  launcher, by its id and creation time: every sfve.py command typed in one
-  shell shares a run, so a later `sfve.py kill` finds what an earlier
-  `sfve.py launch` started, a restarted MCP server finds its predecessor's
-  copies, and the CLI, the MCP server and each runner never meet. Helper
-  processes of a run (a room supervisor and the room hosts it starts) are
-  registered with track(), by id and creation time like the copies. A run
-  that died is cleaned up with `sfve.py kill --all`.
+  runner around them, sfve.py and sfve_mcp.py, call use_run("cli") and
+  use_run("mcp"): SFVE_RUN when set, otherwise that fixed name. The run is
+  never inferred from the caller's process ancestry, so it is the same
+  however each command is started (a new shell per command included): a later
+  `sfve.py kill` finds what an earlier `sfve.py launch` started, a restarted
+  MCP server finds its predecessor's copies, and the CLI, the MCP server and
+  each runner never meet. Two people or agents using the CLI on one PC share
+  the "cli" run: give each its own SFVE_RUN. Helper processes of a run (a
+  room supervisor and the room hosts it starts) are registered with track(),
+  by id and creation time like the copies. A run that died is cleaned up
+  with `sfve.py kill --all`.
 * The game folder is only written in proxy mode, by deploy, which records
   what it installed in MANIFEST; undeploy removes only the files listed there.
 """
@@ -76,8 +79,13 @@ ASSETS = "assets"
 GUARD_TIMEOUT_S = 20.0
 # The launcher's preparation before the game exists: the Steam check waits up
 # to 60 s for the old client to exit and 90 s for the new one's sign-in
-# (src/launcher/SteamSession.cxx), then the game starts.
-LAUNCHER_PREP_TIMEOUT_S = 180.0
+# (kExitWaitMs and kRecordWaitMs in src/launcher/SteamSession.cxx: keep these
+# two in step), then the game starts. A failed check is normally reported
+# from the launcher's log long before; this is the backstop.
+STEAM_EXIT_WAIT_S = 60.0
+STEAM_SIGN_IN_WAIT_S = 90.0
+LAUNCHER_PREP_SLACK_S = 30.0
+LAUNCHER_PREP_TIMEOUT_S = STEAM_EXIT_WAIT_S + STEAM_SIGN_IN_WAIT_S + LAUNCHER_PREP_SLACK_S
 STEAM_APP_ID = "310950"
 VIA = os.environ.get("SFVE_VIA", "proxy")
 PACKAGE_DIR = Path(os.environ.get("SFVE_PACKAGE_DIR", str(BUILD_DIR)))
@@ -341,15 +349,15 @@ def _process_table() -> dict[int, _Process]:
     return table
 
 
-def _process_tree(table: dict[int, _Process], root: Identity, include_shared: bool = False) -> list[Identity]:
+def _process_tree(table: dict[int, _Process], root: Identity) -> list[Identity]:
     """`root` and every process that descends from it, or [] when `root`
     is not running. A process only descends from a parent that was created
     before it: a parent id that has since been reused does not count. Steam
-    (_SHARED_PROCESSES) and what it started are not part of the tree unless
-    `include_shared`, which is for asking who descends from whom, never for
-    choosing what to end; a root that is Steam has no tree."""
+    (_SHARED_PROCESSES) and what it started are not part of the tree, for
+    ending processes and for asking who descends from whom alike; a root that
+    is Steam has no tree."""
     found = table.get(root[0])
-    if found is None or found.created != root[1] or (found.name in _SHARED_PROCESSES and not include_shared):
+    if found is None or found.created != root[1] or found.name in _SHARED_PROCESSES:
         return []
     members = {root[0]: root[1]}
     grew = True
@@ -357,7 +365,7 @@ def _process_tree(table: dict[int, _Process], root: Identity, include_shared: bo
         grew = False
         for pid, p in table.items():
             if (pid not in members and p.created and p.parent in members and p.created >= members[p.parent]
-                    and (include_shared or p.name not in _SHARED_PROCESSES)):
+                    and p.name not in _SHARED_PROCESSES):
                 members[pid] = p.created
                 grew = True
     return list(members.items())
@@ -382,34 +390,12 @@ def begin_run() -> str:
     return os.environ.setdefault("SFVE_RUN", f"{os.getpid()}-{int(time.time())}")
 
 
-# What sits between a shell (or an MCP client) and the Python that runs a
-# client: the py launcher, uv, the interpreter itself.
-_LAUNCHERS = frozenset({"python.exe", "pythonw.exe", "py.exe", "pyw.exe", "uv.exe", "uvx.exe"})
-
-
-def begin_session(kind: str) -> str:
-    """The run of a client with no runner around it (`kind`: "cli" or "mcp").
-    A SFVE_RUN already set stays. Otherwise the run is named after the first
-    ancestor that is not a Python launcher, by its id and creation time, and
-    set in the environment: the same shell (or MCP client) gets the same run
-    in every process it starts, so a later `sfve.py kill` finds the copies an
-    earlier `sfve.py launch` registered, and no other client or runner shares
-    it. When that ancestor is gone the run is this process's own."""
-    if os.environ.get("SFVE_RUN"):
-        return os.environ["SFVE_RUN"]
-    table = _process_table()
-    me = os.getpid()
-    owner = table[me].parent if me in table else 0
-    for _ in range(len(table)):  # ids cycle once reused: stop after one pass
-        if owner not in table or table[owner].name not in _LAUNCHERS:
-            break
-        owner = table[owner].parent
-    if owner in table and table[owner].created:
-        run = f"{kind}-{owner}-{table[owner].created}"
-    else:
-        run = f"{kind}-{me}-{table[me].created if me in table else int(time.time())}"
-    os.environ["SFVE_RUN"] = run
-    return run
+def use_run(default: str) -> str:
+    """The run of a client with no runner around it: SFVE_RUN when set,
+    otherwise the client's fixed name `default` ("cli" or "mcp"), set in the
+    environment. Nothing is inferred, so every command of that client lands
+    in the same registry however it was started."""
+    return os.environ.setdefault("SFVE_RUN", default)
 
 
 def _registry_dir() -> Path:
@@ -422,7 +408,7 @@ def registry_path() -> Path:
     started or ended."""
     run = os.environ.get("SFVE_RUN")
     if not run:
-        raise SfveError("no run: set SFVE_RUN, or call begin_run() / begin_session() first")
+        raise SfveError("no run: set SFVE_RUN, or call begin_run() / use_run() first")
     return _registry_dir() / f"sfve-launched-{re.sub(r'[^A-Za-z0-9_.-]', '_', run)}.json"
 
 
@@ -481,6 +467,7 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
             raise SfveError(f"{PACKAGE_DIR} has no {', '.join(missing)}: build or stage SFV Ember first")
         # The test's options come first on the game's command line, so they
         # take the place of the launcher's own (ModConfig reads the first).
+        launcher_log = _LogCursor(launcher_log_path(index))  # before the launcher can write to it
         args = [str(PACKAGE_DIR / "Launcher.exe")]
         if index:
             args += ["--instance", str(index)]
@@ -505,7 +492,7 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
     if VIA == "launcher":
         # The game is the launcher's child once the preparation (the Steam
         # check) is over; the guard's clock starts then, not at the launcher.
-        problem = _await_game_start(started, index)
+        problem = _await_game_start(started, index, launcher_log)
         if problem:
             raise refuse(problem)
     try:
@@ -518,7 +505,7 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
     # The pipe's name is all the instance number gives: whoever answers on it
     # must be the process just started or one it started, not another copy.
     game = process_identity(game_pid)
-    if game is None or game not in _process_tree(_process_table(), started, include_shared=True):
+    if game is None or game not in _process_tree(_process_table(), started):
         raise refuse(f"answered from process {game_pid}, which is not the process just started ({started[0]}) or one it started")
     _remember(index, started, game)
     # The pipe answers as soon as the guard is in; the mode's own commands
@@ -538,13 +525,57 @@ def launcher_log_path(index: int) -> Path:
     return LOG_DIR / ("launcher.log" if index == 0 else f"launcher.instance{index}.log")
 
 
-def _await_game_start(launcher: Identity, index: int) -> str:
+class _LogCursor:
+    """The lines a log gains after the cursor was made. The launcher opens its
+    log with rotate_on_open, so a launch can replace the file by a smaller
+    one: a new creation time, or a size below the position, starts over at
+    the top."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.created, self.offset = self._stat()
+
+    def _stat(self) -> tuple[int, int]:
+        try:
+            st = self.path.stat()
+        except OSError:
+            return 0, 0
+        return st.st_ctime_ns, st.st_size  # creation time on Windows
+
+    def new_lines(self) -> list[str]:
+        created, size = self._stat()
+        if created != self.created or size < self.offset:
+            self.created, self.offset = created, 0
+        if size <= self.offset:
+            return []
+        try:
+            with open(self.path, "rb") as f:
+                f.seek(self.offset)
+                data = f.read()
+        except OSError:
+            return []
+        whole = data[:data.rfind(b"\n") + 1]  # a half-written last line waits
+        self.offset += len(whole)
+        return whole.decode(errors="replace").splitlines()
+
+
+def _steam_check_failure(lines: list[str]) -> str:
+    """The first line of `lines` that reports the launcher's Steam check as
+    failed ("Steam check:" at spdlog's error level, src/launcher/SteamSession.cxx),
+    or ""."""
+    return next((line.strip() for line in lines if "Steam check:" in line and "[error]" in line), "")
+
+
+def _await_game_start(launcher: Identity, index: int, log: _LogCursor) -> str:
     """Waits through the launcher's preparation until the launcher has
-    started the game (a StreetFighterV.exe in its process tree), for up to
-    LAUNCHER_PREP_TIMEOUT_S. The process table is the signal: it does not
-    depend on the launcher's log wording. Returns "" once the game exists, or
-    why not: the launcher ended first (a failed Steam check ends it; its log
-    says why) or the preparation took too long."""
+    started the game (a StreetFighterV.exe in its process tree). `log` is the
+    launcher's log from before it started. Returns "" once the game exists,
+    or why not: the launcher ended first, the log reported the Steam check as
+    failed (the launcher then stays up on its recovery window, so the log is
+    what ends the wait), or the preparation took more than
+    LAUNCHER_PREP_TIMEOUT_S. The process table says whether the game started,
+    so that does not depend on the log's wording; only the early report of a
+    failure does."""
     game = GAME_EXE.name.lower()
     deadline = time.monotonic() + LAUNCHER_PREP_TIMEOUT_S
     while True:
@@ -554,6 +585,9 @@ def _await_game_start(launcher: Identity, index: int) -> str:
             return ""
         if not tree:
             return f"launcher ended before it started the game (see {launcher_log_path(index)})"
+        failure = _steam_check_failure(log.new_lines())
+        if failure:
+            return f"launcher's Steam check failed ({failure}; log {launcher_log_path(index)})"
         if time.monotonic() > deadline:
             return f"launcher did not start the game within {LAUNCHER_PREP_TIMEOUT_S:.0f} s (see {launcher_log_path(index)})"
         time.sleep(0.5)
