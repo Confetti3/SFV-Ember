@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [switch]$keep)
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [switch]$keep)
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -18,6 +18,8 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # -games is then ignored. -shots also takes the prompt over each WIN.
 # -padAnswers answers on the prompt itself with each copy's virtual pad (A
 # Rematch, B Back to room), as a player does, instead of the pipe.
+# -quickAnswer: copy 0 also answers Rematch the moment its prompt shows (on
+# its pad with -padAnswers), as a player still pressing from the fight does.
 #
 # -firstTo N without -rematches (EMBER_LIBRARY.md section 28): a first-to-N
 # set played a battle a game. After each game both copies' rooms must agree
@@ -164,6 +166,15 @@ try {
       $answers = @((Count 0 "the WIN's answers"), (Count 1 "the WIN's answers"), (Count 2 "the WIN's answers"))
       Start-Sleep 20
       Shot "game$game-fight"
+      if ($quickAnswer) {
+        $deadline = (Get-Date).AddSeconds($gameSeconds)
+        while (-not (Status 0).battle.mode.rematch.prompt) {
+          if ((Get-Date) -gt $deadline) { throw "copy 0 never showed game ${game}'s prompt" }
+          Start-Sleep -Milliseconds 50
+        }
+        Answer 0 'yes'
+        "game ${game}: copy 0 pressed A as its prompt showed"
+      }
       WaitFor "game $game's result on both copies" $gameSeconds { (Count 0 'netplay: match result') -gt $results[0] -and (Count 1 'netplay: match result') -gt $results[1] }
       # A game that ends the first-to-N set offers no rematch: both copies
       # decline at once, and the WIN may be over before the status shows it.
