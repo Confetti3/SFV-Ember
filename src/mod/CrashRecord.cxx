@@ -32,11 +32,13 @@ CrashRecordState s_state;
 DumpWriter s_originalWriter = nullptr; // MinHook's trampoline once hooked
 LPTOP_LEVEL_EXCEPTION_FILTER s_previousFilter = nullptr;
 sf4e::crash::DumpClient s_dumpClient;
-std::atomic<bool> s_recording(false);
+// The thread recording the process's one crash, 0 until one does: claimed
+// once, so a fault on that same thread (inside the record) returns at once
+// and one on another thread waits for it.
+std::atomic<DWORD> s_recorder(0);
 // Set once the first crash's record and dump are done; a second fault waits
 // for it (at most kSecondFaultWaitMs, the launcher's whole budget and a bit).
 HANDLE s_recorded = nullptr;
-DWORD s_recordingThread = 0;
 constexpr DWORD kSecondFaultWaitMs = sf4e::crash::DumpRequestWaitMs + 5000;
 // Static, so a record needs neither the heap nor much stack.
 wchar_t s_recordPath[MAX_PATH] = {};
@@ -243,14 +245,15 @@ DWORD WINAPI FaultThread(void*)
 
 void RecordCrash(const char* kind, EXCEPTION_POINTERS* pointers, const char* message, DWORD threadId)
 {
-	if (s_recording.exchange(true)) {
-		// A second fault while the first is recorded (another thread): wait
+	const DWORD self = GetCurrentThreadId();
+	DWORD recorder = 0;
+	if (!s_recorder.compare_exchange_strong(recorder, self)) {
+		// A second fault while the first is recorded, on another thread: wait
 		// for its record and dump, so whatever ends the process next does not
 		// cut them off.
-		if (s_recorded && GetCurrentThreadId() != s_recordingThread) WaitForSingleObject(s_recorded, kSecondFaultWaitMs);
+		if (recorder != self && s_recorded) WaitForSingleObject(s_recorded, kSecondFaultWaitMs);
 		return;
 	}
-	s_recordingThread = GetCurrentThreadId();
 	RecordFirstCrash(kind, pointers, message, threadId);
 	if (s_recorded) SetEvent(s_recorded);
 }

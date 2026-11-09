@@ -79,6 +79,11 @@ if (!$SkipTests) {
 . (Join-Path $EmberRoot 'scripts\BuildProvenance.ps1')
 $EmberRoot = (Resolve-Path -LiteralPath $EmberRoot).Path
 $BuildDir = (Resolve-Path -LiteralPath $BuildDir).Path
+# Whether this build made the Discord companion: the configured build's own
+# answer (CMakeLists.txt makes ember-discord only with an SDK archive), never
+# whether an ember-discord.exe from an earlier build is lying in the tree.
+$discordCompanion = [bool](Select-String -LiteralPath (Join-Path $BuildDir 'CMakeCache.txt') -Pattern '^SFVE_DISCORD_SDK_ARCHIVE:[A-Z]+=.+$' -Quiet)
+$binaryNames = @('Launcher.exe', 'Updater.exe', 'sfv_ember.dll') + @(if ($discordCompanion) { 'ember-discord.exe' })
 $receipt = [ordered]@{
 	schema = 1
 	product = 'SFV Ember'
@@ -95,7 +100,8 @@ $receipt = [ordered]@{
 	config = $Config
 	testsPassed = !$SkipTests
 	tests = @(if (!$SkipTests) { & $ctest --test-dir $BuildDir -N | Select-String '^\s*Test\s+#\d+: (\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } })
-	binaries = @(foreach ($name in @('Launcher.exe', 'Updater.exe', 'sfv_ember.dll') + @('ember-discord.exe' | Where-Object { Test-Path -LiteralPath (Join-Path $BuildDir $_) })) {
+	discordCompanion = $discordCompanion
+	binaries = @(foreach ($name in $binaryNames) {
 		[ordered]@{ path = $name; sha256 = (Get-FileHash -LiteralPath (Join-Path $BuildDir $name) -Algorithm SHA256).Hash }
 	})
 	builtAt = (Get-Date).ToUniversalTime().ToString('o')
