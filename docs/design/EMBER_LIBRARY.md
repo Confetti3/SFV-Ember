@@ -1974,5 +1974,6 @@ Shot `D:\sfv-re\shots\match\match-fight-0.png` (laptop): the match's fight, "SFV
 - **A drawn game** (`replay_no_score`: the room plays it again) and **Stop** during a match were not exercised: the seeded mash decided every game, and no run stopped.
 - **The input delay**: the copies asked for 2 (`delay 2`), the match played at 1 (the log's "delay 1", the HUD's "Delay 1f"); the match's room takes its delay by the match's own policy (`ember_existing_ready_policy`), not checked further.
 - **The signed result** to the platform's `results_url` was not checked: the mock connection here has none (the library's self-test has a receiver for it, written in TypeScript; Node is not on the laptop).
-- `runpublic.ps1` still leaves the shared settings as its copies saved them (its games count in the profile's online record, as section 28 noted); only `runmatch.ps1` puts them back.
+- `runpublic.ps1` still leaves the shared settings as its copies saved them (its games count in the profile's online record, as section 28 noted); only `runmatch.ps1` puts them back. So the laptop's settings are as the `runpublic` regression left them (its games in the online record), not as they were before these runs.
+- `runpublic.ps1`'s `-ranked` and `-shellJoin` paths were not run on `localstack.ps1`: they parse, and use only what the plain run used (`Shot`, `Rows`, `Press`, `Seek`), but their next run is their check.
 - Steps A and B are the library's; their deploy (bridge 059 first, backup) and SF4's x86 build and tests before an SF4 release takes B are section 31's.
