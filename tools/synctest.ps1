@@ -1,12 +1,16 @@
-param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash = 31337, [int]$mashFrom = 600, [int]$distance = 8, [int]$schedule = 1, [int]$frames = 7000, [int]$waitSeconds = 420, [switch]$keep, [int]$learn = 1)
+param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash = 31337, [int]$mashFrom = 600, [int]$distance = 8, [int]$schedule = 1, [int]$frames = 7000, [int]$waitSeconds = 420, [switch]$keep, [int]$learn = 1, [switch]$moves, [switch]$practice)
 # One copy in synctest mode: both players mash, every rolled-back stretch is
 # first played with wrong inputs, rollbacks of random depth and spacing (up
 # to -distance, from seed -schedule; 0 for the fixed schedule), learning
 # (every differing region is tallied, the battle goes on; -learn 0 stops at
 # the first difference instead). Prints the report and the differences.
+# -moves mashes the game's system moves (V-Skill, V-Trigger, V-Reversal,
+# Critical Art motions, EX, throws: input::Moves) instead of single buttons;
+# -practice gives both fighters Training's refilling gauges from the first
+# frame, so every V-Trigger and Critical Art asked for is played.
 Set-Location (Split-Path -Parent $PSScriptRoot)
 python -I tools\sfve.py kill | Out-Null
-python -I tools\sfve.py launch 0 --mode synctest -- '-sfve_pads=01' '-sfve_background=1' "-sfve_mash=$mash" "-sfve_mash_from=$mashFrom" "-sfve_distance=$distance" '-sfve_perturb=1' "-sfve_learn=$learn" "-sfve_schedule=$schedule" | Out-Null
+python -I tools\sfve.py launch 0 --mode synctest -- '-sfve_pads=01' '-sfve_background=1' "-sfve_mash=$mash" "-sfve_mash_from=$mashFrom" "-sfve_distance=$distance" '-sfve_perturb=1' "-sfve_learn=$learn" "-sfve_schedule=$schedule" "-sfve_moves=$([int][bool]$moves)" "-sfve_practice=$([int][bool]$practice)" | Out-Null
 for ($k = 0; $k -lt 60; $k++) { Start-Sleep 2; if ((python -I tools\sfve.py ctl 0 status) -match '"scene":"0x2D98660"') { break } }
 Start-Sleep 3
 python -I tools\sfve.py ctl 0 "launch versus $p1 $p2 $rules" | Out-Null

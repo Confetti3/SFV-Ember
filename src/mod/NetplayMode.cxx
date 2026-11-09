@@ -179,9 +179,14 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	// Sent as the player plays; frames whose inputs the game ignores (outside
 	// the fight) get neutral ones in RollbackSession, whatever was sent.
 	const PackedInput local = !config_.mashSeed ? adapter.Sampled(0)
-		: frame >= config_.mashFrom              ? input::Mash(config_.mashSeed, frame)
+		: frame >= config_.mashFrom              ? (config_.mashMoves ? input::Moves(config_.mashSeed, frame)
+																		  : input::Mash(config_.mashSeed, frame))
 		: config_.mashPad                        ? adapter.Sampled(0)
 												 : 0;
+	if (config_.mashSeed && config_.mashMoves && frame >= config_.mashFrom &&
+		(frame % input::kMoveBlockFrames == 0 || frame == config_.mashFrom)) {
+		Log("moves: frame %d: %s", frame, input::MoveName(config_.mashSeed, frame));
+	}
 	// The game's judgement, the same on both copies (it is restored with the
 	// rest of the state on rollback): both copies hold the battle for the
 	// WIN's answers from this same confirmed frame.

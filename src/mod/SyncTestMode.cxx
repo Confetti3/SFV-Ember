@@ -19,8 +19,13 @@ void SyncTestMode::NewBattle(SfvAdapter& adapter)
 	learnedLogged_.clear();
 	char schedule[48] = "";
 	if (config_.scheduleSeed) snprintf(schedule, sizeof(schedule), ", random schedule %u", config_.scheduleSeed);
-	Log("synctest: started, %zu bytes of state, rollback distance %d%s%s%s", adapter.Layout().TotalSize(), config_.distance,
-		config_.learn ? ", learning" : "", config_.perturb ? ", perturbed replays" : "", schedule);
+	Log("synctest: started, %zu bytes of state, rollback distance %d%s%s%s%s", adapter.Layout().TotalSize(), config_.distance,
+		config_.learn ? ", learning" : "", config_.perturb ? ", perturbed replays" : "", schedule,
+		config_.mashMoves ? ", system moves" : "");
+	// Training's refilling gauges before anything is simulated, as a Practice
+	// room's match sets them (NetplayMode), so the mash's V-Triggers and
+	// Critical Arts are played rather than refused for want of meter.
+	if (config_.practiceGauges && !adapter.SetPracticeGauges()) Log("synctest: the battle plays with a match's gauges");
 }
 
 void SyncTestMode::Frame(SfvAdapter& adapter)
@@ -48,7 +53,12 @@ FrameInputs SyncTestMode::Inputs(SfvAdapter& adapter) const
 	const int frame = tester_->Report().framesRun;
 	if (frame < config_.mashFrom) return FrameInputs{};
 	// A second seed for P2 that no P1 seed shares by accident of small numbers.
-	return FrameInputs{{input::Mash(config_.mashSeed, frame), input::Mash(config_.mashSeed * 2654435761u + 1, frame)}};
+	const uint32_t seeds[2] = {config_.mashSeed, config_.mashSeed * 2654435761u + 1};
+	if (!config_.mashMoves) return FrameInputs{{input::Mash(seeds[0], frame), input::Mash(seeds[1], frame)}};
+	if (frame % input::kMoveBlockFrames == 0 || frame == config_.mashFrom) {
+		Log("moves: frame %d: P1 %s, P2 %s", frame, input::MoveName(seeds[0], frame), input::MoveName(seeds[1], frame));
+	}
+	return FrameInputs{{input::Moves(seeds[0], frame), input::Moves(seeds[1], frame)}};
 }
 
 void SyncTestMode::LogFailure() const

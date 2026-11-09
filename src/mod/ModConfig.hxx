@@ -87,6 +87,13 @@ struct ModConfig {
 	uint32_t mashSeed = 0; // 0: no mashing
 	int mashFrom = 0;
 	bool mashPad = false; // the pad plays before mashFrom
+	// The mash plays the game's system moves (input::Moves): V-Skill,
+	// V-Trigger, V-Reversal, Critical Art motions, EX moves and throws.
+	bool mashMoves = false;
+	// Synctest: Training's refilling gauges from the battle's first frame,
+	// as a Practice room's match has them, so every V-Trigger and Critical
+	// Art the mash asks for is played.
+	bool practiceGauges = false;
 	int distance = 7;
 	uint32_t virtualPadMask = 0; // bit i: slot i is virtual from the start
 	bool backgroundPlay = false;
