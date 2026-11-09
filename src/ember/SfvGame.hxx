@@ -64,6 +64,12 @@ void SetWatcherDrain(RollbackSession* session);
 // written, and the preferences' writer stops.
 void StopPreferences();
 
+// The player's saved Play in the background (Settings > Player), read from
+// the library's settings store as the runtime will read it: off when nothing
+// is saved or the settings cannot be read, which the log says. For the mod's
+// start (dllmain), before the game or the runtime runs.
+bool SavedBackgroundPlay();
+
 // Every member's battle has loaded (the room client's Battle::OnSessionSynced
 // since the battle in play was set): its rollback session may start. Game
 // thread.

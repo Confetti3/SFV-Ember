@@ -2027,3 +2027,19 @@ The maintainer asked for Sol's reviews through Codex ("chatgpt has useage as wel
 - With the assignments game filter: the bridge and the selftest helper rebuilt from d83d1d71f, then `runmatch.ps1` PASS (an organised SFV match, first to 1, completed on the bridge, 77 checkpoints compared, 0 differing). After it the plain helper was built and deployed again (`sfv-build`, 5/5).
 
 **The page's SFV wording** ("Your tournament match is ready to play in SFV Ember.", the steps, the phone note) is a draft for the maintainer; it goes live only with the site deploy, which waits for her yes.
+
+## 35. SF4-only settings rows (2026-11-08)
+
+Settings showed SFV players rows that only do something in SF4 Ember. The library (1afd3988c) names the game features behind them in `common/SettingsFeatures.hxx`, carried by the adapter's `Capabilities::settingsFeatures` and off until a game sets them; SF4's adapter sets `All()`, so SF4 Ember keeps every row. Every Settings builder's rows pass through one table (`Offered` in `ApplicationShell__Settings.cxx`), and a panel left with no row has no head. SFV's adapter (`SfvCapabilities`) sets none, so SFV hides:
+
+- **Player page** (`inputDisplayFixes`): Lower input lag, Lower keyboard lag, Faster display, Borderless window. Only SF4's own pad, platform and battle code reads them.
+- **Player page** (`padLayer`): Controllers (SFV lists no native controllers), Button layout, Game's button settings (its words are SF4's Options path and its layouts) and Game reads controllers. SFV has no pad layer; `padSetup`, the wizard inside it, stays off too.
+- **Player page** (`keyboard`): Use keyboard. SFV lists no keyboard device and fights with pad 0 only.
+- **Profile**: Share my Steam profile (`Capabilities::steamProfile`, now also `ShellView::offersSteamProfile`), and the room member's Steam profile action with it: SFV has no Steam module. Main character, and the main on the profile card, where the product's players have no main (`ember::PlayersHaveMain`: `Branding::roomFacesArePicks`, which SFV sets).
+- **Interface > Sounds** (`challengerCall`, `lobbyMusic`): Ready sound, its volume and test (`PlayChallengerCall` returns false; the away sound is not built) and Lobby music (always greyed). The panel goes.
+- **Interface > Room layout** (`characterPictures`): Pictures. SFV has no full-length character art, so both choices drew the portrait.
+- **Accessibility > Help** (`shortcutHint`): Show shortcut hint. Only SF4's overlay draws "F10 or Start". The panel goes.
+
+**Play in the background** stays and now works on SFV: the mod reads the saved setting from the library's settings store as the game starts (`SavedBackgroundPlay` in `SfvGame.cxx`, used by `dllmain.cxx` beside `-sfve_background`), so a change takes effect at the next start; SF4 applies it at once. The row's text says nothing of a restart.
+
+Tests: the library's ShellJourney (`RowsFollowTheGame`: every feature off then on, the pad walking each page) and ProductRules / ProductRulesOn (Main character and the card); sfv-ember's `EmberAdapterTests` checks SFV sets none of the features.

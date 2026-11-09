@@ -445,7 +445,10 @@ SfvServices s_services;
 // in folder; SFV has no replay list of its own to add one to, no video
 // export, replay meter or inputs reader yet) and Training (section 27: SFV's
 // own Training mode, SfvTraining); SFV offers no pad setup, Steam profiles
-// or custom content yet.
+// or custom content yet, and none of the settings features (section 35:
+// Ember's input and display fixes, its pad layer, the keyboard, the
+// challenger call, lobby music, character pictures or the shortcut hint), so
+// Settings leaves their rows out.
 Capabilities SfvCapabilities()
 {
 	Capabilities caps;
@@ -505,6 +508,24 @@ const BattleInPlay& CurrentBattle()
 void StopPreferences()
 {
 	s_preferences.Stop();
+}
+
+bool SavedBackgroundPlay()
+{
+	nlohmann::json saved;
+	std::string error;
+	if (!sf4e::netplay::SettingsStore(sf4e::netplay::SettingsStore::DefaultDirectory()).LoadLauncher(saved, error)) {
+		mod::Log("background play: the saved settings could not be read (%s); taken as off", error.c_str());
+		return false;
+	}
+	sf4e::netplay::PlayerPreferences preferences;
+	try {
+		sf4e::netplay::ReadBoolPreferences(saved, preferences);
+	} catch (const std::exception&) {
+		mod::Log("background play: the saved settings hold a value that is not on or off; taken as off");
+		return false;
+	}
+	return preferences.backgroundPlay;
 }
 
 } // namespace sfve::adapter

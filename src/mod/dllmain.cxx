@@ -11,6 +11,7 @@
 //   4. the build check; on anything but a verified build the mod stays inert.
 
 #include "core/CoreLog.hxx"
+#include "ember/SfvGame.hxx"
 #include "mod/BackgroundPlay.hxx"
 #include "mod/BattleDriver.hxx"
 #include "mod/BuildCheck.hxx"
@@ -134,7 +135,10 @@ extern "C" int SfveStart(int beforeGameCode)
 	StartGuardedLagSim(Config().lagMs);
 	RegisterStatus("guardRefusals", [] { return std::to_string(NetGuardRefusals()); });
 	RegisterStatus("mode", [] { return JsonString(ModeName(Config().mode)); });
-	if (Config().backgroundPlay) InstallBackgroundPlay();
+	// Asked for at launch (-sfve_background), or the player's saved Play in
+	// the background (Settings > Player), read once here, after the settings'
+	// move: a change to the setting takes effect at the next start.
+	if (Config().backgroundPlay || sfve::adapter::SavedBackgroundPlay()) InstallBackgroundPlay();
 	InstallMultiInstance(Config().instance);
 	InstallVirtualPads();
 	for (int slot = 0; slot < kPadSlots; slot++) {

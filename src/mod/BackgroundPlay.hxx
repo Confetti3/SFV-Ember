@@ -8,7 +8,9 @@
 // this process's own window, so two copies side by side, or a copy behind a
 // stream tool, both keep running and reading their (virtual) pads.
 //
-// Off unless asked for (-sfve_background); it changes nothing else.
+// Off unless asked for at launch (-sfve_background) or by the player's saved
+// Play in the background (dllmain, as the game starts); it changes nothing
+// else.
 
 namespace sfve::mod {
 
