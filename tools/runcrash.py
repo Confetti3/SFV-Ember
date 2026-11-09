@@ -47,25 +47,22 @@ SYNCHRONIZE = 0x00100000
 QUERY_LIMITED = 0x1000
 
 
-def reports_on() -> bool:
+def reports_off() -> bool:
+    """True only when Send problem reports is known to be off: no settings
+    file (its default is off), or one that reads and says so. A file that
+    cannot be read or parsed is not known to be off."""
+    path = lib.LOG_DIR.parent / "settings.json"
+    if not path.exists():
+        return True
     try:
-        settings = json.loads((lib.LOG_DIR.parent / "settings.json").read_text(encoding="utf-8"))
+        # utf-8-sig: the launcher's parser takes a file with a byte order mark too.
+        settings = json.loads(path.read_bytes().decode("utf-8-sig"))
     except (OSError, ValueError):
         return False
-    found = [False]
-
-    def walk(value) -> None:
-        if isinstance(value, dict):
-            for key, inner in value.items():
-                if key == "sendProblemReportsWithDump" and inner is True:
-                    found[0] = True
-                walk(inner)
-        elif isinstance(value, list):
-            for inner in value:
-                walk(inner)
-
-    walk(settings)
-    return found[0]
+    netplay = settings.get("netplay") if isinstance(settings, dict) else None
+    if not isinstance(netplay, dict):
+        return False
+    return netplay.get("sendProblemReportsWithDump", False) is False
 
 
 def files(folder: Path, pattern: str) -> set[Path]:
@@ -93,8 +90,8 @@ def main(argv: list[str]) -> int:
     p.add_argument("--where", choices=("game", "thread"), default="game")
     p.add_argument("--keep", action="store_true")
     a = p.parse_args(argv)
-    if reports_on():
-        print("FAIL: Send problem reports is on in settings.json; a test crash would be sent. Turn it off first.")
+    if not reports_off():
+        print("FAIL: settings.json does not show Send problem reports off; a test crash could be sent. Turn it off first.")
         return 1
     via_launcher = lib.VIA == "launcher"
     launcher_log = lib.LOG_DIR / "launcher.log"

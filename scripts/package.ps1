@@ -87,15 +87,13 @@ function Stage([string]$Source, [string]$Relative) {
 foreach ($name in 'Launcher.exe', 'Updater.exe', 'sfv_ember.dll') { Stage (Join-Path $BuildDir $name) $name }
 Stage $helperPath 'sf4-net.exe'
 # Discord's companion, its SDK's DLL and what it was built with; a package
-# without them is refused. Whether the build made it is the receipt's word
-# (build.ps1 reads the configured build), and the file staged must be the one
-# the receipt names, not one an earlier build left behind.
-$companion = $receipt.binaries | Where-Object { $_.path -eq 'ember-discord.exe' }
-if (!$receipt.discordCompanion -or !$companion) {
+# without them is refused. Whether the build made them is the receipt's word
+# (build.ps1 reads the configured build), and the receipt's hashes, checked
+# with every other binary above, keep out anything an earlier build or a
+# later hand left in their place.
+$companionFiles = 'ember-discord.exe', 'discord_partner_sdk.dll', 'discord-build.json'
+if (!$receipt.discordCompanion -or @($companionFiles | Where-Object { $_ -notin $receipt.binaries.path }).Count) {
 	throw 'This build has no Discord companion: build with the Discord SDK archive (scripts\build.ps1 -DiscordSdkArchive, or SF4E_DISCORD_SDK_ARCHIVE)'
-}
-if ((Get-FileHash -LiteralPath (Join-Path $BuildDir 'ember-discord.exe') -Algorithm SHA256).Hash -ne $companion.sha256) {
-	throw 'ember-discord.exe is not the binary the build receipt names; rebuild'
 }
 Stage (Join-Path $BuildDir 'ember-discord.exe') 'ember-discord.exe'
 Stage (Join-Path $BuildDir 'discord_partner_sdk.dll') 'discord_partner_sdk.dll'

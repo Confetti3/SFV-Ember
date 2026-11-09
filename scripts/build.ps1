@@ -83,7 +83,10 @@ $BuildDir = (Resolve-Path -LiteralPath $BuildDir).Path
 # answer (CMakeLists.txt makes ember-discord only with an SDK archive), never
 # whether an ember-discord.exe from an earlier build is lying in the tree.
 $discordCompanion = [bool](Select-String -LiteralPath (Join-Path $BuildDir 'CMakeCache.txt') -Pattern '^SFVE_DISCORD_SDK_ARCHIVE:[A-Z]+=.+$' -Quiet)
-$binaryNames = @('Launcher.exe', 'Updater.exe', 'sfv_ember.dll') + @(if ($discordCompanion) { 'ember-discord.exe' })
+# The companion's whole runtime goes in the receipt: its exe, the SDK's DLL it
+# loads and the record of what it was built with.
+$binaryNames = @('Launcher.exe', 'Updater.exe', 'sfv_ember.dll') +
+	@(if ($discordCompanion) { 'ember-discord.exe', 'discord_partner_sdk.dll', 'discord-build.json' })
 $receipt = [ordered]@{
 	schema = 1
 	product = 'SFV Ember'

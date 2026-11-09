@@ -15,6 +15,10 @@ namespace {
 
 std::mutex s_mutex;
 HANDLE s_file = INVALID_HANDLE_VALUE;
+// This thread holds s_mutex for a write: a fault inside that write reaches
+// the crash handler on the same thread, where TryLogLine must not touch the
+// mutex again.
+thread_local bool t_writing = false;
 
 } // namespace
 
@@ -87,11 +91,14 @@ void LogLine(const char* line)
 	const int n = FormatLine(text, line);
 	if (!n) return;
 	std::lock_guard lock(s_mutex);
+	t_writing = true;
 	WriteLine(text, n);
+	t_writing = false;
 }
 
 void TryLogLine(const char* line)
 {
+	if (t_writing) return; // this thread faulted inside a write: it holds the lock
 	char text[1200];
 	const int n = FormatLine(text, line);
 	if (!n) return;
