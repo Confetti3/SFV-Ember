@@ -10,6 +10,7 @@
 #include "mod/Log.hxx"
 
 #include "common/GameCatalog.hxx"
+#include "common/ProductIdentity.hxx"
 #include "platform/HelperProcess.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 
@@ -122,6 +123,29 @@ void LogOwnership(const mod::ContentLists& lists, bool gate)
 		source.markedUnowned, fighters, costumes, colours, lists.stages.size() - lists.ownedStages.size(), lists.stages.size());
 }
 
+// Discord's companion (ProductIdentity::discordExe, beside the mod): the
+// player's activity and invitations, as SF4 Ember's launcher starts it for
+// the game. Started for the player's copy only: a test's second copy would
+// show a second activity. Without it the runtime runs as it does without
+// Discord, and Settings > Discord says the companion is not running.
+void StartDiscordCompanion(int instance)
+{
+	if (instance != 0) return;
+	const std::wstring exe = mod::ModuleFolder() + L"\\" + ember::Product().discordExe;
+	if (GetFileAttributesW(exe.c_str()) == INVALID_FILE_ATTRIBUTES) {
+		mod::Log("ember: no Discord companion beside the mod (%ls)", exe.c_str());
+		return;
+	}
+	// Kept for the process's life, as the helper: its job ends it with the game.
+	auto* discord = new sf4e::platform::HelperProcess();
+	if (!discord->Start(exe, GetCurrentProcessId())) {
+		mod::Log("ember: could not start the Discord companion (error %lu)", discord->LastError());
+		return;
+	}
+	facade::ConfigureDiscord(discord->Bootstrap());
+	mod::Log("ember: started the Discord companion");
+}
+
 // The first main-menu frames: the catalog, then the helper and the runtime.
 // False once the runtime will not start.
 bool TryStart(const HostSettings& settings, ember::GameTick& battle)
@@ -155,6 +179,7 @@ bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 		mod::Log("ember: could not start sf4-net.exe (error %lu)", helper->LastError());
 		facade::ConfigureHelper({}, helper->LastError());
 	}
+	StartDiscordCompanion(settings.instance);
 	sf4e::NetplayConfig config;
 	const std::string name = "SFV " + std::to_string(settings.instance + 1);
 	strncpy_s(config.displayName, name.c_str(), _TRUNCATE);

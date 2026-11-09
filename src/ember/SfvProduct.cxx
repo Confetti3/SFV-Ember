@@ -164,7 +164,7 @@ constexpr ember::ProductIdentity SfvEmber = {
 	L"sfve-updater-",
 	L"sfv-ember-update.log",
 	// Launcher.exe starts the game with the mod injected (src/launcher);
-	// Updater.exe installs a package. No Discord companion yet.
+	// Updater.exe installs a package.
 	L"Launcher.exe",
 	L"Updater.exe",
 	L"sfv_ember.dll",
@@ -173,7 +173,9 @@ constexpr ember::ProductIdentity SfvEmber = {
 	// UE4's small bootstrap, which starts the real game from
 	// StreetFighterV\Binaries\Win64: that one is started, in its own folder.
 	{"310950", L"StreetFighterV", L"StreetFighterV\\Binaries\\Win64"},
-	L"",
+	// Discord's companion: the mod starts it beside the helper (EmberHost),
+	// under SF4 Ember's Discord application (EMBER_LIBRARY.md section 33).
+	L"ember-discord.exe",
 	L"sfv_ember.log",
 	L"launcher.log",
 	L"sfv_ember-crash.log",

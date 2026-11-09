@@ -14,6 +14,9 @@ param(
 	[string]$VcpkgCache = 'D:\sf4-build\vcpkg-cache',
 	[string]$VcpkgRoot = '',
 	[string]$VisualStudioPath = '',
+	# The pinned Discord SDK archive (the Ember library's cmake/discord-sdk-pin.json):
+	# with it the build makes the Discord companion, ember-discord.exe.
+	[string]$DiscordSdkArchive = $env:SF4E_DISCORD_SDK_ARCHIVE,
 	[ValidateSet('RelWithDebInfo', 'Debug', 'Release')][string]$Config = 'RelWithDebInfo',
 	[switch]$SkipTests
 )
@@ -58,7 +61,7 @@ $triplet = 'x64-windows-static-md-wchar-filenames'
 	"-DVCPKG_TARGET_TRIPLET=$triplet" "-DVCPKG_HOST_TRIPLET=$triplet" `
 	"-DVCPKG_OVERLAY_PORTS=$repo\vcpkg-overlays\ports" "-DVCPKG_OVERLAY_TRIPLETS=$EmberRoot\vcpkg-overlays\triplets" `
 	"-DVCPKG_INSTALL_OPTIONS=$vcpkgOptions" "-DVCPKG_INSTALLED_DIR=$BuildDir\vcpkg_installed" `
-	"-DSFVE_EMBER_SOURCE_ROOT=$EmberRoot"
+	"-DSFVE_EMBER_SOURCE_ROOT=$EmberRoot" "-DSFVE_DISCORD_SDK_ARCHIVE=$DiscordSdkArchive"
 if ($LASTEXITCODE) { throw "configure failed ($LASTEXITCODE)" }
 & $cmake --build $BuildDir
 if ($LASTEXITCODE) { throw "build failed ($LASTEXITCODE)" }
@@ -92,7 +95,7 @@ $receipt = [ordered]@{
 	config = $Config
 	testsPassed = !$SkipTests
 	tests = @(if (!$SkipTests) { & $ctest --test-dir $BuildDir -N | Select-String '^\s*Test\s+#\d+: (\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } })
-	binaries = @(foreach ($name in 'Launcher.exe', 'Updater.exe', 'sfv_ember.dll') {
+	binaries = @(foreach ($name in @('Launcher.exe', 'Updater.exe', 'sfv_ember.dll') + @('ember-discord.exe' | Where-Object { Test-Path -LiteralPath (Join-Path $BuildDir $_) })) {
 		[ordered]@{ path = $name; sha256 = (Get-FileHash -LiteralPath (Join-Path $BuildDir $name) -Algorithm SHA256).Hash }
 	})
 	builtAt = (Get-Date).ToUniversalTime().ToString('o')

@@ -722,7 +722,7 @@ TEST_CASE("SFV Ember's launcher, updater and folders")
 	CHECK_FALSE(product.settingsBesideModule);
 	CHECK(std::wstring(product.launcherExe) == L"Launcher.exe");
 	CHECK(std::wstring(product.updaterExe) == L"Updater.exe");
-	CHECK(std::wstring(product.discordExe).empty());
+	CHECK(std::wstring(product.discordExe) == L"ember-discord.exe");
 	CHECK(std::wstring(product.launcherLog) == L"launcher.log");
 	// Steam's app 310950; the real game, not UE4's bootstrap at the install folder's top.
 	CHECK(std::string(product.steam.appId) == "310950");

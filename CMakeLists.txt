@@ -267,6 +267,46 @@ target_include_directories(Updater PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src" "${SF
 target_link_options(Updater PRIVATE "/ENTRY:wmainCRTStartup")
 target_link_libraries(Updater PRIVATE sfve_product ember_updater_x64)
 sfve_program_resources(Updater "SFV Ember Updater" "Updater.exe")
+# Discord's companion (ember-discord.exe, the library's src/discord): the
+# player's activity and invitations. SFV Ember uses SF4 Ember's Discord
+# application (the maintainer, 2026-11-08; EMBER_LIBRARY.md section 33): the library's
+# cmake/discord-sdk-pin.json gives its id, the SDK version and the archive's
+# hash. Built only from that archive (SFVE_DISCORD_SDK_ARCHIVE, checked
+# against the pin); without it there is no companion, and scripts/package.ps1
+# refuses to make a package.
+set(SFVE_DISCORD_SDK_ARCHIVE "" CACHE FILEPATH "The Discord Social SDK archive the Ember library's discord-sdk-pin.json names")
+if(SFVE_DISCORD_SDK_ARCHIVE)
+    file(READ "${SFVE_EMBER_SOURCE_ROOT}/cmake/discord-sdk-pin.json" sfve_discord_pin)
+    string(JSON sfve_discord_app GET "${sfve_discord_pin}" applicationId)
+    string(JSON sfve_discord_version GET "${sfve_discord_pin}" version)
+    string(JSON sfve_discord_hash GET "${sfve_discord_pin}" sha256)
+    string(TOLOWER "${sfve_discord_hash}" sfve_discord_hash)
+    file(SHA256 "${SFVE_DISCORD_SDK_ARCHIVE}" sfve_discord_archive_hash)
+    if(NOT sfve_discord_archive_hash STREQUAL sfve_discord_hash)
+        message(FATAL_ERROR "The Discord SDK archive's SHA-256 does not match the Ember library's pin")
+    endif()
+    include("${SFVE_EMBER_SOURCE_ROOT}/cmake/sf4e_verified_unpack.cmake")
+    include("${SFVE_EMBER_SOURCE_ROOT}/cmake/sf4e_discord_sdk_files.cmake")
+    sf4e_unpack_verified("${SFVE_DISCORD_SDK_ARCHIVE}" "${sfve_discord_archive_hash}" "${CMAKE_BINARY_DIR}/discord-sdk"
+        ${SF4E_DISCORD_SDK_FILES})
+    set(sfve_discord_sdk "${CMAKE_BINARY_DIR}/discord-sdk/discord_social_sdk")
+    add_executable(ember-discord WIN32 "${SFVE_EMBER_SOURCE_ROOT}/src/discord/main.cxx")
+    target_compile_definitions(ember-discord PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
+        SF4E_DISCORD_APPLICATION_ID=${sfve_discord_app}ULL)
+    target_include_directories(ember-discord PRIVATE "${sfve_discord_sdk}/include")
+    target_link_libraries(ember-discord PRIVATE sfve_product nlohmann_json::nlohmann_json
+        "${sfve_discord_sdk}/lib/release/discord_partner_sdk.lib" advapi32 shell32)
+    sfve_program_resources(ember-discord "SFV Ember Discord companion" "ember-discord.exe")
+    # Beside it in the build tree, as in a package: the SDK's DLL and notice,
+    # and what it was built with (the library's discord-build.json form).
+    add_custom_command(TARGET ember-discord POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${sfve_discord_sdk}/bin/release/discord_partner_sdk.dll" "$<TARGET_FILE_DIR:ember-discord>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${sfve_discord_sdk}/License-Notices.txt" "$<TARGET_FILE_DIR:ember-discord>/Discord-SDK-notices.txt")
+    file(WRITE "${CMAKE_BINARY_DIR}/discord-build.json"
+        "{\"applicationId\":\"${sfve_discord_app}\",\"sdkVersion\":\"${sfve_discord_version}\",\"sdkSha256\":\"${sfve_discord_hash}\"}\n")
+else()
+    message(STATUS "No Discord SDK archive (SFVE_DISCORD_SDK_ARCHIVE): SFV Ember is built without its Discord companion")
+endif()
 # The updater's own validation and extraction, for scripts/package.ps1 and the
 # library's scripts/test-updater-download-validation.ps1.
 add_executable(sfve_package_check tests/package_check.cxx src/launcher/LauncherSelection.cxx)

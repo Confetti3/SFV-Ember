@@ -86,6 +86,15 @@ function Stage([string]$Source, [string]$Relative) {
 }
 foreach ($name in 'Launcher.exe', 'Updater.exe', 'sfv_ember.dll') { Stage (Join-Path $BuildDir $name) $name }
 Stage $helperPath 'sf4-net.exe'
+# Discord's companion, its SDK's DLL and what it was built with; a package
+# without them is refused (a build without the SDK archive has none).
+if (!($receipt.binaries | Where-Object { $_.path -eq 'ember-discord.exe' })) {
+	throw 'This build has no Discord companion: build with the Discord SDK archive (scripts\build.ps1 -DiscordSdkArchive, or SF4E_DISCORD_SDK_ARCHIVE)'
+}
+Stage (Join-Path $BuildDir 'ember-discord.exe') 'ember-discord.exe'
+Stage (Join-Path $BuildDir 'discord_partner_sdk.dll') 'discord_partner_sdk.dll'
+Stage (Join-Path $BuildDir 'discord-build.json') 'discord-build.json'
+Stage (Join-Path $BuildDir 'Discord-SDK-notices.txt') 'notices\Discord-SDK.txt'
 # The pictures the shell draws (the build copies them beside the mod): SFV
 # Ember's ground, and Ember's button prompts and flags, which the updater's
 # rules allow by name pattern (PackageInventory.hxx, IsArtAssetPath). Their
