@@ -1032,9 +1032,9 @@ On this PC the spec lists 46 selectable fighters (ELEVEN with one costume), 5 to
     - its size must be the texture's platform data size (UTexture2D+0xC0, GetSizeX rva 0x1CB9410).
   - That last check also proves the whole top mip is resident, not a streamed smaller one.
   - Ember then takes its own reference to the Direct3D texture and never touches the UObject again, so the game's garbage collector cannot pull it from under ImGui.
-- **Drawing.** On the render thread, Ember makes its own view of the texture on the game's device, with the typeless format viewed as UNORM (the stored values, as the game's menus show them), and hands that view to ImGui. Block-compressed textures (BC1 stages) are drawn as they are; nothing is decoded and no pixel is copied. Views and references are kept for the session.
+- **Drawing.** On the render thread, Ember makes its own view of the texture on the game's device, with the typeless format viewed as UNORM (the stored values, as the game's menus show them), and hands that view to ImGui. Block-compressed textures (BC1 stages) are drawn as they are; nothing is decoded and no pixel is copied (since section 37, a face's alpha is read once to find its square). Views and references are kept for the session.
 - **Where they show.**
-  - `SelectionArt::Portrait` is the fighter's select-grid face, on every shared screen. The room's seats and members ask for `Character` first and fall back to it.
+  - `SelectionArt::Portrait` is the fighter's select-grid face (since section 37, the square of its face), on every shared screen. The room's seats and members ask for `Character` first and fall back to it.
   - `SelectionArt::Stage` is the stage's picture.
   - `Character`, `Appearance`, `Ultra` and `RankingEmblem` report missing: the game has none.
   - The pick screen's pane shows the fighter's banner, its name, the costume's name and the colour's label with its two swatch colours, and the stage's picture while the stage row has the focus.
@@ -2054,3 +2054,25 @@ The maintainer's first test on her own PC (package 20261108-230721) found four t
 - **Full screen upset her monitor.** The launcher now always starts the game with `-windowed` (a plain window at the game's saved resolution; a test's own `--game-option -windowed` is not repeated).
 
 Not done: the launcher does not yet warn about Steam's stale `ActiveProcess` pid, which crashes the game in its LoggedIn (`+0x742A34`); restarting Steam clears it.
+
+## 37. Small faces: the square of the select grid's face (2026-11-09)
+
+The maintainer: "the fighter pictures being the slices from the game don't fit well". Every small face on the shared screens (the room's seats, the Members rows, member cards, Home's profile card, which shows the pick since library 6b3a5bf32) was SFV's select grid face, `CharaSelectIconLeft` (116x144): a slanted card with transparent corners, drawn whole in a square tile, so each showed as a narrow, leaning sliver with the tile's ground on both sides.
+
+**Sources weighed.**
+- **A square face texture of the game's.** The exe's per-fighter UI names (`EKiwiCharaUIAssetType`, built into `/Game/Chara/<code>/Hud/<name>.<name>` by rva 0x7654D0) are CharaSelectIconLeft/Right/Simple/L, FaceIconLeft/Right, ResultFaceIconLeft/Right, ListIconLeft/Right, ReplayLogLeft/Right, FPBattleLogLeft/Right, CommandListFaceIcon, StoryFaceIcon, PartCharacter, MODE01FaceIconRight(Versus), TeamIconLeft/Right(Large) and TournamentTeamIcon. Their sizes and looks are in the paks, not the exe, and section 15 already met one trap (FaceIconLeft loads as the same blue silhouette for every fighter). None was used blind; they are the candidates for a run-time probe (below).
+- **A crop of the banner** (`CharaSelectIcon_l`, 380x258) around the head. Its alpha is the whole figure, and finding a head in it is a guess per pose (fists, hair, weapons) that cannot be checked here for 45 fighters.
+- **The square inside the select grid's card** (chosen). The game's artists framed every fighter's head in that card, and its alpha is only the card's shape, so one rule holds for every fighter: per row, the first and last solid pixel (alpha 248 or more, so the slant's antialiased edge stays out); the largest square whose rows all hold it, centred two fifths down the card (RYU's and CHUN-LI's eyes, measured on a 38 px tile), kept inside the painted rows. A card with no square at least half its width is drawn whole, as before.
+
+**How it is built** (sfv-ember only; the library and SF4 Ember are untouched).
+- `ember/SfvFaceCrop` is the rule, a pure function over the pixels; `tests/FaceCropTests.cxx` checks it on a synthetic slanted card (73 px square, every pixel solid, centred on the face), a picture painted to its edges, a padded row pitch and pictures with no square.
+- `SfvArt` asks for a face with `Framing::FaceSquare`. On the render thread, once the view is made, it copies the texture into a staging texture on the game's device, maps it, finds the square and lets the copy go: the one read of the game's pixels, once per face, a stall of about a frame. Only formats with alpha in a pixel's fourth byte are read (the faces are B8G8R8A8).
+- The picture goes out as a uv rect with the square's own size, as the shared art reports any crop (`SelectionArt::Request`). `DrawCharacterPortrait`, the cabinet's glass and the Settings portrait all draw a picture's uv rect at its size, so every shared screen fits the square with no change and nothing is stretched.
+- The pick screen's banner and the stages are drawn whole, as before.
+- The log names each face's square: `art: /Game/Chara/RYU/Hud/CharaSelectIconLeft...: face 73x73 at (25, 21) of 116x144` (numbers as an example), or why it is drawn whole.
+
+**To confirm on the laptop.**
+- The log's `face` line for every fighter shown; a face drawn whole names its reason.
+- Shots: the room (seats and Members rows), a member card, Home's profile card (96 px tile), and the pick screen. Each small face should be upright, fill its square with no tile showing at its sides or corners, and show the eyes a little above the middle, the same framing for every fighter; the banner as before.
+- `kFaceCentre` (0.4) is the one judgement: raise it if chins are cut, lower it if hair is.
+- At 96 px and above the square (about 73 px of the game's pixels) is enlarged and soft. If that shows, the candidates above can be probed at the main menu (their size and a glance at each) for a larger square face.

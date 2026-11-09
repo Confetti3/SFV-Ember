@@ -1,13 +1,16 @@
 #pragma once
 
 // SFV's pictures on Ember's screens: the game's own UI textures for its
-// fighters and stages, drawn from the game's Direct3D 11 textures (no pixel
-// leaves the game), and the colour swatches its costume menu shows. What
+// fighters and stages, drawn from the game's Direct3D 11 textures, and the
+// colour swatches its costume menu shows. No pixel is kept or leaves the
+// game: a face's alpha is read once, through a staging copy let go at once,
+// to find its square (SfvFaceCrop, EMBER_LIBRARY.md section 37). What
 // exists in the game (EMBER_LIBRARY.md section 15):
 // - per fighter: its HUD pictures, of which Ember uses the select grid's
-//   face (CharaSelectIconLeft, 116x144) and the select screen's banner
-//   (CharaSelectIcon_l, 380x258); its HUD FaceIconLeft (256x256), drawn as
-//   it is, is a blue silhouette of the same shape for every fighter seen;
+//   face (CharaSelectIconLeft, 116x144), drawn as the square of the head in
+//   its slanted card, and the select screen's banner (CharaSelectIcon_l,
+//   380x258); its HUD FaceIconLeft (256x256), drawn as it is, is a blue
+//   silhouette of the same shape for every fighter seen;
 // - per stage: the stage select's picture (StageSelectBG, 2048x512);
 // - per costume colour: two colours, the costume menu's swatch.
 // The game has no picture of a fighter in a given costume or colour: its
@@ -28,7 +31,7 @@
 namespace sfve::adapter {
 
 enum class FighterPicture {
-	Face,   // upright, the select grid's face
+	Face,   // square, the head from the select grid's face
 	Banner, // wide, the select screen's large card
 };
 

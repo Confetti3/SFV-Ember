@@ -3,7 +3,8 @@
 // The game's own pictures, read from the player's install at run time: a
 // UI texture by its asset path, as the Direct3D 11 texture the game's
 // renderer made for it, and a costume colour's swatch. Nothing is copied out
-// of the game: the overlay draws the game's texture itself (SfvArt).
+// of the game: the overlay draws the game's texture itself (SfvArt), and
+// reads a face's alpha only to find where to crop it.
 //
 // Game thread only, and only at the main menu: loading is synchronous, so
 // no load may run while a battle does.

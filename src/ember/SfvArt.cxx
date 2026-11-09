@@ -1,6 +1,7 @@
 #include "ember/SfvArt.hxx"
 
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvFaceCrop.hxx"
 #include "ember/SfvRankNames.hxx"
 #include "mod/GameArt.hxx"
 #include "mod/GameContent.hxx"
@@ -12,6 +13,7 @@
 #include "common/ProductIdentity.hxx"
 
 #include <d3d11.h>
+#include <wrl/client.h>
 
 #include <array>
 #include <cwchar>
@@ -33,12 +35,18 @@ constexpr int kLoadsPerFrame = 2;
 // one still without it after this long is given up on.
 constexpr int kResourceFrames = 120;
 
+// How a picture is shown: whole, or (a select-grid face) the square of its
+// face (SfvFaceCrop).
+enum class Framing { Whole, FaceSquare };
+
 struct Picture {
 	enum class State { Queued, WaitingForResource, Ready, Missing } state = State::Queued;
+	Framing framing = Framing::Whole; // as its first request asked
 	uint8_t* object = nullptr; // the game's texture, until its Direct3D texture is taken
 	int frames = 0;
 	mod::GameTexture texture;                  // Ready: the game's texture, with our reference
 	ID3D11ShaderResourceView* view = nullptr;  // made on the render thread
+	std::optional<SquareCrop> square;          // FaceSquare: found with the view; empty draws it whole
 };
 
 struct CostumeSwatches {
@@ -99,20 +107,91 @@ void MakeView(const std::wstring& path, Picture& picture)
 	}
 }
 
-sf4e::ui::SelectionImage Image(const std::wstring& path)
+// Formats whose pixels are four bytes with alpha in the fourth.
+bool AlphaInFourthByte(unsigned format)
+{
+	switch (ViewFormat(format)) {
+	case DXGI_FORMAT_B8G8R8A8_UNORM:
+	case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+	case DXGI_FORMAT_R8G8B8A8_UNORM:
+	case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB: return true;
+	default: return false;
+	}
+}
+
+// Render thread, under the lock, once per face: its square (SfvFaceCrop),
+// found from the texture's alpha through a staging copy on the game's own
+// device, read on its immediate context (the render thread's) and let go
+// here. The read waits for the copy, a stall of about a frame, once a face.
+// Empty, and the face drawn whole, where the format keeps no alpha in a
+// pixel's fourth byte, the copy cannot be read or no square is found.
+std::optional<SquareCrop> ReadFaceSquare(const std::wstring& path, const mod::GameTexture& texture)
+{
+	using Microsoft::WRL::ComPtr;
+	if (!AlphaInFourthByte(texture.format)) {
+		mod::Log("art: %ls: format %u has no alpha to find the face by; drawn whole", path.c_str(), texture.format);
+		return std::nullopt;
+	}
+	ComPtr<ID3D11Device> device;
+	ComPtr<ID3D11DeviceContext> context;
+	texture.texture->GetDevice(&device);
+	device->GetImmediateContext(&context);
+	D3D11_TEXTURE2D_DESC desc{};
+	texture.texture->GetDesc(&desc);
+	desc.Usage = D3D11_USAGE_STAGING;
+	desc.BindFlags = 0;
+	desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+	desc.MiscFlags = 0;
+	ComPtr<ID3D11Texture2D> staging;
+	HRESULT result = device->CreateTexture2D(&desc, nullptr, &staging);
+	D3D11_MAPPED_SUBRESOURCE mapped{};
+	if (SUCCEEDED(result)) {
+		context->CopyResource(staging.Get(), texture.texture);
+		result = context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+	}
+	if (FAILED(result)) {
+		mod::Log("art: %ls: its alpha could not be read (0x%08lX); drawn whole", path.c_str(), (unsigned long)result);
+		return std::nullopt;
+	}
+	const std::optional<SquareCrop> square =
+		FaceSquare(static_cast<const std::uint8_t*>(mapped.pData), texture.width, texture.height, mapped.RowPitch);
+	context->Unmap(staging.Get(), 0);
+	if (square) {
+		mod::Log("art: %ls: face %dx%d at (%d, %d) of %dx%d", path.c_str(), square->side, square->side, square->x, square->y,
+			texture.width, texture.height);
+	} else {
+		mod::Log("art: %ls: no square in its painted area; drawn whole", path.c_str());
+	}
+	return square;
+}
+
+sf4e::ui::SelectionImage Image(const std::wstring& path, Framing framing = Framing::Whole)
 {
 	sf4e::ui::SelectionImage image;
 	if (path.empty()) return image.missing = true, image;
 	std::lock_guard lock(s_mutex);
 	auto [at, added] = s_pictures.try_emplace(path);
 	Picture& picture = at->second;
-	if (added) s_queue.push_back(path);
-	if (picture.state == Picture::State::Ready && !picture.view) MakeView(path, picture);
+	if (added) {
+		picture.framing = framing;
+		s_queue.push_back(path);
+	}
+	if (picture.state == Picture::State::Ready && !picture.view) {
+		MakeView(path, picture);
+		if (picture.view && picture.framing == Framing::FaceSquare) picture.square = ReadFaceSquare(path, picture.texture);
+	}
 	if (picture.state == Picture::State::Missing) return image.missing = true, image;
 	if (picture.state != Picture::State::Ready) return image;
 	image.texture = reinterpret_cast<ImTextureID>(picture.view);
 	image.width = picture.texture.width;
 	image.height = picture.texture.height;
+	// A crop is its uv rect and its own size, as the shared art reports one
+	// (SelectionArt::Request), so every shared screen fits it as it is.
+	if (const std::optional<SquareCrop>& square = picture.square) {
+		image.uvMin = ImVec2((float)square->x / image.width, (float)square->y / image.height);
+		image.uvMax = ImVec2((float)(square->x + square->side) / image.width, (float)(square->y + square->side) / image.height);
+		image.width = image.height = square->side;
+	}
 	return image;
 }
 
@@ -181,7 +260,9 @@ sf4e::ui::SelectionImage FighterImage(int fighter, FighterPicture picture)
 {
 	const std::string code = FighterCode(fighter);
 	if (code.empty()) return Image({});
-	return Image(AssetPath(L"Chara/" + Wide(code) + L"/Hud", picture == FighterPicture::Face ? L"CharaSelectIconLeft" : L"CharaSelectIcon_l"));
+	const std::wstring folder = L"Chara/" + Wide(code) + L"/Hud";
+	if (picture == FighterPicture::Face) return Image(AssetPath(folder, L"CharaSelectIconLeft"), Framing::FaceSquare);
+	return Image(AssetPath(folder, L"CharaSelectIcon_l"));
 }
 
 sf4e::ui::SelectionImage StageImage(int stage)
