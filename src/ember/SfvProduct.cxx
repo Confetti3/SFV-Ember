@@ -156,10 +156,12 @@ constexpr ember::ProductIdentity SfvEmber = {
 	// Its public rooms are SFV's, apart from SF4 Ember's on the same bridge
 	// (EMBER_LIBRARY.md section 24).
 	"sfv",
-	// No public release repository yet (EMBER_LIBRARY.md section 22): the
-	// update check offers nothing and makes no request. A release package is
-	// named sfv-ember-<version>.zip (scripts/package.ps1).
-	"",
+	// Stable and Beta releases come from the public repository (EMBER_LIBRARY.md
+	// section 44). The update check refuses a redirect, so this must stay the
+	// repository's exact name. SFV Ember has no Nightly line: that channel has
+	// no repository, and its check offers nothing and makes no request. A
+	// release package is named sfv-ember-<version>.zip (scripts/package.ps1).
+	"Confetti3/SFV-Ember",
 	"",
 	"sfv-ember-",
 	L"sfv-ember-update-",

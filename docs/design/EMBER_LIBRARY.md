@@ -2433,3 +2433,13 @@ The maintainer wants players to see each costume and colour, each V-Skill and V-
 - A launch whose battle state is not a versus or Training battle (a replay's, if it differs) logs `launch: left the jump for state 0x...; looks not read back`, and a loaded code that differs from the launched one only in case gives no warning.
 
 **Owed.** Whether the shop's costume pictures are shown (`kCostumePicture`) is the maintainer's call, once the mapping is proven. `PartCharacter` (800x800) for large face tiles. A V-Skill or V-Trigger description waits for the command list's rows.
+
+## 44. The public repository and the first beta (2026-11-09)
+
+The maintainer: "create the repo and the first beta release". Her choices: a new public source repository, MIT, in-app updates on, `v0.1.0-beta.1` as a GitHub pre-release. GitHub names ignore case, so `SFV-Ember-Netplay` was the private `sfv-ember-netplay`; she chose `Confetti3/SFV-Ember` for the public one. The private repository stays as it was.
+
+- `SfvProduct.cxx`: `stableRepo` is `Confetti3/SFV-Ember`, `nightlyRepo` stays empty (no Nightly line: that channel's check makes no request, as section 22 describes). The update check refuses redirects, so a rename of the public repository needs a release that names the new one first.
+- The installed version is `BUILD_INFO.txt`'s `Release:` line, so a release is packaged with `scripts/package.ps1 -VersionLabel <version>` (`0.1.0-beta.1`): its zip is `sfv-ember-0.1.0-beta.1.zip`. `0.1.0-beta.1` is a Beta: an installed beta follows the Beta channel, which reads `stableRepo` and takes Stable and Beta tags, whatever GitHub's pre-release flag says.
+- `LICENSE` (MIT) is new, staged into the package as `notices\SFV-Ember-LICENSE.txt` and required by the package inventory.
+- `README.md` and `docs/guides/START_HERE.md` describe the beta: different DLC can play, the XInput-only menus, Training-only frame meter, draft translations, and updates from the public repository.
+- The build needs the library: `feat/ember-library` is pushed to SF4-Ember-Netplay (none of its workflows run for that branch), and the README names the library commit a release builds against.

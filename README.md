@@ -1,25 +1,60 @@
 # SFV Ember
 
-Rollback netplay for Street Fighter V, built on SF4 Ember's netcode. Early
-work: the framework and rollback core are built and tested against a mock
-game; nothing runs in the real game yet.
+Rollback netplay for Street Fighter V on Steam, built on
+[Ember](https://github.com/Confetti3/SF4-Ember-Netplay), the netcode of SF4
+Ember. Unofficial and not affiliated with Capcom.
 
-The game never talks to Capcom: the mod blocks every connection but loopback
-and the session's own peers, starting before any game code runs.
+The game never talks to Capcom: the mod blocks every connection except
+loopback and the room's own players, before any game code runs. SFV's own
+online modes stay closed.
 
-- Design and plan: [docs/design/SFV_PORT.md](docs/design/SFV_PORT.md)
-- Built on the Ember library: [docs/design/EMBER_LIBRARY.md](docs/design/EMBER_LIBRARY.md)
+## Play
+
+1. Download the newest `sfv-ember-<version>.zip` from
+   [Releases](https://github.com/Confetti3/SFV-Ember/releases).
+2. Extract it anywhere outside the game's folder.
+3. Keep Steam running and double-click **Launcher.exe**. Press **F10** or
+   **Start** in the game to open SFV Ember.
+
+`START_HERE.md` in the package has the details. Both players need the same SFV
+Ember release.
+
+## What it has
+
+- Private rooms with rollback netplay, spectators and rematches.
+- Players with different DLC can play: each player picks from what their
+  account owns, the opponent's picks always play, and stages one player lacks
+  are left out of the stage choice. Random stage picks from stages both have.
+- Fighter select with costumes and colours, V-Skill and V-Trigger, and
+  previews of each pick and stage.
+- Ember's frame meter in SFV's Training.
+- Replays and the Discord companion from Ember.
+- In-app updates from this repository's releases.
+
+This is a beta. Known limits: Ember's menus need an Xbox-style (XInput)
+controller in the first slot; the frame meter is in Training only; non-English
+translations are drafts.
 
 ## Build
 
-Needs Visual Studio 18 Build Tools (C++ x64), the vcpkg checkout next to
-this folder (`..\vcpkg`) and a checkout of the Ember library (SF4 Ember's
-`feat/ember-library` branch), named with `-EmberRoot` or `SFVE_EMBER_ROOT`.
+Needs Visual Studio 18 Build Tools (C++ x64), a vcpkg checkout next to this
+folder (`..\vcpkg`), and the Ember library: the `feat/ember-library` branch of
+[SF4-Ember-Netplay](https://github.com/Confetti3/SF4-Ember-Netplay). This
+release builds against library commit `ac50ae1e0`.
 
 ```powershell
-.\scripts\build.ps1 -EmberRoot D:\sf4-wt\ember-library
+git clone -b feat/ember-library https://github.com/Confetti3/SF4-Ember-Netplay ember-library
+git -C ember-library checkout ac50ae1e0
+.\scripts\build.ps1 -EmberRoot ..\ember-library
 ```
 
-Builds into `D:\sfv-ember-build` and runs the tests. Outputs:
-`sfv_ember.dll` (the mod), `xinput1_3.dll` (the proxy that loads it) and
-`sfve_tests.exe`.
+`scripts/build.ps1` builds and runs the tests; `-Player` makes a player build,
+which `scripts/package.ps1` packages. Design notes are in
+[docs/design/EMBER_LIBRARY.md](docs/design/EMBER_LIBRARY.md) and
+[docs/design/SFV_PORT.md](docs/design/SFV_PORT.md).
+
+## Licence
+
+MIT (`LICENSE`). Ember's own licence and the third-party notices ship in each
+package's `notices` folder. Street Fighter V is Capcom's; this project ships
+none of its files.

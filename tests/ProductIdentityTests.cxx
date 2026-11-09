@@ -108,17 +108,18 @@ TEST_CASE("SFV Ember's launcher, updater and folders")
 	CHECK(std::string(product.steam.appId) == "310950");
 	CHECK(std::wstring(product.steam.installDir) == L"StreetFighterV");
 	CHECK(std::wstring(product.steam.exeFolder) == L"StreetFighterV\\Binaries\\Win64");
-	// No release repository: the update check succeeds, offers nothing and
-	// asks GitHub nothing.
-	CHECK(std::string(product.stableRepo).empty());
+	// Stable and Beta from the public repository (section 44), named exactly:
+	// the check refuses a redirect.
+	CHECK(std::string(product.stableRepo) == "Confetti3/SFV-Ember");
+	CHECK(std::string(product.releaseZipPrefix) == "sfv-ember-");
+	// No Nightly line: that channel's check succeeds, offers nothing and asks
+	// GitHub nothing.
 	CHECK(std::string(product.nightlyRepo).empty());
-	for (const auto channel : {sf4e::launcher::UpdateChannel::Stable, sf4e::launcher::UpdateChannel::Nightly}) {
-		const auto result = sf4e::launcher::CheckForUpdate(channel);
-		CHECK(result.ok);
-		CHECK(result.error.empty());
-		CHECK_FALSE(result.updateAvailable);
-		CHECK(result.latestVersion.empty());
-	}
+	const auto nightly = sf4e::launcher::CheckForUpdate(sf4e::launcher::UpdateChannel::Nightly);
+	CHECK(nightly.ok);
+	CHECK(nightly.error.empty());
+	CHECK_FALSE(nightly.updateAvailable);
+	CHECK(nightly.latestVersion.empty());
 }
 
 TEST_CASE("SFV Ember's public room classes are SFV's ten league tiers, each with its league icon")

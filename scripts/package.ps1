@@ -125,6 +125,7 @@ Stage (Join-Path $emberRoot 'src\ui\backends\LICENSE.txt') 'notices\Dear-ImGui-M
 Stage (Join-Path $emberRoot 'assets\flags\LICENSE') 'notices\flag-icons-MIT.txt'
 Stage (Join-Path $emberRoot 'LICENSE') 'notices\Ember-LICENSE.txt'
 Stage (Join-Path $emberRoot 'ATTRIBUTION.md') 'notices\Ember-ATTRIBUTION.md'
+Stage (Join-Path $repo 'LICENSE') 'notices\SFV-Ember-LICENSE.txt'
 & python (Join-Path $emberRoot 'scripts\collect-notices.py') --build-dir $BuildDir --output (Join-Path $destination 'notices\THIRD_PARTY_LICENSES.txt') `
 	--product 'SFV Ember' --native cli11 detours fmt ggpo imgui minhook nlohmann-json spdlog xxhash zlib | Out-Host
 if ($LASTEXITCODE) { throw 'Dependency notice collection failed' }
