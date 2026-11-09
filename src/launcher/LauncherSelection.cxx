@@ -7,6 +7,7 @@
 
 #include "common/SelectionAssetPath.hxx"
 #include "ui/SelectionArt.hxx"
+#include "ui/SelectionLabels.hxx"
 
 #include <string>
 
@@ -37,5 +38,9 @@ SelectionImage SelectionArt::Ultra(int, int) { return Missing(); }
 SelectionImage SelectionArt::UltraIcon(int) { return Missing(); }
 SelectionImage SelectionArt::Stage(int) { return Missing(); }
 SelectionImage SelectionArt::RankingEmblem(const std::string&) { return Missing(); }
+
+// GameMenu's Ultra mark asks the game for its badge; the launcher draws no
+// pick, so it has none.
+const char* UltraBadge(int) { return ""; }
 
 } // namespace sf4e::ui
