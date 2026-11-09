@@ -49,6 +49,11 @@ std::optional<int> OptionOf(const std::string& option)
 	return std::atoi(option.c_str() + 1);
 }
 
+bool Contains(const std::vector<int>& ids, int id)
+{
+	return std::find(ids.begin(), ids.end(), id) != ids.end();
+}
+
 // The roster in the game's select-screen order (the catalog's rosterOrder).
 std::vector<int> Roster()
 {
@@ -56,8 +61,9 @@ std::vector<int> Roster()
 	return std::vector<int>(catalog.rosterOrder, catalog.rosterOrder + catalog.fighterCount);
 }
 
-// The roster less the fighters this copy's player cannot play: not
-// installed here, or (with Ember's ownership gate on) not theirs.
+// The roster less the fighters this copy's player cannot play (the
+// catalog's fighterLocked): not installed here, or (with Ember's ownership
+// gate on) not theirs or with no look of theirs.
 std::vector<int> PlayableRoster()
 {
 	std::vector<int> playable;
@@ -112,24 +118,26 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 	// Every fighter, costume and colour of the spec is listed, as SF4's grid
 	// keeps an unowned fighter's card: one this player cannot ready cannot be
 	// chosen, and one the game does not let them pick says so (NOT OWNED,
-	// SF4's words). Left and Right step through only those they can ready.
+	// SF4's words). What can be chosen is the catalog's pickable lists, the
+	// same ones their pick is fitted to, so a costume with no colour they can
+	// ready is never offered. Left and Right step through only those.
 	const auto notOwned = [](bool unowned) { return unowned ? std::string(loc::T("selection.not_owned")) : std::string(); };
 	std::vector<MenuChoice> fighters;
 	for (int id : Roster()) {
 		fighters.push_back({OptionId(id), catalog.fighterName(id), notOwned(FighterNotOwned(id)),
 			editable && !catalog.fighterLocked(id, {})});
 	}
-	const std::vector<int> pickableCostumes = CostumeIds(pick.pick.fighter, true);
+	const std::vector<int> readyCostumes = CostumeIds(pick.pick.fighter, true);
 	std::vector<MenuChoice> costumes;
 	for (int id : CostumeIds(pick.pick.fighter, false)) {
-		const bool pickable = std::find(pickableCostumes.begin(), pickableCostumes.end(), id) != pickableCostumes.end();
 		costumes.push_back({OptionId(id), CostumeName(pick.pick.fighter, id), notOwned(CostumeNotOwned(pick.pick.fighter, id)),
-			editable && pickable});
+			editable && Contains(readyCostumes, id)});
 	}
+	const std::vector<int> readyColours = ColourIds(pick.pick.fighter, pick.pick.costume, true);
 	std::vector<MenuChoice> colours;
 	for (int id : ColourIds(pick.pick.fighter, pick.pick.costume)) {
-		const bool notOwnedColour = ColourNotOwned(pick.pick.fighter, pick.pick.costume, id);
-		colours.push_back({OptionId(id), ColourName(id), notOwned(notOwnedColour), editable && !notOwnedColour});
+		colours.push_back({OptionId(id), ColourName(id), notOwned(ColourNotOwned(pick.pick.fighter, pick.pick.costume, id)),
+			editable && Contains(readyColours, id)});
 	}
 	std::vector<MenuChoice> stages;
 	for (int id : Stages()) stages.push_back({OptionId(id), StageName(id), {}, editable && stageEditable});
@@ -154,8 +162,8 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick)
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const PlayerPick before = pick;
 	// Left and Right go through what this copy's player can ready: the
-	// fighters they can play, the fighter's costumes installed here and
-	// theirs, and that costume's colours of theirs. A costume or colour the
+	// fighters they can play, the fighter's costumes with a look they can
+	// ready, and that costume's colours making one. A costume or colour the
 	// new fighter or costume lacks, or that is not theirs, is fitted as the
 	// pick is stored (SetPick). A choice they cannot ready is refused here
 	// too, whatever the list let through.
@@ -167,9 +175,7 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick)
 		} else if (action.id == kStage) sf4e::ui::Step(pick.stage, Stages(), action.delta);
 	} else if (action.kind == MenuAction::Chosen) {
 		const std::optional<int> option = OptionOf(action.text);
-		const auto pickable = [&option](const std::vector<int>& ids) {
-			return option && std::find(ids.begin(), ids.end(), *option) != ids.end();
-		};
+		const auto pickable = [&option](const std::vector<int>& ids) { return option && Contains(ids, *option); };
 		if (option && action.id == kFighter && ember::ValidFighter(*option) && !catalog.fighterLocked(*option, {})) {
 			pick.pick.fighter = *option;
 		} else if (action.id == kCostume && pickable(CostumeIds(pick.pick.fighter, true))) {

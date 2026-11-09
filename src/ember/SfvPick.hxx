@@ -12,7 +12,9 @@
 // lacks its first colour. It is this copy's player's own pick, so it is also
 // fitted to what they can ready (SfvCatalog's FitOwnPick: a fighter,
 // costume or colour the game does not let them pick, or this copy has not
-// installed, becomes their first one they can). Until anyone picks, it is
+// installed, becomes their first one they can, and a costume is one they can
+// only in a colour they can, so the fitted pick is always one they can
+// ready while any fighter is). Until anyone picks, it is
 // the first fighter they can play in their first costume and colour, on the
 // first stage. Any thread.
 

@@ -151,39 +151,41 @@ unset(index)
 sf4e_embed_brand_mark(sfve_product "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
 target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
 
+# The mod's code the SFV catalog and adapter tests reach without the game.
+set(SFVE_EMBER_TEST_MOD_SOURCES
+    src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/GameArt.cxx src/mod/GameContent.cxx
+    src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
+    src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx
+    src/mod/ModConfig.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvRegionNames.cxx
+    src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx)
 # The runtime under SFV's definitions, with nothing of SF4's roster, stages
 # or custom content: SFV's catalog (SfvCatalog.cxx) answers every pick check.
 add_executable(sfve_ember_tests
     tests/main.cxx
     tests/EmberAdapterTests.cxx
+    tests/SfvCatalogTests.cxx
+    tests/SfvPickRulesTests.cxx
+    tests/GameContentTests.cxx
+    tests/ProductIdentityTests.cxx
+    tests/GameLocatorTests.cxx
+    tests/SelectionArtTests.cxx
+    tests/SfvVerificationTests.cxx
     tests/BattleIdentityTests.cxx
     tests/HudLayoutTests.cxx
     tests/SfvReplaysTests.cxx
     tests/CrashRecordTests.cxx
     tests/LocaleOverlayTests.cxx
     tests/VirtualPadsTests.cxx
-    src/mod/ControlPipe.cxx
-    src/mod/CrashRecord.cxx
-    src/mod/GameArt.cxx
-    src/mod/GameContent.cxx
-    src/mod/GameExit.cxx
-    src/mod/GameHooks.cxx
-    src/mod/GameScene.cxx
-    src/mod/GameThread.cxx
-    src/mod/HudText.cxx
-    src/mod/Log.cxx
-    src/mod/MatchEnd.cxx
-    src/mod/MatchResult.cxx
-    src/mod/ModConfig.cxx
-    src/mod/SfvAdapter.cxx
-    src/mod/SfvFlow.cxx
-    src/mod/SfvRegionNames.cxx
-    src/mod/VersusLaunch.cxx
-    src/mod/VirtualPads.cxx)
+    tests/HookTransactionTests.cxx
+    ${SFVE_EMBER_TEST_MOD_SOURCES})
 target_link_libraries(sfve_ember_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
 # LocaleOverlayTests reads the library's fonts and locales.json from its checkout.
 file(TO_CMAKE_PATH "${SFVE_EMBER_SOURCE_ROOT}" sfve_ember_root_forward)
 target_compile_definitions(sfve_ember_tests PRIVATE SFVE_EMBER_SOURCE_ROOT="${sfve_ember_root_forward}")
+
+# The catalog's life (empty, filled once, sealed) changes the process for good: a program of its own.
+add_executable(sfve_catalog_lifecycle_tests tests/main.cxx tests/CatalogLifecycleTests.cxx ${SFVE_EMBER_TEST_MOD_SOURCES})
+target_link_libraries(sfve_catalog_lifecycle_tests PRIVATE sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
 
 # The in-game mod. Loads inert: it blocks every non-loopback connection first,
 # then does nothing else unless the exe is the exact build it was made for.
@@ -253,6 +255,7 @@ function(sfve_program_resources target description file_name)
 endfunction()
 add_executable(Launcher WIN32
     src/launcher/SfvLaunch.cxx
+    src/launcher/SteamSession.cxx
     src/launcher/LauncherSelection.cxx
     src/launcher/Launcher.exe.manifest)
 target_include_directories(Launcher PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/src/common"
@@ -372,6 +375,7 @@ add_test(NAME sfve_tests COMMAND sfve_tests)
 add_test(NAME ember_runtime COMMAND ember_runtime_x64_test)
 # SFV's game definitions, and the runtime linked under them.
 add_test(NAME sfve_ember_tests COMMAND sfve_ember_tests)
+add_test(NAME sfve_catalog_lifecycle_tests COMMAND sfve_catalog_lifecycle_tests)
 # SFV's room host catalog over the exported pick space.
 add_test(NAME sfve_room_host_tests COMMAND sfve_room_host_tests)
 add_test(NAME guard_probe COMMAND guard_probe WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

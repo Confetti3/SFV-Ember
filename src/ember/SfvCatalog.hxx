@@ -20,11 +20,12 @@
 // that check instead of disagreeing on fighter N or on what a costume is.
 // What this copy's install lacks is per copy: such a fighter is locked and
 // such a costume cannot be readied (FighterLocked, AvailablePick). So is what
-// the game does not let this copy's player pick (GameContent's `owned`)
-// while Ember's ownership gate is on: each player may ready only what their
-// own copy lets them pick, and the opponent's pick plays as picked, whatever
-// this copy owns (LaunchPicks checks the spec alone). EMBER_LIBRARY.md
-// section 23.
+// the game does not let this copy's player pick (GameContent's `owned`, for
+// a costume in a colour together) while Ember's ownership gate is on, and a
+// fighter with no costume and colour left to ready is locked too: each
+// player may ready only what their own copy lets them pick, and the
+// opponent's pick plays as picked, whatever this copy owns (LaunchPicks
+// checks the spec alone). EMBER_LIBRARY.md section 23.
 //
 // What SFV has no use for: Ultras (one choice, 0), editions (a room's
 // edition rule is ignored), personal actions and win quotes (SF4's; the wire
@@ -95,15 +96,20 @@ std::string StageName(std::int64_t stage);
 int StageCount();
 
 // The fighter's costume numbers in the game's order, and a costume's colour
-// numbers; with pickableOnly, only those this copy's player can ready (a
-// costume installed here and, with the gate on, a costume or colour the game
-// lets them pick). Empty for a fighter or costume the catalog does not have.
+// numbers. Availability is of a whole look, a costume in one colour: with
+// pickableOnly, only the looks this copy's player can ready (the costume
+// installed here and, with the gate on, the game letting them pick both the
+// costume and the colour), so a costume is listed only when it has a colour
+// they can ready, and a colour only when it makes such a look. The pick
+// screen offers these, and their own pick is fitted to them (FitOwnPick).
+// Empty for a fighter or costume the catalog does not have.
 std::vector<int> CostumeIds(std::int64_t fighter, bool pickableOnly);
 std::vector<int> ColourIds(std::int64_t fighter, int costume, bool pickableOnly = false);
 // With the gate on, the game does not let this copy's player pick the
-// fighter, the costume, or that colour of the costume (the select screen's
-// NOT OWNED); false for anything the catalog does not have, and always false
-// with the gate off.
+// fighter (or any look of it), any look of the costume (a costume theirs in
+// no colour of theirs is not theirs to wear), or that colour of the costume
+// (the select screen's NOT OWNED); false for anything the catalog does not
+// have, and always false with the gate off.
 bool FighterNotOwned(std::int64_t fighter);
 bool CostumeNotOwned(std::int64_t fighter, int costume);
 bool ColourNotOwned(std::int64_t fighter, int costume, int colour);

@@ -47,9 +47,14 @@ const mod::CostumeContent* CostumeAt(std::int64_t fighter, int costume)
 	return nullptr;
 }
 
+bool Contains(const std::vector<int>& list, int value)
+{
+	return std::find(list.begin(), list.end(), value) != list.end();
+}
+
 bool HasColour(const mod::CostumeContent& costume, int colour)
 {
-	return std::find(costume.colours.begin(), costume.colours.end(), colour) != costume.colours.end();
+	return Contains(costume.colours, colour);
 }
 
 // What this copy's player may pick, by the game's answer (GameContent's
@@ -61,21 +66,46 @@ bool FighterOwned(const mod::FighterContent& fighter)
 	return !s_gate || fighter.owned;
 }
 
+// What a player wears is a look, a costume in one of its colours, and the
+// game's answer is owned only for the look as a whole: the costume and that
+// colour both theirs. A costume of theirs in no colour of theirs gives them
+// nothing to wear, so no rule here asks a costume's or a colour's flag alone.
+bool LookOwned(const mod::CostumeContent& costume, int colour)
+{
+	return !s_gate || (costume.owned && Contains(costume.ownedColours, colour));
+}
+
+// A costume with at least one look the game lets them pick, installed here or not.
 bool CostumeOwned(const mod::CostumeContent& costume)
 {
-	return !s_gate || costume.owned;
+	return std::any_of(costume.colours.begin(), costume.colours.end(),
+		[&costume](int colour) { return LookOwned(costume, colour); });
 }
 
-bool ColourOwned(const mod::CostumeContent& costume, int colour)
+// A look this copy's player can ready: a colour of the costume, the costume
+// installed here, and the look theirs. The one availability rule: the Ready
+// check, the fitting of their own pick and the pick screen's choices are all
+// built from it.
+bool LookReady(const mod::CostumeContent& costume, int colour)
 {
-	return !s_gate ||
-		std::find(costume.ownedColours.begin(), costume.ownedColours.end(), colour) != costume.ownedColours.end();
+	return costume.installed && HasColour(costume, colour) && LookOwned(costume, colour);
 }
 
-// A costume this copy's player can ready: installed here and theirs.
-bool CostumePickable(const mod::CostumeContent& costume)
+// The costume's colours, in the game's order, that make a look they can ready.
+std::vector<int> ReadyColours(const mod::CostumeContent& costume)
 {
-	return costume.installed && CostumeOwned(costume);
+	std::vector<int> ready;
+	for (int colour : costume.colours) {
+		if (LookReady(costume, colour)) ready.push_back(colour);
+	}
+	return ready;
+}
+
+// A costume with at least one look they can ready.
+bool CostumeReady(const mod::CostumeContent& costume)
+{
+	return std::any_of(costume.colours.begin(), costume.colours.end(),
+		[&costume](int colour) { return LookReady(costume, colour); });
 }
 
 // A costume of the fighter the spec has, in one of that costume's colours.
@@ -91,60 +121,47 @@ bool ValidStage(std::int64_t id)
 
 // This copy's player cannot play a fighter whose package this copy lacks,
 // whatever the spec says (GameContent's `installed`), nor, with the gate on,
-// one the game does not let them pick (`owned`). SFV's catalog reads its own
-// table for both; `availability` (SfvGame's FighterAvailability, made from
-// the same table by OwnedAvailability) adds nothing to it.
+// one the game does not let them pick (`owned`), nor one with no look they
+// can ready. SFV's catalog reads its own table for all three;
+// `availability` (SfvGame's FighterAvailability, made from the same table by
+// OwnedAvailability) adds nothing to it.
 bool FighterLocked(int fighter, const sf4e::selection::Availability&)
 {
 	const mod::FighterContent* content = FighterAt(fighter);
-	return !content || !content->installed || !FighterOwned(*content);
+	return !content || !content->installed || !FighterOwned(*content) ||
+		std::none_of(content->costumes.begin(), content->costumes.end(), CostumeReady);
 }
 
-// A valid pick this copy's player can ready: the fighter not locked, the
-// costume installed here and, with the gate on, the costume and the colour
-// theirs. The runtime's Ready check asks this for this copy's own player
+// A valid pick this copy's player can ready: the fighter not locked and the
+// look ready. The runtime's Ready check asks this for this copy's own player
 // only.
 bool AvailablePick(const sf4e::selection::Pick& pick, bool editionSelect, const sf4e::selection::Availability& availability,
 	const sf4e::selection::InstalledContent*)
 {
-	if (!ValidPick(pick, editionSelect) || FighterLocked(pick.fighter, availability)) return false;
-	const mod::CostumeContent* costume = CostumeAt(pick.fighter, pick.costume);
-	return CostumePickable(*costume) && ColourOwned(*costume, pick.color);
+	return ValidPick(pick, editionSelect) && !FighterLocked(pick.fighter, availability) &&
+		LookReady(*CostumeAt(pick.fighter, pick.costume), pick.color);
 }
 
-// This copy's player's own pick, made one they can ready where they can:
-// the first fighter of the roster's order they may play, that fighter's
-// first costume they may ready, that costume's first colour of theirs. A
-// part already theirs stays; one with no such choice stays as it is (and a
-// Ready of it is refused).
+// This copy's player's own pick, made one they can ready: the first fighter
+// of the roster's order they may play, that fighter's first costume with a
+// look they can ready, that costume's first colour making one. A part
+// already theirs stays. A fighter not locked always has such a costume, and
+// such a costume such a colour, so the pick ends ready; only with no fighter
+// they may play does it stay as it is (and a Ready of it is refused).
 void FitOwned(sf4e::selection::Pick& pick)
 {
 	if (FighterLocked(pick.fighter, {})) {
-		for (int id : s_rosterOrder) {
-			if (FighterLocked(id, {})) continue;
-			pick.fighter = id;
-			break;
-		}
+		const auto open = std::find_if(s_rosterOrder.begin(), s_rosterOrder.end(), [](int id) { return !FighterLocked(id, {}); });
+		if (open == s_rosterOrder.end()) return;
+		pick.fighter = *open;
 	}
-	const mod::FighterContent* fighter = FighterAt(pick.fighter);
-	if (!fighter) return;
+	const mod::FighterContent& fighter = *FighterAt(pick.fighter);
 	const mod::CostumeContent* costume = CostumeAt(pick.fighter, pick.costume);
-	if (!costume || !CostumePickable(*costume)) {
-		for (const mod::CostumeContent& candidate : fighter->costumes) {
-			if (!CostumePickable(candidate)) continue;
-			costume = &candidate;
-			pick.costume = candidate.id;
-			break;
-		}
+	if (!costume || !CostumeReady(*costume)) {
+		costume = &*std::find_if(fighter.costumes.begin(), fighter.costumes.end(), CostumeReady);
+		pick.costume = costume->id;
 	}
-	if (!costume) return;
-	if (!HasColour(*costume, pick.color) || !ColourOwned(*costume, pick.color)) {
-		for (int colour : costume->colours) {
-			if (!ColourOwned(*costume, colour)) continue;
-			pick.color = colour;
-			break;
-		}
-	}
+	if (!LookReady(*costume, pick.color)) pick.color = ReadyColours(*costume).front();
 }
 
 // Each part SFV refuses becomes the game's first of its kind, in this order
@@ -311,7 +328,7 @@ std::vector<int> CostumeIds(std::int64_t fighter, bool pickableOnly)
 	std::vector<int> ids;
 	if (const mod::FighterContent* content = FighterAt(fighter)) {
 		for (const mod::CostumeContent& costume : content->costumes) {
-			if (!pickableOnly || CostumePickable(costume)) ids.push_back(costume.id);
+			if (!pickableOnly || CostumeReady(costume)) ids.push_back(costume.id);
 		}
 	}
 	return ids;
@@ -320,18 +337,15 @@ std::vector<int> CostumeIds(std::int64_t fighter, bool pickableOnly)
 std::vector<int> ColourIds(std::int64_t fighter, int costume, bool pickableOnly)
 {
 	const mod::CostumeContent* content = CostumeAt(fighter, costume);
-	std::vector<int> ids;
-	if (!content) return ids;
-	for (int colour : content->colours) {
-		if (!pickableOnly || ColourOwned(*content, colour)) ids.push_back(colour);
-	}
-	return ids;
+	if (!content) return {};
+	return pickableOnly ? ReadyColours(*content) : content->colours;
 }
 
 bool FighterNotOwned(std::int64_t fighter)
 {
 	const mod::FighterContent* content = FighterAt(fighter);
-	return content && !FighterOwned(*content);
+	return content &&
+		(!FighterOwned(*content) || std::none_of(content->costumes.begin(), content->costumes.end(), CostumeOwned));
 }
 
 bool CostumeNotOwned(std::int64_t fighter, int costume)
@@ -343,7 +357,7 @@ bool CostumeNotOwned(std::int64_t fighter, int costume)
 bool ColourNotOwned(std::int64_t fighter, int costume, int colour)
 {
 	const mod::CostumeContent* content = CostumeAt(fighter, costume);
-	return content && HasColour(*content, colour) && !ColourOwned(*content, colour);
+	return content && HasColour(*content, colour) && !LookOwned(*content, colour);
 }
 
 sf4e::selection::Availability OwnedAvailability(std::int64_t fighter)

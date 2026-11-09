@@ -22,7 +22,10 @@
 
 #include "mod/ModConfig.hxx"
 
+#include <stdint.h>
+
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace sfve::mod {
@@ -79,6 +82,20 @@ struct ContentLists {
 // setup asset are loaded. The setup asset is found, or loaded, with
 // StaticLoadObject, so call it at the main menu (never in a battle).
 ContentLists ReadContentLists();
+
+// Whether a battle can load the fighter `code` names: the game's fighter
+// table (`charaAsset`, the game data's CharaAsset, sfv::content::kCharaAsset)
+// has an entry with that code which names a battle setup of its own
+// (sfv::content::kCharaSetupData). Random has none, and neither has ELEVEN:
+// the select screen turns both into another fighter before a battle loads,
+// which Ember's launch does not, and a battle launched with ELV itself hangs
+// at a black screen. This is the one rule for which fighters exist for
+// Ember: ReadContentLists lists only these, and a launch (VersusLaunch) takes
+// only these, so a launch cannot reach a fighter the catalog leaves out.
+// Whether this copy has the fighter's package is a separate, per-copy fact
+// (FighterContent::installed). Reads only the table, no game code; false for
+// a null table.
+bool BattleFighter(uint8_t* charaAsset, std::wstring_view code);
 
 // Development (-sfve_unowned, ModConfig): each mark takes a fighter, a
 // costume of it or a colour of that costume from this copy's player, on top

@@ -1,6 +1,7 @@
 #include "mod/VersusLaunch.hxx"
 
 #include "mod/ControlPipe.hxx"
+#include "mod/GameContent.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/GameScene.hxx"
@@ -274,7 +275,10 @@ bool StagePlayable(uint8_t* singleton, const std::wstring& code)
 
 // Empty when the game has every pick (no ownership involved: the game's
 // content tables and installed packages), else why not. A launch with
-// content the game does not have would load nothing sensible.
+// content the game does not have would load nothing sensible. Which fighters
+// a battle can load is GameContent's rule (BattleFighter), the same one the
+// catalog is built by, so the pipe's launch cannot reach a fighter a room
+// would never offer.
 std::string MissingContent(const MatchPicks& picks)
 {
 	uint8_t* singleton = At<GameDataFn>(sfv::kGameData)();
@@ -285,10 +289,8 @@ std::string MissingContent(const MatchPicks& picks)
 		if (pick.fighter.empty()) continue;
 		const GameString code = View(pick.fighter);
 		const std::string who = "player " + std::to_string(player + 1) + "'s ";
-		if (_wcsicmp(pick.fighter.c_str(), sfv::content::kRandomFighter) == 0 ||
-			!At<FighterInstalledFn>(sfv::kFighterInstalled)(fighters, &code)) {
-			return who + "fighter is not in the game";
-		}
+		if (!BattleFighter(fighters, pick.fighter)) return who + "fighter is not one a battle can load";
+		if (!At<FighterInstalledFn>(sfv::kFighterInstalled)(fighters, &code)) return who + "fighter is not installed";
 		const int costume = pick.costume < 0 ? 0 : pick.costume;
 		if (pick.costume >= 0 && !At<CostumeValidFn>(sfv::kCostumeValid)(nullptr, &code, costume)) {
 			return who + "costume is not in the game";

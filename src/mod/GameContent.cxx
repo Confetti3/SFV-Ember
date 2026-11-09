@@ -9,6 +9,7 @@
 #include <wchar.h>
 
 #include <algorithm>
+#include <string_view>
 
 namespace sfve::mod {
 
@@ -152,16 +153,40 @@ bool Unplayable(const std::string& stage)
 	return stage.empty();
 }
 
-// The fighter table's entry with the spec's id for it; null for none.
-uint8_t* EntryWithId(uint8_t* charaAsset, int32_t uniqueId)
+// The characters of one of the game's FStrings, without its terminator.
+std::wstring_view TextOf(const GameString& s)
+{
+	return s.data && s.count > 0 ? std::wstring_view(s.data, wcsnlen(s.data, (size_t)s.count)) : std::wstring_view();
+}
+
+// The fighter table's first entry `matches` accepts; null for none.
+template <typename Match>
+uint8_t* FindEntry(uint8_t* charaAsset, Match&& matches)
 {
 	uint8_t* entries = Field<uint8_t*>(charaAsset, sfv::content::kCharaEntries);
 	const int count = Field<int32_t>(charaAsset, sfv::content::kCharaCount);
 	for (int i = 0; entries && i < count; i++) {
 		uint8_t* entry = entries + (size_t)sfv::content::kCharaStride * i;
-		if (Field<int32_t>(entry, sfv::content::kCharaUniqueId) == uniqueId) return entry;
+		if (matches(entry)) return entry;
 	}
 	return nullptr;
+}
+
+// The fighter table's entry with the spec's id for it; null for none.
+uint8_t* EntryWithId(uint8_t* charaAsset, int32_t uniqueId)
+{
+	return FindEntry(charaAsset,
+		[uniqueId](uint8_t* entry) { return Field<int32_t>(entry, sfv::content::kCharaUniqueId) == uniqueId; });
+}
+
+// The fighter table's entry with the code, compared as the game compares its
+// FStrings (ignoring case); null for none.
+uint8_t* EntryWithCode(uint8_t* charaAsset, std::wstring_view code)
+{
+	return FindEntry(charaAsset, [code](uint8_t* entry) {
+		const std::wstring_view own = TextOf(Field<GameString>(entry, 0));
+		return own.size() == code.size() && _wcsnicmp(own.data(), code.data(), code.size()) == 0;
+	});
 }
 
 // The fighter's name in the game's language, from its PersonalData (loaded
@@ -200,19 +225,11 @@ FighterContent ReadFighter(uint8_t* spec, uint8_t* entry, const std::vector<std:
 	return fighter;
 }
 
-// Whether a battle can load the fighter: its entry names a battle setup.
-// Random has none either way, and ELEVEN has none: the select screen turns
-// both into another fighter, which Ember's launch does not.
-bool HasBattleSetup(uint8_t* entry)
-{
-	return Field<GameString>(entry, sfv::content::kCharaSetupData).count > 1;
-}
-
 // The spec's selectable fighters in its order (the select screen's), each
-// with its costumes and colours. A fighter the fighter table does not have,
-// or one with no battle setup of its own (Random, ELEVEN), is not one a
-// player can play here. The rule reads only the exe's own fighter table, so
-// every copy keeps the same fighters.
+// with its costumes and colours: those a battle can load (BattleFighter, the
+// rule a launch asks too), so Random and ELEVEN are not among them. The rule
+// reads only the exe's own fighter table, so every copy keeps the same
+// fighters.
 std::vector<FighterContent> ReadFighters(uint8_t* singleton, uint8_t* spec)
 {
 	uint8_t* charaAsset = Field<uint8_t*>(singleton, sfv::content::kCharaAsset);
@@ -221,7 +238,7 @@ std::vector<FighterContent> ReadFighters(uint8_t* singleton, uint8_t* spec)
 	std::vector<FighterContent> fighters;
 	for (int id : ReadNumbers([&](GameArray<int32_t>* out) { return At<FighterIdsFn>(sfv::kSpecFighters)(&spec, out); })) {
 		uint8_t* entry = EntryWithId(charaAsset, id);
-		if (!entry || !HasBattleSetup(entry)) continue;
+		if (!entry || !BattleFighter(charaAsset, TextOf(Field<GameString>(entry, 0)))) continue;
 		fighters.push_back(ReadFighter(spec, entry, installed));
 	}
 	return fighters;
@@ -288,6 +305,14 @@ bool ReadOwnership(ContentLists& lists)
 }
 
 } // namespace
+
+bool BattleFighter(uint8_t* charaAsset, std::wstring_view code)
+{
+	if (!charaAsset || code.empty()) return false;
+	uint8_t* entry = EntryWithCode(charaAsset, code);
+	// A setup named, not just the empty FString's terminator.
+	return entry && Field<GameString>(entry, sfv::content::kCharaSetupData).count > 1;
+}
 
 ContentLists ReadContentLists()
 {
