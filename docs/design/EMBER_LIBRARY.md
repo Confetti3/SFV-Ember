@@ -1997,3 +1997,33 @@ The maintainer chose to reuse SF4 Ember's Discord application for SFV Ember ("Re
 **Evidence** (laptop, 2026-11-08 20:04-20:07): build ctest 5/5 with the companion built; `scripts\package.ps1` made a package holding `ember-discord.exe`, `discord_partner_sdk.dll`, `discord-build.json` and `notices\Discord-SDK.txt`, and its validation (the updater's checks) passed; a Launcher.exe run (`tools/runlink.py`, PASS) logged "ember: started the Discord companion".
 
 **Not seen**: an activity in a Discord client (the laptop's Discord desktop app was not checked or signed in), an invitation sent and accepted (two Discord accounts, as SF4's own `docs/validation/DISCORD_VALIDATION.md` still owes), and Settings > Discord's status line on SFV.
+
+## 34. Sol's review of sections 29-33 (2026-11-08)
+
+The maintainer asked for Sol's reviews through Codex ("chatgpt has useage as well so use that for sol reviews"): `codex exec -m gpt-6.1-sol` at high effort, read-only, with the thermo-nuclear standard as the prompt and each round given the previous round's findings, until it approves. The prompts, findings and verdicts are in `reviews/2026-11-08-sfv-batch` beside the sf4 workspace. Two scopes: the library `f01ebcf29..HEAD` and sfv-ember's commits since 8c1fa05.
+
+**sfv-ember: approved at round 3 (126e44b).**
+- Round 1, fixed in f346b4c:
+  - `runmatch.ps1` took its settings backup after setup, so a setup failure could lose the player's settings. It now takes it first.
+  - The build receipt took an `ember-discord.exe` lying in the tree for this build's. It now asks CMakeCache whether this build made the companion.
+  - The crash record's guard against two faults at once was a data race. It is now one atomic owner thread; a second faulting thread waits for the first record.
+  - `Start-TestBridge` lost a bridge that never became ready. It now stops it.
+  - `rules` overwrote other saved preferences. It now sets only the rounds and seconds.
+- Round 2, fixed in 126e44b:
+  - A fault inside a log write could reach `TryLogLine` on the thread already holding the log's lock. A thread-local flag now makes it return.
+  - `runcrash.py` read a settings file it could not parse as "reports off". Only a file that parses and says so, or no file, counts.
+  - `discord_partner_sdk.dll` and `discord-build.json` were outside the receipt's hashes. The receipt and `package.ps1` now cover all three companion files.
+
+**Library: approved at round 3 (713f0dbda).**
+- Round 1, fixed in 5d244d16e, 3da063256 and d83d1d71f:
+  - A match's game stopped at the database. The ledger match now carries its typed `Game`, and `GET /v1/matches/{id}/link` answers `{over, game}`.
+  - `/v1/assignments` limited the rows before filtering by game, so SFV history could push SF4's matches out. It now takes `?game=` and filters first (default `usf4`). The helper's assignment list and the C++ refresh (`WithGame`) pass the game.
+  - SFV matches still had to carry `edition_policy` on the wire. It is now optional for SFV.
+- Round 2, fixed in 713f0dbda: the match page drew an SF4 match first and patched it into SFV when the bridge answered, so Open could start SF4 Ember for an SFV match while the answer was pending. A match on Ember's bridges is now drawn once, after the answer or the 3 s wait, through one `draw` path. `asSfv` only changes the match model, and Open keeps `#` until then. A late SFV answer redraws the page for SFV Ember. A stub-page check in node covered pending, SFV, USF4, no game, a failed request, a late SFV answer and a finished match.
+
+**Laptop retests after the fixes (2026-11-08):**
+- sfv-ember (126e44b): `runcrash` (game and thread through Launcher.exe, game under the proxy) PASS; `runlink` PASS; the package holds the three companion files; build ctest 5/5.
+- The library at d83d1d71f: x86 `build-current.ps1` (ctest 236) passed. Its one first-run failure, `ranking::a_player_out_of_usf4s_ranking_is_out_of_another_games_until_they_choose_there` (86399 for 86400), passed on the rerun. It predates this batch: the test read the standing a second after the choice on the real clock. 86c246224 lets that one read be `DAY - 1` (the two reads of a choice's own answer stay exact), and `cargo test -p ember-bridge --test ranking` passes 10/10.
+- With the assignments game filter: the bridge and the selftest helper rebuilt from d83d1d71f, then `runmatch.ps1` PASS (an organised SFV match, first to 1, completed on the bridge, 77 checkpoints compared, 0 differing). After it the plain helper was built and deployed again (`sfv-build`, 5/5).
+
+**The page's SFV wording** ("Your tournament match is ready to play in SFV Ember.", the steps, the phone note) is a draft for the maintainer; it goes live only with the site deploy, which waits for her yes.
