@@ -14,6 +14,8 @@
 
 #include "ember/SfvCatalog.hxx"
 
+#include "netplay/PlayerPreferences.hxx"
+
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -64,17 +66,14 @@ void SetWatcherDrain(RollbackSession* session);
 // written, and the preferences' writer stops.
 void StopPreferences();
 
-// The player's saved Play in the background (Settings > Player), read from
-// the library's settings store as the runtime will read it: off when nothing
-// is saved or the settings cannot be read, which the log says. For the mod's
-// start (dllmain), before the game or the runtime runs.
-bool SavedBackgroundPlay();
-
-// The player's saved controller layer (settings.json's controllerLayer, the
-// key SF4 Ember's layer saves): on when nothing is saved or the settings
-// cannot be read, as the layer's default is. For the mod's start (dllmain);
-// a change takes effect at the next start. EMBER_LIBRARY.md section 48.
-bool SavedControllerLayer();
+// A setting the player saved (settings.json, a key of the library's
+// BoolPreferences.hxx, such as backgroundPlay or controllerLayer), read from
+// the library's settings store as the runtime will read it: the field's
+// PlayerPreferences default when nothing is saved or the settings cannot be
+// read, which the log says, naming it `what`. For the mod's start (dllmain),
+// before the game or the runtime runs; a change takes effect at the next
+// start.
+bool SavedBoolPreference(bool sf4e::netplay::PlayerPreferences::* field, const char* what);
 
 // Every member's battle has loaded (the room client's Battle::OnSessionSynced
 // since the battle in play was set): its rollback session may start. Game

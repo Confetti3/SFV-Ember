@@ -522,32 +522,20 @@ void StopPreferences()
 	s_preferences.Stop();
 }
 
-bool SavedBackgroundPlay()
+bool SavedBoolPreference(bool sf4e::netplay::PlayerPreferences::* field, const char* what)
 {
-	const std::optional<nlohmann::json> saved = LoadSavedSettings("background play (taken as off)");
-	if (!saved) return false;
+	const bool fallback = sf4e::netplay::PlayerPreferences{}.*field;
+	const char* taken = fallback ? "on" : "off";
+	const std::optional<nlohmann::json> saved = LoadSavedSettings((std::string(what) + " (taken as " + taken + ")").c_str());
+	if (!saved) return fallback;
 	sf4e::netplay::PlayerPreferences preferences;
 	try {
 		sf4e::netplay::ReadBoolPreferences(*saved, preferences);
 	} catch (const std::exception&) {
-		mod::Log("background play: the saved settings hold a value that is not on or off; taken as off");
-		return false;
+		mod::Log("%s: the saved settings hold a value that is not on or off; taken as %s", what, taken);
+		return fallback;
 	}
-	return preferences.backgroundPlay;
-}
-
-bool SavedControllerLayer()
-{
-	const std::optional<nlohmann::json> saved = LoadSavedSettings("the controller layer (taken as on)");
-	if (!saved) return true;
-	sf4e::netplay::PlayerPreferences preferences;
-	try {
-		sf4e::netplay::ReadBoolPreferences(*saved, preferences);
-	} catch (const std::exception&) {
-		mod::Log("controller layer: the saved settings hold a value that is not on or off; taken as on");
-		return true;
-	}
-	return preferences.controllerLayer;
+	return preferences.*field;
 }
 
 } // namespace sfve::adapter

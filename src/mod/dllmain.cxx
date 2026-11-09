@@ -208,7 +208,8 @@ extern "C" int SfveStart(int beforeGameCode)
 	// Asked for at launch (-sfve_background), or the player's saved Play in
 	// the background (Settings > Player), read once here, after the settings'
 	// move: a change to the setting takes effect at the next start.
-	const bool backgroundPlay = Config().backgroundPlay || sfve::adapter::SavedBackgroundPlay();
+	const bool backgroundPlay = Config().backgroundPlay ||
+		sfve::adapter::SavedBoolPreference(&sf4e::netplay::PlayerPreferences::backgroundPlay, "background play");
 	std::string backgroundPlayState = "off";
 	if (backgroundPlay) backgroundPlayState = HookSetState(InstallBackgroundPlay());
 	RegisterHookSetStatus("backgroundPlay", std::move(backgroundPlayState));
@@ -231,7 +232,7 @@ extern "C" int SfveStart(int beforeGameCode)
 	// build check below says, as the pads' hooks are.
 	RegisterSdlPadStatus();
 	if (padHooksMissing) NoSdlPads("pads: no controller layer without the pad hooks; the game reads the pads itself");
-	else StartSdlPads(sfve::adapter::SavedControllerLayer());
+	else StartSdlPads(sfve::adapter::SavedBoolPreference(&sf4e::netplay::PlayerPreferences::controllerLayer, "the controller layer"));
 	StartControlPipe(Config().instance);
 
 	std::string detail;
