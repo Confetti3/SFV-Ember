@@ -49,6 +49,7 @@
 #include "mod/SyncTestMode.hxx"
 #include "mod/VersusLaunch.hxx"
 #include "mod/VirtualPads.hxx"
+#include "mod/XInputHooks.hxx"
 #include "overlay/Overlay.hxx"
 
 #include "platform/Utf8.hxx"
@@ -219,20 +220,21 @@ extern "C" int SfveStart(int beforeGameCode)
 	if (instance > 0) multiInstanceState = HookSetState(InstallMultiInstance(instance));
 	RegisterHookSetStatus("multiInstance", std::move(multiInstanceState));
 	// Without them every slot is the physical pad's, whatever -sfve_pads asked.
-	const std::optional<HookFailure> padHooksMissing = InstallVirtualPads();
+	const std::optional<HookFailure> padHooksMissing = InstallXInputHooks();
 	RegisterHookSetStatus("padHooks", HookSetState(padHooksMissing));
 	for (int slot = 0; slot < kPadSlots; slot++) {
 		if (Config().virtualPadMask & (1u << slot)) SetVirtualPad(slot, true);
 	}
+	RegisterPadReadStatus();
 	RegisterPadCommands();
-	// The controller layer (EMBER_LIBRARY.md section 48): pads the game
+	// The controller layer (EMBER_LIBRARY.md section 49): pads the game
 	// cannot read through XInput, read by SDL on a thread of its own and
 	// answered through the pad hooks, so it needs them. The player's saved
 	// setting, read once here like Play in the background; whatever the
 	// build check below says, as the pads' hooks are.
-	RegisterSdlPadStatus();
-	if (padHooksMissing) NoSdlPads("pads: no controller layer without the pad hooks; the game reads the pads itself");
-	else StartSdlPads(sfve::adapter::SavedBoolPreference(&sf4e::netplay::PlayerPreferences::controllerLayer, "the controller layer"));
+	const bool controllerLayer = !padHooksMissing &&
+		sfve::adapter::SavedBoolPreference(&sf4e::netplay::PlayerPreferences::controllerLayer, "the controller layer");
+	StartSdlPads(padHooksMissing ? PadLayerStart::NoHooks : controllerLayer ? PadLayerStart::On : PadLayerStart::Off);
 	StartControlPipe(Config().instance);
 
 	std::string detail;

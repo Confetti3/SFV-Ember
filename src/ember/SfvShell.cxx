@@ -478,7 +478,7 @@ bool TakesPad(unsigned long slot, unsigned short buttons)
 	if (!EmberRuntimeRunning()) return false;
 	// A replay's battle plays the recording's inputs, and SFV's own pause
 	// menu has no place over it: every pad is the playback's controls
-	// (SfvReplays reads them from VirtualPads' record).
+	// (SfvReplays reads them from XInputHooks' record).
 	if (PlaybackRunning()) return true;
 	const auto snapshot = facade::GetRuntimeSnapshotShared();
 	const input::Device& device = snapshot->inputDevice;

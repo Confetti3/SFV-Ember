@@ -6,7 +6,7 @@
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
 #include "mod/VersusLaunch.hxx"
-#include "mod/VirtualPads.hxx"
+#include "mod/XInputHooks.hxx"
 
 #include "common/Localization.hxx"
 #include "common/PadKind.hxx"
@@ -379,7 +379,7 @@ public:
 		p.view.session = s_session;
 		if (!p.playing || deviceType != sf4e::input::PadXInput) return;
 		// The pad's own buttons, as the game last read them before the shell
-		// hid them from it (VirtualPads): RB, RT, LB, and View to stop.
+		// hid them from it (XInputHooks): RB, RT, LB, and View to stop.
 		const mod::PadSeen seen = mod::LastPadState(deviceIndex);
 		uint32_t physical = seen.connected ? sf4e::input::xinput::Physical(seen.buttons) : 0;
 		if (seen.leftTrigger) physical |= sf4e::input::xinput::LT;

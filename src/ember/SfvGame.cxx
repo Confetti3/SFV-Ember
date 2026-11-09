@@ -19,7 +19,7 @@
 #include "mod/ModConfig.hxx"
 #include "mod/SfvAdapter.hxx"
 #include "mod/VersusLaunch.hxx"
-#include "mod/VirtualPads.hxx"
+#include "mod/XInputHooks.hxx"
 
 #include "common/InstalledContent.hxx"
 #include "common/Localization.hxx"
@@ -302,7 +302,7 @@ public:
 // whichever side it fights on (NetplayMode).
 constexpr int kGameplaySlot = 0;
 
-// SFV's pads are XInput pads (VirtualPads hooks XInputGetState). The devices
+// SFV's pads are XInput pads (mod/XInputHooks hooks XInputGetState). The devices
 // are the slots as the game last read them; the game's pad 0 is the gameplay
 // device and fights for either side. No SFV module sets pads up or lays out
 // their buttons yet: those answer as a game with no pad layer would.
@@ -352,7 +352,7 @@ public:
 		return s_battle.game != nullptr;
 	}
 	// A pad's menu buttons as the slot was last read, before the overlay
-	// hides it from the game (VirtualPads' record): the D-pad, or the left
+	// hides it from the game (XInputHooks' record): the D-pad, or the left
 	// stick, as the directions (1 up, 2 down, 4 left, 8 right), and the
 	// buttons in Ember's XInput layout. Ember's shell navigates by these.
 	bool ReadController(int deviceType, int deviceIndex, unsigned& held, unsigned* physical) override
