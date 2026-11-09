@@ -1,0 +1,127 @@
+// What a player build takes and refuses (mod/BuildKind.hxx; EMBER_LIBRARY.md
+// section 41): the mod reads only its launcher's options, the control pipe
+// answers ping and status alone. Both kinds are checked here whatever this
+// test program was built as. And where the mod's log goes when its usual
+// file cannot be written (mod/Log.hxx).
+
+#include <doctest/doctest.h>
+
+#include "mod/ControlPipe.hxx"
+#include "mod/Log.hxx"
+#include "mod/ModConfig.hxx"
+
+#include <windows.h>
+
+#include <filesystem>
+#include <string>
+
+using sfve::BuildKind;
+using sfve::mod::Config;
+using sfve::mod::LoadConfigFromCommandLine;
+
+namespace {
+
+// Every test option, and the launcher's own.
+constexpr const wchar_t* kTestLine =
+	L"StreetFighterV.exe -sfve_instance=1 -sfve_ownership=0 -sfve_mash=7 -sfve_mash_pad=1 -sfve_perturb=1 -sfve_lag=60 "
+	L"-sfve_crash_command=1 -sfve_unowned=RYU -sfve_uninstalled=S01 -sfve_pads=0,1 -sfve_background=1 -sfve_port=7100 "
+	L"-sfve_loader=launcher -sfve_mode=netplay -sfve_room=1 -sfve_dump_channel=1a4:1b0:2c8";
+
+} // namespace
+
+TEST_CASE("a player build reads only its launcher's options")
+{
+	LoadConfigFromCommandLine(kTestLine, BuildKind::Player);
+	const sfve::mod::ModConfig& player = Config();
+	CHECK(player.mode == sfve::mod::ModMode::Netplay);
+	CHECK(player.room);
+	CHECK(player.dumpChannel.Present());
+	CHECK(player.instance == 0);
+	CHECK(player.ownershipGate);
+	CHECK(player.mashSeed == 0);
+	CHECK_FALSE(player.mashPad);
+	CHECK_FALSE(player.perturb);
+	CHECK(player.lagMs == 0);
+	CHECK_FALSE(player.crashCommand);
+	CHECK(player.unowned.empty());
+	CHECK(player.uninstalled.empty());
+	CHECK(player.virtualPadMask == 0);
+	CHECK_FALSE(player.backgroundPlay);
+	CHECK(player.port == 7000);
+	const std::string& ignored = sfve::mod::PlayerBuildIgnored();
+	for (const char* option : {"-sfve_instance", "-sfve_ownership", "-sfve_mash", "-sfve_lag", "-sfve_crash_command", "-sfve_pads"}) {
+		CHECK(ignored.find(option) != std::string::npos);
+	}
+	CHECK(ignored.find("-sfve_mode") == std::string::npos);
+	CHECK(ignored.find("-sfve_loader") == std::string::npos);
+
+	LoadConfigFromCommandLine(kTestLine, BuildKind::Development);
+	const sfve::mod::ModConfig& development = Config();
+	CHECK(development.instance == 1);
+	CHECK_FALSE(development.ownershipGate);
+	CHECK(development.mashSeed == 7);
+	CHECK(development.lagMs == 60);
+	CHECK(development.crashCommand);
+	CHECK(development.unowned.size() == 1);
+	CHECK(development.virtualPadMask == 3);
+	CHECK(development.port == 7100);
+	CHECK(sfve::mod::PlayerBuildIgnored().empty());
+	LoadConfigFromCommandLine(L"");
+}
+
+TEST_CASE("a player build's pipe answers ping and status only")
+{
+	bool ran = false;
+	sfve::mod::RegisterCommand("buildkind-test", [&ran](const std::string&) {
+		ran = true;
+		return std::string("ok ran");
+	});
+	CHECK(sfve::mod::Answer("ping", BuildKind::Player) == "ok pong");
+	CHECK(sfve::mod::Answer("status", BuildKind::Player).rfind("ok {", 0) == 0);
+	for (const char* line : {"buildkind-test", "pad 0 a", "peek x", "catalog-export C:\\x.json", "quit", "trust y"}) {
+		CHECK(sfve::mod::Answer(line, BuildKind::Player).rfind("error ", 0) == 0);
+	}
+	CHECK_FALSE(ran);
+	CHECK(sfve::mod::Answer("buildkind-test", BuildKind::Development) == "ok ran");
+	CHECK(ran);
+}
+
+TEST_CASE("a log another program holds is not lost: the process logs to a file of its own")
+{
+	const std::filesystem::path folder = std::filesystem::temp_directory_path() / ("sfve-log-test-" + std::to_string(GetCurrentProcessId()));
+	std::filesystem::remove_all(folder);
+	const std::wstring usual = (folder / "logs" / "sfv_ember.log").wstring();
+	const std::wstring own = (folder / "logs" / "sfv_ember-1.log").wstring();
+	const std::wstring elsewhere = (folder / "local" / "sfv_ember-1.log").wstring();
+
+	// Free: the usual file, created with its folder.
+	sfve::mod::OpenedLog first = sfve::mod::OpenFirstLog({{usual, false}, {own, true}});
+	REQUIRE(first.file != INVALID_HANDLE_VALUE);
+	CHECK(first.path == usual);
+	CHECK(first.error == 0);
+	CloseHandle(first.file);
+
+	// Held by a reader that shares no writing, as a log viewer may.
+	const HANDLE holder = CreateFileW(usual.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+	REQUIRE(holder != INVALID_HANDLE_VALUE);
+	sfve::mod::OpenedLog held = sfve::mod::OpenFirstLog({{usual, false}, {own, true}, {elsewhere, true}});
+	REQUIRE(held.file != INVALID_HANDLE_VALUE);
+	CHECK(held.path == own);
+	CHECK(held.failedPath == usual);
+	CHECK(held.error == ERROR_SHARING_VIOLATION);
+	// A file of its own is never another process's: an existing one is passed by.
+	sfve::mod::OpenedLog next = sfve::mod::OpenFirstLog({{usual, false}, {own, true}, {elsewhere, true}});
+	REQUIRE(next.file != INVALID_HANDLE_VALUE);
+	CHECK(next.path == elsewhere);
+	CHECK(next.failedPath == usual);
+	CloseHandle(next.file);
+	CloseHandle(held.file);
+	CloseHandle(holder);
+
+	// Nowhere to write: no file, and the first failure kept.
+	sfve::mod::OpenedLog none = sfve::mod::OpenFirstLog({{L"", false}, {(folder / "logs").wstring(), true}});
+	CHECK(none.file == INVALID_HANDLE_VALUE);
+	CHECK(none.failedPath == (folder / "logs").wstring());
+	CHECK(none.error != 0);
+	std::filesystem::remove_all(folder);
+}

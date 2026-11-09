@@ -2,6 +2,7 @@
 
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
+#include "mod/SfvLayoutRules.hxx"
 #include "mod/SfvOffsets.hxx"
 
 #include <windows.h>
@@ -79,7 +80,9 @@ bool SfvAdapter::Bind()
 	}
 	gameRegions_ = layout_.Regions().size();
 	CollectPostRestore(manager);
-	AddStateOutsideTheGameSnapshot(ruleUnit, battleData, base);
+	AddStateOutsideTheGameSnapshot(layout_, {reinterpret_cast<uintptr_t>(ruleUnit), reinterpret_cast<uintptr_t>(battleData),
+		reinterpret_cast<uintptr_t>(battleFrame_), reinterpret_cast<uintptr_t>(inputUnit_), base});
+	flow_.AddTo(layout_);
 	battleData_ = battleData;
 	bound_ = true;
 	Log("adapter: bound: %zu game regions + %zu outside the game's snapshot, %zu bytes", gameRegions_,
@@ -183,34 +186,6 @@ void SfvAdapter::CollectPostRestore(uint8_t* manager)
 		postRestore_.push_back({Field<PostRestore>(node, sfv::manager::kNodeFunction).fn,
 			Field<void*>(node, sfv::manager::kNodeContext)});
 	}
-}
-
-// What a battle tick changes that the game's snapshot leaves out: its netcode
-// manages the counters itself, and its own rollback never crossed a round's
-// end, which is where the rest changes. The counters' per-process values (the
-// updates each process ran before binding, a clock reading) are left out of
-// the hash peers compare.
-void SfvAdapter::AddStateOutsideTheGameSnapshot(uint8_t* ruleUnit, uint8_t* battleData, uintptr_t base)
-{
-	layout_.Add("global.rng", reinterpret_cast<uint8_t*>(base + sfv::rng::kGlobal + sfv::rng::kState), 4);
-	namespace bf = sfv::battleframe;
-	namespace iu = sfv::inputunit;
-	const size_t frame = layout_.Add("battleframe", battleFrame_ + bf::kState, bf::kStateSize);
-	for (uint32_t own : {bf::kUpdates, bf::kTickedUpdates, bf::kClock}) layout_.IgnoreForPeers(frame, own - bf::kState);
-	const size_t counters = layout_.Add("inputunit.counters", inputUnit_ + iu::kCounters, iu::kCountersSize);
-	layout_.IgnoreForPeers(counters, iu::kSyncClock - iu::kCounters);
-	layout_.Add("ruleunit.judge", ruleUnit + sfv::ruleunit::kJudgeState, 4);
-	namespace bd = sfv::battledata;
-	layout_.Add("battledata.results", battleData + bd::kResults, bd::kRounds - bd::kResults);
-	for (int i = 0; i < bd::kMaxRounds; i++) {
-		uint8_t* record = battleData + bd::kRounds + i * bd::kRoundStride;
-		const std::string name = "battledata.round" + std::to_string(i + 1);
-		layout_.Add(name, record, bd::kRoundStats);
-		layout_.Add(name + ".stats", record + bd::kRoundStats, bd::kRoundStatsSize, false);
-	}
-	layout_.Add("battledata.judgement", battleData + bd::kDecided, bd::kResults + bd::kResultsSize - bd::kDecided);
-	layout_.Add("battledata.flowflags", battleData + sfv::battledata::kFlowFlags, sfv::battledata::kFlowFlagsSize);
-	flow_.AddTo(layout_);
 }
 
 void SfvAdapter::OnInputRecord(uint8_t* inputUnit)

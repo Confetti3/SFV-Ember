@@ -1,5 +1,6 @@
 #include "ember/EmberHost.hxx"
 
+#include "ember/PlayerName.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
 #include "mod/ControlPipe.hxx"
@@ -203,7 +204,8 @@ bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 	}
 	StartDiscordCompanion(settings.instance);
 	sf4e::NetplayConfig config;
-	const std::string name = "SFV " + std::to_string(settings.instance + 1);
+	// The player's own name, never one every copy shares (PlayerName.hxx).
+	const std::string name = PlayerNameFor(settings.instance, SavedDisplayName());
 	strncpy_s(config.displayName, name.c_str(), _TRUNCATE);
 	config.editionSelect = 0; // SFV has no editions
 	facade::InitFromPayload(config);
@@ -220,7 +222,8 @@ bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 		},
 		&StopAtExit});
 	s_state = HostState::Running;
-	mod::Log("ember: the runtime runs as \"%s\"", name.c_str());
+	mod::Log("ember: the runtime runs as \"%s\"%s", name.empty() ? "Player" : name.c_str(),
+		name.empty() ? " (no saved name)" : TestCopy(settings.instance) ? " (a test copy's own)" : "");
 	return true;
 }
 

@@ -36,6 +36,33 @@ msgstr "Niet in je bezit in deze kopie van Street Fighter V."
 msgid "runtime.invite_other_build"
 msgstr "De host gebruikt een andere SFV Ember-build. Beide spelers hebben dezelfde versie nodig."
 
+msgid "about.controls_detail"
+msgstr "Controller: A selecteert en B gaat terug. Toetsenbord: pijlen, Enter en Escape. Het richtingspad beweegt; Links en Rechts veranderen een waarde. Teruggaan op Home verbergt SFV Ember. F10, of Start op de controller, opent het weer in het hoofdmenu van het spel.\n\nIn een kamer laat A op een tafel je een plek kiezen, maakt A op je eigen plek je gereed en verlaat B je plek of de wachtrij. X opent Vechter, Y Opties en View Chat; druk nogmaals om terug te keren naar de kamer.\n\nTraining is die van Street Fighter V zelf: het pauzemenu stelt de dummy, de opname en de framedata in. Als een tegenstander je terugroept naar je kamer, brengt View op de controller of Enter je meteen terug."
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "Deze combinatie is niet beschikbaar met de kamerregels. Kies een ander personage, een andere outfit, kleur, V-Skill of V-Trigger."
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "Deze personagekeuze is niet beschikbaar. Kies een beschikbare outfit, kleur, V-Skill en V-Trigger."
+
+msgid "room.opponent_changed_fighter"
+msgstr "De tegenstander koos {0}. Controleer je V-Skill en V-Trigger voordat je klaar meldt."
+
+msgid "room.change_fighter.detail"
+msgstr "Kies een personage en daarna zijn V-Skill en V-Trigger. Kom hier terug en kies Klaar melden."
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "Zoals in een echte speelhal blijft de winnaar van een set bij de vechter waarmee hij won. Alleen de V-Skill, V-Trigger, het kostuum en de kleur kunnen veranderen."
+
+msgid "selection.winner_keeps_fighter"
+msgstr "Je hebt de laatste set gewonnen, dus je houdt deze vechter. De V-Skill, V-Trigger, het kostuum en de kleur kun je nog wel veranderen."
+
+msgid "launcher.steam_runs_as_admin"
+msgstr "Street Fighter V kon Steam niet bereiken omdat Steam als administrator draait. Sluit Steam, start het normaal opnieuw en probeer het nogmaals. SFV Ember als administrator starten werkt ook, maar dan worden updates niet geïnstalleerd."
+
+msgid "launcher.game_blocked_by_windows"
+msgstr "Windows heeft een bestand van het spel geblokkeerd voordat SFV Ember kon starten (app-beheer). Slim app-beheer kan geen enkel programma toestaan: staat het aan in Windows-beveiliging, dan werkt SFV Ember pas als het uit staat. Op een pc die een organisatie beheert, vraag je de beheerder om SFV Ember toe te staan."
+
 msgid "launcher.update_failed"
 msgstr "De update kon niet worden geïnstalleerd. Sluit het spel en de vorige launcher en probeer het opnieuw. Zie %TEMP%\\sfv-ember-update.log; bewaarde productkopieën staan in .ember-update-backups."
 

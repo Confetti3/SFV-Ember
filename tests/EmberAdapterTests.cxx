@@ -59,7 +59,8 @@ TEST_CASE("the game offers watching, replays and Training, and answers as no bat
 	CHECK_FALSE(game.caps.padSetup);
 	CHECK_FALSE(game.caps.steamProfile);
 	CHECK_FALSE(game.caps.customContent);
-	// None of the features whose Settings rows only SF4 Ember has (EMBER_LIBRARY.md section 35).
+	// None of the features whose Settings rows only SF4 Ember has (EMBER_LIBRARY.md section 35)
+	// but the shortcut hint, which SFV's overlay draws (section 41).
 	const ember::SettingsFeatures& features = game.caps.settingsFeatures;
 	CHECK_FALSE(features.inputDisplayFixes);
 	CHECK_FALSE(features.padLayer);
@@ -67,7 +68,7 @@ TEST_CASE("the game offers watching, replays and Training, and answers as no bat
 	CHECK_FALSE(features.challengerCall);
 	CHECK_FALSE(features.lobbyMusic);
 	CHECK_FALSE(features.characterPictures);
-	CHECK_FALSE(features.shortcutHint);
+	CHECK(features.shortcutHint);
 	CHECK(game.state.Language().empty());
 	CHECK_FALSE(game.state.MainMenuInFront()); // no scene manager seen
 	CHECK(game.state.ForegroundScreen().empty());

@@ -171,7 +171,7 @@ bool Usable(const Record& record)
 
 } // namespace
 
-SteamSession EnsureSteamSession()
+SteamSession EnsureSteamSession(const RestartApproval& mayRestart)
 {
 	const Record record = ReadRecord();
 	if (Usable(record)) return SteamSession::Ready;
@@ -192,7 +192,12 @@ SteamSession EnsureSteamSession()
 		return SteamSession::Failed;
 	}
 	if (!running.empty()) {
-		spdlog::warn("Steam check: Steam's record names pid {} but Steam runs as {}; restarting Steam", record.pid, running.front());
+		spdlog::warn("Steam check: Steam's record names pid {} but Steam runs as {}; it needs a restart", record.pid, running.front());
+		if (!mayRestart()) {
+			spdlog::warn("Steam check: the player kept Steam running; the game starts on the stale record and may crash in its online code");
+			return SteamSession::Declined;
+		}
+		spdlog::info("Steam check: restarting Steam");
 		if (!Run(exe, L"-shutdown")) return SteamSession::Failed;
 		if (!WaitFor(kExitWaitMs, [] { return SteamProcesses().empty(); })) {
 			spdlog::error("Steam check: Steam did not exit within {} s of -shutdown", kExitWaitMs / 1000);

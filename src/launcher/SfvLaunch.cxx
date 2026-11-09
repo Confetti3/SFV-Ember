@@ -10,16 +10,26 @@
 // helper itself (ember/EmberHost.cxx), so the launcher hands it none. It
 // hands it the crash dump channel (InheritedDumpChannel below).
 //
-// Test copies: --instance N (1-3) starts copy N of a two-copy test, with its
-// own launcher log (launcher.instanceN.log; launcher.N.log are the log's own
-// rotations) and its own single-instance lock, so the
-// one-launcher-per-user rule for instance 0, what players run, is unchanged.
-// --game-option passes one test option to the game: -sfve_* or the window's
-// -windowed, -ResX=N and -ResY=N, nothing else. The game always gets
-// -windowed (StartGame), so a test's own is not repeated.
+// Test copies, in a development build only (mod/BuildKind.hxx): --instance
+// N (1-3) starts copy N of a two-copy test, with its own launcher log
+// (launcher.instanceN.log; launcher.N.log are the log's own rotations) and
+// its own single-instance lock, so the one-launcher-per-user rule for
+// instance 0, what players run, is unchanged. --game-option passes one test
+// option to the game: -sfve_* or the window's -windowed, -ResX=N and
+// -ResY=N, nothing else. The game always gets -windowed (StartGame), so a
+// test's own is not repeated. A player build has neither option.
+//
+// Before anything starts, the exe must be the build the mod was made for
+// (ExecutableBuild): never another build, which would run as plain SFV, and
+// never UE4's starter in the game's top folder, which would start the game
+// without the mod. Then Steam's record is checked (SteamSession), and a
+// restart of a running Steam is the player's to allow.
 
+#include "launcher/ExecutableBuild.hxx"
 #include "launcher/LaunchSteps.hxx"
 #include "SteamSession.hxx"
+#include "mod/BuildKind.hxx"
+#include "mod/SfvOffsets.hxx"
 
 #include "common/CrashDump.hxx"
 #include "common/ProductIdentity.hxx"
@@ -33,6 +43,7 @@
 #include <detours/detours.h>
 #include <spdlog/spdlog.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,6 +59,7 @@ std::vector<std::string> s_gameOptions;
 // parse then refuses a bad value.
 int InstanceFromCommandLine()
 {
+	if (sfve::kBuildKind == sfve::BuildKind::Player) return 0;
 	int count = 0;
 	LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &count);
 	if (!arguments) return 0;
@@ -151,6 +163,7 @@ namespace ember { namespace launch {
 
 void AddOptions(CLI::App& app)
 {
+	if (sfve::kBuildKind == sfve::BuildKind::Player) return;
 	s_instance = InstanceFromCommandLine();
 	app.add_option("--instance", s_instance, "Test only: start copy N (1-3) of a two-copy test, beside the player's copy.")
 		->check(CLI::Range(1, kMaxTestInstance));
@@ -170,9 +183,13 @@ std::wstring InstanceScope()
 	return s_instance == 0 ? std::wstring() : L".instance" + std::to_wstring(s_instance);
 }
 
-void Prepare(sf4e::launcher::PersistedSettings&, bool showConsole)
+void Prepare(sf4e::launcher::PersistedSettings& settings, bool showConsole)
 {
 	if (showConsole) spdlog::info("--console: SFV Ember has no game console; its log is sfv_ember.log");
+	// A first start's name, unique per player as SF4 Ember's launcher gives
+	// it; a name the player has is kept. The mod plays under the saved name
+	// (EmberHost).
+	sf4e::launcher::EnsureUniqueDisplayName(settings);
 }
 
 std::string GameLanguage(const std::wstring&) { return {}; }
@@ -196,12 +213,21 @@ void BeforeStart(const std::wstring&)
 	SetEnvironmentVariableA("SteamGameId", Product().steam.appId);
 }
 
-HANDLE StartGame(const StartRequest& request, DWORD& startError)
+HANDLE StartGame(const StartRequest& request, StartFailure& failure)
 {
+	namespace sfv = sfve::mod::sfv;
+	const std::optional<uint32_t> stamp = sfve::launcher::ExecutableTimestamp(request.executable);
+	if (stamp != sfv::kExeTimestamp) {
+		spdlog::error(L"{} is not {} (PE stamp {:#010x}, wanted {:#010x}); not started", request.executable,
+			sf4e::platform::Utf8ToWide(sfv::VerifiedBuild()->label), stamp.value_or(0), sfv::kExeTimestamp);
+		failure.refusal = StartRefusal::UnsupportedBuild;
+		failure.supportedBuild = sfv::VerifiedBuild()->label;
+		return nullptr;
+	}
 	// The game's Steam start needs Steam's record of its client to be right,
 	// or SFV crashes in its online code (launcher/SteamSession.hxx).
-	if (sfve::launcher::EnsureSteamSession() == sfve::launcher::SteamSession::Failed) {
-		startError = ERROR_SERVICE_NOT_ACTIVE;
+	if (sfve::launcher::EnsureSteamSession(&ConfirmSteamRestart) == sfve::launcher::SteamSession::Failed) {
+		failure.refusal = StartRefusal::SteamNotReady;
 		return nullptr;
 	}
 	// The game's command line: its own path, then the mod's settings
@@ -233,13 +259,13 @@ HANDLE StartGame(const StartRequest& request, DWORD& startError)
 		(dumps.Ready() ? EXTENDED_STARTUPINFO_PRESENT : 0);
 	if (!DetourCreateProcessWithDllsW(request.executable.c_str(), commandLine.data(), nullptr, nullptr, dumps.Ready(), flags,
 			nullptr, request.gameDirectory.c_str(), &startup.StartupInfo, &process, 1, modules, nullptr)) {
-		startError = GetLastError();
-		spdlog::error("Could not start the game with {} (Win32 {})", sf4e::platform::WideToUtf8(Product().gameModule), startError);
+		failure.error = GetLastError();
+		spdlog::error("Could not start the game with {} (Win32 {})", sf4e::platform::WideToUtf8(Product().gameModule), failure.error);
 		return nullptr;
 	}
 	if (ResumeThread(process.hThread) == static_cast<DWORD>(-1)) {
-		startError = GetLastError();
-		spdlog::error("Could not resume the game (Win32 {})", startError);
+		failure.error = GetLastError();
+		spdlog::error("Could not resume the game (Win32 {})", failure.error);
 		TerminateProcess(process.hProcess, 9007);
 		CloseHandle(process.hThread);
 		CloseHandle(process.hProcess);

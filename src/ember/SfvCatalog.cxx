@@ -1,6 +1,8 @@
 #include "ember/SfvCatalog.hxx"
 
+#include "ember/SfvRoomBuild.hxx"
 #include "mod/Log.hxx"
+#include "mod/SfvLayoutRules.hxx"
 
 #include "common/GameCatalog.hxx"
 
@@ -272,7 +274,7 @@ bool FillCatalog(const mod::ContentLists& lists, bool ownershipGate)
 	s_lists = lists;
 	s_space = std::move(space);
 	s_gate = ownershipGate;
-	s_buildId = picks::BuildId(s_space);
+	s_buildId = room::RoomBuildId(picks::BuildId(s_space), mod::LayoutRulesId());
 	for (int id = 0; id < (int)s_lists.fighters.size(); id++) s_rosterOrder.push_back(id);
 	s_catalog.rosterOrder = s_rosterOrder.data();
 	FillRules();

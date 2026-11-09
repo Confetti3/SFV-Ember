@@ -76,8 +76,9 @@ bool FillCatalog(const mod::ContentLists& lists, bool ownershipGate = true);
 void SealCatalog();
 
 // The build a room's members must share (GameState::BuildId): the game's exe
-// build (kMatchBuild), "/", and the ContentFingerprint of the filled
-// lists; kMatchBuild alone before FillCatalog.
+// build (kMatchBuild), "/", the ContentFingerprint of the filled lists, "/",
+// and the rollback's layout id (SfvRoomBuild, mod::LayoutRulesId);
+// kMatchBuild alone before FillCatalog.
 const std::string& MatchBuildId();
 
 // 16 hex digits of a hash of the pick space: the fighters' codes, each

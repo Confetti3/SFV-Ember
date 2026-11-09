@@ -11,6 +11,8 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
 #include "ember/SfvPickSpace.hxx"
+#include "ember/SfvRoomBuild.hxx"
+#include "mod/SfvLayoutRules.hxx"
 
 #include "common/GameCatalog.hxx"
 #include "common/RoomRules.hxx"
@@ -285,7 +287,7 @@ TEST_CASE("the build a room checks carries a fingerprint of the game's content l
 	CHECK(ContentFingerprint(CodesOnly({"RY", "U"}, {"S01"})) != ContentFingerprint(CodesOnly({"R", "YU"}, {"S01"})));
 
 	FillTestCatalog();
-	CHECK(MatchBuildId() == std::string(kMatchBuild) + "/" + fingerprint);
+	CHECK(MatchBuildId() == std::string(kMatchBuild) + "/" + fingerprint + "/layout-" + mod::LayoutRulesId());
 	CHECK(ember::game::Game().state.BuildId() == MatchBuildId());
 	CHECK(MatchBuildId().size() <= 128); // the room's limit for a build
 }
@@ -298,7 +300,7 @@ TEST_CASE("the room host's data is the catalog's pick space, and reads back as t
 	std::string build, error;
 	REQUIRE(picks::FromJson(text, space, build, error));
 	CHECK(build == MatchBuildId());
-	CHECK(picks::BuildId(space) == MatchBuildId());
+	CHECK(room::RoomBuildId(picks::BuildId(space), mod::LayoutRulesId()) == MatchBuildId());
 	CHECK(picks::Fingerprint(space) == ContentFingerprint(TestContent()));
 	CHECK(picks::Problem(space).empty());
 	// The same rules over the data as over the game's lists.

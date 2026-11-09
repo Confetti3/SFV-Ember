@@ -50,6 +50,8 @@
 #include "mod/VirtualPads.hxx"
 #include "overlay/Overlay.hxx"
 
+#include "platform/Utf8.hxx"
+
 #include <windows.h>
 
 #include <algorithm>
@@ -164,11 +166,12 @@ extern "C" int SfveStart(int beforeGameCode)
 	sfve::CoreLogSink() = &LogLine;
 	wchar_t exe[MAX_PATH] = {};
 	GetModuleFileNameW(nullptr, exe, MAX_PATH);
-	Log("sfv-ember %s starting in %ls (before game code), instance %d, mode %s", SFVE_VERSION, exe, Config().instance,
-		ModeName(Config().mode));
+	Log("sfv-ember %s (%s build) starting in %ls (before game code), instance %d, mode %s", SFVE_VERSION,
+		sfve::BuildKindName(sfve::kBuildKind), exe, Config().instance, ModeName(Config().mode));
 	Log("loaded from %ls, started by the %s", claim.module.c_str(), loader);
 	if (claim.error) Log("could not claim the process for this copy (Win32 %lu): a second copy would not be refused", claim.error);
 	if (const char* ignored = IgnoredSetting()) Log("config: %s", ignored);
+	if (!PlayerBuildIgnored().empty()) Log("config: a player build takes no test options; ignored %s", PlayerBuildIgnored().c_str());
 	if (!UnownedProblem().empty()) {
 		Log("config: -sfve_unowned=%s has an entry that is not CODE[:costume[:colour]]; left out", UnownedProblem().c_str());
 	}
@@ -194,6 +197,12 @@ extern "C" int SfveStart(int beforeGameCode)
 	RegisterCrashCommand();
 	StartGuardedLagSim(Config().lagMs);
 	RegisterStatus("guardRefusals", [] { return std::to_string(NetGuardRefusals()); });
+	// Where the log went, and what failed on the way (Log.hxx's OpenLog).
+	RegisterStatus("log", [] {
+		const LogTarget& log = CurrentLogTarget();
+		return "{\"path\":" + JsonString(sf4e::platform::WideToUtf8(log.path)) +
+			",\"failed\":" + JsonString(sf4e::platform::WideToUtf8(log.failedPath)) + ",\"error\":" + std::to_string(log.error) + "}";
+	});
 	RegisterStatus("mode", [] { return JsonString(ModeName(Config().mode)); });
 	// Asked for at launch (-sfve_background), or the player's saved Play in
 	// the background (Settings > Player), read once here, after the settings'

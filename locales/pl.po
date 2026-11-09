@@ -36,6 +36,33 @@ msgstr "Nie posiadasz w tej kopii Street Fighter V."
 msgid "runtime.invite_other_build"
 msgstr "Gospodarz używa innej wersji SFV Ember. Obaj gracze potrzebują tej samej wersji."
 
+msgid "about.controls_detail"
+msgstr "Kontroler: A wybiera, a B wraca. Klawiatura: strzałki, Enter i Escape. Krzyżak przesuwa; Lewo i Prawo zmieniają wartość. Powrót na ekranie głównym ukrywa SFV Ember. F10 lub Start na kontrolerze otwiera go ponownie w menu głównym gry.\n\nW pokoju A na stole pozwala wybrać miejsce, A na swoim miejscu zgłasza gotowość, a B opuszcza miejsce lub kolejkę. X otwiera Zawodnika, Y Opcje, a View Czat; naciśnij ponownie, aby wrócić do pokoju.\n\nTrening jest ten z samego Street Fighter V: jego menu pauzy ustawia manekina, nagrywanie i dane klatek. Gdy przeciwnik wezwie cię z powrotem do pokoju, View na kontrolerze lub Enter przenosi cię tam od razu."
+
+msgid "runtime.selection_combination_unavailable"
+msgstr "Ta kombinacja jest niedostępna przy zasadach pokoju. Wybierz inną postać, strój, kolor, V-Skill lub V-Trigger."
+
+msgid "runtime.ready.selection_unavailable"
+msgstr "Ten wybór postaci jest niedostępny. Wybierz dostępny strój, kolor, V-Skill i V-Trigger."
+
+msgid "room.opponent_changed_fighter"
+msgstr "Przeciwnik zmienił postać na {0}. Sprawdź swój V-Skill i V-Trigger, zanim zgłosisz gotowość."
+
+msgid "room.change_fighter.detail"
+msgstr "Wybierz postać, a potem jej V-Skill i V-Trigger. Wróć tutaj i zgłoś gotowość."
+
+msgid "rules.winner_keeps_fighter.detail"
+msgstr "Jak w prawdziwym salonie gier zwycięzca seta zostaje przy postaci, którą wygrał. Zmienić można tylko V-Skill, V-Trigger, kostium i kolor."
+
+msgid "selection.winner_keeps_fighter"
+msgstr "Wygrana w ostatnim secie: zostajesz przy tej postaci. Nadal możesz zmienić V-Skill, V-Trigger, kostium i kolor."
+
+msgid "launcher.steam_runs_as_admin"
+msgstr "Gra Street Fighter V nie mogła połączyć się ze Steamem, ponieważ Steam działa jako administrator. Zamknij Steam, uruchom go normalnie i spróbuj ponownie. Uruchomienie SFV Ember jako administrator też działa, ale wtedy aktualizacje się nie instalują."
+
+msgid "launcher.game_blocked_by_windows"
+msgstr "Windows zablokował jeden z plików gry, zanim SFV Ember mógł się uruchomić (kontrola aplikacji). Inteligentna kontrola aplikacji nie pozwala zezwolić na jeden program: jeśli jest włączona w Zabezpieczeniach Windows, SFV Ember zadziała dopiero po jej wyłączeniu. Na komputerze zarządzanym przez organizację poproś administratora o zezwolenie dla SFV Ember."
+
 msgid "launcher.update_failed"
 msgstr "Nie udało się zainstalować aktualizacji. Zamknij grę i poprzedni launcher, a potem spróbuj ponownie. Szczegóły: %TEMP%\\sfv-ember-update.log; kopie zapasowe produktu są w .ember-update-backups."
 

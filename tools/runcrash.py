@@ -95,7 +95,7 @@ def main(argv: list[str]) -> int:
         return lib.verdict("settings.json does not show Send problem reports off; a test crash could be sent. Turn it off first.")
     via_launcher = lib.VIA == "launcher"
     launcher_log = lib.LOG_DIR / "launcher.log"
-    (lib.LOG_DIR / CRASH_LOG).unlink(missing_ok=True)
+    lib.set_aside(lib.LOG_DIR / CRASH_LOG)  # a player's crash record is kept
     ours_before = files(lib.LOG_DIR, f"{DUMP_PREFIX}*.dmp")
     game_before = files(GAME_DUMPS, "Dump*.dmp")
     failures: list[str] = []

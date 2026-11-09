@@ -4,8 +4,10 @@
 #
 #   scripts\package.ps1 [-BuildDir D:\sfv-ember-build] [-OutDir D:\sfv-ember-dist] [-VersionLabel <label>]
 #
-# The build must be scripts\build.ps1's, with its tests passed, and the helper
-# scripts\build-helper.ps1's from the same Ember library checkout. Before
+# The build must be scripts\build.ps1's player build (-Player), with its tests
+# passed, and the helper scripts\build-helper.ps1's from the same Ember
+# library checkout. A development build, whose launcher and mod take the test
+# switches (src/mod/BuildKind.hxx), is refused. Before
 # staging anything this checks, with the Ember library's own provenance
 # functions (its scripts\BuildProvenance.ps1 and PackageFiles.ps1, which SF4
 # Ember's packaging uses):
@@ -51,6 +53,10 @@ $cachedEmber = (Select-String -LiteralPath (Join-Path $BuildDir 'CMakeCache.txt'
 if ([IO.Path]::GetFullPath($cachedEmber) -ne [IO.Path]::GetFullPath($emberRoot)) { throw "The build tree was configured with $cachedEmber, its receipt names $emberRoot" }
 if ($receipt.sourceRoot -ne $repo -or $receipt.buildRoot -ne $BuildDir) { throw 'Build receipt path mismatch' }
 if (!$receipt.testsPassed) { throw 'The build has no passing tests; build with scripts\build.ps1 without -SkipTests' }
+# A player build, by its receipt and by the configured tree itself.
+if ($receipt.buildKind -ne 'player' -or !(Select-String -LiteralPath (Join-Path $BuildDir 'CMakeCache.txt') -Pattern '^SFVE_DEV_BUILD:BOOL=OFF$' -Quiet)) {
+	throw 'This is a development build, whose test switches no package may carry: build with scripts\build.ps1 -Player, into a -BuildDir of its own'
+}
 if ($receipt.sourceRevision -ne (& git -C $repo rev-parse HEAD)) { throw 'This checkout moved since the build; rebuild' }
 if ($receipt.emberRevision -ne (& git -C $emberRoot rev-parse HEAD)) { throw 'The library checkout moved since the build; rebuild' }
 if ($receipt.sourceFingerprint -ne (Get-SourceFingerprint $repo)) { throw 'SFV Ember source changed since the build; rebuild with scripts\build.ps1' }

@@ -6,6 +6,7 @@
 #include <doctest/doctest.h>
 
 #include "ember/SfvPickSpace.hxx"
+#include "ember/SfvRoomBuild.hxx"
 
 #include "RoomHost.hxx"
 #include "common/GameCatalog.hxx"
@@ -45,7 +46,9 @@ TEST_CASE("SFV's room host takes only the room of the build its pick space makes
 	std::string build;
 	const sfve::picks::PickSpace space = Embedded(build);
 	CHECK(sfve::picks::Problem(space).empty());
-	CHECK(build == sfve::picks::BuildId(space));
+	// The pick build, then the layout id the export carries (SfvRoomBuild).
+	CHECK(!sfve::room::LayoutIdOf(build).empty());
+	CHECK(build == sfve::room::RoomBuildId(sfve::picks::BuildId(space), sfve::room::LayoutIdOf(build)));
 	CHECK(build.rfind(std::string(sfve::picks::kMatchBuild) + "/", 0) == 0);
 
 	// Refused before anything is filled.

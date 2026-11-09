@@ -7,6 +7,16 @@
 # -EmberRoot (or SFVE_EMBER_ROOT) names the Ember library checkout SFV Ember
 # builds on (docs/design/EMBER_LIBRARY.md section 4); its overlay triplet gives
 # spdlog the wide file names the library's log sinks open.
+#
+# Two kinds of build (src/mod/BuildKind.hxx; EMBER_LIBRARY.md section 41):
+#   - by default a development build, what the test tools run: Launcher.exe's
+#     --instance and --game-option, the mod's -sfve_* test options and the
+#     control pipe's commands all work;
+#   - with -Player a player build, which takes none of them: the only kind
+#     scripts\package.ps1 packages. Give it a -BuildDir of its own (for
+#     example D:\sfv-ember-build-player), so the tools' tree stays a
+#     development one.
+# The receipt records which kind it is (buildKind).
 
 param(
 	[string]$BuildDir = 'D:\sfv-ember-build',
@@ -18,6 +28,8 @@ param(
 	# with it the build makes the Discord companion, ember-discord.exe.
 	[string]$DiscordSdkArchive = $env:SF4E_DISCORD_SDK_ARCHIVE,
 	[ValidateSet('RelWithDebInfo', 'Debug', 'Release')][string]$Config = 'RelWithDebInfo',
+	# A player build, for a package: no test switches.
+	[switch]$Player,
 	[switch]$SkipTests
 )
 $ErrorActionPreference = 'Stop'
@@ -66,7 +78,8 @@ $triplet = 'x64-windows-static-md-wchar-filenames'
 	"-DVCPKG_TARGET_TRIPLET=$triplet" "-DVCPKG_HOST_TRIPLET=$triplet" `
 	"-DVCPKG_OVERLAY_PORTS=$repo\vcpkg-overlays\ports" "-DVCPKG_OVERLAY_TRIPLETS=$EmberRoot\vcpkg-overlays\triplets" `
 	"-DVCPKG_INSTALL_OPTIONS=$vcpkgOptions" "-DVCPKG_INSTALLED_DIR=$BuildDir\vcpkg_installed" `
-	"-DSFVE_EMBER_SOURCE_ROOT=$EmberRoot" "-DSFVE_DISCORD_SDK_ARCHIVE=$DiscordSdkArchive"
+	"-DSFVE_EMBER_SOURCE_ROOT=$EmberRoot" "-DSFVE_DISCORD_SDK_ARCHIVE=$DiscordSdkArchive" `
+	"-DSFVE_DEV_BUILD=$(if ($Player) { 'OFF' } else { 'ON' })"
 if ($LASTEXITCODE) { throw "configure failed ($LASTEXITCODE)" }
 & $cmake --build $BuildDir
 if ($LASTEXITCODE) { throw "build failed ($LASTEXITCODE)" }
@@ -106,6 +119,8 @@ $receipt = [ordered]@{
 	emberFingerprint = Get-SourceFingerprint $EmberRoot
 	buildRoot = $BuildDir
 	config = $Config
+	# The configured build's own answer, as discordCompanion below.
+	buildKind = if (Select-String -LiteralPath (Join-Path $BuildDir 'CMakeCache.txt') -Pattern '^SFVE_DEV_BUILD:BOOL=OFF$' -Quiet) { 'player' } else { 'development' }
 	testsPassed = !$SkipTests
 	tests = @(if (!$SkipTests) { & $ctest --test-dir $BuildDir -N | Select-String '^\s*Test\s+#\d+: (\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } })
 	discordCompanion = $discordCompanion

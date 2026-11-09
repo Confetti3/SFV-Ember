@@ -475,7 +475,7 @@ def launch(index: int, mode: str = "probe", extra: list[str] | None = None, wind
     until the guard answers (GUARD_TIMEOUT_S)."""
     registry_path()  # the run is mandatory: refuse before anything starts
     options = _game_options(index, mode, extra or [], windowed)
-    log_path(index).unlink(missing_ok=True)  # each run starts its own log
+    set_aside(log_path(index))  # each run starts its own log; the last one is kept
     if VIA == "launcher":
         missing = [name for name in LAUNCHER_FILES if not (PACKAGE_DIR / name).exists()]
         if missing:
@@ -541,19 +541,15 @@ def launcher_log_path(index: int) -> Path:
 
 
 class _LogCursor:
-    """The lines a log gains after the cursor was made. The log is deleted
+    """The lines a log gains after the cursor was made. The log is set aside
     first, as launch does for the game's, so the launcher starts a new file
-    and every line of it is read from the top. A log that cannot be deleted
+    and every line of it is read from the top. A log that cannot be moved
     (it is open) is read from its current end, and a size below the position
     (the launcher's rotate_on_open replaced it) starts over at the top."""
 
     def __init__(self, path: Path):
         self.path = path
-        try:
-            path.unlink(missing_ok=True)
-            self.offset = 0
-        except OSError:
-            self.offset = self._size()
+        self.offset = 0 if set_aside(path) else self._size()
 
     def _size(self) -> int:
         try:
@@ -734,6 +730,32 @@ def fight(index: int) -> None:
 def log_path(index: int) -> Path:
     name = "sfv_ember.log" if index == 0 else f"sfv_ember.{index}.log"
     return LOG_DIR / name
+
+
+SET_ASIDE_KEPT = 5
+
+
+def set_aside(path: Path) -> bool:
+    """Moves a log a test run is about to start afresh to
+    <name>.before-test-<time>.log beside it, so a run never loses a player's
+    earlier log (the game's or the launcher's), and keeps the newest
+    SET_ASIDE_KEPT of those. True when the path is free for the run: it was
+    moved or never there; False when it could not be moved (it is open)."""
+    if not path.exists():
+        return True
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    target = path.with_name(f"{path.stem}.before-test-{stamp}{path.suffix}")
+    try:
+        path.replace(target)
+    except OSError:
+        return False
+    earlier = sorted(path.parent.glob(f"{path.stem}.before-test-*{path.suffix}"))
+    for old in earlier[:-SET_ASIDE_KEPT]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    return True
 
 
 def tail(index: int, lines: int = 40) -> list[str]:
