@@ -147,6 +147,9 @@ private:
 	// its playback ended.
 	std::shared_ptr<const replay::Replay> replay_;
 	std::string replayEnd_;
+	// The last checkpoint whose regions a playback logged (-sfve_replay_regions).
+	int regionsLogged_ = -1;
+	void LogPlaybackRegions();
 };
 
 } // namespace sfve::mod

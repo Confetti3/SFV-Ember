@@ -258,6 +258,7 @@ bool NetplayMode::WatchFrame(SfvAdapter& adapter)
 	}
 	last_ = session_->Step(0);
 	const bool advanced = last_ == RollbackSession::StepResult::Advanced;
+	if (advanced && replay_ && config_.replayRegionsFrom > 0) LogPlaybackRegions();
 	if (advanced && replay_) {
 		const int played = session_->Frame() - 1;
 		adapter::NotePlaybackFrame(played >= 0 && replay_->frames[(size_t)played].Fight(), room_.GamesInPlace());
@@ -356,8 +357,23 @@ void NetplayMode::Leave()
 	if (!leaving_ && !retry) Log("netplay: could not leave the battle yet (no scene manager); asking again each frame");
 }
 
+void NetplayMode::LogPlaybackRegions()
+{
+	const int checkpoint = session_->LatestCheckpoint(session_->Frame());
+	if (checkpoint < config_.replayRegionsFrom || checkpoint <= regionsLogged_) return;
+	regionsLogged_ = checkpoint;
+	std::vector<RegionHash> hashes;
+	if (!session_->RegionHashesAt(checkpoint, &hashes)) return;
+	const std::vector<StateRegion>& regions = session_->Layout().Regions();
+	for (const RegionHash& h : hashes) {
+		Log("desync: checkpoint %d region %s, %llu bytes, hash %016llx", checkpoint, regions[h.region].name.c_str(),
+			(unsigned long long)h.size, (unsigned long long)h.hash);
+	}
+}
+
 bool NetplayMode::StartSession(SfvAdapter& adapter)
 {
+	regionsLogged_ = -1;
 	RollbackSession::Config c;
 	uint32_t seed = kSessionSeed;
 	int delay = config_.delay;

@@ -102,6 +102,11 @@ struct ModConfig {
 	uint32_t scheduleSeed = 0;
 	int lagMs = 0;
 	int hashEvery = 0; // 0: checkpoints only
+	// A replay's playback logs each checkpoint's region hashes from this frame
+	// on, in the desync dump's form, so two PCs' playbacks (or a playback and
+	// a match's log) can be compared region by region (tools/compare.py).
+	// 0: none.
+	int replayRegionsFrom = 0;
 	bool room = false; // netplay: Ember's runtime runs, and its rooms' matches give the endpoints, seed and delay
 	// Offline start-up dialogs kept from showing: 0 none, 1 the download
 	// failures, 2 those and the offline-mode notice.

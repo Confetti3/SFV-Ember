@@ -200,6 +200,7 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.scheduleSeed = (uint32_t)options.Number(L"sfve_schedule", 0);
 	c.lagMs = (int)options.Number(L"sfve_lag", 0);
 	c.hashEvery = (int)options.Number(L"sfve_hash_every", 0);
+	c.replayRegionsFrom = (int)options.Number(L"sfve_replay_regions", 0);
 	c.room = options.Number(L"sfve_room", 0) != 0;
 	c.offlineDialogs = (int)options.Number(L"sfve_dialogs", 2);
 	c.ownershipGate = options.Number(L"sfve_ownership", 1) != 0;
