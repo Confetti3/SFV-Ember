@@ -223,6 +223,11 @@ bool SfvAdapter::Fighting() const
 	return flow_.Announced() == sfv::flow::kFight;
 }
 
+bool SfvAdapter::MatchDecided() const
+{
+	return battleData_ && Field<int32_t>(battleData_, sfv::battledata::kDecided) != 0;
+}
+
 void SfvAdapter::RunUpdate()
 {
 	ticksThisUpdate_ = 0;
