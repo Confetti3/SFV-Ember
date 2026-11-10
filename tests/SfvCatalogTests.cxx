@@ -499,3 +499,16 @@ TEST_CASE("the rules a room host offers for SFV are the ones VersusLaunch plays,
 	CHECK_FALSE(mod::RoundClockFrames(9999).has_value()); // the pipe's own times stay 30-546 s
 	CHECK(ember::PlayableRoundTime(sf4e::room::PracticeRoundTime) == ember::Usable(ember::Catalog()));
 }
+
+TEST_CASE("a launch sets the game mode the game's own ownership check sets, for every target")
+{
+	// The check (rva 0x5E2D10) sets mode 0 and sub-mode 16 for both versus
+	// targets and 8 for training; a room's launch skips the check and must
+	// still match it on both copies (Z39 reads the sub-mode at its first tick).
+	using mod::LaunchTarget;
+	CHECK(mod::CheckGameMode(LaunchTarget::Versus).mode == 0);
+	CHECK(mod::CheckGameMode(LaunchTarget::Versus).subMode == 16);
+	CHECK(mod::CheckGameMode(LaunchTarget::VersusCpu).subMode == 16);
+	CHECK(mod::CheckGameMode(LaunchTarget::Training).mode == 0);
+	CHECK(mod::CheckGameMode(LaunchTarget::Training).subMode == 8);
+}

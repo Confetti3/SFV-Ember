@@ -36,6 +36,8 @@ using GetPlayerSetupFn = void (*)(uint8_t* playerRef, uint8_t* setup);
 using CopyFn = uint8_t* (*)(uint8_t* out, const uint8_t* from);
 using AssignStringFn = void (*)(uint8_t* to, const GameString* from, int extra);
 using FreeFn = void (*)(void* block);
+using GameInstanceFn = uint8_t* (*)();
+using SetGameModeFn = void (*)(uint8_t* gameInstance, int mode, int subMode);
 
 // A launch that has not reached the jump's second step by then has failed
 // (the jump is normally there within a few frames).
@@ -298,6 +300,18 @@ void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 	});
 }
 
+// The game mode the game's ownership check would set (CheckGameMode), for a
+// jump that does not run the check: the step after this one would have set
+// it there (sfv::kSetGameMode), so every copy starts the battle in the same
+// sub-mode whatever menu it came from.
+void SetCheckGameMode(LaunchTarget target)
+{
+	uint8_t* instance = At<GameInstanceFn>(sfv::kGameInstance)();
+	if (!instance) return Log("launch: no game instance; the game mode stays as the menus left it");
+	const GameMode mode = CheckGameMode(target);
+	At<SetGameModeFn>(sfv::kSetGameMode)(instance, mode.mode, mode.subMode);
+}
+
 void* h_JumpSecondStep(uint8_t* jumpState)
 {
 	void* next = o_jumpSecondStep(jumpState);
@@ -322,7 +336,9 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	s_replayLoading = picks.replay;
 	s_linkedPractice = picks.linked && picks.practice;
 	uint8_t* message = Field<uint8_t*>(jumpState, jump::kJumpStateMessage);
-	WatchLoading(std::move(written), std::move(onFailed), message && Field<uint8_t>(message, jump::kMessageCheckOwnership) != 0);
+	const bool gameCheck = message && Field<uint8_t>(message, jump::kMessageCheckOwnership) != 0;
+	if (!gameCheck) SetCheckGameMode(picks.target);
+	WatchLoading(std::move(written), std::move(onFailed), gameCheck);
 	return next;
 }
 
@@ -521,6 +537,16 @@ void FillCharPkg(uint8_t* chara, const FighterPick& pick)
 	if (pick.colour >= 0) Field<int32_t>(chara, jump::kCharColour) = pick.colour;
 	Field<int32_t>(chara, jump::kCharVSkill) = pick.vSkill;
 	Field<int32_t>(chara, jump::kCharVTrigger) = pick.vTrigger;
+}
+
+GameMode CheckGameMode(LaunchTarget target)
+{
+	switch (target) {
+	case LaunchTarget::VersusCpu:
+	case LaunchTarget::Versus: return {jump::kCheckGameMode, jump::kCheckSubModeVersus};
+	case LaunchTarget::Training: return {jump::kCheckGameMode, jump::kCheckSubModeTraining};
+	}
+	return {jump::kCheckGameMode, jump::kCheckSubModeOther};
 }
 
 bool LookMismatch(const PlayerLook& written, const PlayerLook& loaded)
