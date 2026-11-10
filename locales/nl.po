@@ -136,7 +136,10 @@ msgid "update.notice.reopens"
 msgstr "SFV Ember opent weer zodra dit klaar is."
 
 msgid "reports.payload"
-msgstr "Rapporten gaan naar embernetplay.link. Elk bevat de SFV Ember-versie en build, de Windows-versie, de crashgegevens, het einde van sfv_ember.log, launcher.log en sf4-net.log (zonder privégegevens) en de kleine dump als de crash die heeft geschreven."
+msgstr "Rapporten gaan naar embernetplay.link. Elk bevat de SFV Ember-versie en build, de Windows-versie, de crashgegevens, het einde van sfv_ember.log, launcher.log en sf4-net.log (zonder privégegevens) en de kleine dump als de crash die heeft geschreven. Een desync-rapport bevat het controlepunt van de kamerwedstrijd, de toestandshashes, het nummer van de kamer, de keuzes van beide spelers en het einde van sfv_ember.log (zonder privégegevens)."
+
+msgid "reports.setting_detail"
+msgstr "Aan: na een crash verstuurt de launcher het rapport zonder te vragen, met de kleine dump als de crash die heeft geschreven; na een desync in een kamerwedstrijd verstuurt hij het rapport daarvan. Hoogstens {0} per dag. Uit: na een crash vraagt hij het eerst, en desync-rapporten verstuurt hij niet."
 
 msgid "reports.history_unreadable_detail"
 msgstr "sent-reports.json in %APPDATA%\\SFVEmber is onleesbaar, dus er gaat geen rapport zonder vragen weg. Verwijder het bestand voor een nieuw overzicht."

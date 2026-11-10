@@ -136,7 +136,10 @@ msgid "update.notice.reopens"
 msgstr "完成后 SFV Ember 会再次打开。"
 
 msgid "reports.payload"
-msgstr "报告会发送到 embernetplay.link。每份报告包含 SFV Ember 版本和构建号、Windows 版本、崩溃信息，以及已去除隐私信息的 sfv_ember.log、launcher.log 和 sf4-net.log 的末尾部分，有小型转储时也会包含它。"
+msgstr "报告会发送到 embernetplay.link。每份报告包含 SFV Ember 版本和构建号、Windows 版本、崩溃信息，以及已去除隐私信息的 sfv_ember.log、launcher.log 和 sf4-net.log 的末尾部分，有小型转储时也会包含它。不同步报告包含房间对战的检查点及其状态哈希、房间编号、双方的选择，以及已去除隐私信息的 sfv_ember.log 末尾部分。"
+
+msgid "reports.setting_detail"
+msgstr "开：崩溃后，启动器不经询问直接发送报告，有小型转储时一并发送；房间对战出现不同步时，也会发送不同步报告。每天最多 {0} 份。关：崩溃后先询问，不发送不同步报告。"
 
 msgid "reports.history_unreadable_detail"
 msgstr "无法读取 %APPDATA%\\SFVEmber 中的 sent-reports.json，因此不会未经询问发送任何报告。删除该文件可开始新的记录。"

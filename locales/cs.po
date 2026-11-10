@@ -136,7 +136,10 @@ msgid "update.notice.reopens"
 msgstr "Po dokončení se SFV Ember znovu otevře."
 
 msgid "reports.payload"
-msgstr "Hlášení jdou na embernetplay.link. Každé obsahuje verzi a sestavení SFV Ember, verzi Windows, údaje o pádu, upravený konec souborů sfv_ember.log, launcher.log a sf4-net.log a malý výpis, pokud ho pád zapsal."
+msgstr "Hlášení jdou na embernetplay.link. Každé obsahuje verzi a sestavení SFV Ember, verzi Windows, údaje o pádu, upravený konec souborů sfv_ember.log, launcher.log a sf4-net.log a malý výpis, pokud ho pád zapsal. Hlášení o desynchronizaci obsahuje kontrolní bod zápasu, jeho haše stavu, číslo místnosti, volby obou hráčů a upravený konec sfv_ember.log."
+
+msgid "reports.setting_detail"
+msgstr "ZAP: po pádu spouštěč odešle hlášení bez ptaní, s malým výpisem, pokud ho pád zapsal; po desynchronizaci v zápase místnosti odešle hlášení o ní. Nejvýše {0} denně. VYP: po pádu se nejdřív zeptá a hlášení o desynchronizaci neodešle."
 
 msgid "reports.history_unreadable_detail"
 msgstr "Soubor sent-reports.json ve složce %APPDATA%\\SFVEmber nelze přečíst, proto se žádné hlášení neodešle bez ptaní. Smažte soubor a začne se nový záznam."

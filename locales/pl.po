@@ -136,7 +136,10 @@ msgid "update.notice.reopens"
 msgstr "Po zakończeniu SFV Ember otworzy się ponownie."
 
 msgid "reports.payload"
-msgstr "Zgłoszenia trafiają na embernetplay.link. Każde zawiera wersję i build SFV Ember, wersję Windows, dane o awarii, zanonimizowaną końcówkę plików sfv_ember.log, launcher.log i sf4-net.log oraz mały zrzut, jeśli awaria go zapisała."
+msgstr "Zgłoszenia trafiają na embernetplay.link. Każde zawiera wersję i build SFV Ember, wersję Windows, dane o awarii, zanonimizowaną końcówkę plików sfv_ember.log, launcher.log i sf4-net.log oraz mały zrzut, jeśli awaria go zapisała. Zgłoszenie desynchronizacji zawiera punkt kontrolny meczu, jego skróty stanu, numer pokoju, wybory obu graczy i zanonimizowaną końcówkę sfv_ember.log."
+
+msgid "reports.setting_detail"
+msgstr "Wł.: po awarii launcher wysyła zgłoszenie bez pytania, z małym zrzutem, jeśli awaria go zapisała; po desynchronizacji w meczu pokoju wysyła jej zgłoszenie. Najwyżej {0} dziennie. Wył.: po awarii najpierw pyta, a zgłoszeń desynchronizacji nie wysyła."
 
 msgid "reports.history_unreadable_detail"
 msgstr "Nie można odczytać pliku sent-reports.json w %APPDATA%\\SFVEmber, więc żadne zgłoszenie nie jest wysyłane bez pytania. Usuń plik, aby zacząć nową historię."

@@ -1,5 +1,6 @@
 #include "ember/SfvVerification.hxx"
 
+#include "ember/DesyncReporter.hxx"
 #include "ember/SfvGame.hxx"
 #include "mod/Log.hxx"
 
@@ -102,6 +103,8 @@ public:
 			(unsigned long long)mismatch->local, (unsigned long long)mismatch->remote,
 			player ? "the fight ends" : "this copy only watches");
 		LogCheckpointRegions(*session, mismatch->frame);
+		// Sent to the report intake by the launcher (DesyncReporter.hxx).
+		ReportDesync(*session, client, *mismatch, player);
 		sf4e::NetplayFacade::PushDesyncNotice(!player);
 		if (player) ember::game::Game().battle.Fail();
 	}

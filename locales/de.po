@@ -136,7 +136,10 @@ msgid "update.notice.reopens"
 msgstr "Danach öffnet sich SFV Ember wieder."
 
 msgid "reports.payload"
-msgstr "Berichte gehen an embernetplay.link. Jeder enthält die SFV Ember-Version und den Build, die Windows-Version, die Absturzdaten, geschwärzte Enden von sfv_ember.log, launcher.log und sf4-net.log sowie den kleinen Dump, wenn der Absturz einen geschrieben hat."
+msgstr "Berichte gehen an embernetplay.link. Jeder enthält die SFV Ember-Version und den Build, die Windows-Version, die Absturzdaten, geschwärzte Enden von sfv_ember.log, launcher.log und sf4-net.log sowie den kleinen Dump, wenn der Absturz einen geschrieben hat. Ein Desync-Bericht enthält den Prüfpunkt des Raumspiels, seine Zustands-Hashes, die Nummer des Raums, die Wahl beider Spieler und das geschwärzte Ende von sfv_ember.log."
+
+msgid "reports.setting_detail"
+msgstr "Ein: Nach einem Absturz sendet der Launcher den Bericht ohne Nachfrage, mit dem kleinen Dump, wenn der Absturz einen geschrieben hat; nach einer Desynchronisation in einem Raumspiel sendet er deren Bericht. Höchstens {0} pro Tag. Aus: Nach einem Absturz fragt er zuerst, und Desync-Berichte sendet er nicht."
 
 msgid "reports.history_unreadable_detail"
 msgstr "Die Datei sent-reports.json in %APPDATA%\\SFVEmber kann nicht gelesen werden, daher wird kein Bericht ohne Nachfrage gesendet. Löschen Sie die Datei für einen neuen Verlauf."

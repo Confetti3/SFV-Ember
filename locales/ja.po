@@ -136,7 +136,10 @@ msgid "update.notice.reopens"
 msgstr "完了すると SFV Ember がもう一度開きます。"
 
 msgid "reports.payload"
-msgstr "レポートはembernetplay.linkに送られます。各レポートには、SFV Emberのバージョンとビルド、Windowsのバージョン、クラッシュの情報、個人情報を除いたsfv_ember.log・launcher.log・sf4-net.logの最後の部分に加え、小さなダンプがある場合はそのダンプが含まれます。"
+msgstr "レポートはembernetplay.linkに送られます。各レポートには、SFV Emberのバージョンとビルド、Windowsのバージョン、クラッシュの情報、個人情報を除いたsfv_ember.log・launcher.log・sf4-net.logの最後の部分に加え、小さなダンプがある場合はそのダンプが含まれます。同期ずれのレポートには、ルーム対戦のチェックポイントと状態ハッシュ、ルームの番号、両プレイヤーの選択、個人情報を除いたsfv_ember.logの最後の部分が含まれます。"
+
+msgid "reports.setting_detail"
+msgstr "オン：クラッシュ後、ランチャーが確認なしでレポートを送信します（小さなダンプがある場合は含めます）。ルームの対戦で同期ずれが起きたときも、そのレポートを送信します。1日最大{0}件。オフ：クラッシュ後は先に確認し、同期ずれのレポートは送信しません。"
 
 msgid "reports.history_unreadable_detail"
 msgstr "%APPDATA%\\SFVEmber の sent-reports.json を読み取れないため、確認なしで送信されるレポートはありません。ファイルを削除すると新しい記録が始まります。"

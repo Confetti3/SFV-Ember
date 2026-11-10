@@ -136,7 +136,10 @@ msgid "update.notice.reopens"
 msgstr "SFV Ember se rouvrira une fois terminé."
 
 msgid "reports.payload"
-msgstr "Les rapports vont à embernetplay.link. Chacun contient la version et le build de SFV Ember, la version de Windows, les données du plantage, la fin expurgée de sfv_ember.log, launcher.log et sf4-net.log, et le petit vidage si le plantage en a écrit un."
+msgstr "Les rapports vont à embernetplay.link. Chacun contient la version et le build de SFV Ember, la version de Windows, les données du plantage, la fin expurgée de sfv_ember.log, launcher.log et sf4-net.log, et le petit vidage si le plantage en a écrit un. Un rapport de désynchronisation contient le point de contrôle du match, ses empreintes d'état, le numéro du salon, les choix des deux joueurs et la fin expurgée de sfv_ember.log."
+
+msgid "reports.setting_detail"
+msgstr "Oui : après un plantage, le lanceur envoie son rapport sans demander, avec le petit vidage si le plantage en a écrit un ; après une désynchronisation dans un match de salon, il envoie son rapport. {0} par jour au plus. Non : après un plantage il demande d'abord, et il n'envoie aucun rapport de désynchronisation."
 
 msgid "reports.history_unreadable_detail"
 msgstr "Le fichier sent-reports.json dans %APPDATA%\\SFVEmber est illisible, donc aucun rapport n'est envoyé sans demande. Supprimez-le pour créer un nouvel historique."

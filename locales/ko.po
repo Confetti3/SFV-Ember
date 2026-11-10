@@ -136,7 +136,10 @@ msgid "update.notice.reopens"
 msgstr "완료되면 SFV Ember가 다시 열립니다."
 
 msgid "reports.payload"
-msgstr "보고서는 embernetplay.link로 전송됩니다. 각 보고서에는 SFV Ember 버전과 빌드, Windows 버전, 충돌 정보, 개인정보를 가린 sfv_ember.log, launcher.log, sf4-net.log의 끝부분이 들어가며, 작은 덤프가 있으면 그것도 포함됩니다."
+msgstr "보고서는 embernetplay.link로 전송됩니다. 각 보고서에는 SFV Ember 버전과 빌드, Windows 버전, 충돌 정보, 개인정보를 가린 sfv_ember.log, launcher.log, sf4-net.log의 끝부분이 들어가며, 작은 덤프가 있으면 그것도 포함됩니다. 동기화 어긋남 보고서에는 방 대전의 체크포인트와 상태 해시, 방 번호, 두 플레이어의 선택, 개인정보를 가린 sfv_ember.log의 끝부분이 들어갑니다."
+
+msgid "reports.setting_detail"
+msgstr "켜기: 충돌 후 런처가 묻지 않고 보고서를 보냅니다(작은 덤프가 있으면 포함). 방 대전에서 동기화가 어긋나면 그 보고서도 보냅니다. 하루 최대 {0}건. 끄기: 충돌 후 먼저 묻고, 동기화 어긋남 보고서는 보내지 않습니다."
 
 msgid "reports.history_unreadable_detail"
 msgstr "%APPDATA%\\SFVEmber의 sent-reports.json을 읽을 수 없어 묻지 않고 보내는 보고서는 없습니다. 새 기록을 시작하려면 이 파일을 삭제하세요."

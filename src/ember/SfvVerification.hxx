@@ -7,7 +7,8 @@
 // every kCheckpointInterval frames. Its flow, chara0 and chara1 are 0, and no
 // legacy (v1) snapshot is ever sent. Every client compares a remote hash once
 // its own checkpoint of that frame is confirmed; the battle's first mismatch
-// ends the fight (the adapter's Battle::Fail).
+// ends the fight (the adapter's Battle::Fail) and is reported, a watcher's
+// too (DesyncReporter.hxx).
 //
 // CheckpointExchange is the check itself, over one rollback session, apart
 // from the room client so it is tested against real peers.

@@ -136,7 +136,10 @@ msgid "update.notice.reopens"
 msgstr "SFV Ember si riaprirà al termine."
 
 msgid "reports.payload"
-msgstr "Le segnalazioni vanno a embernetplay.link. Ognuna contiene la versione e la build di SFV Ember, la versione di Windows, i dati del crash, la parte finale oscurata di sfv_ember.log, launcher.log e sf4-net.log, più il dump piccolo se il crash ne ha scritto uno."
+msgstr "Le segnalazioni vanno a embernetplay.link. Ognuna contiene la versione e la build di SFV Ember, la versione di Windows, i dati del crash, la parte finale oscurata di sfv_ember.log, launcher.log e sf4-net.log, più il dump piccolo se il crash ne ha scritto uno. Una segnalazione di desincronizzazione contiene il checkpoint del match, i suoi hash di stato, il numero della stanza, le scelte di entrambi i giocatori e la parte finale oscurata di sfv_ember.log."
+
+msgid "reports.setting_detail"
+msgstr "Sì: dopo un crash, il launcher invia la segnalazione senza chiedere, con il dump piccolo se il crash ne ha scritto uno; dopo una desincronizzazione in un match di stanza, invia la sua segnalazione. Al massimo {0} al giorno. No: dopo un crash chiede prima e non invia segnalazioni di desincronizzazione."
 
 msgid "reports.history_unreadable_detail"
 msgstr "Impossibile leggere sent-reports.json in %APPDATA%\\SFVEmber, quindi nessuna segnalazione viene inviata senza chiedere. Elimina il file per iniziare un nuovo storico."

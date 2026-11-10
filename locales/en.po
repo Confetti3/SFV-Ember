@@ -136,7 +136,10 @@ msgid "update.notice.reopens"
 msgstr "SFV Ember opens again when it is done."
 
 msgid "reports.payload"
-msgstr "Reports go to embernetplay.link. Each holds the SFV Ember version and build, the Windows version, the crash details, redacted tails of sfv_ember.log, launcher.log and sf4-net.log, and the small crash dump when the crash wrote one."
+msgstr "Reports go to embernetplay.link. Each holds the SFV Ember version and build, the Windows version, the crash details, redacted tails of sfv_ember.log, launcher.log and sf4-net.log, and the small crash dump when the crash wrote one. A desync's report holds the room match's checkpoint, its state hashes, the room's number, both picks and the redacted tail of sfv_ember.log."
+
+msgid "reports.setting_detail"
+msgstr "On: after a crash, the launcher sends its report without asking, with the small dump when the crash wrote one; after a desync in a room match, it sends the desync's report. At most {0} a day. Off: it asks first after a crash and sends no desync report."
 
 msgid "reports.history_unreadable_detail"
 msgstr "sent-reports.json in %APPDATA%\\SFVEmber cannot be read, so no report is sent without asking. Delete the file to start a new record."

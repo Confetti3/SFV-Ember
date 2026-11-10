@@ -136,7 +136,10 @@ msgid "update.notice.reopens"
 msgstr "SFV Ember se abrirá de nuevo al terminar."
 
 msgid "reports.payload"
-msgstr "Los reportes van a embernetplay.link. Cada uno incluye la versión y la compilación de SFV Ember, la versión de Windows, los datos del fallo, el final censurado de sfv_ember.log, launcher.log y sf4-net.log, y el volcado pequeño si el fallo generó uno."
+msgstr "Los reportes van a embernetplay.link. Cada uno incluye la versión y la compilación de SFV Ember, la versión de Windows, los datos del fallo, el final censurado de sfv_ember.log, launcher.log y sf4-net.log, y el volcado pequeño si el fallo generó uno. Un reporte de desincronización incluye el punto de control de la partida, sus hashes de estado, el número de la sala, las elecciones de ambos jugadores y el final censurado de sfv_ember.log."
+
+msgid "reports.setting_detail"
+msgstr "Activado: tras un fallo, el iniciador envía el reporte sin preguntar, con el volcado pequeño si el fallo lo generó; tras una desincronización en una partida de sala, envía su reporte. Como máximo {0} al día. Desactivado: tras un fallo pregunta antes y no envía reportes de desincronización."
 
 msgid "reports.history_unreadable_detail"
 msgstr "No se puede leer sent-reports.json en %APPDATA%\\SFVEmber, así que no se envía ningún reporte sin preguntar. Borra el archivo para empezar un historial nuevo."

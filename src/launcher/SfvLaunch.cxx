@@ -8,7 +8,8 @@
 // SFV Ember has no replays, no Discord companion and no game language of its
 // own yet, so those steps do nothing. The mod starts Ember's networking
 // helper itself (ember/EmberHost.cxx), so the launcher hands it none. It
-// hands it the crash dump channel (InheritedDumpChannel below).
+// hands it the crash dump channel (InheritedDumpChannel below), and sends
+// the desync reports the game writes down (DesyncCourier).
 //
 // Test copies, in a development build only (mod/BuildKind.hxx): --instance
 // N (1-3) starts copy N of a two-copy test, with its own launcher log
@@ -25,6 +26,7 @@
 // without the mod. Then Steam's record of its client is put right when it
 // is wrong (SteamRecord): nothing is asked and Steam is never restarted.
 
+#include "launcher/DesyncCourier.hxx"
 #include "launcher/ExecutableBuild.hxx"
 #include "launcher/LaunchMessages.hxx"
 #include "launcher/LaunchSteps.hxx"
@@ -284,9 +286,16 @@ HANDLE StartGame(const StartRequest& request, StartFailure& failure)
 	}
 	spdlog::info("Game started, pid={}", process.dwProcessId);
 	CloseHandle(process.hThread);
+	// The desync reports the game writes down go out from here, outside the
+	// game's network guard (DesyncCourier.hxx).
+	sfve::launcher::StartDesyncCourier();
 	return process.hProcess;
 }
 
-void GameEnded(bool) {}
+void GameEnded(bool ran)
+{
+	// A desync just before the game closed is sent now.
+	if (ran) sfve::launcher::WakeDesyncCourier();
+}
 
 } } // namespace ember::launch

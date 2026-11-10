@@ -99,6 +99,8 @@ target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 # the game (SfvShell, its pick and pick screen) on the mod's Direct3D 11
 # overlay.
 add_library(sfve_ember STATIC
+    src/ember/DesyncReport.cxx
+    src/ember/DesyncReporter.cxx
     src/ember/EmberHost.cxx
     src/ember/PlayerName.cxx
     src/ember/PublicCommands.cxx
@@ -127,6 +129,18 @@ add_library(sfve_ember STATIC
     src/ember/SfvVerification.cxx
     src/overlay/Overlay.cxx
     src/overlay/TextureUploaderD3D11.cxx)
+# SFV Ember's source revision, which a desync's report names
+# (src/ember/DesyncReporter.cxx): refreshed on every build by the library's
+# script, as the library's own BuildIdentity.hxx is.
+set(SFVE_BUILD_IDENTITY_DIR "${CMAKE_BINARY_DIR}/generated/sfv-identity")
+add_custom_target(sfve_build_identity
+    COMMAND "${CMAKE_COMMAND}" "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DOUTPUT=${SFVE_BUILD_IDENTITY_DIR}/SfvBuildIdentity.hxx"
+        -P "${SFVE_EMBER_SOURCE_ROOT}/cmake/sf4e_build_identity.cmake"
+    BYPRODUCTS "${SFVE_BUILD_IDENTITY_DIR}/SfvBuildIdentity.hxx"
+    VERBATIM)
+add_dependencies(sfve_ember sfve_build_identity)
+target_include_directories(sfve_ember PRIVATE "${SFVE_BUILD_IDENTITY_DIR}")
 # SFV Ember's identity (SfvProduct.cxx) with its own header mark (art/brand,
 # scripts/build-sfv-brand.py), in a library of its own: the mod, the
 # launcher, the updater and the tests all link the one definition.
@@ -205,6 +219,7 @@ add_executable(sfve_ember_tests
     tests/SfvPictureSpecTests.cxx
     tests/SwatchStripTests.cxx
     tests/SfvVerificationTests.cxx
+    tests/DesyncReportTests.cxx
     tests/BattleIdentityTests.cxx
     tests/HudLayoutTests.cxx
     tests/SfvReplaysTests.cxx
@@ -314,6 +329,8 @@ function(sfve_program_resources target description file_name)
 endfunction()
 add_executable(Launcher WIN32
     src/launcher/SfvLaunch.cxx
+    src/launcher/DesyncCourier.cxx
+    src/ember/DesyncReport.cxx
     src/launcher/ExecutableBuild.cxx
     src/launcher/SteamRecord.cxx
     src/launcher/LauncherSelection.cxx

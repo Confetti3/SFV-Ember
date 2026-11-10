@@ -2559,3 +2559,111 @@ The prompt was never too short: the WIN waits 60 held frames for the prompt to o
 *Tests* (not run; no build): `IntroSkipTests` (the bit, the frame rule, the given inputs, the request); `RollbackSessionTests`, a skip read confirmed ending the mock's ignored frames on the same frame on both loopback peers and matching an offline run; `SyncTestTests`, no check across a confirmed frame.
 
 *Still to see in game:* which pad button makes `0x4000` (the skip then also works with it); that the bind log says "intros skippable" for a room battle; and a two-copy room run in which a seeded press in the intro skips it on both copies on the same frame with no checkpoint differing (`runroom.ps1`'s seeded presses start at `-mashFrom`, 300 by default, which may fall inside the intro).
+
+## 51. Desync reports to Bugsink (2026-11-09)
+
+The maintainer: "make sure when a desync is detected a report goes to bugsink so we can get this playable really quickly via testers". Every desync the room's check finds now leaves one report per copy and battle. The launcher sends it to the report intake the crash reports use, without the tester doing anything, and Bugsink shows it. Not built or run yet; the final round's checks are below.
+
+### The path
+
+1. **Found** (game thread): `SfvVerifier::Step` gets the battle's first mismatch from `CheckpointExchange` (once per battle, a watcher's too). It logs it and the region lines as before, then calls `ReportDesync` (`src/ember/DesyncReporter`). That gathers what the game holds there:
+   - the session's per-region hashes at the checkpoint (`RegionHashesAt` with `Layout().Regions()` names);
+   - the room's epoch, table and match generation (the room snapshot's `localMatchGenerations`, else the table this copy sits or watches at);
+   - the match slot and games ended (`RoomBattle`);
+   - both picks and the stage (`RoomMatchNow`: fighter code, costume, colour, V-Skill and V-Trigger numbers, stage code);
+   - the delay, rollbacks, layout id and `MatchBuildId`.
+
+   It queues the facts (at most 2 waiting) for a thread of the report's own and returns.
+2. **Written down** (that thread, never the game's): only when Send problem reports is on (`reports::ReportsOn`, the crash reports' setting) and fewer than 8 reports wait. It reads:
+   - the build id: a hash of `sfv_ember.dll`, as the launcher's crash reports send;
+   - the version (`ReadInstalledVersion`);
+   - SFV Ember's source revision (`SfvBuildIdentity.hxx`, written each build by the library's `sf4e_build_identity.cmake`);
+   - the last 300 lines of the mod's log before the desync, without that checkpoint's region lines (from the last 256 KiB of `CurrentLogTarget()`).
+
+   It writes `%APPDATA%\SFVEmber\desync-reports\<unix time>-<pid>-<frame>.desync.json`, as a `.tmp` first and then renamed. Every failure is a log line ("desync report: ...") and no report.
+3. **Sent** (the launcher, `src/launcher/DesyncCourier`): the game cannot send it. The mod's network guard refuses every host but loopback and the session's peers to the whole process, WinHTTP included (`NetGuard.hxx`). The launcher waits on the game outside it. `StartGame` starts the courier's thread once. It makes a pass then, every 30 s, and when `GameEnded` wakes it. Each report, oldest first:
+   - the file is held open, unshared, until it is settled, so a second launcher (a test's `--instance` copies) skips it;
+   - a file that does not parse, or is older than a week, is deleted;
+   - with Send problem reports off it is deleted unsent; with the settings unreadable it waits;
+   - the tail is redacted line by line with the crash reports' `RedactLine` and the player's names (`CollectIdentity`). Without those names the tail is left out;
+   - the send is counted in `sent-reports.json` as an automatic `problem` report (`ReportHistory::Reserve(..., true, ...)`), so it shares the crash reports' daily limit of 3;
+   - it goes as `BuildMultipart` + `HttpPostReport` to `https://embernetplay.link/report/v1`, kind `problem`, channel from the update channel, the Windows version, no dump;
+   - `desync::Judge` reads the answer:
+     - a 202 is delivered and the file goes;
+     - a 400 `unknown_log_filename` is sent again once without the log;
+     - other 4xx refusals delete the file;
+     - no answer, 408, 429 or 5xx keep it, for at most 2 tries per launcher's life;
+     - a reservation refused (the day's 3 used up) keeps it.
+
+   Closing the launcher cancels a send under way, and its report waits for the next launcher. A copy started under the proxy (no launcher) leaves its reports for the next launcher.
+4. **Intake to Bugsink**: nginx streams `/report/v1` to `ember-reports` on 127.0.0.1:47850. That service keeps the event in its outbox and delivers it as a Sentry envelope to Bugsink (127.0.0.1:47860, `bugs.embernetplay.link`). A `problem` report's comment becomes the event's message, at level warning.
+
+### What a report holds
+
+`src/ember/DesyncReport` holds the pure parts: the comment, the region lines, the tail, the report's log, the file, and the intake's verdict.
+
+- **The comment** (at most 2000 characters, Bugsink's message). Its first line is the issue title Bugsink groups by: `SFV desync: build <12 digits of the build id>`, or `SFV desync seen by a watcher: build ...`. Watchers' mismatches are diagnostics only, so they are reported as an issue of their own. The intake sets no fingerprint for problems, and the two players' reports hold different region lists, so neither can name the differing regions. Grouping is by build and kind of copy. The rest of the comment:
+
+  ```
+  Room 1122334455667788, table 2, match 41; games ended in this battle: 1
+  This copy: P2 (match slot 1)
+  P1: RYU, costume 1, colour 3, V-Skill I, V-Trigger II
+  P2: CHUN, costume 2, colour 5, V-Skill II, V-Trigger I
+  Stage: S01
+  Checkpoint 2580: 0000000000000abc here, 0000000000000def at the other player; confirmed to 2590
+  Input delay 2; 37 rollbacks, the longest 6 frames
+  Layout 0000000000000055, 268 regions at the checkpoint; match build <MatchBuildId>
+  The regions' hashes are in sfv_ember.log; pair this report with the other player's by room, table and match.
+  ```
+
+- **The log `sfv_ember.log`** (extra → logs in Bugsink, at most 192 KiB) holds three parts:
+  - the comment again;
+  - one `desync: checkpoint F region R, N bytes, hash H` line per region, the form `LogCheckpointRegions` writes and `tools/runcross.py` reads, so the two players' lists diff line by line;
+  - the redacted 300 log lines before the desync.
+- **Tags** are the intake's own: channel, build id (12), kind `problem`, Windows version. The release is the SFV Ember version and the source revision is in extra.
+
+To pair the two players' events, search Bugsink for the room's epoch, then compare the region lines of the two `sfv_ember.log` attachments.
+
+### The intake
+
+The intake's source, unchanged since 2026-10-09, takes only SF4 Ember's log names (`sf4e.log`, `launcher.log`, `sf4e-crash.log`, `sf4-net.log`); the deployed binary was not checked. A report carrying `sfv_ember.log` is refused with 400 `unknown_log_filename`. The same holds for **SFV Ember's crash reports since section 29**: they carry `sfv_ember.log` and `sfv_ember-crash.log`, so their Send this report, never pressed there, would be refused. With today's intake a desync report therefore arrives without its log, through the courier's second send: the comment (title, room, match, picks, checkpoint, both overall hashes) reaches Bugsink, but the region list and the tail do not.
+
+Library `feat/ember-library` changes `server/ember-reports`:
+- `intake::SFV_LOG_NAMES` and `allowed_log`: SFV Ember's four names are taken, still at most four logs a report;
+- `CRASH_LOGS`: a dumpless SFV crash groups by the module in `sfv_ember-crash.log`, as SF4's does;
+- tests in `tests/intake.rs` and `tests/event.rs`, and the README.
+
+Once that is deployed, the desync reports carry their regions and SFV crash reports go through at all. The deploy needs the maintainer's sudo (the library's `server/ember-reports/deploy/README.md`).
+
+### Consent
+
+The same switch as crash reports, Send problem reports (off until the player turns it on), the same record of sent reports and the same limit of 3 automatic reports in 24 hours, crash and desync reports together. SFV Ember's catalogs now say so in every language:
+- `reports.setting_detail` (new overlay): "after a desync in a room match, it sends the desync's report";
+- `reports.payload`: what a desync's report holds.
+
+Testers must turn the switch on, or no desync report is written.
+
+### Tests (not run; no build)
+
+`tests/DesyncReportTests.cxx` (in `sfve_ember_tests`):
+- the title per build and per kind of copy;
+- the comment's lines, the unknowns' wording, and the 2000-character cut, never inside a character;
+- the region lines' exact form;
+- the tail: region lines of the checkpoint left out, a partial first line dropped, `\r` stripped, the newest lines kept;
+- the report's log within 192 KiB, losing the tail's oldest whole lines first;
+- the file's round trip, a non-UTF-8 log byte kept as U+FFFD, and seven malformed files refused;
+- every intake answer's verdict and reason code.
+
+The library's `cargo test` covers the intake change.
+
+### Left, and the final round
+
+- Build both repositories, the laptop's `sfve_ember_tests`, and `cargo test` + `cargo clippy --all-targets -- -D warnings` for `server/ember-reports` in WSL.
+- Deploy the intake (above), then run a forced desync with Send problem reports on, on two copies through `Launcher.exe --instance 1/2` (development build) in a room match:
+  - send copy 0's pipe `perturb <frame> <region> <offset> <add>` at a frame past the intro (a region named in its `desync: checkpoint` lines, e.g. `perturb 900 CharaUnit[0].CharaStatusPart+0x238 0 1`, or by size);
+  - each copy's log must say "desync report: written as ..." and its launcher log "Desync report ...: received as <id>";
+  - Bugsink must show one event per copy in issue "SFV desync: build ...", with the same room, table and match lines, and region lists that differ in the perturbed region;
+  - `%APPDATA%\SFVEmber\desync-reports` must be empty afterwards;
+  - repeat with the switch off: no file is written and nothing is sent;
+  - before the deploy, the same run must give events without their log (launcher log: "sent again without it").
+- A watcher in the same run: its own issue "SFV desync seen by a watcher: ...".
