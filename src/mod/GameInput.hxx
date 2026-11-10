@@ -24,6 +24,16 @@ constexpr PackedInput kAttacks[] = {kLP, kMP, kLK, kMK, kHP, kHK};
 // Every bit a battle input can carry.
 constexpr PackedInput kInputBits = 0xFFF;
 
+// Where the value a battle tick records for a player's pad comes from
+// (SfvAdapter::OnInputRecord): the PC's own pad, the session's input while
+// it advances the battle, or nothing pressed, for a room's or a replay's
+// battle before its session.
+enum class PadSource { Pads, Session, Neutral };
+constexpr PackedInput RecordedInput(PadSource source, PackedInput pad, PackedInput session)
+{
+	return source == PadSource::Session ? session : source == PadSource::Neutral ? 0 : pad;
+}
+
 // What a scripted player plays (automated tests only; player builds never
 // read the options that choose it).
 enum class Script {

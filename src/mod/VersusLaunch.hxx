@@ -151,6 +151,12 @@ bool TakeLinkedBattle(bool* practice = nullptr);
 // The same for a replay's launch (MatchPicks::replay): true once for the
 // battle it loaded.
 bool TakeReplayBattle();
+// Game thread: a linked or a replay's launch is loading its battle, which
+// has not bound yet (nothing taken by TakeLinkedBattle or TakeReplayBattle).
+// The ticks that battle runs before it binds record no pad pressed
+// (SfvAdapter::RunOriginal), so every copy starts its session's first frame
+// with the same inputs recorded.
+bool LaunchedBattleLoading();
 
 // Control command: "launch [versus|cpu|training] [P1] [P2] [stage]", a player
 // as CODE[:costume[:colour[:vskill[:vtrigger]]]] or "-" to keep the default.

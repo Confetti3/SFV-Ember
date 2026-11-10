@@ -235,6 +235,7 @@ add_executable(sfve_ember_tests
     tests/RoomBuildTests.cxx
     tests/BuildKindTests.cxx
     tests/GameInputTests.cxx
+    tests/RecordedInputTests.cxx
     tests/ExecutableBuildTests.cxx
     tests/PlayerNameTests.cxx
     tests/SteamRecordTests.cxx

@@ -49,6 +49,7 @@ void SfvAdapter::Forget()
 	inputUnit_ = nullptr;
 	rollbackUnit_ = nullptr;
 	waitingFor_ = nullptr;
+	for (PackedInput& bits : neutralised_) bits = 0;
 	flow_.Forget();
 }
 
@@ -214,8 +215,28 @@ void SfvAdapter::OnInputRecord(uint8_t* inputUnit)
 	auto* values = reinterpret_cast<uint32_t*>(inputUnit + sfv::inputunit::kPadValues);
 	for (int p = 0; p < kPlayers; p++) {
 		sampled_[p] = values[p]; // what the pads say now, for the next frame's input
-		if (injecting_) values[p] = pending_.p[p];
+		if (padSource_ == input::PadSource::Neutral && (values[p] & ~neutralised_[p])) {
+			neutralised_[p] |= values[p];
+			Log("adapter: pad %d held %08x while the battle loaded; recorded as nothing pressed", p, values[p]);
+		}
+		values[p] = input::RecordedInput(padSource_, values[p], pending_.p[p]);
 	}
+}
+
+PackedInput RecordedInputBits(const uint8_t* inputUnit, int pad)
+{
+	namespace iu = sfv::inputunit;
+	PackedInput bits = 0;
+	const uint8_t* ring = inputUnit + iu::kRings + iu::kRingStride * (uint32_t)pad;
+	for (uint32_t slot = 0; slot < iu::kRingSlots; slot++) {
+		bits |= *reinterpret_cast<const uint32_t*>(ring + iu::kSlotSize * slot + iu::kSlotValue);
+	}
+	return bits;
+}
+
+PackedInput SfvAdapter::RecordedInputs(int player) const
+{
+	return inputUnit_ ? RecordedInputBits(inputUnit_, player) : 0;
 }
 
 bool SfvAdapter::Fighting() const
@@ -231,10 +252,11 @@ void SfvAdapter::RunUpdate()
 	flow_.Capture(); // the record mirrors the game whenever it is saved or hashed
 }
 
-void SfvAdapter::RunOriginal()
+void SfvAdapter::RunOriginal(bool neutralPads)
 {
-	injecting_ = false;
+	padSource_ = neutralPads ? input::PadSource::Neutral : input::PadSource::Pads;
 	RunUpdate();
+	padSource_ = input::PadSource::Pads;
 }
 
 void SfvAdapter::Advance(const FrameInputs& inputs, bool)
@@ -243,9 +265,9 @@ void SfvAdapter::Advance(const FrameInputs& inputs, bool)
 	// ticks) is not used, rollbacks call Advance once per frame instead.
 	Field<uint32_t>(battleFrame_, sfv::battleframe::kExtraTicks) = 0;
 	pending_ = inputs;
-	injecting_ = true;
+	padSource_ = input::PadSource::Session;
 	RunUpdate();
-	injecting_ = false;
+	padSource_ = input::PadSource::Pads;
 }
 
 int SfvAdapter::ReseedRandom(uint32_t seed)

@@ -123,6 +123,17 @@ constexpr uint32_t kLocalMask = 0x100;
 constexpr uint32_t kPadValues = 0x118;  // uint32 per pad: this tick's input
 constexpr uint32_t kRings = 0x178;      // per pad: 128 x {tag, frame, value, valid}
 constexpr uint32_t kRingStride = 0x800;
+constexpr uint32_t kRingSlots = 128;
+constexpr uint32_t kSlotSize = 16;
+constexpr uint32_t kSlotValue = 8;
+// What the input unit's tick records (rva 0x43B310) is the pad values the
+// battle's input source left at kPadValues that tick, for every pad of its
+// local mask (+0x100), and the battle reads its pads' input back from the
+// rings (rva 0x4440D0 into +0x128, then the fighters' command parts and the
+// intro's skip). Every tick a battle runs before its session does so with
+// the PC's own pads: pad 0 is the local player's on every copy, whichever
+// side that player plays (NetplayMode), so a button held while the battle
+// loads lands in P1's ring on one copy only (SfvAdapter::RunOriginal).
 // Frame tag, record/consume frames, base frame, delay, sync state: the
 // decompiled code uses dwords 2143..2180 (+0x217C..+0x2213). Kept outside
 // the game's snapshot (its netcode resets them after a restore).
