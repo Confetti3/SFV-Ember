@@ -101,6 +101,10 @@ void RoomBattle::Bind(RollbackSession* previous, RollbackSession& session, const
 	facade::ClearBattleState();
 	facade::CancelDeferredGgpoClose();
 	facade::ResetGgpoBattleWatch();
+	// A new game starts clean, as SF4's session start does: an Error (a
+	// cancelled game, a refused Ready, the last desync) stays until something
+	// clears it, and the match HUD would show it over this game.
+	facade::ClearMatchNotice();
 	phase_ = sf4e::GgpoSyncPhase::Starting;
 	facade::NotifyRuntimeBattleLoaded();
 	Log("netplay: the room's battle has loaded; waiting for every member's");

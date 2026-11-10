@@ -139,6 +139,9 @@ constexpr ember::ProductIdentity SfvEmber = {
 		SfvRanks,
 		// Their names as the game gives them.
 		sfve::ranks::Name,
+		// Rematch goes on over the room's results once the WIN is over, so a
+		// press that skips SFV's scenes never sends the pair to Ready by hand.
+		true,
 	},
 	L"SFVEmber",
 	// Settings and logs under %APPDATA%\SFVEmber, as SF4 Ember's are under
