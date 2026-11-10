@@ -29,8 +29,11 @@ public:
 	virtual void OnInputRecord(uint8_t* inputUnit) = 0;
 	// The battle tick now running takes a session's inputs in place of the
 	// pads' (SfvAdapter::Advance): what the battle asks of the pads
-	// themselves is then answered from those inputs too.
+	// themselves is then answered from those inputs too (InjectedAny).
 	virtual bool InjectingInputs() const = 0;
+	// Whether either player's injected input for this tick has a bit of
+	// `mask`.
+	virtual bool InjectedAny(uint32_t mask) const = 0;
 	// A battle tick reached its snapshot task.
 	virtual void OnRollbackUnitTick(uint8_t* rollbackUnit) = 0;
 	// The battle flow announced a new state (sfv::flow).

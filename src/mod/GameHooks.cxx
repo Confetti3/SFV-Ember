@@ -35,7 +35,6 @@ BattleFrameFn o_battleFrame;
 BattleFrameCtorFn o_battleFrameCtor;
 InputRecordFn o_inputRecord;
 InputAnyFn o_padsAny;
-InputAnyFn s_battleInputAny;
 UnitTickFn o_unitTick;
 GetManagerFn s_getManager;
 FlowMessageFn o_flowMessage;
@@ -69,10 +68,13 @@ uint64_t h_InputRecord(uint8_t* inputUnit, uint32_t predictRemote)
 // Once the match is decided the battle asks the pads themselves (kPadsAny):
 // each copy would hear its own player, and a press that skips the winner's
 // scenes would move one copy's flow alone. A tick that runs on a session's
-// inputs hears those instead, as it does before the match is decided.
+// inputs hears those instead: both players' inputs for this frame, which
+// outside the fight are the skip bit on a skip frame and nothing else
+// (IntroSkip.hxx). Not the battle's input record (rva 0x2F2C40): the
+// decided match no longer feeds it, so it never held the bit there.
 uint64_t h_PadsAny(uint8_t* unitContext, uint32_t mask)
 {
-	if (s_listener->InjectingInputs()) return s_battleInputAny(unitContext, mask);
+	if (s_listener->InjectingInputs()) return s_listener->InjectedAny(mask) ? 1 : 0;
 	return o_padsAny(unitContext, mask);
 }
 
@@ -205,7 +207,6 @@ void AddGameHooks(HookTransaction& hooks, uintptr_t base, BattleListener* listen
 	// does not go in puts this back.
 	o_gameAlloc = reinterpret_cast<GameAllocFn>(base + sfv::kGameAlloc.rva);
 	hooks.Add(base, sfv::kInputRecord, (void*)h_InputRecord, (void**)&o_inputRecord);
-	s_battleInputAny = reinterpret_cast<InputAnyFn>(base + sfv::kBattleInputAny.rva);
 	hooks.Add(base, sfv::kPadsAny, (void*)h_PadsAny, (void**)&o_padsAny);
 	hooks.Add(base, sfv::kRollbackUnitPre, (void*)h_UnitTick, (void**)&o_unitTick);
 	hooks.Add(base, sfv::kBattleFrameUpdate, (void*)h_BattleFrame, (void**)&o_battleFrame);

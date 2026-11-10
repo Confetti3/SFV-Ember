@@ -46,20 +46,14 @@ constexpr CodeSite kBattleFrameCtor{"BattleFrameCtor", 0x4C5C40,
 constexpr CodeSite kInputRecord{"InputRecord", 0x43B310,
 	{0x89, 0x54, 0x24, 0x10, 0x56, 0x57, 0x41, 0x54, 0x48, 0x83, 0xEC, 0x30, 0x8B, 0xB1, 0x7C, 0x21}};
 
-// bool BattleInputAny(void* unitContext, uint32_t mask): whether any of the
-// four pads' values the battle reads this tick (InputUnit+0x128, filled by
-// rva 0x4440D0 from the record ring) has a bit of `mask`. Called with
-// unit + 0xE8, as GetManager is.
-constexpr CodeSite kBattleInputAny{"BattleInputAny", 0x2F2C40,
-	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x8B, 0xFA, 0x48, 0x8B, 0xD9, 0x48}};
 // bool PadsAny(void* unitContext, uint32_t mask): the same question asked of
 // the pads themselves, outside the record (rva 0x4CEF40 for each local
 // player's pad, then pad 0). The battle's input query (rva 0x2F2D40) asks
-// this instead of BattleInputAny once a side has the wins the match needs
+// this instead of the battle's input (rva 0x2F2C40) once a side has the wins the match needs
 // (rva 0x2FB760), so what a flow state's phase hears of the skip bit after
 // the deciding round (rva 0x409930, 0x409BA0, 0x409C60, 0x40EE00, 0x40EEE0,
 // 0x40F000) is each copy's own pad. Hooked: while a session's inputs are
-// injected the answer is BattleInputAny's (GameHooks, IntroSkip.hxx).
+// injected the answer is from those inputs (GameHooks, IntroSkip.hxx).
 constexpr CodeSite kPadsAny{"PadsAny", 0x2F30D0,
 	{0x48, 0x89, 0x5C, 0x24, 0x20, 0x56, 0x48, 0x83, 0xEC, 0x30, 0x8B, 0xF2, 0x48, 0x8B, 0xD9, 0x48}};
 
@@ -498,7 +492,7 @@ constexpr CodeSite kLoggedIn{"LoggedIn", 0x742A20,
 constexpr CodeSite kSetPlayerParam{"SetPlayerParam", 0x309330,
 	{0x4C, 0x8B, 0xC9, 0x83, 0xFA, 0x29, 0x77, 0x49, 0x48, 0x63, 0xCA, 0x41, 0x83, 0xF8, 0xFE, 0x74}};
 
-constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecord, kBattleInputAny, kPadsAny, kRollbackUnitPre, kGetManager, kFlowMessage,
+constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecord, kPadsAny, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kFindPart, kProjectileReleasable, kAddBattleTask, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,

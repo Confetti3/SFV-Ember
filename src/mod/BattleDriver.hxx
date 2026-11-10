@@ -26,6 +26,7 @@ public:
 	void OnBattleFrameConstructed(uint8_t* battleFrame) override { adapter_.SeeBattleFrameConstructed(battleFrame); }
 	void OnInputRecord(uint8_t* inputUnit) override { adapter_.OnInputRecord(inputUnit); }
 	bool InjectingInputs() const override { return adapter_.Injecting(); }
+	bool InjectedAny(uint32_t mask) const override { return adapter_.InjectedAny(mask); }
 	void OnRollbackUnitTick(uint8_t* rollbackUnit) override { adapter_.SeeRollbackUnit(rollbackUnit); }
 	void OnFlowState(int state) override { adapter_.SeeFlowState(state); }
 
