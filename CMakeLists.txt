@@ -220,6 +220,8 @@ add_executable(sfve_ember_tests
     tests/SwatchStripTests.cxx
     tests/SfvVerificationTests.cxx
     tests/DesyncReportTests.cxx
+    tests/ReportsDefaultTests.cxx
+    src/launcher/ReportsDefault.cxx
     tests/BattleIdentityTests.cxx
     tests/HudLayoutTests.cxx
     tests/SfvReplaysTests.cxx
@@ -330,6 +332,7 @@ endfunction()
 add_executable(Launcher WIN32
     src/launcher/SfvLaunch.cxx
     src/launcher/DesyncCourier.cxx
+    src/launcher/ReportsDefault.cxx
     src/ember/DesyncReport.cxx
     src/launcher/ExecutableBuild.cxx
     src/launcher/SteamRecord.cxx

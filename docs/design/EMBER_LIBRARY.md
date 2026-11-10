@@ -2637,7 +2637,9 @@ Once that is deployed, the desync reports carry their regions and SFV crash repo
 
 ### Consent
 
-The same switch as crash reports, Send problem reports (off until the player turns it on), the same record of sent reports and the same limit of 3 automatic reports in 24 hours, crash and desync reports together. SFV Ember's catalogs now say so in every language:
+The same switch as crash reports, Send problem reports, the same record of sent reports and the same limit of 3 automatic reports in 24 hours, crash and desync reports together. SFV Ember's catalogs now say so in every language:
+
+**On by default in SFV Ember** (Kate, 2026-11-09: "Yes, on by default", so testers' desyncs reach Bugsink). The library keeps it off (`PlayerPreferences::sendProblemReports`: SF4 Ember asks first), and a player who ever saved their settings has that off saved, so a default cannot be told from a choice. Before its first game the launcher turns the setting on once and records that it did (`launcher/ReportsDefault`, `sfvProblemReportsOnByDefault` in settings.json); from then on it is the player's, in Settings, Problem reports. Release notes should say so. `ReportsDefaultTests`: on from nothing, on once over a saved off, then the player's off kept.
 - `reports.setting_detail` (new overlay): "after a desync in a room match, it sends the desync's report";
 - `reports.payload`: what a desync's report holds.
 

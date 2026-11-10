@@ -27,6 +27,8 @@
 // is wrong (SteamRecord): nothing is asked and Steam is never restarted.
 
 #include "launcher/DesyncCourier.hxx"
+#include "launcher/ReportsDefault.hxx"
+#include "netplay/SettingsStore.hxx"
 #include "launcher/ExecutableBuild.hxx"
 #include "launcher/LaunchMessages.hxx"
 #include "launcher/LaunchSteps.hxx"
@@ -287,7 +289,11 @@ HANDLE StartGame(const StartRequest& request, StartFailure& failure)
 	spdlog::info("Game started, pid={}", process.dwProcessId);
 	CloseHandle(process.hThread);
 	// The desync reports the game writes down go out from here, outside the
-	// game's network guard (DesyncCourier.hxx).
+	// game's network guard (DesyncCourier.hxx); problem reports are on unless
+	// the player turned them off (ReportsDefault.hxx).
+	if (!sfve::launcher::ApplyReportsDefault(sf4e::netplay::SettingsStore::DefaultDirectory())) {
+		spdlog::warn("Problem reports: could not apply SFV Ember's default (on); the saved setting stays as it is");
+	}
 	sfve::launcher::StartDesyncCourier();
 	return process.hProcess;
 }
