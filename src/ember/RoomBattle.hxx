@@ -136,6 +136,12 @@ public:
 	Answer HeldFrame(const FrameInputs& inputs, int held, mod::SfvAdapter& game, std::uint32_t seed);
 	// After that held frame's step: the room hears what was decided.
 	void Decided(Answer answer, const RollbackSession& session);
+	// The runtime asks the battle to end (Retire, Abort, Fail) while this
+	// copy's fighter is held over the WIN: the fighter declines in the held
+	// frames instead, so both copies leave on the same confirmed frame and
+	// neither is left waiting for the other's answers (true). False with no
+	// such WIN (a watcher's or a replay's, or none): the caller leaves now.
+	bool DeclineToExit();
 	// The battle leaves another way (its session broke, the runtime ended
 	// it) with a result still held: the room hears it as the match's end.
 	void FlushHeld(const char* why);
@@ -172,6 +178,7 @@ private:
 		bool active = false;
 		bool offered = false;   // this copy's room offers the rematch in place
 		bool reported = false;  // the room has heard this game's result
+		bool exiting = false;   // the runtime ended the battle over it (DeclineToExit)
 		sf4e::room::MatchResult result = sf4e::room::MatchResult::Abort;
 		std::uint64_t captureFrame = 0, confirmedFrame = 0;
 		std::uint8_t* versus = nullptr; // the versus battle's scene state, for the restart

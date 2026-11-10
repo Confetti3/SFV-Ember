@@ -10,6 +10,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <functional>
 #include <optional>
 
 using namespace sfve;
@@ -91,12 +92,14 @@ struct HeldRun {
 	bool ok = false;
 };
 
-HeldRun RunHeld(LoopbackPair& pair, int aFrom, int bFrom)
+// Each peer's answer bits on its `held`th held frame.
+using AnswerSchedule = std::function<std::uint32_t(int peer, int held)>;
+
+HeldRun RunHeld(LoopbackPair& pair, const AnswerSchedule& bitsOf)
 {
 	HeldRun run;
 	RollbackSession* sessions[2] = {&pair.a, &pair.b};
 	MockFighter* games[2] = {&pair.gameA, &pair.gameB};
-	const int from[2] = {aFrom, bFrom};
 	const ULONGLONG start = GetTickCount64();
 	while (!run.decidedAt[0] || !run.decidedAt[1]) {
 		if (GetTickCount64() - start > 30000) return run;
@@ -106,8 +109,7 @@ HeldRun RunHeld(LoopbackPair& pair, int aFrom, int bFrom)
 				s.Poll();
 				continue;
 			}
-			const int held = s.HeldFrames();
-			const std::uint32_t bits = from[i] < 0 ? kNo : held >= from[i] ? kChose : kAsked;
+			const std::uint32_t bits = bitsOf(i, s.HeldFrames());
 			Answer answer = Answer::Wait;
 			const RollbackSession::StepResult r = s.StepHeld(bits, [&](const FrameInputs& in) {
 				answer = Decide(in.p[0], in.p[1], s.HeldFrames());
@@ -124,6 +126,14 @@ HeldRun RunHeld(LoopbackPair& pair, int aFrom, int bFrom)
 	}
 	run.ok = true;
 	return run;
+}
+
+HeldRun RunHeld(LoopbackPair& pair, int aFrom, int bFrom)
+{
+	const int from[2] = {aFrom, bFrom};
+	return RunHeld(pair, [&](int peer, int held) {
+		return from[peer] < 0 ? kNo : held >= from[peer] ? kChose : kAsked;
+	});
 }
 
 TEST_CASE("held frames: both peers decide on the same frame and stay in step after")
@@ -180,4 +190,37 @@ TEST_CASE("held frames: one decline sends both peers back on the same frame")
 	CHECK(run.answer[1] == Answer::Leave);
 	CHECK(*run.decidedAt[0] == *run.decidedAt[1]);
 	CHECK(pair.gameB.Frame() == gameFrame); // nothing restarted
+}
+
+TEST_CASE("held frames: a runtime's exit mid-WIN is a decline both peers leave on")
+{
+	// A asked and then chose; B asked until the runtime ended its battle at
+	// its 40th held frame (RoomBattle::DeclineToExit): from there it sends
+	// the decline instead of leaving alone, and A, which chose, leaves with it
+	// on the same frame rather than waiting for inputs that never come.
+	LoopbackPair pair(kBugNone, 2);
+	REQUIRE(pair.RunTo(200));
+	pair.RunTo(210);
+	REQUIRE(pair.a.Frame() == pair.b.Frame());
+	const int heldFrom = pair.a.Frame();
+	const HeldRun run = RunHeld(pair, [](int peer, int held) {
+		if (peer == 0) return held >= 10 ? kChose : kAsked;
+		return held >= 40 ? kNo : kAsked;
+	});
+	REQUIRE(run.ok);
+	CHECK(run.answer[0] == Answer::Leave);
+	CHECK(run.answer[1] == Answer::Leave);
+	CHECK(*run.decidedAt[0] == *run.decidedAt[1]);
+	CHECK(*run.decidedAt[0] - heldFrom > 40);
+}
+
+TEST_CASE("the reported WIN of 2026-11-09: P2 asked, P1 sent nothing, 37 held frames")
+{
+	// The reporter's replay: P1 sent 0 on every held frame, P2 asked from the second.
+	// The decision never ended that WIN (it waits for 60 held frames before
+	// "nobody asked" can end it, and P2 was asked), so its close came from
+	// outside the decision: the runtime ending the battle, now a decline.
+	CHECK(Decide(0, 0x8000, 0) == Answer::Wait);
+	for (int held = 1; held < 37; held++) CHECK(Decide(0, kAsked, held) == Answer::Wait);
+	CHECK(Decide(0, kAsked | kNo, 37) == Answer::Leave);
 }

@@ -326,7 +326,18 @@ PackedInput RoomBattle::AnswerBits()
 	unsigned mapped = 0, raw = 0;
 	// The runtime's answer: a parked Rematch, or the fighter still asked.
 	if (prompt_.offered && !prompt_.reported) facade::ReadRuntimeMatchInput((int)endpoints_.localSlot, mapped, raw);
-	return rip::LocalBits(prompt_.offered && !prompt_.reported, s_pipeDeclined || s_shellLeft, raw);
+	return rip::LocalBits(prompt_.offered && !prompt_.reported, s_pipeDeclined || s_shellLeft || prompt_.exiting, raw);
+}
+
+bool RoomBattle::DeclineToExit()
+{
+	if (!prompt_.active || watching_) return false;
+	if (!prompt_.exiting) {
+		prompt_.exiting = true;
+		Log("netplay: the room asks the battle to end over the WIN; this fighter declines, and both copies leave on "
+			"the frame that reads it");
+	}
+	return true;
 }
 
 RoomBattle::Answer RoomBattle::HeldFrame(const FrameInputs& inputs, int held, mod::SfvAdapter& game, std::uint32_t seed)

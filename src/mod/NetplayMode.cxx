@@ -102,9 +102,14 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		if (replayEnd_.empty()) replayEnd_ = "stopped by the player";
 		exitAsked_ = true;
 	}
-	if (exitAsked_.exchange(false)) {
-		// The runtime retired or aborted the match: no session goes on, and
-		// the battle goes back to the main menu.
+	// The runtime retired or aborted the match. Over the fighters' held WIN
+	// the exit rides in the held frames as this fighter's decline, so both
+	// copies leave on the same confirmed frame (RoomBattle::DeclineToExit);
+	// anywhere else no session goes on, and the battle goes back to the main
+	// menu now. The ask stands while the WIN carries it: one that ends in a
+	// rematch both had already chosen leaves on the next frame.
+	if (exitAsked_ && !(session_->Live() && room_.DeclineToExit())) {
+		exitAsked_ = false;
 		room_.FlushHeld("the runtime ended the battle");
 		if (session_->Live()) session_->Close();
 		started_ = true;
@@ -162,6 +167,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 			startTime_ = adapter.StartTime();
 		} else if (decided == adapter::RoomBattle::Answer::Leave) {
 			recordingWhole_ = true;
+			exitAsked_ = false; // a runtime's exit the WIN carried is this leave
 			Leave(); // both copies leave on this same confirmed frame
 		}
 		return;
