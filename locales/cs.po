@@ -221,3 +221,6 @@ msgstr "Tento ovladač spravuje Steam Input, takže jeho tlačítka odpovídají
 
 msgid "home.offline_detail"
 msgstr "Trénink, Versus, Arcade a další offline režimy hry."
+
+msgid "selection.personal_action"
+msgstr "Kód kostýmu"

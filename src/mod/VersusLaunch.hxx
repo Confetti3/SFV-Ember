@@ -19,6 +19,8 @@
 
 #include <stdint.h>
 
+#include <array>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -34,6 +36,9 @@ enum class LaunchTarget {
 // A FighterPick's voice that the launch takes from this copy's options for
 // the fighter (VoiceToWrite), as the game's own menus do.
 constexpr int kVoiceOfOptions = -1;
+
+// A FighterPick's loadCode for a launch without costume codes.
+constexpr std::int64_t kNoLoadCode = -1;
 
 // An empty fighter, a negative costume or colour, or an empty stage keeps
 // what the mode's data object already holds (the profile's defaults). The
@@ -54,6 +59,13 @@ struct FighterPick {
 	// copy's options, for a launch only this copy plays (Training, the
 	// pipe's, a replay's).
 	int voice = kVoiceOfOptions;
+	// The buttons this player holds as a room's or a replay's battle loads,
+	// for the game's costume codes (EMBER_LIBRARY.md section 55): the game's
+	// input bits, or kNoLoadCode, where the battle loads with nothing held
+	// (section 53) and the game takes its snapshot of the held buttons
+	// itself. A launch gives both players a code or neither (SfvCatalog's
+	// LaunchPicks), so two copies never load one battle two ways.
+	std::int64_t loadCode = kNoLoadCode;
 };
 
 // The voice a launch writes for `pick`: its own where it is one of the
@@ -180,6 +192,10 @@ bool TakeReplayBattle();
 // (SfvAdapter::RunOriginal), so every copy starts its session's first frame
 // with the same inputs recorded.
 bool LaunchedBattleLoading();
+// Game thread: the buttons each player holds as that battle loads (P1, P2),
+// while LaunchedBattleLoading and its launch gave both players a costume code
+// (FighterPick::loadCode); none otherwise.
+std::optional<std::array<std::uint32_t, 2>> LoadingCodes();
 
 // Control command: "launch [versus|cpu|training] [P1] [P2] [stage]", a player
 // as CODE[:costume[:colour[:vskill[:vtrigger]]]] or "-" to keep the default.

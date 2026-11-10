@@ -51,10 +51,15 @@ void BattleDriver::OnBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 		// player whichever side they play, and what its ticks record now is in
 		// the state its session starts from (2026-11-10: two copies' P1 input
 		// rings and command parts differed from frame 0 on).
-		adapter_.RunOriginal(LaunchedBattleLoading());
+		// With costume codes (section 55) each player holds their launch's
+		// code instead, on every copy alike.
+		const std::optional<std::array<std::uint32_t, 2>> codes = LoadingCodes();
+		adapter_.RunOriginal(LaunchedBattleLoading(), codes ? &*codes : nullptr);
 	} else {
 		if (boundBattle_ != adapter_.Battle()) {
 			boundBattle_ = adapter_.Battle();
+			// Before the mode takes the launch (TakeLinkedBattle ends LoadingCodes).
+			if (const std::optional<std::array<std::uint32_t, 2>> codes = LoadingCodes()) adapter_.PresetHeldAtLoad(*codes);
 			LogInventory();
 			mode_->NewBattle(adapter_);
 		}

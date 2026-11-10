@@ -221,3 +221,6 @@ msgstr "Steam Input gère cette manette, donc ses boutons suivent vos paramètre
 
 msgid "home.offline_detail"
 msgstr "Entraînement, Versus, Arcade et les autres modes hors ligne du jeu."
+
+msgid "selection.personal_action"
+msgstr "Code de costume"

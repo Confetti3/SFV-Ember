@@ -221,3 +221,6 @@ msgstr "Steam Input steuert diesen Controller, daher folgen seine Tasten deinen 
 
 msgid "home.offline_detail"
 msgstr "Training, Versus, Arcade und die anderen Offline-Modi des Spiels."
+
+msgid "selection.personal_action"
+msgstr "Kostümcode"

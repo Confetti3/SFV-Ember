@@ -72,7 +72,8 @@ private:
 json PlayerJson(const Player& p)
 {
 	return {{"name", p.name}, {"fighter", p.fighter}, {"costume", p.costume}, {"colour", p.colour}, {"code", p.code},
-		{"launchCostume", p.launchCostume}, {"launchColour", p.launchColour}, {"vSkill", p.vSkill}, {"vTrigger", p.vTrigger}};
+		{"launchCostume", p.launchCostume}, {"launchColour", p.launchColour}, {"vSkill", p.vSkill}, {"vTrigger", p.vTrigger},
+		{"loadCode", p.loadCode}};
 }
 
 json HeaderJson(const Header& h)
@@ -136,6 +137,8 @@ Player ReadPlayer(const json& j)
 	p.launchColour = Field<int>(j, "launchColour");
 	p.vSkill = FieldOr<int>(j, "vSkill", 0);
 	p.vTrigger = FieldOr<int>(j, "vTrigger", 0);
+	p.loadCode = FieldOr<std::int64_t>(j, "loadCode", -1);
+	if (p.loadCode < -1 || p.loadCode > 0xFFFFFFFFll) p.loadCode = -1;
 	return p;
 }
 

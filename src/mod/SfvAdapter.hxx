@@ -25,6 +25,7 @@
 
 #include <stdint.h>
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -101,7 +102,15 @@ public:
 	// as a session gives them outside the fight: a room's or a replay's battle
 	// before its session, so the ticks it runs while it loads hold the same
 	// inputs on every copy, not each PC's own pad as P1's (sfv::inputunit).
-	void RunOriginal(bool neutralPads = false);
+	// `held`, with neutralPads, is what each player holds instead of nothing:
+	// the costume codes the launch gave both (VersusLaunch's LoadingCodes,
+	// EMBER_LIBRARY.md section 55).
+	void RunOriginal(bool neutralPads = false, const std::array<PackedInput, kPlayers>* held = nullptr);
+	// As a room's or a replay's battle with costume codes binds: the input
+	// unit's held-at-load snapshot (sfv::inputunit::kHeldAtLoad) holds the
+	// codes and is marked taken, so every copy's fighters read the same
+	// buttons and the game never takes it again from a session's frame.
+	void PresetHeldAtLoad(const std::array<PackedInput, kPlayers>& codes);
 
 	std::string BuildId() const override;
 	StateLayout& Layout() override { return layout_; }
@@ -159,6 +168,7 @@ private:
 
 	input::PadSource padSource_ = input::PadSource::Pads;
 	PackedInput neutralised_[kPlayers] = {}; // the pad bits RunOriginal(true) recorded as neutral this battle (logged once)
+	PackedInput loadHeld_[kPlayers] = {};    // what RunOriginal(true) records instead (the costume codes; else 0)
 	FrameInputs pending_;
 	PackedInput sampled_[kPlayers] = {};
 	uint32_t ticksInLastUpdate_ = 0;

@@ -28,6 +28,8 @@ namespace loc = sf4e::loc;
 constexpr const char* kFighter = "fighter";
 constexpr const char* kCostume = "costume";
 constexpr const char* kColour = "color";
+// The game's costume codes (picks::kLoadCodes, EMBER_LIBRARY.md section 55).
+constexpr const char* kCostumeCode = "costume-code";
 constexpr const char* kVSkill = "vskill";
 constexpr const char* kVTrigger = "vtrigger";
 constexpr const char* kStage = "stage";
@@ -80,6 +82,21 @@ std::vector<int> PlayableRoster()
 		if (!ember::Catalog().fighterLocked(id, {})) playable.push_back(id);
 	}
 	return playable;
+}
+
+// A costume code's words: its buttons, or the shared None.
+std::string LoadCodeName(int index)
+{
+	const char* label = index > 0 && index < picks::kLoadCodeCount ? picks::kLoadCodes[index].label : nullptr;
+	return label ? std::string(label) : std::string(loc::T("common.none"));
+}
+
+// The code indices Left and Right step through: every one, None first.
+std::vector<int> LoadCodeIds()
+{
+	std::vector<int> ids;
+	for (int index = 0; index < picks::kLoadCodeCount; index++) ids.push_back(index);
+	return ids;
 }
 
 // A value row Left and Right step; with `choices`, Select opens them all.
@@ -232,6 +249,13 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 		std::move(costumes), pick.pick.costume));
 	rows.push_back(StepRow(kColour, "selection.color_row", ColourName(pick.pick.color), adjusts, editable, std::move(colours),
 		pick.pick.color));
+	// The buttons held as a room's battle loads, for the game's own hidden
+	// looks (Urien's LP+MK+HP): SF4's personal action row's words, which SFV
+	// Ember's catalogs give as "Costume code" (locales/*.po).
+	const int code = picks::LoadCodeIn(pick.pick).value_or(0);
+	std::vector<MenuChoice> codes;
+	for (int index : LoadCodeIds()) codes.push_back({OptionId(index), LoadCodeName(index), std::string(), editable});
+	rows.push_back(StepRow(kCostumeCode, "selection.personal_action", LoadCodeName(code), adjusts, editable, std::move(codes), code));
 	for (const LoadoutRow& row : kLoadoutRows) rows.push_back(PartRow(row, pick.pick, editable, adjusts));
 	if (withStage) {
 		rows.push_back(StepRow(kStage, "selection.stage", sf4e::ui::StageLabel(pick.stage),
@@ -261,6 +285,11 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const
 		else if (action.id == kColour) {
 			sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), action.delta);
 		} else if (action.id == kStage) sf4e::ui::Step(pick.stage, stageChoices, action.delta);
+		else if (action.id == kCostumeCode) {
+			int code = picks::LoadCodeIn(pick.pick).value_or(0);
+			sf4e::ui::Step(code, LoadCodeIds(), action.delta);
+			picks::SetLoadCode(pick.pick, code);
+		}
 	} else if (action.kind == MenuAction::Chosen) {
 		const std::optional<int> option = OptionOf(action.text);
 		const auto pickable = [&option](const std::vector<int>& ids) { return option && Contains(ids, *option); };
@@ -271,9 +300,11 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const
 		} else if (action.id == kColour && pickable(ColourIds(pick.pick.fighter, pick.pick.costume, true))) {
 			pick.pick.color = *option;
 		} else if (action.id == kStage && pickable(stageChoices)) pick.stage = *option;
+		else if (action.id == kCostumeCode && pickable(LoadCodeIds())) picks::SetLoadCode(pick.pick, *option);
 	}
 	return pick.pick.fighter != before.pick.fighter || pick.pick.costume != before.pick.costume ||
-		pick.pick.color != before.pick.color || pick.stage != before.stage;
+		pick.pick.color != before.pick.color || pick.stage != before.stage ||
+		pick.pick.personalAction != before.pick.personalAction;
 }
 
 void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::string& error,

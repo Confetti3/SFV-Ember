@@ -4,6 +4,7 @@
 #include "ember/PublicCommands.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvPick.hxx"
+#include "ember/SfvPickSpace.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/Log.hxx"
 #include "mod/VersusLaunch.hxx"
@@ -215,6 +216,29 @@ std::string Pick(const std::string& args)
 	return "ok " + PickText(pick) + (fitted ? " (fitted)" : "");
 }
 
+// The pick's costume code (picks::kLoadCodes, EMBER_LIBRARY.md section 55):
+// "code N", N its index, 0 for none.
+std::string Code(const std::string& args)
+{
+	if (!EmberRuntimeRunning()) return "error Ember's runtime is not running";
+	int index = -1;
+	try {
+		size_t used = 0;
+		index = std::stoi(args, &used);
+		if (args.find_first_not_of(' ', used) != std::string::npos) index = -1;
+	} catch (...) {
+		index = -1;
+	}
+	if (index < 0 || index >= picks::kLoadCodeCount) {
+		return "error usage: code N (0 none, 1 to " + std::to_string(picks::kLoadCodeCount - 1) + ")";
+	}
+	PlayerPick pick = CurrentPick();
+	picks::SetLoadCode(pick.pick, index);
+	pick = SetPick(pick);
+	const char* label = picks::kLoadCodes[index].label;
+	return "ok code " + std::to_string(picks::LoadCodeIn(pick.pick).value_or(0)) + " " + (label ? label : "none");
+}
+
 std::string Ready()
 {
 	facade::RuntimeCommand command = CommandFor(CommandKind::Ready);
@@ -314,6 +338,7 @@ void RegisterRoomCommands()
 	mod::RegisterCommand("watchtable", WatchTable);
 	mod::RegisterCommand("stopwatching", [](const std::string&) { return StopWatching(); });
 	mod::RegisterCommand("pick", Pick);
+	mod::RegisterCommand("code", Code);
 	mod::RegisterCommand("ready", [](const std::string&) { return Ready(); });
 	mod::RegisterCommand("rematch", Rematch);
 	mod::RegisterCommand("delay", Delay);

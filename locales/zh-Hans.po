@@ -221,3 +221,6 @@ msgstr "Steam Input 正在处理此控制器，因此按钮遵循你的 Steam �
 
 msgid "home.offline_detail"
 msgstr "训练、对战、街机等游戏原有的离线模式。"
+
+msgid "selection.personal_action"
+msgstr "服装指令"

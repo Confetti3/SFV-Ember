@@ -221,3 +221,6 @@ msgstr "O Steam Input gerencia este controle, então seus botões seguem suas co
 
 msgid "home.offline_detail"
 msgstr "Treino, Versus, Arcade e os outros modos offline do jogo."
+
+msgid "selection.personal_action"
+msgstr "Código do traje"

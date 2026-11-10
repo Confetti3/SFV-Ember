@@ -70,6 +70,8 @@ bool s_linkedLoading = false;
 bool s_linkedPractice = false; // ...and it was a Practice room's
 // The same for a replay's launch (TakeReplayBattle).
 bool s_replayLoading = false;
+// The costume codes that launch gave both players (LoadingCodes).
+std::optional<std::array<std::uint32_t, 2>> s_loadingCodes;
 
 template <typename Fn>
 Fn At(const CodeSite& site)
@@ -344,6 +346,11 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	s_linkedLoading = picks.linked;
 	s_replayLoading = picks.replay;
 	s_linkedPractice = picks.linked && picks.practice;
+	s_loadingCodes.reset();
+	if ((picks.linked || picks.replay) && picks.players[0].loadCode >= 0 && picks.players[1].loadCode >= 0) {
+		s_loadingCodes = std::array<std::uint32_t, 2>{(std::uint32_t)picks.players[0].loadCode, (std::uint32_t)picks.players[1].loadCode};
+		Log("launch: costume codes held as the battle loads: P1 %08x, P2 %08x", (*s_loadingCodes)[0], (*s_loadingCodes)[1]);
+	}
 	uint8_t* message = Field<uint8_t*>(jumpState, jump::kJumpStateMessage);
 	WatchLoading(std::move(written), std::move(onFailed), message && Field<uint8_t>(message, jump::kMessageCheckOwnership) != 0);
 	return next;
@@ -660,6 +667,11 @@ bool TakeReplayBattle()
 bool LaunchedBattleLoading()
 {
 	return s_linkedLoading || s_replayLoading;
+}
+
+std::optional<std::array<std::uint32_t, 2>> LoadingCodes()
+{
+	return LaunchedBattleLoading() ? s_loadingCodes : std::nullopt;
 }
 
 void RegisterVersusLaunchCommands()

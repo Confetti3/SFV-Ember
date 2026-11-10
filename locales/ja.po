@@ -221,3 +221,6 @@ msgstr "Steam Inputがこのコントローラーを扱うため、ボタンはS
 
 msgid "home.offline_detail"
 msgstr "トレーニング、対戦、アーケードなど、ゲーム本体のオフラインモードです。"
+
+msgid "selection.personal_action"
+msgstr "コスチュームコマンド"

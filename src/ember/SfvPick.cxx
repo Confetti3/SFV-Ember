@@ -93,6 +93,9 @@ void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command)
 	// The player's own voice for the fighter goes with the pick, so the
 	// opponent's copy plays it too (picks::VoiceIn, SfvCatalog's LaunchPicks).
 	picks::SetVoice(pick.pick, OwnVoice(pick.pick.fighter));
+	// The costume code the player chose, with the marker that says this copy
+	// knows codes even for none (picks::LoadCodeIn, SfvCatalog's LaunchPicks).
+	picks::SetLoadCode(pick.pick, picks::LoadCodeIn(pick.pick).value_or(0));
 	sf4e::selection::ToNative(pick.pick, command.character);
 	command.stage = pick.stage;
 }

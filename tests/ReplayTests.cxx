@@ -184,6 +184,25 @@ TEST_CASE("a replay's header keeps each side's V-Skill and V-Trigger, and one wr
 	CHECK_FALSE(replay::Decode(bad.data(), bad.size(), &back, &error));
 }
 
+TEST_CASE("a replay's header keeps each side's costume code, and one written without them reads none")
+{
+	replay::Replay r = SampleReplay();
+	CHECK(r.header.players[0].loadCode == -1);
+	r.header.players[0].loadCode = 0x290; // LP+MK+HP (EMBER_LIBRARY.md section 55)
+	r.header.players[1].loadCode = 0;
+	std::vector<uint8_t> bytes = replay::Encode(r);
+	replay::Replay back;
+	std::string error;
+	REQUIRE_MESSAGE(replay::Decode(bytes.data(), bytes.size(), &back, &error), error);
+	CHECK(back.header.players[0].loadCode == 0x290);
+	CHECK(back.header.players[1].loadCode == 0);
+	// A header from before codes: none, as the battle it recorded loaded.
+	bytes = replay::Encode(SampleReplay());
+	REQUIRE_MESSAGE(replay::Decode(bytes.data(), bytes.size(), &back, &error), error);
+	CHECK(back.header.players[0].loadCode == -1);
+	CHECK(back.header.players[1].loadCode == -1);
+}
+
 TEST_CASE("the recorder keeps a frame's last report, and only frames made final")
 {
 	replay::Recorder rec;

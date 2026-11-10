@@ -74,6 +74,24 @@ void SetVoice(sf4e::selection::Pick& pick, int voice)
 	pick.winQuote = voice == kVoiceJapanese || voice == kVoiceEnglish ? voice + 1 : 0;
 }
 
+std::optional<int> LoadCodeIn(const sf4e::selection::Pick& pick)
+{
+	if (!(pick.personalAction & kLoadCodeMarker)) return std::nullopt;
+	const int index = pick.personalAction & ~kLoadCodeMarker;
+	if (index < 0 || index >= kLoadCodeCount) return std::nullopt;
+	return index;
+}
+
+void SetLoadCode(sf4e::selection::Pick& pick, int index)
+{
+	pick.personalAction = kLoadCodeMarker | (index >= 0 && index < kLoadCodeCount ? index : 0);
+}
+
+std::uint32_t LoadCodeButtons(int index)
+{
+	return index >= 0 && index < kLoadCodeCount ? kLoadCodes[index].buttons : 0;
+}
+
 std::string LoadoutText(Loadout loadout)
 {
 	return std::string("vskill ") + Numeral(loadout.choice[VSkill]) + " vtrigger " + Numeral(loadout.choice[VTrigger]);

@@ -217,9 +217,10 @@ void SfvAdapter::OnInputRecord(uint8_t* inputUnit)
 		sampled_[p] = values[p]; // what the pads say now, for the next frame's input
 		if (padSource_ == input::PadSource::Neutral && (values[p] & ~neutralised_[p])) {
 			neutralised_[p] |= values[p];
-			Log("adapter: pad %d held %08x while the battle loaded; recorded as nothing pressed", p, values[p]);
+			Log("adapter: pad %d held %08x while the battle loaded; recorded as %s", p, values[p],
+				loadHeld_[p] ? "the launch's costume code" : "nothing pressed");
 		}
-		values[p] = input::RecordedInput(padSource_, values[p], pending_.p[p]);
+		values[p] = input::RecordedInput(padSource_, values[p], pending_.p[p], loadHeld_[p]);
 	}
 }
 
@@ -257,11 +258,27 @@ void SfvAdapter::RunUpdate()
 	flow_.Capture(); // the record mirrors the game whenever it is saved or hashed
 }
 
-void SfvAdapter::RunOriginal(bool neutralPads)
+void SfvAdapter::RunOriginal(bool neutralPads, const std::array<PackedInput, kPlayers>* held)
 {
 	padSource_ = neutralPads ? input::PadSource::Neutral : input::PadSource::Pads;
+	for (int p = 0; p < kPlayers; p++) loadHeld_[p] = neutralPads && held ? (*held)[p] : 0;
 	RunUpdate();
 	padSource_ = input::PadSource::Pads;
+	for (PackedInput& bits : loadHeld_) bits = 0;
+}
+
+void SfvAdapter::PresetHeldAtLoad(const std::array<PackedInput, kPlayers>& codes)
+{
+	if (!inputUnit_) return;
+	namespace iu = sfv::inputunit;
+	auto* held = reinterpret_cast<uint32_t*>(inputUnit_ + iu::kHeldAtLoad);
+	uint32_t& taken = *reinterpret_cast<uint32_t*>(inputUnit_ + iu::kHeldAtLoadTaken);
+	const bool wasTaken = taken != 0;
+	const uint32_t before[kPlayers] = {held[0], held[1]};
+	for (int p = 0; p < kPlayers; p++) held[p] = codes[p];
+	taken = 1;
+	Log("adapter: costume codes held at load P1 %08x, P2 %08x (the game's snapshot %s: %08x, %08x)", codes[0], codes[1],
+		wasTaken ? "was taken" : "was not taken yet", before[0], before[1]);
 }
 
 void SfvAdapter::Advance(const FrameInputs& inputs, bool)

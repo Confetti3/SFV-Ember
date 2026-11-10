@@ -221,3 +221,6 @@ msgstr "Steam Input handles this controller, so its buttons follow your Steam se
 
 msgid "home.offline_detail"
 msgstr "Training, Versus, Arcade and the game's other offline modes."
+
+msgid "selection.personal_action"
+msgstr "Costume code"

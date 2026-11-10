@@ -285,7 +285,10 @@ std::optional<mod::MatchPicks> PicksOf(const replay::Header& h)
 		}
 		picks.players[side].vSkill = p.vSkill;
 		picks.players[side].vTrigger = p.vTrigger;
+		// As the recording loaded: its costume codes, or none.
+		picks.players[side].loadCode = p.loadCode;
 	}
+	if (picks.players[0].loadCode < 0 || picks.players[1].loadCode < 0) picks.players[0].loadCode = picks.players[1].loadCode = mod::kNoLoadCode;
 	picks.rules.stage = sf4e::platform::Utf8ToWide(h.stageCode.c_str());
 	const std::optional<int> stage = StageId(picks.rules.stage);
 	if (!stage || !StageInstalled(*stage) || !mod::PlayableRounds(h.rounds) || h.timeFrames == 0) return std::nullopt;
@@ -545,6 +548,7 @@ bool RecordingHeader(int slot, std::uint32_t seed, int delay, replay::Header* ou
 		p.launchColour = picks->players[side].colour;
 		p.vSkill = picks->players[side].vSkill;
 		p.vTrigger = picks->players[side].vTrigger;
+		p.loadCode = picks->players[side].loadCode;
 	}
 	h.stage = room->stage;
 	h.stageCode = sf4e::platform::WideToUtf8(picks->rules.stage);

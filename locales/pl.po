@@ -221,3 +221,6 @@ msgstr "Steam Input obsługuje ten kontroler, więc jego przyciski korzystają z
 
 msgid "home.offline_detail"
 msgstr "Trening, Versus, Arcade i inne tryby offline gry."
+
+msgid "selection.personal_action"
+msgstr "Kod stroju"

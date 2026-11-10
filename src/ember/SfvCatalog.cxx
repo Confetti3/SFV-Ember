@@ -607,6 +607,13 @@ MatchLaunch LaunchPicks(const RoomMatch& match)
 		// Never this copy's options: the other copy's are not the same.
 		picks.players[side].voice = sfve::picks::VoiceOf(match.picks[side]);
 	}
+	// The costume codes (picks::LoadCodeIn) play only when both copies know
+	// them: an older copy loads with nothing held, so this one must too.
+	const std::optional<int> codes[2] = {sfve::picks::LoadCodeIn(match.picks[0]), sfve::picks::LoadCodeIn(match.picks[1])};
+	for (int side = 0; side < 2; side++) {
+		picks.players[side].loadCode =
+			codes[0] && codes[1] ? (std::int64_t)sfve::picks::LoadCodeButtons(*codes[side]) : mod::kNoLoadCode;
+	}
 	picks.rules.stage = WideCode(StageCode(match.stage));
 	picks.rules.rounds = match.rounds;
 	picks.rules.timeFrames = *mod::RoomClockFrames(match.roundSeconds);

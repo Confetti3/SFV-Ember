@@ -221,3 +221,6 @@ msgstr "Steam Input이 이 컨트롤러를 처리하므로 버튼은 Steam 설�
 
 msgid "home.offline_detail"
 msgstr "트레이닝, 대전, 아케이드 등 게임의 오프라인 모드입니다."
+
+msgid "selection.personal_action"
+msgstr "코스튬 커맨드"

@@ -221,3 +221,6 @@ msgstr "Steam Input beheert deze controller, dus de knoppen volgen je Steam-inst
 
 msgid "home.offline_detail"
 msgstr "Training, Versus, Arcade en de andere offline modi van het spel."
+
+msgid "selection.personal_action"
+msgstr "Kostuumcode"

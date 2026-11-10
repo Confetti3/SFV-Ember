@@ -137,6 +137,18 @@ constexpr uint32_t kSlotValue = 8;
 // Frame tag, record/consume frames, base frame, delay, sync state: the
 // decompiled code uses dwords 2143..2180 (+0x217C..+0x2213). Kept outside
 // the game's snapshot (its netcode resets them after a restore).
+// The buttons each pad held as the battle began, which fighters read for the
+// game's costume codes (EMBER_LIBRARY.md section 55): the input unit's tick
+// (rva 0x43A760), once kHeldAtLoadTaken is 0 and more than one frame is
+// recorded, copies each local pad's recorded value at the current frame into
+// kHeldAtLoad (uint32 per pad) and sets kHeldAtLoadTaken to 1; the unit's
+// constructor (rva 0x41CA80) and reset (rva 0x43C210) clear both. Readers:
+// Urien's (rva 0x3BC6B0, the player's value == LP|MK|HP, 0x290), a data
+// value's exact match (rva 0x348510) and a count of LP, MP, LK and MK
+// (rva 0x3E1980), each by the fighter's player index. Both lie outside the
+// game's snapshot, so a rollback never retakes them.
+constexpr uint32_t kHeldAtLoadTaken = 0x2234;
+constexpr uint32_t kHeldAtLoad = 0x2238;
 constexpr uint32_t kCounters = 0x2170;
 constexpr uint32_t kCountersSize = 0xA8;
 // In the counters: the frame tag (set to 7 at init) and the battle's input

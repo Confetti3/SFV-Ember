@@ -28,6 +28,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -61,6 +62,11 @@ struct Player {
 	// playback refuses anyway, so only its listing reads them.
 	int vSkill = 0;
 	int vTrigger = 0;
+	// The buttons the player held as the battle loaded, for the game's
+	// costume codes (VersusLaunch's FighterPick::loadCode, EMBER_LIBRARY.md
+	// section 55): the game's input bits, or -1 where the battle loaded with
+	// nothing held, as every header written before codes reads.
+	std::int64_t loadCode = -1;
 };
 
 // One game of the battle, as the game judged it on its match end's frame.

@@ -221,3 +221,6 @@ msgstr "Steam Input gestiona este mando, por lo que sus botones siguen tus ajust
 
 msgid "home.offline_detail"
 msgstr "Entrenamiento, Versus, Arcade y los demás modos sin conexión del juego."
+
+msgid "selection.personal_action"
+msgstr "Código de traje"

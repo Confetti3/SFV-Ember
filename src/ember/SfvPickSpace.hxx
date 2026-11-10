@@ -112,6 +112,36 @@ int VoiceOf(const sf4e::selection::Pick& pick);
 // carries none.
 void SetVoice(sf4e::selection::Pick& pick, int voice);
 
+// The game's own costume codes (EMBER_LIBRARY.md section 55): the buttons a
+// player holds as the battle loads, which the input unit keeps for its
+// fighters (Urien's LP+MK+HP, his Street Fighter III look). A room's match
+// carries each player's choice in the shared pick's `personalAction` slot
+// (SF4's personal action, which SFV has no use for) as kLoadCodeMarker | the
+// choice's index: the marker says the copy knows codes, so 0 (what 0.1.0-beta.4
+// and earlier send) reads as none known, and both copies launch the codes only
+// when both picks carry the marker. Ready's pick carries it (SfvPick's
+// AddPickTo); nothing judges or fits it.
+constexpr int kLoadCodeMarker = 0x80;
+struct LoadCode {
+	std::uint32_t buttons; // the game's input bits (mod/GameInput.hxx)
+	const char* label;     // its buttons as players write them; none for no code
+};
+// Index 0 is no code. The bits are GameInput's: Up 0x001, LP 0x010, MP 0x020,
+// LK 0x040, MK 0x080, HP 0x200 (SfvLoadCodeTests checks them).
+inline constexpr LoadCode kLoadCodes[] = {
+	{0, nullptr},
+	{0x010 | 0x080 | 0x200, "LP+MK+HP"},
+	{0x001 | 0x010 | 0x020 | 0x200 | 0x040, "Up+LP+MP+HP+LK"},
+};
+constexpr int kLoadCodeCount = (int)(sizeof(kLoadCodes) / sizeof(kLoadCodes[0]));
+// The code's index the pick carries; none for a pick without the marker or
+// with an index this copy does not know.
+std::optional<int> LoadCodeIn(const sf4e::selection::Pick& pick);
+// Carries code `index` with the marker; an index out of range carries code 0.
+void SetLoadCode(sf4e::selection::Pick& pick, int index);
+// The buttons of code `index`; 0 for one out of range.
+std::uint32_t LoadCodeButtons(int index);
+
 struct Costume {
 	int id = 0;               // the game's costume number
 	std::vector<int> colours; // the game's colour numbers for it, in its order

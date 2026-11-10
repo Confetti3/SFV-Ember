@@ -29,9 +29,13 @@ constexpr PackedInput kInputBits = 0xFFF;
 // it advances the battle, or nothing pressed, for a room's or a replay's
 // battle before its session.
 enum class PadSource { Pads, Session, Neutral };
-constexpr PackedInput RecordedInput(PadSource source, PackedInput pad, PackedInput session)
+// What a tick records for a pad: the session's input, the pad itself, or,
+// while a room's or a replay's battle loads (Neutral), `held`: nothing, or
+// the costume code that launch gave the player (EMBER_LIBRARY.md sections
+// 53 and 55), the same on every copy.
+constexpr PackedInput RecordedInput(PadSource source, PackedInput pad, PackedInput session, PackedInput held = 0)
 {
-	return source == PadSource::Session ? session : source == PadSource::Neutral ? 0 : pad;
+	return source == PadSource::Session ? session : source == PadSource::Neutral ? held : pad;
 }
 
 // What a scripted player plays (automated tests only; player builds never

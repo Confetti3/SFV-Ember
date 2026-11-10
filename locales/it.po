@@ -221,3 +221,6 @@ msgstr "Steam Input gestisce questo controller, quindi i suoi pulsanti seguono l
 
 msgid "home.offline_detail"
 msgstr "Allenamento, Versus, Arcade e le altre modalità offline del gioco."
+
+msgid "selection.personal_action"
+msgstr "Codice costume"

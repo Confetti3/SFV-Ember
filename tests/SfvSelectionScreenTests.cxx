@@ -125,6 +125,31 @@ TEST_CASE("the pick screen has a V-Skill and a V-Trigger row, and a part the fig
 	CHECK(HasRow(PlayerRows(PlayerPickOf(kRyu, kOneOne)), "stage"));
 }
 
+TEST_CASE("the pick screen offers the game's costume codes, None first, and changes only the code")
+{
+	FillTestCatalog();
+	const std::vector<StageOption> stages = StageOptions(MissingStages());
+	PlayerPick pick = PlayerPickOf(kCnl, kOneOne);
+	const MenuEntry& row = RowOf(PlayerRows(pick), "costume-code");
+	CHECK(row.enabled);
+	CHECK(row.chosen == "#0");
+	REQUIRE(row.choices.size() == (size_t)picks::kLoadCodeCount);
+	CHECK(row.choices[1].label == "LP+MK+HP");
+	// Right: LP+MK+HP, a change; Left from None stays at None.
+	CHECK(SfvSelectionScreen::Apply(Adjust("costume-code", 1), pick, stages));
+	CHECK(picks::LoadCodeIn(pick.pick) == 1);
+	CHECK(RowOf(PlayerRows(pick), "costume-code").value == "LP+MK+HP");
+	CHECK(SfvSelectionScreen::Apply(Choose("costume-code", "#0"), pick, stages));
+	CHECK(picks::LoadCodeIn(pick.pick) == 0);
+	CHECK_FALSE(SfvSelectionScreen::Apply(Adjust("costume-code", -1), pick, stages));
+	CHECK_FALSE(SfvSelectionScreen::Apply(Choose("costume-code", "#99"), pick, stages));
+	CHECK(SfvSelectionScreen::Apply(Choose("costume-code", "#2"), pick, stages));
+	CHECK(picks::LoadCodeIn(pick.pick) == 2);
+	// The rest of the pick is untouched.
+	CHECK(pick.pick.fighter == kCnl);
+	CHECK(picks::LoadoutOf(pick.pick) == kOneOne);
+}
+
 TEST_CASE("the pick screen changes a part only to a choice the fighter has, and says when the loadout changed")
 {
 	FillTestCatalog();

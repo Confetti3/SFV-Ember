@@ -221,3 +221,6 @@ msgstr "Закройте Ember, затем меню паузы SFV, если о�
 
 msgid "controllers.detail_steam"
 msgstr "Steam Input управляет этим контроллером, поэтому его кнопки следуют настройкам Steam. Чтобы им управлял Ember, запустите Ember вне Steam или выключите Steam Input для Street Fighter V в Steam."
+
+msgid "selection.personal_action"
+msgstr "Код костюма"
