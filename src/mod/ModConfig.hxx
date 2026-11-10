@@ -17,6 +17,7 @@
 //   -sfve_replay_regions=F  replay playback: log each checkpoint's region hashes from frame F
 //   -sfve_replay_check=N    replay playback: also make rollbacks up to N frames deep and log
 //                        what they leave different (random spacing from -sfve_schedule)
+//   -sfve_fma3=0|1       test: the game's CRT math (msvcr120) without or with its FMA3 code
 //   -sfve_replay_lag=N      replay playback: play as a fighter's copy does when P1's inputs
 //                        (-sfve_replay_lag_player=1: P2's) arrive N frames late, with
 //                        guesses and rollbacks; checkpoints once final
@@ -131,6 +132,9 @@ struct ModConfig {
 	// replayLagPlayer's inputs arrive this many frames late
 	// (RollbackSession::Config::replayLag). 0: none.
 	int replayLag = 0;
+	// msvcr120's FMA3 code for the game's math: -1 as the CRT chose it at
+	// start (FMA3 where the CPU has it), 0 off, 1 on (DllMain: SetCrtFma3).
+	int crtFma3 = -1;
 	int replayLagPlayer = 0;
 	bool room = false; // netplay: Ember's runtime runs, and its rooms' matches give the endpoints, seed and delay
 	// Offline start-up dialogs kept from showing: 0 none, 1 the download
