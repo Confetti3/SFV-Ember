@@ -136,7 +136,7 @@ void LogOwnership(const mod::ContentLists& lists, bool gate)
 	const mod::OwnershipSource& source = lists.ownership;
 	mod::Log("ember: ownership gate %s, looks by %s, stages by %s; the game's setup restricted %d (%d entries), filter %d, "
 		"logged in %d; %d marked unowned by -sfve_unowned; not owned: %d fighters, %d costumes, %d colours, %d of %d stages",
-		gate ? "on" : "off (development)", mod::LooksRule(source), mod::ContentOwnershipName(source.stages),
+		gate ? "on" : "off", mod::LooksRule(source), mod::ContentOwnershipName(source.stages),
 		source.restricted, source.restrictionEntries, source.filter, source.loggedIn, source.markedUnowned,
 		counts.fightersNotOwned, counts.costumesNotOwned, counts.coloursNotOwned, counts.stagesNotOwned, counts.stages);
 }
