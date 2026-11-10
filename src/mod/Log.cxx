@@ -88,33 +88,50 @@ OpenedLog OpenFirstLog(const std::vector<LogCandidate>& candidates)
 	return opened;
 }
 
+std::vector<LogCandidate> LogCandidates(int instance, unsigned long pid, const std::wstring& logs, const std::wstring& localLogs,
+	const std::wstring& temp)
+{
+	const std::wstring usual = instance == 0 ? L"sfv_ember.log" : L"sfv_ember." + std::to_wstring(instance) + L".log";
+	const std::wstring own = L"sfv_ember-" + std::to_wstring(pid) + L".log";
+	const auto in = [](const std::wstring& folder, const std::wstring& name) {
+		if (folder.empty()) return std::wstring();
+		const bool slash = folder.back() == L'\\' || folder.back() == L'/';
+		return slash ? folder + name : folder + L"\\" + name;
+	};
+	return {
+		{in(logs, usual), false},
+		{in(logs, own), true},
+		{in(localLogs, own), true},
+		{in(temp, own), true},
+	};
+}
+
 void OpenLog(int instance)
 {
-	std::lock_guard lock(s_mutex);
-	if (s_file != INVALID_HANDLE_VALUE) return;
-	// The usual log; when another program holds it or it cannot be written,
-	// a file of this process's own beside it, then under %LOCALAPPDATA%, then
-	// in %TEMP%: a player's log is never silently lost.
-	const std::wstring usual = instance == 0 ? L"sfv_ember.log" : L"sfv_ember." + std::to_wstring(instance) + L".log";
-	const std::wstring own = L"sfv_ember-" + std::to_wstring(GetCurrentProcessId()) + L".log";
-	const std::wstring logs = LogFolder();
-	const std::wstring local = KnownFolder(FOLDERID_LocalAppData);
-	wchar_t temp[MAX_PATH + 1] = {};
-	const DWORD tempLength = GetTempPathW(MAX_PATH + 1, temp);
-	OpenedLog opened = OpenFirstLog({
-		{logs.empty() ? L"" : logs + L"\\" + usual, false},
-		{logs.empty() ? L"" : logs + L"\\" + own, true},
-		{local.empty() ? L"" : local + L"\\SFVEmber\\logs\\" + own, true},
-		{tempLength && tempLength <= MAX_PATH ? std::wstring(temp) + own : L"", true},
-	});
-	s_file = opened.file;
-	s_target = {opened.path, opened.failedPath, opened.error};
-	if (s_file == INVALID_HANDLE_VALUE || !opened.error) return;
-	char line[1200];
-	const int length = snprintf(line, sizeof(line), "log: could not open %ls (Win32 %lu); this process logs here instead\r\n",
-		opened.failedPath.c_str(), opened.error);
-	DWORD written = 0;
-	if (length > 0) WriteFile(s_file, line, (DWORD)std::min(length, (int)sizeof(line) - 1), &written, nullptr);
+	OpenedLog opened;
+	{
+		std::lock_guard lock(s_mutex);
+		if (s_file != INVALID_HANDLE_VALUE) return;
+		// The usual log; when another program holds it or it cannot be written,
+		// a file of this process's own beside it, then under %LOCALAPPDATA%, then
+		// in %TEMP%: a player's log is never silently lost.
+		const std::wstring local = KnownFolder(FOLDERID_LocalAppData);
+		wchar_t temp[MAX_PATH + 1] = {};
+		const DWORD tempLength = GetTempPathW(MAX_PATH + 1, temp);
+		opened = OpenFirstLog(LogCandidates(instance, GetCurrentProcessId(), LogFolder(),
+			local.empty() ? std::wstring() : local + L"\\SFVEmber\\logs",
+			tempLength && tempLength <= MAX_PATH ? std::wstring(temp) : std::wstring()));
+		s_file = opened.file;
+		s_target = {opened.path, opened.failedPath, opened.error};
+	}
+	if (opened.file == INVALID_HANDLE_VALUE) return;
+	// The log's first line says which file it is, so a log that is not where
+	// a reader looks (another copy of the folder, a viewer that shows a
+	// stale or redirected one) is told apart from one that was not written.
+	Log("log: pid %lu writes %ls", GetCurrentProcessId(), opened.path.c_str());
+	if (opened.error) {
+		Log("log: could not open %ls (Win32 %lu); this process logs here instead", opened.failedPath.c_str(), opened.error);
+	}
 }
 
 const LogTarget& CurrentLogTarget()
