@@ -10,8 +10,11 @@ namespace sfve::mod::input {
 namespace {
 
 constexpr int kHoldFrames = 6;
-constexpr PackedInput kDirections[] = {0, kUp, kDown, kLeft, kRight, kUp | kLeft, kUp | kRight, kDown | kLeft,
-	kDown | kRight};
+// Grounded directions only: a scripted fighter that jumps half the time
+// rarely stands where supers, V-Triggers and throws land, and those are
+// what the desync sweeps need played out (Kate, 2026-11-10). Motions that
+// pass through up (the 720) still do, for a frame or two.
+constexpr PackedInput kDirections[] = {0, kDown, kLeft, kRight, kDown | kLeft, kDown | kRight};
 
 uint32_t Scramble(uint32_t x)
 {

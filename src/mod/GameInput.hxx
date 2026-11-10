@@ -27,7 +27,8 @@ constexpr PackedInput kInputBits = 0xFFF;
 // What a scripted player plays (automated tests only; player builds never
 // read the options that choose it).
 enum class Script {
-	// A direction and maybe an attack, held for six frames at a time.
+	// A grounded direction (never up: fighters stay where moves land) and
+	// maybe an attack, held for six frames at a time.
 	Buttons,
 	// The game's system moves, for desync sweeps: blocks of kMoveBlockFrames,
 	// each one move (V-Skill tap or hold, V-Trigger and a second press while
