@@ -13,5 +13,5 @@
   GGPO port plus `ignored-inputs.patch`.
 - No entitlement or character unlocks beyond Ember's own ownership gate,
   which is off by default while Capcom's entitlement server is down
-  (`kOwnershipGateByDefault`, EMBER_LIBRARY.md section 54; Kate, 2026-11-10).
+  (`kOwnershipGateByDefault`, EMBER_LIBRARY.md section 54; the maintainer, 2026-11-10).
   Turn it back on when the server answers again.
