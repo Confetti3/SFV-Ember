@@ -261,6 +261,11 @@ public:
 	const uint8_t* SavedState(int frame) const;
 	// The peers' per-region hashes of checkpoint `frame`, in canonical order.
 	bool RegionHashesAt(int frame, std::vector<RegionHash>* out) const;
+	// The whole state at checkpoint `frame` as last hashed (the layout's
+	// regions one after another), while it is one of the last two
+	// checkpoints; null otherwise. A desync report keeps it, so two copies'
+	// states can be compared byte by byte.
+	const std::vector<uint8_t>* CheckpointState(int frame) const;
 	int LatestCheckpoint(int atOrBefore) const;
 	const Stats& GetStats() const { return stats_; }
 	const StateLayout& Layout() const { return game_.Layout(); }
@@ -347,6 +352,11 @@ private:
 	std::vector<HashRecord> history_;
 	std::vector<HashRecord> allHashes_; // Config::keepAllHashes, indexed by frame
 	std::map<int, std::vector<RegionHash>> checkpoints_;
+	struct KeptState {
+		int frame = -1;
+		std::vector<uint8_t> bytes;
+	};
+	KeptState checkpointStates_[2]; // the last two checkpoints' states (CheckpointState)
 	int frame_ = 0;
 	// Held frames (StepHeld): from heldFrom_ up to heldTo_ (exclusive; the
 	// current frame while holding_).

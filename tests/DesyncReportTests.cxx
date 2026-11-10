@@ -339,3 +339,35 @@ TEST_CASE("past the limit the oldest waiting reports go, never one the launcher 
 	CHECK(fs::exists(folder / "notes.txt"));
 	fs::remove_all(folder);
 }
+
+TEST_CASE("a copy's state file holds each region's name, size, address and bytes, or nothing when they do not add up")
+{
+	Facts facts;
+	facts.stateRegions = {{"CharaUnit[0].CharaActionPart+0xD8", 3, 0x1000}, {"global.rng", 2, 0x7FF600000000ull}};
+	facts.state = {1, 2, 3, 4, 5};
+	const std::string file = StateFile(facts);
+	const auto u = [&](std::size_t at, int bytes) {
+		std::uint64_t v = 0;
+		for (int i = 0; i < bytes; ++i) v |= std::uint64_t(static_cast<unsigned char>(file[at + i])) << (8 * i);
+		return v;
+	};
+	REQUIRE(file.size() == 8 + 4 + 4 + (2 + 33 + 16 + 3) + (2 + 10 + 16 + 2));
+	CHECK(file.substr(0, 8) == "SFVSTATE");
+	CHECK(u(8, 4) == 1);
+	CHECK(u(12, 4) == 2);
+	CHECK(u(16, 2) == 33);
+	CHECK(file.substr(18, 33) == "CharaUnit[0].CharaActionPart+0xD8");
+	CHECK(u(51, 8) == 3);
+	CHECK(u(59, 8) == 0x1000);
+	CHECK(file.substr(67, 3) == std::string("\x01\x02\x03", 3));
+	CHECK(u(70, 2) == 10);
+	CHECK(file.substr(72, 10) == "global.rng");
+	CHECK(u(90, 8) == 0x7FF600000000ull);
+	CHECK(file.substr(98, 2) == std::string("\x04\x05", 2));
+
+	facts.state.pop_back();
+	CHECK(StateFile(facts).empty());
+	facts.stateRegions.clear();
+	facts.state.clear();
+	CHECK(StateFile(facts).empty());
+}

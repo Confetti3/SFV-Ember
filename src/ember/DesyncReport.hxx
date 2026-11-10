@@ -46,6 +46,13 @@ struct RegionFacts {
 	std::uint64_t hash = 0;
 };
 
+// A region of this copy's whole state at the checkpoint (StateFile).
+struct StateRegionFacts {
+	std::string name;
+	std::uint64_t size = 0;
+	std::uint64_t address = 0;
+};
+
 // Everything the game knows of a desync as it finds it.
 struct Facts {
 	// This copy: its match slot (0 P1, 1 P2, 2 and up watch; -1 not known),
@@ -74,7 +81,23 @@ struct Facts {
 	std::uint64_t layoutId = 0;
 	std::string matchBuild; // SfvCatalog's MatchBuildId
 	std::vector<RegionFacts> regions; // the checkpoint's, in canonical order
+	// This copy's whole state at the checkpoint (the session keeps the last
+	// two checkpoints'), its regions in the layout's order; empty when it was
+	// no longer kept.
+	std::vector<StateRegionFacts> stateRegions;
+	std::vector<std::uint8_t> state;
 };
+
+// A copy's state at the desync's checkpoint, kept on this PC beside the
+// report (not sent: about 1 MB), so the two players' files name the bytes
+// that differ (tools/diffstate.py). The newest kStatesKept are kept.
+constexpr const wchar_t* kStateFolder = L"desync-states";
+constexpr const wchar_t* kStateExtension = L".state";
+constexpr std::size_t kStatesKept = 8;
+// The file: "SFVSTATE", then version 1 and the region count (u32 each), then
+// each region: its name's length (u16), the name, its size and address (u64)
+// and its bytes. Empty when the regions do not account for the state's bytes.
+std::string StateFile(const Facts& facts);
 
 // The intake's limits a report keeps to (the library's ProblemReport.hxx).
 constexpr std::size_t kCommentCharacters = 2000;
