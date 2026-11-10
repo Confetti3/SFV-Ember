@@ -100,6 +100,18 @@ constexpr CodeSite kFindPart{"FindPart", 0x4CE260,
 constexpr CodeSite kProjectileReleasable{"ProjectileReleasable", 0x457F50,
 	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x40, 0x48, 0x8D, 0x3D, 0x9F, 0xED, 0x60}};
 
+// uint64 AddBattleTask(TaskList*, const TaskFunctor*, uint32 order, uint32
+// phases, const char* name, int32 gameThread): a unit's task for the battle's
+// job scheduler (the node is built at rva 0x4CC560), called when a battle's
+// units are set up. The scheduler (rva 0x4CD420, on the thread that steps the
+// battle) runs the tasks of one order at once, on itself and on the "Job
+// Worker %d" threads (rva 0x4E1490, loop rva 0x4D8EF0); a worker takes only
+// tasks with gameThread 0, so a task with 1 runs on the battle's thread. The
+// projectile visuals' tasks, which drive UE actors, pass 1 (rva 0x483220);
+// "Projectile PreMain" (order 0x2070000, phase 2, rva 0x482DD0) passes 0.
+constexpr CodeSite kAddBattleTask{"AddBattleTask", 0x4CC900,
+	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C, 0x24, 0x18, 0x48, 0x89, 0x74, 0x24, 0x20, 0x57}};
+
 // UObject* KiwiGameInstance(): the game's instance object (a KiwiGame class,
 // checked), or null. The InputUnit mirrors its input frame into it
 // (inputunit::kInstanceInputFrame) every tick.
@@ -472,7 +484,7 @@ constexpr CodeSite kSetPlayerParam{"SetPlayerParam", 0x309330,
 	{0x4C, 0x8B, 0xC9, 0x83, 0xFA, 0x29, 0x77, 0x49, 0x48, 0x63, 0xCA, 0x41, 0x83, 0xF8, 0xFE, 0x74}};
 
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecord, kBattleInputAny, kPadsAny, kRollbackUnitPre, kGetManager, kFlowMessage,
-	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
+	kFindUnit, kFindPart, kProjectileReleasable, kAddBattleTask, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumePackage, kShowResult, kRestartBattle, kSpecData, kMainMenuClass,
