@@ -240,6 +240,24 @@ try {
         if ($leaveAnswer -and (Count 1 'the room asks the battle to end over the WIN') -eq 0) { throw "copy 1's leave over the WIN was not carried as its decline" }
         Start-Sleep 3
         Shot "game$game-room"
+        # Rematch on the results (the library's Branding::rematchOnResults):
+        # copy 1's B over the WIN is taken back, so its results show the prompt
+        # with Rematch focused, and copy 0's prompt waits there with its own
+        # Rematch standing as its Ready. Copy 1's A there readies it, and the
+        # room starts the next game from the results.
+        if ($padAnswers -and -not $leaveAnswer -and -not $setEnded) {
+          foreach ($i in 0, 1) { $s = (Status $i).shell; "copy ${i}: results shown $($s.shown), screen '$($s.screen)', focus '$($s.focus)'" }
+          WaitFor "the results' prompt on copy 0" 15 { $s = (Status 0).shell; $s.shown -and $s.screen -eq 'post-match' }
+          WaitFor "the results' prompt with Rematch focused on copy 1" 15 { $s = (Status 1).shell; $s.shown -and $s.screen -eq 'post-match' -and $s.focus -eq 'again' }
+          $entered = @((Count 0 "entering the room's match"), (Count 1 "entering the room's match"))
+          Answer 1 'yes'
+          "game ${game}: copy 1 pressed A on its results"
+          WaitFor "the next game from Rematch on the results" 60 { (Count 0 "entering the room's match") -gt $entered[0] -and (Count 1 "entering the room's match") -gt $entered[1] }
+          WaitFor "the next game's battle on both copies" 90 { (Count 0 "room's battle has loaded") -gt $game - 1 -and (Count 1 "room's battle has loaded") -gt $game - 1 }
+          Start-Sleep 10
+          Shot "game$game-results-rematch"
+          "game ${game}: Rematch on the results started the next game on both copies"
+        }
       }
       # The room counts every game of the match: the same generation, one more on the score.
       if (-not $last) {
