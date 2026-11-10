@@ -298,6 +298,13 @@ with neutral inputs, and no check restores to one's start.
     modes that roll back the release now follows the battle tick's own
     visual states (ProjectileRelease); a dead projectile's fade-out is cut
     short.
+  - That release destroys a live UE actor, and its task ("Projectile
+    PreMain") ran on the game's job workers beside the other groups': it
+    raced on the UWorld's end-of-frame update lists, most likely with
+    another group's release on the same tick (an access violation at rva
+    0x1B5BC0B on a worker, beta.3). In the modes that roll back that task
+    now runs on the battle's thread, as the projectile visuals' tasks always
+    did (sfv::kAddBattleTask).
   - Result: randomised synctests (RYU vs KEN, KEN vs RYU, CMY vs CNL, four
     seeds, about 4,300 rollbacks) show no difference; two linked copies at
     60 ms with delay 1 match at all 76 checkpoints (RYU vs KEN, CMY vs CNL,

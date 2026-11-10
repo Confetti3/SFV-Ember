@@ -223,6 +223,7 @@ add_executable(sfve_ember_tests
     tests/ReportsDefaultTests.cxx
     src/launcher/ReportsDefault.cxx
     tests/BattleIdentityTests.cxx
+    tests/ProjectileReleaseTests.cxx
     tests/HudLayoutTests.cxx
     tests/SfvReplaysTests.cxx
     tests/CrashRecordTests.cxx
