@@ -128,6 +128,7 @@ public:
 		// replayCheckDistance. A held frame fails the playback.
 		int replayLag = 0;
 		int replayLagPlayer = 0;
+		uint32_t replayLagJitter = 0; // nonzero: the delay wanders up to replayLag (LaggedReplay), from this seed
 		// Each frame as this session plays it, before the game sees it: its
 		// number and what it gave the game (RecordedFrame). A rollback's replay
 		// reports the frame again; the last report of a confirmed frame is

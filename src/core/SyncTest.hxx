@@ -141,9 +141,14 @@ SyncTestReport RunSyncTest(GameAdapter& game, const SyncTestOptions& options);
 // read bits confirmed). The state at the start of a frame is final once every
 // input before it is known (ConfirmedThrough), and it should then equal the
 // recording's at that frame.
+//
+// With a jitter seed the delay is not fixed but wanders as a network's does:
+// each frame's input arrives 1 to `lag` frames late, the delay a random walk
+// with occasional jumps to `lag`, and inputs arrive in order, so a late one
+// holds back those after it and they then arrive together.
 class LaggedReplay {
 public:
-	LaggedReplay(GameAdapter& game, const ReplayFrames& frames, int remote, int lag);
+	LaggedReplay(GameAdapter& game, const ReplayFrames& frames, int remote, int lag, uint32_t jitterSeed = 0);
 
 	// Plays frame `frame`, the next one, after the rollback the inputs known
 	// by now call for.
@@ -174,12 +179,20 @@ private:
 	// The remote inputs known now are those of frames up to `known`.
 	void Resolve(int known);
 	void Play(int frame, int known);
+	// The last frame whose remote input has arrived when `frame` is played.
+	int Known(int frame);
+
+	uint32_t jitter_;     // xorshift32 state; 0: a fixed delay
+	int delay_ = 1;       // the walk's current delay
+	int arrivedTo_ = -1;  // remote inputs arrived through this frame
+	int scheduledTo_ = -1;
+	std::vector<int> arrival_; // the frame each remote input arrives on
 
 	GameAdapter& game_;
 	const ReplayFrames& frames_;
 	int remote_;
 	int lag_;
-	int next_ = 0;             // the next frame to play
+	int next_ = 0; // the next frame to play
 	int checked_ = -1;         // guesses compared through this frame
 	int confirmedThrough_ = 0;
 	int rollbacks_ = 0;

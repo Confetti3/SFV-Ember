@@ -299,9 +299,9 @@ ReplayFrames ScriptedRecording(int count)
 // Returns how many final states differed; `compared` and `rollbacks` say how
 // much was checked.
 int LaggedDifferences(MockFighter& game, const ReplayFrames& frames, const std::vector<uint64_t>& straight, int remote,
-	int lag, int* compared, int* rollbacks)
+	int lag, int* compared, int* rollbacks, uint32_t jitter = 0)
 {
-	LaggedReplay replay(game, frames, remote, lag);
+	LaggedReplay replay(game, frames, remote, lag, jitter);
 	int differing = 0;
 	int next = 0;
 	const auto compare = [&] {
@@ -338,12 +338,14 @@ TEST_CASE("a lagged replay's final states are the recording's, and it catches st
 	}
 	for (int remote = 0; remote < 2; remote++) {
 		for (int lag : {1, 3, 7}) {
-			MockFighter game;
-			int compared = 0, rollbacks = 0;
-			INFO("remote P" << remote + 1 << ", lag " << lag);
-			CHECK(LaggedDifferences(game, frames, straight, remote, lag, &compared, &rollbacks) == 0);
-			CHECK(compared >= 890);
-			CHECK(rollbacks > 0);
+			for (uint32_t jitter : {0u, 99u}) {
+				MockFighter game;
+				int compared = 0, rollbacks = 0;
+				INFO("remote P" << remote + 1 << ", lag " << lag << ", jitter " << jitter);
+				CHECK(LaggedDifferences(game, frames, straight, remote, lag, &compared, &rollbacks, jitter) == 0);
+				CHECK(compared >= 890);
+				CHECK(rollbacks > 0);
+			}
 		}
 	}
 	MockFighter leaky(kBugStateOutsideLayout);

@@ -23,6 +23,7 @@
 //   -sfve_replay_lag=N      replay playback: play as a fighter's copy does when P1's inputs
 //                        (-sfve_replay_lag_player=1: P2's) arrive N frames late, with
 //                        guesses and rollbacks; checkpoints once final
+//   -sfve_replay_jitter=SEED  ...with the delay wandering up to N, a new seed each playback
 //   -sfve_distance=N     synctest rollback distance (default 7)
 //   -sfve_pads=0,1       XInput slots that are virtual pads from the start
 //   -sfve_background=1   keep playing and reading pads while unfocused
@@ -142,6 +143,9 @@ struct ModConfig {
 	// thread in the scheduler's order, 2 as 1 with P2's fighter tasks first.
 	int battleTasks = 0;
 	int replayLagPlayer = 0;
+	// Nonzero: the lagged replay's delay wanders up to replayLag, seeded from
+	// this plus the playback's number in this process (-sfve_replay_jitter).
+	uint32_t replayLagJitter = 0;
 	bool room = false; // netplay: Ember's runtime runs, and its rooms' matches give the endpoints, seed and delay
 	// Offline start-up dialogs kept from showing: 0 none, 1 the download
 	// failures, 2 those and the offline-mode notice.

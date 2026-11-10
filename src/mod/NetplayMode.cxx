@@ -379,6 +379,9 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 		c.replayCheckDistance = config_.replayCheck;
 		c.replayLag = config_.replayLag;
 		c.replayLagPlayer = config_.replayLagPlayer;
+		// Each playback in this process its own schedule.
+		static uint32_t s_playbacks = 0;
+		if (config_.replayLagJitter) c.replayLagJitter = config_.replayLagJitter + s_playbacks++;
 		c.replayCheckSeed = config_.scheduleSeed;
 		seed = replay_->header.seed;
 		delay = 0;

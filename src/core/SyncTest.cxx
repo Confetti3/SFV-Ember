@@ -172,16 +172,40 @@ FrameInputs SyncTester::Perturbed(const FrameInputs& inputs, int frame)
 	return wrong;
 }
 
-LaggedReplay::LaggedReplay(GameAdapter& game, const ReplayFrames& frames, int remote, int lag)
-	: game_(game), frames_(frames), remote_(remote), lag_(lag < 1 ? 1 : lag), saved_((size_t)lag_ + 3)
+LaggedReplay::LaggedReplay(GameAdapter& game, const ReplayFrames& frames, int remote, int lag, uint32_t jitterSeed)
+	: jitter_(jitterSeed), game_(game), frames_(frames), remote_(remote), lag_(lag < 1 ? 1 : lag),
+	  saved_((size_t)lag_ + 3)
 {
 	for (Saved& s : saved_) s.bytes.resize(game.Layout().TotalSize());
+	arrival_.resize(frames.size());
+	delay_ = (lag_ + 1) / 2;
+}
+
+int LaggedReplay::Known(int frame)
+{
+	if (!jitter_) return frame - lag_;
+	// Each input's arrival, in order, as far as this frame can need: an input
+	// arrives no earlier than the one before it, and at most lag_ frames late.
+	while (scheduledTo_ + 1 < (int)arrival_.size() && scheduledTo_ + 1 <= frame) {
+		const int k = ++scheduledTo_;
+		jitter_ ^= jitter_ << 13;
+		jitter_ ^= jitter_ >> 17;
+		jitter_ ^= jitter_ << 5;
+		const uint32_t r = jitter_ % 100;
+		if (r < 10 && delay_ < lag_) delay_++;
+		else if (r < 20 && delay_ > 1) delay_--;
+		const int delay = r >= 97 ? lag_ : delay_;
+		const int earliest = k > 0 ? arrival_[(size_t)k - 1] : 0;
+		arrival_[(size_t)k] = k + delay > earliest ? k + delay : earliest;
+	}
+	while (arrivedTo_ + 1 <= scheduledTo_ && arrival_[(size_t)arrivedTo_ + 1] <= frame) arrivedTo_++;
+	return arrivedTo_;
 }
 
 void LaggedReplay::Step(int frame)
 {
 	if (frame != next_) return;
-	const int known = frame - lag_;
+	const int known = Known(frame);
 	Resolve(known);
 	Play(frame, known);
 	next_ = frame + 1;
