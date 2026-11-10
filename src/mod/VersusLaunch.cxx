@@ -300,13 +300,13 @@ void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 }
 
 // Both copies of a room's battle, and a replay's playback, start from the
-// same carried count (gameinstance::kCarriedCount): 0, what a game just
+// same carried count (sfv::gameinstance::kCarriedCount): 0, what a game just
 // started has, so the opening level-ups depend on nothing a PC's menus left.
 void ClearCarriedCount()
 {
 	uint8_t* instance = At<GameInstanceFn>(sfv::kGameInstance)();
 	if (!instance) return Log("launch: no game instance; the carried count stays as the menus left it");
-	int32_t& count = Field<int32_t>(instance, gameinstance::kCarriedCount);
+	int32_t& count = Field<int32_t>(instance, sfv::gameinstance::kCarriedCount);
 	if (count != 0) Log("launch: the carried count was %d; a room's battle and a replay start from 0", count);
 	count = 0;
 }
