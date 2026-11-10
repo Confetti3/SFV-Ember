@@ -227,6 +227,7 @@ void LaggedReplay::Play(int frame, int known)
 	Saved& s = At(frame);
 	game_.Layout().SaveTo(s.bytes.data());
 	s.frame = frame;
+	if (onGuessedState && frame >= next_ && known < frame - 1) onGuessedState(frame, s.bytes.data());
 	FrameInputs inputs = frames_[(size_t)frame].inputs;
 	s.guessed = game_.InputsMatter() && frame > known;
 	if (s.guessed) inputs.p[remote_] = known >= 0 ? frames_[(size_t)known].inputs.p[remote_] : 0;

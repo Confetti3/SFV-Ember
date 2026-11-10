@@ -158,6 +158,10 @@ public:
 	const uint8_t* SavedAt(int frame) const;
 	int Rollbacks() const { return rollbacks_; }
 	int LongestRollback() const { return longest_; }
+	// Called with each state saved at the start of a frame some of whose
+	// earlier inputs are guesses, the first time it is played (a fighter's
+	// copy hashes such a checkpoint before the rollback that corrects it).
+	std::function<void(int frame, const uint8_t* state)> onGuessedState;
 
 private:
 	struct Saved {

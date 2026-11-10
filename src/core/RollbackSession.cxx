@@ -103,6 +103,11 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 		replaying_ = true;
 		if (config.replayLag > 0) {
 			lagged_ = std::make_unique<LaggedReplay>(game_, *config.replay, config.replayLagPlayer, config.replayLag);
+			lagged_->onGuessedState = [this](int frame, const uint8_t* state) {
+				if (frame % kCheckpointInterval != 0) return;
+				CoreLog("replay lag: checkpoint %d on guessed inputs, hash %016llx", frame,
+					(unsigned long long)game_.Layout().HashSaved(state, HashScope::Peers));
+			};
 			CoreLog("replay lag: P%d's inputs arrive %d frame(s) late; guessed frames are played and rolled back",
 				config.replayLagPlayer + 1, config.replayLag);
 		} else if (config.replayCheckDistance > 0) {
