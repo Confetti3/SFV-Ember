@@ -86,6 +86,7 @@ add_executable(sfve_tests
     tests/NetPolicyTests.cxx
     tests/MatchResultTests.cxx
     tests/RematchDecisionTests.cxx
+    tests/IntroSkipTests.cxx
     tests/WatcherTests.cxx
     tests/ReplayTests.cxx
     src/mod/MatchResult.cxx)
