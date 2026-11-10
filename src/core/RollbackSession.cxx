@@ -650,7 +650,8 @@ bool RollbackSession::DrainPendingAbort()
 
 int RollbackSession::LastConfirmedFrame() const
 {
-	if (Live() && config_.watching) return frame_;
+	// A lagged replay's frames are final only once its guesses are settled.
+	if (Live() && config_.watching) return lagged_ ? lagged_->ConfirmedThrough() : frame_;
 	int frame = -1;
 	if (session_ && ggpo_get_last_confirmed_frame(session_, &frame) == GGPO_OK) return frame;
 	return -1;
