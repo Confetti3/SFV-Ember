@@ -37,7 +37,7 @@ TEST_CASE("a player build reads only its launcher's options")
 	CHECK(player.room);
 	CHECK(player.dumpChannel.Present());
 	CHECK(player.instance == 0);
-	CHECK(player.ownershipGate);
+	CHECK(player.ownershipGate == sfve::mod::kOwnershipGateByDefault);
 	CHECK(player.script.seed == 0);
 	CHECK_FALSE(player.script.padBefore);
 	CHECK_FALSE(player.perturb);

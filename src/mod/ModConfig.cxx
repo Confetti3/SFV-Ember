@@ -203,7 +203,7 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.replayRegionsFrom = (int)options.Number(L"sfve_replay_regions", 0);
 	c.room = options.Number(L"sfve_room", 0) != 0;
 	c.offlineDialogs = (int)options.Number(L"sfve_dialogs", 2);
-	c.ownershipGate = options.Number(L"sfve_ownership", 1) != 0;
+	c.ownershipGate = options.Number(L"sfve_ownership", kOwnershipGateByDefault ? 1 : 0) != 0;
 	c.gameOwnershipCheck = options.Number(L"sfve_game_ownership", 0) != 0;
 	c.crashCommand = options.Number(L"sfve_crash_command", 0) != 0;
 	wchar_t channel[64];

@@ -550,7 +550,7 @@ TEST_CASE("the command line marks content unowned for this copy, never owned")
 {
 	mod::LoadConfigFromCommandLine(L"game.exe -sfve_mode=netplay -sfve_unowned=KEN,RYU:4,CNL:0:1,bad:x,ZZZ", sfve::BuildKind::Development);
 	const mod::ModConfig& config = mod::Config();
-	CHECK(config.ownershipGate);
+	CHECK(config.ownershipGate == mod::kOwnershipGateByDefault);
 	CHECK_FALSE(config.gameOwnershipCheck);
 	REQUIRE(config.unowned.size() == 4);
 	CHECK(config.unowned[0].fighter == "KEN");

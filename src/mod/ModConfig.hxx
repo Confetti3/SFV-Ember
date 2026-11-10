@@ -26,10 +26,11 @@
 //                        hash for the match (pipe "hash F"; tools/compare.py)
 //   -sfve_room=1         netplay: host Ember's runtime; battles are rooms' matches
 //                        (the pipe's room commands, RoomCommands.hxx)
-//   -sfve_ownership=0    development: Ember's ownership gate is off, so this
-//                        copy's player may pick what the game does not let
-//                        them (default 1: the gate is on, as in the public
-//                        version; EMBER_LIBRARY.md section 23)
+//   -sfve_ownership=N    development: Ember's ownership gate on (1) or off
+//                        (0); off, this copy's player may pick what the
+//                        game does not let them. The default is
+//                        kOwnershipGateByDefault (EMBER_LIBRARY.md sections
+//                        23 and 54)
 //   -sfve_unowned=LIST   development: content marked unowned for this copy, on
 //                        top of the game's answer: CODE, CODE:costume or
 //                        CODE:costume:colour, comma separated (RYU,KEN:3,CNL:0:100)
@@ -81,6 +82,15 @@ struct DumpChannelHandles {
 	bool Present() const { return request && done && mailbox; }
 };
 
+// Whether Ember's ownership gate is on when nothing says otherwise, in a
+// player build always. Off since 2026-11-10: the game learns what an account
+// owns only from Capcom's entitlement server (POST /user/steam/entitlement,
+// rva 0x10C1660, into the save's account cache), which no longer answers, so
+// an owner whose cache was never filled could pick only vanilla content.
+// Every copy then offers what it has installed. Back on once the server
+// answers again.
+constexpr bool kOwnershipGateByDefault = false;
+
 struct ModConfig {
 	int instance = 0;
 	ModMode mode = ModMode::Probe;
@@ -113,8 +123,8 @@ struct ModConfig {
 	// failures, 2 those and the offline-mode notice.
 	int offlineDialogs = 2;
 	// Ember's ownership gate: this copy's player may pick only what the game
-	// lets them (GameContent's `owned`). Off only for development.
-	bool ownershipGate = true;
+	// lets them (GameContent's `owned`).
+	bool ownershipGate = kOwnershipGateByDefault;
 	// Content this copy treats as unowned on top of the game's answer, to try
 	// the gate's screens and refusals with an account that owns everything.
 	std::vector<UnownedContent> unowned;

@@ -177,7 +177,7 @@ extern "C" int SfveStart(int beforeGameCode)
 	if (!UnownedProblem().empty()) {
 		Log("config: -sfve_unowned=%s has an entry that is not CODE[:costume[:colour]]; left out", UnownedProblem().c_str());
 	}
-	Log("config: Ember's ownership gate %s; %zu -sfve_unowned entries", Config().ownershipGate ? "on" : "off (development)",
+	Log("config: Ember's ownership gate %s; %zu -sfve_unowned entries", Config().ownershipGate ? "on" : "off",
 		Config().unowned.size());
 	if (!UninstalledProblem().empty()) {
 		Log("config: -sfve_uninstalled=%s has an entry that is not a stage code; left out", UninstalledProblem().c_str());
