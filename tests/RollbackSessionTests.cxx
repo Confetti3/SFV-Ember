@@ -335,3 +335,66 @@ TEST_CASE("a state failure the game latches while it plays fails the session bef
 	CHECK(pair.a.Frame() == frame); // no save or restore went through after the failure
 	CHECK_FALSE(pair.a.Live());
 }
+
+TEST_CASE("a skip read confirmed ends the ignored frames on the same frame on both peers")
+{
+	// Frames 100-399 read no inputs, but every 15th of them reads kSkip once
+	// its inputs are confirmed (SFV's intro and its skip request,
+	// mod/IntroSkip.hxx). Peer b asks from the step at its frame 130 on; with
+	// an input delay of 2 the ask reaches frame 132 first, so skip frame 135
+	// reads it on both peers, which read inputs again from frame 136, while
+	// a never asked. Both agree with an offline run given what the rule gives.
+	constexpr int kFrom = 100, kTo = 400, kEvery = 15, kAskFrom = 130, kDelay = 2, kFrames = 300;
+	constexpr int kSkippedAt = 136;
+	const auto local = [&](int player, int frame) -> PackedInput {
+		const PackedInput ask = player == 1 && frame >= kAskFrom ? PackedInput{kSkip} : PackedInput{0};
+		return ScriptedInput(player, frame, kLoopbackSeed) | ask;
+	};
+	LoopbackPair pair(kBugNone, kDelay);
+	for (MockFighter* game : {&pair.gameA, &pair.gameB}) {
+		game->IgnoreInputsBetween(kFrom, kTo);
+		game->SkipEvery(kEvery);
+	}
+	const ULONGLONG start = GetTickCount64();
+	while ((pair.a.Frame() < kFrames || pair.b.Frame() < kFrames) && GetTickCount64() - start < 30000) {
+		if (pair.a.Frame() < kFrames) pair.a.Step(local(0, pair.a.Frame()));
+		else pair.a.Poll();
+		if (pair.b.Frame() < kFrames) pair.b.Step(local(1, pair.b.Frame()));
+		else pair.b.Poll();
+		REQUIRE_FALSE(pair.a.Failed());
+		REQUIRE_FALSE(pair.b.Failed());
+		Sleep(0);
+	}
+	REQUIRE(pair.a.Frame() >= kFrames);
+	REQUIRE(pair.b.Frame() >= kFrames);
+	CHECK(pair.gameA.SkippedAt() == kSkippedAt);
+	CHECK(pair.gameB.SkippedAt() == kSkippedAt);
+	// No rollback starts on an ignored frame, nor before the skip frame both
+	// stepped confirmed.
+	for (const MockFighter* game : {&pair.gameA, &pair.gameB}) {
+		for (int target : game->RollbackTargets()) {
+			INFO("rollback to frame " << target);
+			CHECK((target < kFrom || target >= kSkippedAt));
+		}
+	}
+
+	MockFighter reference;
+	reference.IgnoreInputsBetween(kFrom, kTo);
+	reference.SkipEvery(kEvery);
+	const int confirmed = std::min(pair.a.LastConfirmedFrame(), pair.b.LastConfirmedFrame());
+	REQUIRE(confirmed >= kFrames - 20);
+	std::vector<uint64_t> hashes{reference.Layout().HashLive(HashScope::Peers)};
+	for (int f = 0; f < confirmed; f++) {
+		// A frame's input is what each peer added kDelay steps before it.
+		FrameInputs sent;
+		for (int p = 0; p < kPlayers; p++) sent.p[p] = f >= kDelay ? local(p, f - kDelay) : 0;
+		reference.Advance(GivenInputs(reference, sent, f), false);
+		hashes.push_back(reference.Layout().HashLive(HashScope::Peers));
+	}
+	CHECK(reference.SkippedAt() == kSkippedAt);
+	uint64_t ha = 0, hb = 0;
+	REQUIRE(pair.a.HashAt(confirmed, &ha));
+	REQUIRE(pair.b.HashAt(confirmed, &hb));
+	CHECK(ha == hb);
+	CHECK(ha == hashes[confirmed]);
+}

@@ -15,9 +15,11 @@
 // regions that differ and the first differing byte in each.
 //
 // Frames follow netplay's rule (GameAdapter::InputsMatter): a frame whose
-// inputs the game ignores is played with neutral inputs, and no check
-// restores to its start, since a session never mispredicts it; a check from
-// an earlier frame still replays across it, as a rollback does.
+// inputs the game ignores is played with neutral inputs (but for the bits it
+// reads confirmed, GivenInputs), and no check restores to its start, since a
+// session never mispredicts it; a check from an earlier frame still replays
+// across it, as a rollback does, unless the frame read bits confirmed: no
+// rollback reaches back past such a frame.
 //
 // SyncTester is incremental so it can run inside the game, one rendered frame
 // per Step (the mod's synctest mode); RunSyncTest drives it in a loop for the
@@ -84,18 +86,21 @@ private:
 		uint64_t hash = 0;
 		FrameInputs inputs;      // the players' inputs for the frame starting from this state
 		bool restorable = false; // that frame read them: a rollback may start here
+		// That frame read bits confirmed (GameAdapter::ConfirmedBits): a
+		// session steps it confirmed, so no rollback reaches back past it.
+		bool readsConfirmed = false;
 	};
 
 	Saved& At(int frame) { return saved_[frame % saved_.size()]; }
 	void Save(int frame);
-	// The oldest state within `depth` frames a rollback may start from, or
-	// frame_ when there is none.
+	// The oldest state within `depth` frames a rollback may start from, after
+	// the last frame that read bits confirmed, or frame_ when there is none.
 	int OldestRestorable(int depth);
 	// When the check after this one comes, and how deep it goes.
 	void ScheduleNextCheck();
 	int Random(int from, int to); // inclusive
-	// The inputs a session gives the frame the game is about to play.
-	FrameInputs AsPlayed(const FrameInputs& inputs) const;
+	// The inputs a session gives frame `frame`, the one the game is about to play.
+	FrameInputs AsPlayed(const FrameInputs& inputs, int frame) const;
 	// Restores state `from`, replays to `now` and compares every frame.
 	bool CheckRollback(int from, int now);
 	void Fail(int frame, const char* what);

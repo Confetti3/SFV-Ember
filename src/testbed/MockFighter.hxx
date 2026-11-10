@@ -44,6 +44,9 @@ enum MockInput : PackedInput {
 	kForward = 1u << 1, // toward the opponent
 	kUp = 1u << 2,
 	kPunch = 1u << 3,
+	// Ends the frames that ignore inputs early, read confirmed on their skip
+	// frames (SkipEvery), as SFV's intro reads its skip.
+	kSkip = 1u << 4,
 };
 
 class MockFighter : public GameAdapter {
@@ -53,7 +56,11 @@ public:
 	std::string BuildId() const override;
 	StateLayout& Layout() override { return layout_; }
 	void Advance(const FrameInputs& inputs, bool resimulating) override;
-	bool InputsMatter() const override { return world_.frame < ignoreFrom_ || world_.frame >= ignoreTo_; }
+	bool InputsMatter() const override { return world_.frame < ignoreFrom_ || world_.frame >= IgnoredUntil(); }
+	PackedInput ConfirmedBits(int frame) const override
+	{
+		return !InputsMatter() && skipEvery_ > 0 && frame % skipEvery_ == 0 ? PackedInput{kSkip} : PackedInput{0};
+	}
 
 	// Frames [from, to) read no inputs (as SFV's battle outside the fight).
 	void IgnoreInputsBetween(int from, int to)
@@ -61,6 +68,11 @@ public:
 		ignoreFrom_ = from;
 		ignoreTo_ = to;
 	}
+	// Of those, every `every`th frame reads kSkip confirmed, and one given it
+	// ends them: inputs matter again from the next frame (as SFV's intro).
+	void SkipEvery(int every) { skipEvery_ = every; }
+	// The frame the skip ended the ignored frames at, or -1.
+	int SkippedAt() const { return world_.skippedAt; }
 	// From battle frame `frame` on, this copy's player 1 loses a point of
 	// health every frame: a real desync, which only peers can see.
 	void DesyncFrom(int frame) { desyncFrom_ = frame; }
@@ -102,13 +114,20 @@ private:
 		int32_t roundTimer;
 		int32_t koAt; // battle frame of the KO, -1 before
 		int32_t clock; // read once, at construction; differs between two games
+		int32_t skippedAt; // the first frame after a skip of the ignored frames, -1 before
 	};
+	static_assert(sizeof(World) == 96, "no padding in the world: every byte is hashed");
 	struct Presentation {
 		float animationClock; // advances with ticks; restored, never hashed
 		float pad;
 	};
 
 	void Build();
+	// The end of the ignored frames: ignoreTo_, or earlier once skipped.
+	int IgnoredUntil() const
+	{
+		return world_.skippedAt >= 0 && world_.skippedAt < ignoreTo_ ? world_.skippedAt : ignoreTo_;
+	}
 
 	unsigned bugs_;
 	World world_{};
@@ -119,6 +138,7 @@ private:
 	bool lastWasResimulation_ = false;
 	std::vector<int> rollbackTargets_;
 	int ignoreFrom_ = 0, ignoreTo_ = 0;
+	int skipEvery_ = 0;
 	int desyncFrom_ = -1;
 	bool failNextRestore_ = false;
 	const char* stateFailure_ = nullptr;

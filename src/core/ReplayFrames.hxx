@@ -20,10 +20,11 @@
 namespace sfve {
 
 struct RecordedFrame {
-	// An advanced frame: the inputs the game was given (InputsForThisFrame:
-	// only the bits a pad makes, or neutral when the frame ignores them). A
-	// held frame: both fighters' confirmed inputs, every bit, which carry
-	// the WIN's answers (RematchDecision.hxx).
+	// An advanced frame: the inputs the game was given (GivenInputs: only the
+	// bits a pad makes, or, when the frame ignores them, neutral but for the
+	// bits it reads confirmed, such as an intro's skip request). A held
+	// frame: both fighters' confirmed inputs, every bit, which carry the
+	// WIN's answers (RematchDecision.hxx).
 	FrameInputs inputs;
 	uint8_t flags = 0;
 

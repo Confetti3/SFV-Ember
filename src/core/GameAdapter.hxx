@@ -53,16 +53,29 @@ public:
 
 	// Whether the next frame reads the players' inputs, from the state at its
 	// start (SFV: only the fight does; intros, KOs and round calls do not).
-	// A frame whose inputs do not matter is advanced with neutral inputs and
-	// its inputs are never taken for a misprediction, so no rollback starts
-	// on it: frames the game cannot replay faithfully are then never
-	// replayed from their own start.
+	// A frame whose inputs do not matter is advanced with neutral inputs (but
+	// for its ConfirmedBits) and its inputs are never taken for a
+	// misprediction, so no rollback starts on it: frames the game cannot
+	// replay faithfully are then never replayed from their own start.
 	virtual bool InputsMatter() const { return true; }
 
 	// The bits a frame's input can carry (those a pad can produce); the rest
 	// are cleared before the game sees an input, so neither a peer nor a test
 	// can hand the battle a value its own input code never makes.
 	virtual PackedInput InputBits() const { return ~PackedInput{0}; }
+
+	// The bits session frame `frame` still reads when it ignores the players'
+	// inputs (InputsMatter false), from the state at its start; 0 when it
+	// reads none (SFV: an intro's skip request, on its skip frames). Such a
+	// frame reads them confirmed: a session steps it only once both players'
+	// inputs for it are final, so no guess of them ever reaches the game and
+	// no rollback reaches back past it. That wait needs an input delay of at
+	// least one frame, as a held frame's does (RollbackSession::StepHeld).
+	virtual PackedInput ConfirmedBits(int frame) const
+	{
+		(void)frame;
+		return 0;
+	}
 
 	// Called right after the layout's memory was written back, for fix-ups a
 	// plain copy cannot do (the game's own post-restore callbacks, state the
@@ -77,5 +90,28 @@ public:
 	// rollback would restore bytes without the game they describe.
 	virtual const char* StateFailure() const { return nullptr; }
 };
+
+// The bits session frame `frame` reads of the players' inputs, from the state
+// at its start: the pad's in the fight, the confirmed bits outside it (none
+// on most such frames).
+inline PackedInput BitsRead(const GameAdapter& game, int frame)
+{
+	return game.InputsMatter() ? game.InputBits() : game.ConfirmedBits(frame);
+}
+
+// What frame `frame` gives the game of these inputs. Every session path (a
+// fighter's step and rollback, a watcher's and a replay's frame) and the
+// synctest give the game this, so each plays the same frame alike. It is its
+// own fixed point, so a replay that recorded it plays it back unchanged.
+inline FrameInputs GivenInputs(const GameAdapter& game, const FrameInputs& inputs, int frame)
+{
+	return Restricted(inputs, BitsRead(game, frame));
+}
+
+// Frame `frame` reads bits that must be confirmed (GameAdapter::ConfirmedBits).
+inline bool ReadsConfirmed(const GameAdapter& game, int frame)
+{
+	return !game.InputsMatter() && game.ConfirmedBits(frame) != 0;
+}
 
 } // namespace sfve
