@@ -132,3 +132,26 @@ TEST_CASE("a log another program holds is not lost: the process logs to a file o
 	CHECK(none.error != 0);
 	std::filesystem::remove_all(folder);
 }
+
+TEST_CASE("the log's candidates: the usual file of the instance, then the process's own, under three folders")
+{
+	using sfve::mod::LogCandidate;
+	const auto candidates = sfve::mod::LogCandidates(0, 4242, L"C:\Roam\SFVEmber\logs", L"C:\Loc\SFVEmber\logs", L"C:\Tmp\\");
+	REQUIRE(candidates.size() == 4);
+	CHECK(candidates[0].path == L"C:\Roam\SFVEmber\logs\sfv_ember.log");
+	CHECK_FALSE(candidates[0].own);
+	CHECK(candidates[1].path == L"C:\Roam\SFVEmber\logs\sfv_ember-4242.log");
+	CHECK(candidates[2].path == L"C:\Loc\SFVEmber\logs\sfv_ember-4242.log");
+	CHECK(candidates[3].path == L"C:\Tmp\sfv_ember-4242.log"); // %TEMP% ends in a backslash already
+	for (size_t i = 1; i < candidates.size(); i++) CHECK(candidates[i].own);
+
+	// A second game on the PC (instance 2) has a usual file of its own.
+	CHECK(sfve::mod::LogCandidates(2, 7, L"C:\L", L"", L"")[0].path == L"C:\L\sfv_ember.2.log");
+
+	// A folder Windows would not name is skipped, never turned into a path
+	// relative to the game's folder.
+	const auto none = sfve::mod::LogCandidates(0, 7, L"", L"", L"");
+	REQUIRE(none.size() == 4);
+	for (const LogCandidate& candidate : none) CHECK(candidate.path.empty());
+	CHECK(sfve::mod::LogCandidates(0, 7, L"", L"C:\Loc", L"")[2].path == L"C:\Loc\sfv_ember-7.log");
+}

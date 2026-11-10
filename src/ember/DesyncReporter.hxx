@@ -13,9 +13,9 @@
 // facts the game holds there (the session's region hashes, the room's match,
 // both picks) and hands them to a thread of the report's own, which does
 // everything that can wait on a disk: it asks whether Send problem reports
-// is on (nothing is written when it is off, nor past desync::kSpoolLimit
-// reports waiting), hashes the mod for the build id, reads the tail of the
-// mod's log and writes the file. Nothing there can stall or end the game:
+// is on (nothing is written when it is off, and past desync::kSpoolLimit
+// reports waiting the oldest go to make room), hashes the mod for the build
+// id, reads the tail of the mod's log and writes the file. Nothing there can stall or end the game:
 // every failure is a log line and no report.
 
 #include "ember/SfvVerification.hxx"

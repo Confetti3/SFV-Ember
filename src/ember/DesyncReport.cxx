@@ -2,9 +2,12 @@
 
 #include <nlohmann/json.hpp>
 
+#include <windows.h>
+
 #include <algorithm>
 #include <cstdio>
 #include <deque>
+#include <system_error>
 
 namespace sfve::adapter::desync {
 
@@ -246,6 +249,32 @@ Outcome Judge(const sf4e::HttpResponse& answer, bool withLog)
 		outcome.verdict = Verdict::Refused;
 	}
 	return outcome;
+}
+
+Room MakeRoom(const std::filesystem::path& folder, std::size_t limit)
+{
+	Room room;
+	std::vector<std::filesystem::path> waiting;
+	const std::wstring extension = kSpoolExtension;
+	std::error_code ec;
+	for (std::filesystem::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec)) {
+		const std::wstring name = it->path().filename().wstring();
+		if (name.size() > extension.size() && name.compare(name.size() - extension.size(), extension.size(), extension) == 0) {
+			waiting.push_back(it->path());
+		}
+	}
+	std::sort(waiting.begin(), waiting.end());
+	room.waiting = waiting.size();
+	for (const std::filesystem::path& path : waiting) {
+		if (room.waiting < limit) break;
+		// DeleteFileW, not the filesystem library's remove: it fails on a file
+		// the launcher holds (opened without FILE_SHARE_DELETE) and says so.
+		if (DeleteFileW(path.c_str())) {
+			room.waiting--;
+			room.removed.push_back(path.filename().wstring());
+		}
+	}
+	return room;
 }
 
 } // namespace sfve::adapter::desync

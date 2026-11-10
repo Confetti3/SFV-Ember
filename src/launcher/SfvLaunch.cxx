@@ -287,6 +287,11 @@ HANDLE StartGame(const StartRequest& request, StartFailure& failure)
 		return nullptr;
 	}
 	spdlog::info("Game started, pid={}", process.dwProcessId);
+	{
+		// Where the game's own log is (the mod's first line there names the file it writes).
+		const std::wstring data = sf4e::netplay::SettingsStore::DefaultDirectory();
+		spdlog::info("The game's log: {}", sf4e::platform::WideToUtf8(data + L"\logs\sfv_ember.log"));
+	}
 	CloseHandle(process.hThread);
 	// The desync reports the game writes down go out from here, outside the
 	// game's network guard (DesyncCourier.hxx); problem reports are on unless
