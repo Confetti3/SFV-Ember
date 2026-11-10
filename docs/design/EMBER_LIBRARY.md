@@ -2669,3 +2669,23 @@ The library's `cargo test` covers the intake change.
   - repeat with the switch off: no file is written and nothing is sent;
   - before the deploy, the same run must give events without their log (launcher log: "sent again without it").
 - A watcher in the same run: its own issue "SFV desync seen by a watcher: ...".
+
+## 52. The desync after the deciding round (2026-11-10)
+
+**What was seen.** In a public session of 24 room matches on 0.1.0-beta.3, 23 ended in a desync, so the WIN and its rematch prompt almost never showed. Of the 8 whose reports both copies kept, 5 had both fighters, every projectile and the random generators equal at the failing checkpoint; only `flow`, `ModeUnit+0x1930` (battle/round state) and `VersusRuleUnit[0]+0x110C4` (round/win state) differed. Each came after minutes of equal checkpoints (frames 5760 to 14100), one checkpoint after the last equal one. In the one match whose result was captured (frame 8649), the next checkpoint (8700) failed.
+
+**Why** (desktop IDA, build 13173604, read only):
+- The battle's input query, rva `0x2F2D40`, answers from the input the battle reads this tick (rva `0x2F2C40`, InputUnit+0x128) only until a side has the wins the match needs (rva `0x2FB760` counts the judged rounds against rva `0x2F9F20`). From then on it asks the pads themselves: rva `0x2F30D0` calls rva `0x4CEF40` for each local player's pad, then pad 0.
+- Flow states' phases ask it for bit `0x4000` and move on when it is set: rva `0x409930` (else after 600 ticks), `0x409BA0` (120), `0x409C60` (300), `0x40EE00`, `0x40EEE0` (the intro's) and `0x40F000`. Section 50 noted the pad path and set it aside ("no intro comes then"); the scenes after the deciding round are what comes then.
+- So a press after the deciding KO skipped the winner's scenes on the presser's copy alone. The fighters no longer read inputs, so only the flow and the round state it drives moved apart.
+
+**The fix.**
+- `GameHooks` hooks rva `0x2F30D0` (`sfv::kPadsAny`): while a tick runs on a session's inputs (`SfvAdapter::Injecting`) the answer is rva `0x2F2C40`'s (`sfv::kBattleInputAny`), the injected input, as before the match is decided. A fighter's step and rollback, a watcher's frame and a replay's frame all inject, so all hear the same. Offline play is untouched.
+- That alone would end every skip there (frames outside the fight get neutral inputs). The intro's rule now covers it: `intro_skip::Skippable(flowState, decided)` is the intro, or any announced state but the fight once the match data's `kDecided` is set (part of the rollback state); such frames read the skip bit on one session frame in 15, confirmed, and `intro_skip::Request` sends it from the player's first new press there. A button still down from the last hit asks only once released and pressed again. A rematch in place resets the match data, so nothing after it is skippable until its own match is decided.
+- Other callers of rva `0x2F2D40` (masks 1 and 2 at rva `0x48E770`, and rva `0x4920A0`, `0x492900`, `0x492EF0`, `0x49F970`, `0x49FB00`, `0x4A1230`, `0x4AA110`, `0x4B7D60`) get the same answer after the deciding round: nothing but the skip bit on a skip frame. They were not traced.
+
+**Not established.** The other three paired reports are other faults (P1's input record at frame 0; one fighter's action state; one projectile). Which flow states the game announces after the last KO was not observed: if it kept announcing the fight, the copies would stay equal but no press would skip.
+
+**Tests (not run; no build).** `tests/IntroSkipTests.cxx`: the decided match's skip frames, and the request after the deciding round.
+
+**Left.** Build, the unit tests, and on two copies: a room match played to its end with one copy's script pressing an attack from the last KO on (both copies must reach the WIN on the same frame, earlier than an unpressed run), and the same with no press; then a rematch in place and a second WIN.

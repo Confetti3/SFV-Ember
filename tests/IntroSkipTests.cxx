@@ -113,3 +113,46 @@ TEST_CASE("the skip bit sent is the request alone, whatever the pad's own skip b
 	CHECK(request.Next(kIntro, kSkipBit) == kSkipBit); // the game's skip button, pressed
 	CHECK(request.Next(kIntro, 0) == kSkipBit);
 }
+
+TEST_CASE("a decided match's scenes read the skip bit like the intro, and its fight never does")
+{
+	constexpr int kFinish = 7; // any state but the fight
+	for (int frame = 0; frame <= 60; frame++) {
+		INFO("frame " << frame);
+		const bool every = frame % intro_skip::kEvery == 0;
+		CHECK(intro_skip::SkipFrame(kFinish, frame, true) == every);
+		CHECK(intro_skip::ConfirmedBits(kFinish, frame, true) == (every ? kSkipBit : 0u));
+		CHECK(intro_skip::SkipFrame(kIntro, frame, true) == every);
+		// The deciding KO's last fight frames still read the pads' inputs.
+		CHECK_FALSE(intro_skip::SkipFrame(kFight, frame, true));
+		CHECK(intro_skip::ConfirmedBits(kFight, frame, true) == 0u);
+		// Between rounds nothing is decided: no frame reads the bit.
+		CHECK_FALSE(intro_skip::SkipFrame(kFinish, frame, false));
+	}
+	CHECK(intro_skip::Skippable(kIntro, false));
+	CHECK_FALSE(intro_skip::Skippable(kFight, true));
+	CHECK_FALSE(intro_skip::Skippable(kMatchStart, false));
+	CHECK(intro_skip::Skippable(kMatchStart, true));
+}
+
+TEST_CASE("after the deciding round a new press asks for the skip until the scenes end")
+{
+	constexpr int kFinish = 7;
+	intro_skip::Request request;
+	// The button that landed the last hit is still down as the match is decided.
+	CHECK(request.Next(kFight, input::kHP) == input::kHP);
+	CHECK(request.Next(kFight, input::kHP, true) == input::kHP);
+	CHECK(request.Next(kFinish, input::kHP, true) == input::kHP);
+	CHECK_FALSE(request.Requested());
+	CHECK(request.Next(kFinish, 0, true) == 0u);
+	CHECK(request.Next(kFinish, input::kLK, true) == (kSkipBit | input::kLK));
+	CHECK(request.Requested());
+	CHECK(request.Next(kFinish, 0, true) == kSkipBit); // released: still asked
+	CHECK(request.Next(9, input::kLeft, true) == (kSkipBit | input::kLeft)); // through the next scene
+	// A rematch in place resets the match: nothing is decided, nothing asked.
+	CHECK(request.Next(kMatchStart, 0, false) == 0u);
+	CHECK_FALSE(request.Requested());
+	// The same press between two rounds asks nothing.
+	CHECK(request.Next(kFinish, input::kMP, false) == input::kMP);
+	CHECK_FALSE(request.Requested());
+}

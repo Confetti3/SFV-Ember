@@ -27,6 +27,10 @@ public:
 	virtual void OnBattleFrameConstructed(uint8_t* battleFrame) = 0;
 	// A battle tick is about to record its pad inputs.
 	virtual void OnInputRecord(uint8_t* inputUnit) = 0;
+	// The battle tick now running takes a session's inputs in place of the
+	// pads' (SfvAdapter::Advance): what the battle asks of the pads
+	// themselves is then answered from those inputs too.
+	virtual bool InjectingInputs() const = 0;
 	// A battle tick reached its snapshot task.
 	virtual void OnRollbackUnitTick(uint8_t* rollbackUnit) = 0;
 	// The battle flow announced a new state (sfv::flow).

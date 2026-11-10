@@ -18,6 +18,16 @@
 // the intro ends on the same tick everywhere, whichever player pressed. The
 // cost: at most one frame in kEvery waits for the other copy's input, and a
 // skip comes within kEvery frames of the press reaching both copies.
+//
+// The scenes after a decided match (the last KO's finish, the winner's pose)
+// take the same press, and need the same care for another reason: once a
+// side has the wins the match needs, the game asks the pads themselves for
+// the skip bit (sfv::kPadsAny), so each copy heard only its own player and a
+// press moved one copy's flow alone: the copies' flow, mode and rule state
+// then differed at the next checkpoint with both fighters equal. While a
+// session's inputs are injected that question is answered from the battle's
+// input (GameHooks), and the frames outside the fight of a decided match
+// are skip frames like the intro's, with the request sent the same way.
 
 #include "core/GameAdapter.hxx"
 #include "mod/GameInput.hxx"
@@ -36,17 +46,25 @@ constexpr PackedInput kPressBits =
 // One session frame in this many reads the skip bit while in the intro.
 constexpr int kEvery = 15;
 
-// Session frame `frame`, starting from flow state `flowState` (the one the
-// flow last announced), reads the skip bit.
-constexpr bool SkipFrame(int flowState, int frame)
+// A press skips what flow state `flowState` (the one the flow last
+// announced) shows: the intro, or with the match decided
+// (sfv::battledata::kDecided) anything but the fight. Both are part of the
+// rollback state, so every copy answers alike at a frame's start.
+constexpr bool Skippable(int flowState, bool decided)
 {
-	return flowState == sfv::flow::kIntroDemo && frame >= 0 && frame % kEvery == 0;
+	return flowState == sfv::flow::kIntroDemo || (decided && flowState != sfv::flow::kFight);
+}
+
+// Session frame `frame`, starting from that state, reads the skip bit.
+constexpr bool SkipFrame(int flowState, int frame, bool decided = false)
+{
+	return Skippable(flowState, decided) && frame >= 0 && frame % kEvery == 0;
 }
 
 // The bits that frame reads confirmed (GameAdapter::ConfirmedBits).
-constexpr PackedInput ConfirmedBits(int flowState, int frame)
+constexpr PackedInput ConfirmedBits(int flowState, int frame, bool decided = false)
 {
-	return SkipFrame(flowState, frame) ? kSkipBit : 0;
+	return SkipFrame(flowState, frame, decided) ? kSkipBit : 0;
 }
 
 // This copy's skip request: what it sends for each frame it steps.
@@ -54,12 +72,13 @@ class Request {
 public:
 	// `local` (the player's input for the next frame, the game's value of
 	// the pad or a test's script) with the skip bit set from the first new
-	// press in the intro to the intro's end, and clear otherwise. A button
-	// already down as the intro starts is not a press until it is released.
-	PackedInput Next(int flowState, PackedInput local)
+	// press in the intro (or in a decided match's scenes) to its end, and
+	// clear otherwise. A button already down as it starts (the one that
+	// landed the last hit, say) is not a press until it is released.
+	PackedInput Next(int flowState, PackedInput local, bool decided = false)
 	{
 		const PackedInput down = local & kPressBits;
-		requested_ = flowState == sfv::flow::kIntroDemo && (requested_ || (down & ~down_) != 0);
+		requested_ = Skippable(flowState, decided) && (requested_ || (down & ~down_) != 0);
 		down_ = down;
 		return (local & ~kSkipBit) | (requested_ ? kSkipBit : 0);
 	}

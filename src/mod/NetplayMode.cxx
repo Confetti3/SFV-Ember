@@ -184,11 +184,13 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	}
 	if (session_->Running()) pacer_.Frame(*session_, last_ == RollbackSession::StepResult::PredictionStall);
 	const int frame = session_->Frame();
-	// Sent as the player plays, with the intro's skip request (IntroSkip.hxx);
-	// frames whose inputs the game ignores (outside the fight) get neutral
-	// ones in RollbackSession, whatever was sent, but for the request on the
-	// intro's skip frames, which are stepped confirmed.
-	const PackedInput local = introSkip_.Next(adapter.FlowState(), script_.At(frame).value_or(adapter.Sampled(0)));
+	// Sent as the player plays, with the skip request of the intro and of a
+	// decided match's scenes (IntroSkip.hxx); frames whose inputs the game
+	// ignores (outside the fight) get neutral ones in RollbackSession,
+	// whatever was sent, but for the request on the skip frames, which are
+	// stepped confirmed.
+	const PackedInput local = introSkip_.Next(adapter.FlowState(), script_.At(frame).value_or(adapter.Sampled(0)),
+		adapter.MatchDecided());
 
 	// The game's judgement, the same on both copies (it is restored with the
 	// rest of the state on rollback): both copies hold the battle for the

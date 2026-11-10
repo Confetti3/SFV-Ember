@@ -63,6 +63,8 @@ public:
 	// pad this tick, then writes the injected inputs over it while Advance runs.
 	void OnInputRecord(uint8_t* inputUnit);
 	PackedInput Sampled(int player) const { return sampled_[player]; }
+	// The update now running takes Advance's inputs in place of the pads'.
+	bool Injecting() const { return injecting_; }
 	// True when the battle is running ticks (not paused, not between rounds
 	// with ticks stopped): the last original update recorded at least one tick.
 	uint32_t TicksInLastUpdate() const { return ticksInLastUpdate_; }
@@ -71,11 +73,18 @@ public:
 	void SeeFlowState(int state) { flow_.Announce(state); }
 	int FlowState() const { return flow_.Announced(); }
 	bool Fighting() const;
+	// The match is decided (sfv::battledata::kDecided, part of the rollback
+	// state): the scenes after its last round are the ones a press skips.
+	bool MatchDecided() const;
 	// Only the fight reads the players' inputs (GameAdapter::InputsMatter),
-	// and the intro its skip request on its skip frames (IntroSkip.hxx).
+	// and the intro and the decided match's scenes their skip request on
+	// their skip frames (IntroSkip.hxx).
 	bool InputsMatter() const override { return Fighting(); }
 	PackedInput InputBits() const override { return input::kInputBits; }
-	PackedInput ConfirmedBits(int frame) const override { return intro_skip::ConfirmedBits(FlowState(), frame); }
+	PackedInput ConfirmedBits(int frame) const override
+	{
+		return intro_skip::ConfirmedBits(FlowState(), frame, MatchDecided());
+	}
 
 	// The original update with no injection (outside any session).
 	void RunOriginal();
