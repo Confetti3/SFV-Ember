@@ -1,11 +1,15 @@
-// The controller layer without SDL (mod/PadLayer; EMBER_LIBRARY.md section
-// 48): which pads it leaves to the game, which slot each of its pads takes,
-// and the slots as the game reads them through the XInput hooks.
+// The controller layer (mod/PadLayer, mod/SdlPads; EMBER_LIBRARY.md section
+// 49): which pads SFV's rule leaves to the game, the library's slots with the
+// game's own as occupied, the slots as the game reads them through the
+// XInput hooks, and SDL started with SFV's backends. The library's tests
+// (gamepad_slots_test) hold the slot model itself.
 
 #include <doctest/doctest.h>
 
 #include "mod/PadLayer.hxx"
-#include "mod/VirtualPads.hxx"
+#include "mod/XInputHooks.hxx"
+
+#include "common/SdlPadSource.hxx"
 
 #include <MinHook.h>
 
@@ -14,23 +18,26 @@
 #include <Xinput.h>
 
 #include <thread>
+#include <vector>
 
 using namespace sfve::mod::layer;
+using sf4e::gamepads::Pad;
+using sf4e::gamepads::Status;
+using sf4e::gamepads::Type;
 
 namespace {
 
 // SDL GUIDs in its standard form: bus, crc, vendor, 0, product, 0, version, driver data.
 constexpr const char* kSteamVirtualGuid = "03000000de280000ff11000001000000";
 constexpr const char* kDualShock4Guid = "030000004c050000cc09000000006800";
-constexpr int kTypePs4 = 4; // any SDL_GamepadType; only equality matters
 
-Pad MakePad(PadId id, const char* name, const char* path, const char* guid = kDualShock4Guid, int type = kTypePs4)
+Pad MakePad(PadId id, const char* name, const char* path, const char* guid = kDualShock4Guid, Type type = Type::PS4)
 {
 	Pad pad;
 	pad.id = id;
 	pad.identity = {guid, "", path, name};
-	pad.sdlType = type;
-	pad.gamepad = true;
+	pad.type = type;
+	pad.mapped = true;
 	return pad;
 }
 
@@ -41,6 +48,12 @@ const Pad& Find(const std::vector<Pad>& pads, PadId id)
 	}
 	FAIL("no pad " << id);
 	return pads.front();
+}
+
+std::vector<Pad> Classified(std::vector<Pad> pads)
+{
+	sf4e::gamepads::Classify(pads, {}, GameReadsItself);
+	return pads;
 }
 
 } // namespace
@@ -57,108 +70,47 @@ TEST_CASE("an XInput device is known by its path")
 
 TEST_CASE("the layer leaves XInput pads, Steam's pad and its twin to the game")
 {
-	Pad xbox = MakePad(1, "Xbox Controller", "\\\\?\\HID#VID_045E&PID_02FF&IG_00#1");
-	Pad stick = MakePad(2, "Fight Stick (XInput mode)", "\\\\?\\HID#VID_0F0D&PID_00C1&IG_00#2");
-	stick.xboxType = false;
-	Pad typed = MakePad(3, "Xbox One pad", "\\\\?\\HID#VID_045E&PID_0B12#3");
-	typed.xboxType = true;
-	Pad ds4 = MakePad(4, "PS4 Controller", "\\\\?\\HID#VID_054C&PID_09CC&MI_03#4");
-	Pad unmapped = MakePad(5, "Mystery Stick", "\\\\?\\HID#VID_1234&PID_5678#5");
-	unmapped.gamepad = false;
-	std::vector<Pad> pads = {xbox, stick, typed, ds4, unmapped};
-	Classify(pads);
-	CHECK(Find(pads, 1).route == Route::GameReads);
-	CHECK(Find(pads, 2).route == Route::GameReads);
-	CHECK(Find(pads, 3).route == Route::GameReads);
-	CHECK(Find(pads, 4).route == Route::Waiting);
-	CHECK(Find(pads, 5).route == Route::Unmapped);
+	const Pad xbox = MakePad(1, "Xbox Controller", "\\\\?\\HID#VID_045E&PID_02FF&IG_00#1", kDualShock4Guid, Type::Unknown);
+	const Pad stick = MakePad(2, "Fight Stick (XInput mode)", "\\\\?\\HID#VID_0F0D&PID_00C1&IG_00#2", kDualShock4Guid, Type::Standard);
+	const Pad typed = MakePad(3, "Xbox One pad", "\\\\?\\HID#VID_045E&PID_0B12#3", kDualShock4Guid, Type::XboxOne);
+	const Pad ds4 = MakePad(4, "PS4 Controller", "\\\\?\\HID#VID_054C&PID_09CC&MI_03#4");
+	Pad unmapped = MakePad(5, "Mystery Stick", "\\\\?\\HID#VID_1234&PID_5678#5", kDualShock4Guid, Type::Unknown);
+	unmapped.mapped = false;
+	const std::vector<Pad> pads = Classified({xbox, stick, typed, ds4, unmapped});
+	CHECK(Find(pads, 1).status == Status::GameRead);
+	CHECK(Find(pads, 2).status == Status::GameRead);
+	CHECK(Find(pads, 3).status == Status::GameRead);
+	CHECK(Find(pads, 4).status == Status::NotInUse);
+	CHECK(Find(pads, 5).status == Status::Unmapped);
 
 	SUBCASE("Steam's virtual pad pairs with one physical pad of its type")
 	{
-		Pad steam = MakePad(6, "Steam Virtual Gamepad", "\\\\?\\HID#VID_28DE&PID_11FF&IG_00#6", kSteamVirtualGuid, kTypePs4);
-		Pad second = MakePad(7, "PS4 Controller", "\\\\?\\HID#VID_054C&PID_09CC&MI_03#7");
-		std::vector<Pad> withSteam = {ds4, steam, second};
-		Classify(withSteam);
-		CHECK(Find(withSteam, 6).route == Route::GameReads);
-		CHECK(Find(withSteam, 4).route == Route::SteamTwin);
-		CHECK(Find(withSteam, 7).route == Route::Waiting); // one Steam pad, one twin
+		const Pad steam = MakePad(6, "Steam Virtual Gamepad", "\\\\?\\HID#VID_28DE&PID_11FF&IG_00#6", kSteamVirtualGuid);
+		const Pad second = MakePad(7, "PS4 Controller", "\\\\?\\HID#VID_054C&PID_09CC&MI_03#7");
+		const std::vector<Pad> withSteam = Classified({ds4, steam, second});
+		CHECK(Find(withSteam, 6).status == Status::GameRead);
+		CHECK(Find(withSteam, 4).status == Status::SteamTwin);
+		CHECK(Find(withSteam, 7).status == Status::NotInUse); // one Steam pad, one twin
 	}
 }
 
 TEST_CASE("the layer's pads take slots no XInput pad holds")
 {
-	Plan plan;
-	std::vector<Pad> pads = {MakePad(10, "PS4 Controller", "a"), MakePad(11, "Pro Controller", "b")};
-	Classify(pads);
-	// A real Xbox pad in slot 0.
-	CHECK(plan.Update(pads, 0x1u));
-	CHECK(Find(pads, 10).slot == 1);
-	CHECK(Find(pads, 11).slot == 2);
-	CHECK(Find(pads, 10).route == Route::Slotted);
-	CHECK(plan.Held() == 0x6u);
-	CHECK(plan.InSlot(1) == 10);
+	sf4e::gamepads::Slots slots{GameReadsItself};
+	const Pad xbox = MakePad(9, "Xbox Controller", "\\\\?\\HID#VID_045E&PID_02FF&IG_00#9", kDualShock4Guid, Type::XboxOne);
+	// The Xbox pad holds XInput's slot 0, so slot 0 is occupied.
+	const sf4e::gamepads::Inventory first =
+		slots.Update({xbox, MakePad(10, "PS4 Controller", "a"), MakePad(11, "Pro Controller", "b")}, {}, {}, 0x1u);
+	CHECK(slots.Changed());
+	CHECK(Find(first.pads, 9).slot == -1);
+	CHECK(Find(first.pads, 10).slot == 1);
+	CHECK(Find(first.pads, 11).slot == 2);
 
-	SUBCASE("a pad keeps its slot when slot 0 frees")
-	{
-		Classify(pads); // the routes again, as the layer thread sets them before each plan
-		CHECK_FALSE(plan.Update(pads, 0x0u));
-		CHECK(Find(pads, 10).slot == 1);
-		CHECK(Find(pads, 11).slot == 2);
-	}
-	SUBCASE("an XInput pad that takes a layer slot moves the layer's pad")
-	{
-		Classify(pads); // the routes again, as the layer thread sets them before each plan
-		CHECK(plan.Update(pads, 0x3u)); // XInput gave a new Xbox pad slot 1
-		CHECK(Find(pads, 10).slot == 3);
-		CHECK(Find(pads, 11).slot == 2);
-		CHECK(plan.Held() == 0xCu);
-	}
-	SUBCASE("a virtual test pad's slot is taken like a real one's")
-	{
-		Classify(pads); // the routes again, as the layer thread sets them before each plan
-		CHECK(plan.Update(pads, 0x1u | 0x4u));
-		CHECK(Find(pads, 10).slot == 1);
-		CHECK(Find(pads, 11).slot == 3);
-	}
-	SUBCASE("with every slot taken a pad waits")
-	{
-		Classify(pads); // the routes again, as the layer thread sets them before each plan
-		plan.Update(pads, 0xDu); // only slot 1 free
-		CHECK(Find(pads, 10).slot == 1);
-		CHECK(Find(pads, 11).route == Route::Waiting);
-		CHECK(Find(pads, 11).slot == -1);
-	}
-}
-
-TEST_CASE("a pad plugged in again goes back to its slot")
-{
-	Plan plan;
-	std::vector<Pad> pads = {MakePad(1, "PS4 Controller", "first"), MakePad(2, "PS5 Controller", "second")};
-	Classify(pads);
-	plan.Update(pads, 0);
-	REQUIRE(Find(pads, 1).slot == 0);
-	REQUIRE(Find(pads, 2).slot == 1);
-
-	// The second is unplugged: the first keeps slot 0.
-	pads = {MakePad(1, "PS4 Controller", "first")};
-	Classify(pads);
-	CHECK(plan.Update(pads, 0));
-	CHECK(Find(pads, 1).slot == 0);
-	CHECK(plan.InSlot(1) == 0);
-
-	// A new pad prefers a slot no pad last held over the one the second held.
-	pads = {MakePad(1, "PS4 Controller", "first"), MakePad(3, "Pro Controller", "third")};
-	Classify(pads);
-	plan.Update(pads, 0);
-	CHECK(Find(pads, 3).slot == 2);
-
-	// The second comes back with a new SDL id and takes its slot again.
-	pads = {MakePad(1, "PS4 Controller", "first"), MakePad(3, "Pro Controller", "third"), MakePad(7, "PS5 Controller", "second")};
-	Classify(pads);
-	plan.Update(pads, 0);
-	CHECK(Find(pads, 7).slot == 1);
-	CHECK(Find(pads, 1).slot == 0);
-	CHECK(Find(pads, 3).slot == 2);
+	// The Xbox pad is unplugged: SFV's slot policy keeps each layer pad where it is.
+	const sf4e::gamepads::Inventory freed = slots.Update({first.pads[1], first.pads[2]}, {}, {}, 0x0u);
+	CHECK_FALSE(slots.Changed());
+	CHECK(Find(freed.pads, 10).slot == 1);
+	CHECK(Find(freed.pads, 11).slot == 2);
 }
 
 TEST_CASE("a slot's packet number changes with its state")
@@ -182,30 +134,15 @@ TEST_CASE("a slot's packet number changes with its state")
 	CHECK_FALSE(slot.guide);
 }
 
-TEST_CASE("SDL's sticks and triggers become XInput's")
-{
-	sf4e::gamepads::State state;
-	state.buttons[static_cast<unsigned>(sf4e::gamepads::Button::South)] = true;
-	state.buttons[static_cast<unsigned>(sf4e::gamepads::Button::Left)] = true;
-	state.leftY = -32768;      // SDL: up is negative
-	state.rightTrigger = 32767;
-	const sf4e::gamepads::XInputFields fields = sf4e::gamepads::MapToXInput(state);
-	CHECK(fields.buttons == (XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_DPAD_LEFT));
-	CHECK(fields.leftY == 32767); // XInput: up is positive
-	CHECK(fields.rightTrigger == 255);
-	CHECK(fields.leftTrigger == 0);
-}
-
 TEST_CASE("the published slots answer the XInput hooks")
 {
-	std::array<SlotState, kSlots> slots{};
+	std::array<SlotState, sfve::mod::kPadSlots> slots{};
 	sf4e::gamepads::XInputFields fields;
 	fields.buttons = XINPUT_GAMEPAD_START;
 	fields.leftTrigger = 200;
 	fields.rightX = -4000;
 	Advance(slots[3], 42, fields, true);
 	Publish(slots);
-	CHECK(HeldSlots() == 0x8u);
 
 	XINPUT_STATE state{};
 	CHECK_FALSE(FillState(2, &state, false));
@@ -223,8 +160,8 @@ TEST_CASE("the published slots answer the XInput hooks")
 	CHECK(capabilities.Type == XINPUT_DEVTYPE_GAMEPAD);
 	CHECK(capabilities.SubType == XINPUT_DEVSUBTYPE_GAMEPAD);
 
-	CHECK_FALSE(SetMotors(1, 100, 100));
-	CHECK(SetMotors(3, 30000, 1000));
+	CHECK_FALSE(SetMotors(1, XINPUT_VIBRATION{100, 100}));
+	CHECK(SetMotors(3, XINPUT_VIBRATION{30000, 1000}));
 	CHECK(RequestedMotors()[3].id == 42);
 	CHECK(RequestedMotors()[3].left == 30000);
 	// Another pad in the slot: the motors asked of the last are dropped.
@@ -232,14 +169,14 @@ TEST_CASE("the published slots answer the XInput hooks")
 	Publish(slots);
 	CHECK(RequestedMotors()[3].id == 0);
 	ClearSlots();
-	CHECK(HeldSlots() == 0);
+	CHECK_FALSE(FillState(3, &state, false));
 }
 
 TEST_CASE("the game's XInput calls reach a layer slot through the hooks")
 {
 	const MH_STATUS init = MH_Initialize();
 	REQUIRE((init == MH_OK || init == MH_ERROR_ALREADY_INITIALIZED));
-	REQUIRE_FALSE(sfve::mod::InstallVirtualPads());
+	REQUIRE_FALSE(sfve::mod::InstallXInputHooks());
 
 	wchar_t path[MAX_PATH];
 	const UINT n = GetSystemDirectoryW(path, MAX_PATH);
@@ -261,7 +198,7 @@ TEST_CASE("the game's XInput calls reach a layer slot through the hooks")
 	REQUIRE(setState);
 
 	// Slot 3, with a packet number no real pad starts at.
-	std::array<SlotState, kSlots> slots{};
+	std::array<SlotState, sfve::mod::kPadSlots> slots{};
 	slots[3].packet = 0x5EED0000;
 	sf4e::gamepads::XInputFields fields;
 	fields.buttons = XINPUT_GAMEPAD_B;
@@ -298,4 +235,26 @@ TEST_CASE("the game's XInput calls reach a layer slot through the hooks")
 
 	ClearSlots();
 	CHECK((getState(3, &state) != ERROR_SUCCESS || state.dwPacketNumber != 0x5EED0001));
+}
+
+TEST_CASE("SDL starts for the layer with its XInput backends off, and stops")
+{
+	sf4e::gamepads::SdlPadSource source;
+	const std::optional<std::string> failed = source.Start(sf4e::gamepads::SdlBackends::NotXInput);
+	REQUIRE_MESSAGE(!failed, (failed ? *failed : std::string()));
+	// The hints the pass-through relies on: SDL never reads XInput.
+	CHECK_FALSE(SDL_GetHintBoolean(SDL_HINT_XINPUT_ENABLED, true));
+	CHECK_FALSE(SDL_GetHintBoolean(SDL_HINT_JOYSTICK_HIDAPI_XBOX, true));
+	CHECK(SDL_GetHintBoolean(SDL_HINT_JOYSTICK_HIDAPI_PS5, false));
+	source.Pump();
+	std::optional<std::vector<Pad>> pads = source.List();
+	REQUIRE(pads);
+	MESSAGE(pads->size() << " pad(s) on this PC");
+	sf4e::gamepads::Classify(*pads, {}, GameReadsItself);
+	for (const sf4e::gamepads::OpenFailure& failure : source.Hold(*pads)) MESSAGE("'" << failure.name << "' not opened: " << failure.error);
+	for (const Pad& pad : *pads) {
+		CHECK((pad.status != Status::NotInUse || !pad.available || source.Handle(pad.id)));
+	}
+	source.Stop();
+	CHECK(SDL_WasInit(SDL_INIT_GAMEPAD) == 0);
 }

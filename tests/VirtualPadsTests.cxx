@@ -1,5 +1,5 @@
 // One pad read is one read, however many hooked XInput libraries it passes
-// through (mod/VirtualPads). Windows 11's xinput1_3.dll (10.0.26200) calls
+// through (mod/XInputHooks). Windows 11's xinput1_3.dll (10.0.26200) calls
 // xinput1_4.dll's XInputGetState, so the game's read entered the hooks twice;
 // the outer call recorded the state the inner call's pad filter had emptied,
 // and Ember's menu never saw a press. On a PC whose xinput1_3 reads on its
@@ -7,13 +7,13 @@
 
 #include <doctest/doctest.h>
 
-#include "mod/VirtualPads.hxx"
+#include "mod/XInputHooks.hxx"
 
 #include <MinHook.h>
 
 #include <windows.h>
 
-using sfve::mod::InstallVirtualPads;
+using sfve::mod::InstallXInputHooks;
 using sfve::mod::NestedPadReads;
 using sfve::mod::PadReads;
 
@@ -37,7 +37,7 @@ TEST_CASE("a read through a hooked XInput library that calls another is one read
 {
 	const MH_STATUS init = MH_Initialize();
 	REQUIRE((init == MH_OK || init == MH_ERROR_ALREADY_INITIALIZED));
-	REQUIRE_FALSE(InstallVirtualPads()); // empty: every XInput hook is in
+	REQUIRE_FALSE(InstallXInputHooks()); // empty: every XInput hook is in
 	sfve::mod::SetPadFilter(&CountingFilter);
 
 	wchar_t path[MAX_PATH];

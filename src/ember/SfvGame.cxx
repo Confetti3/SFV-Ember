@@ -19,7 +19,7 @@
 #include "mod/ModConfig.hxx"
 #include "mod/SfvAdapter.hxx"
 #include "mod/VersusLaunch.hxx"
-#include "mod/VirtualPads.hxx"
+#include "mod/XInputHooks.hxx"
 
 #include "common/InstalledContent.hxx"
 #include "common/Localization.hxx"
@@ -302,7 +302,7 @@ public:
 // whichever side it fights on (NetplayMode).
 constexpr int kGameplaySlot = 0;
 
-// SFV's pads are XInput pads (VirtualPads hooks XInputGetState). The devices
+// SFV's pads are XInput pads (mod/XInputHooks hooks XInputGetState). The devices
 // are the slots as the game last read them; the game's pad 0 is the gameplay
 // device and fights for either side. No SFV module sets pads up or lays out
 // their buttons yet: those answer as a game with no pad layer would.
@@ -352,7 +352,7 @@ public:
 		return s_battle.game != nullptr;
 	}
 	// A pad's menu buttons as the slot was last read, before the overlay
-	// hides it from the game (VirtualPads' record): the D-pad, or the left
+	// hides it from the game (XInputHooks' record): the D-pad, or the left
 	// stick, as the directions (1 up, 2 down, 4 left, 8 right), and the
 	// buttons in Ember's XInput layout. Ember's shell navigates by these.
 	bool ReadController(int deviceType, int deviceIndex, unsigned& held, unsigned* physical) override
@@ -522,32 +522,20 @@ void StopPreferences()
 	s_preferences.Stop();
 }
 
-bool SavedBackgroundPlay()
+bool SavedBoolPreference(bool sf4e::netplay::PlayerPreferences::* field, const char* what)
 {
-	const std::optional<nlohmann::json> saved = LoadSavedSettings("background play (taken as off)");
-	if (!saved) return false;
+	const bool fallback = sf4e::netplay::PlayerPreferences{}.*field;
+	const char* taken = fallback ? "on" : "off";
+	const std::optional<nlohmann::json> saved = LoadSavedSettings((std::string(what) + " (taken as " + taken + ")").c_str());
+	if (!saved) return fallback;
 	sf4e::netplay::PlayerPreferences preferences;
 	try {
 		sf4e::netplay::ReadBoolPreferences(*saved, preferences);
 	} catch (const std::exception&) {
-		mod::Log("background play: the saved settings hold a value that is not on or off; taken as off");
-		return false;
+		mod::Log("%s: the saved settings hold a value that is not on or off; taken as %s", what, taken);
+		return fallback;
 	}
-	return preferences.backgroundPlay;
-}
-
-bool SavedControllerLayer()
-{
-	const std::optional<nlohmann::json> saved = LoadSavedSettings("the controller layer (taken as on)");
-	if (!saved) return true;
-	sf4e::netplay::PlayerPreferences preferences;
-	try {
-		sf4e::netplay::ReadBoolPreferences(*saved, preferences);
-	} catch (const std::exception&) {
-		mod::Log("controller layer: the saved settings hold a value that is not on or off; taken as on");
-		return true;
-	}
-	return preferences.controllerLayer;
+	return preferences.*field;
 }
 
 } // namespace sfve::adapter
