@@ -4,6 +4,7 @@
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
+#include "mod/VersusLaunch.hxx"
 #include "mod/WriteWatch.hxx"
 
 #include <windows.h>
@@ -45,7 +46,12 @@ void BattleDriver::OnBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 	const bool bound = adapter_.Bind();
 	AnswerReadings(bound);
 	if (!bound) {
-		adapter_.RunOriginal(); // the battle's objects are not all known yet
+		// The battle's objects are not all known yet. A room's or a replay's
+		// battle records no pad pressed meanwhile: its pad 0 is this PC's own
+		// player whichever side they play, and what its ticks record now is in
+		// the state its session starts from (2026-11-10: two copies' P1 input
+		// rings and command parts differed from frame 0 on).
+		adapter_.RunOriginal(LaunchedBattleLoading());
 	} else {
 		if (boundBattle_ != adapter_.Battle()) {
 			boundBattle_ = adapter_.Battle();

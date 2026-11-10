@@ -623,6 +623,11 @@ bool TakeReplayBattle()
 	return replay;
 }
 
+bool LaunchedBattleLoading()
+{
+	return s_linkedLoading || s_replayLoading;
+}
+
 void RegisterVersusLaunchCommands()
 {
 	RegisterCommand("launch", [](const std::string& args) {

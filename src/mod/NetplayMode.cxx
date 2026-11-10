@@ -403,6 +403,15 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	// Both copies are at the battle's first frame: give the clock-seeded
 	// random generators the same seeds before anything is simulated.
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
+	// What the battle's ticks before the session recorded for each player,
+	// which the session's first frames read back: nothing pressed for a
+	// room's or a replay's battle on every copy (BattleDriver). Anything else
+	// is logged, as the two copies would start from different inputs.
+	for (int player = 0; player < kPlayers; player++) {
+		if (const PackedInput held = adapter.RecordedInputs(player)) {
+			Log("netplay: P%d's input record holds %08x before frame 0", player + 1, held);
+		}
+	}
 	// A Practice room's game: Training's refilling gauges on both copies at
 	// this same frame, before anything is simulated (EMBER_LIBRARY.md 27).
 	// A test's -sfve_practice does the same outside rooms.

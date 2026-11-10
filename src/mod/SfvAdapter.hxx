@@ -30,6 +30,11 @@
 
 namespace sfve::mod {
 
+// The bits recorded in any slot of a pad's input record ring
+// (sfv::inputunit::kRings): 0 when the battle has recorded nothing pressed
+// for that pad since its input unit was made.
+PackedInput RecordedInputBits(const uint8_t* inputUnit, int pad);
+
 class SfvAdapter : public GameAdapter {
 public:
 	// The battle objects as the hooks see them. A battle is its frame's
@@ -64,7 +69,10 @@ public:
 	void OnInputRecord(uint8_t* inputUnit);
 	PackedInput Sampled(int player) const { return sampled_[player]; }
 	// The update now running takes Advance's inputs in place of the pads'.
-	bool Injecting() const { return injecting_; }
+	bool Injecting() const { return padSource_ == input::PadSource::Session; }
+	// Every bit the player's input record ring holds (RecordedInputBits);
+	// 0 before the input unit is known.
+	PackedInput RecordedInputs(int player) const;
 	// True when the battle is running ticks (not paused, not between rounds
 	// with ticks stopped): the last original update recorded at least one tick.
 	uint32_t TicksInLastUpdate() const { return ticksInLastUpdate_; }
@@ -86,8 +94,12 @@ public:
 		return intro_skip::ConfirmedBits(FlowState(), frame, MatchDecided());
 	}
 
-	// The original update with no injection (outside any session).
-	void RunOriginal();
+	// The original update with no injection (outside any session). With
+	// `neutralPads` the battle records both players' pads as nothing pressed,
+	// as a session gives them outside the fight: a room's or a replay's battle
+	// before its session, so the ticks it runs while it loads hold the same
+	// inputs on every copy, not each PC's own pad as P1's (sfv::inputunit).
+	void RunOriginal(bool neutralPads = false);
 
 	std::string BuildId() const override;
 	StateLayout& Layout() override { return layout_; }
@@ -143,7 +155,8 @@ private:
 	RegionNames regionNames_;
 	std::vector<PostRestore> postRestore_;
 
-	bool injecting_ = false;
+	input::PadSource padSource_ = input::PadSource::Pads;
+	PackedInput neutralised_[kPlayers] = {}; // the pad bits RunOriginal(true) recorded as neutral this battle (logged once)
 	FrameInputs pending_;
 	PackedInput sampled_[kPlayers] = {};
 	uint32_t ticksInLastUpdate_ = 0;
