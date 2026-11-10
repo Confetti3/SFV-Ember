@@ -51,17 +51,6 @@ struct FighterPick {
 // code, which the game's own setters then copy. No game code.
 void FillCharPkg(uint8_t* chara, const FighterPick& pick);
 
-// The game mode and sub-mode the game's own battle jump sets for `target`
-// when its ownership check runs (sfv::kSetGameMode, jump::kCheckGameMode).
-// A launch without the check sets the same, so a battle never starts with
-// whatever sub-mode this copy's last menu left (a fighter reads it). No game
-// code.
-struct GameMode {
-	int mode = 0;
-	int subMode = 0;
-};
-GameMode CheckGameMode(LaunchTarget target);
-
 // A player's look as a launch writes it and as the loaded battle's setting
 // holds it, read back after the load to log what each copy loaded.
 struct PlayerLook {

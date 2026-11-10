@@ -192,13 +192,6 @@ constexpr int kModeVersusCpu = 0;
 constexpr int kModeVersus = 1;
 constexpr int kModeTraining = 2;
 constexpr int kModeBackToMainMenu = -1;
-// The game mode its ownership check sets (sfv::kSetGameMode, rva 0x5E2DE5
-// to 0x5E2E18): mode 0, and sub-mode 16 for a versus target (0 and 1), 8 for
-// training (2), 0 for any other.
-constexpr int kCheckGameMode = 0;
-constexpr int kCheckSubModeVersus = 16;
-constexpr int kCheckSubModeTraining = 8;
-constexpr int kCheckSubModeOther = 0;
 constexpr uint32_t kFlowLoader = 16;     // Flow: the loader
 constexpr uint32_t kLoaderProvider = 16; // Loader: the mode's provider
 constexpr int kProviderType = 14;        // a provider type registered by the flow reset (rva 0x71A790)

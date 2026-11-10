@@ -174,17 +174,6 @@ constexpr CodeSite kGetPlayerSetup{"GetPlayerSetup", 0x7B5940,
 // (rva 0x600AF0) copies it into the battle setting.
 constexpr CodeSite kJumpSecondStep{"JumpSecondStep", 0x602C80,
 	{0x4C, 0x8B, 0xDC, 0x55, 0x41, 0x55, 0x49, 0x8D, 0x6B, 0xA1, 0x48, 0x81, 0xEC, 0xF8, 0x00, 0x00}};
-// void SetGameMode(UObject* gameInstance, int mode, int subMode): stores the
-// two at the instance's +336 and +340 and resets that mode's per-battle
-// lists (+248, +264). The game's own battle jump calls it at the start of
-// its ownership check (rva 0x5E2D10, at 0x5E2E18) with mode 0 and a
-// sub-mode by the jump's target (jump::kCheckGameMode and kCheckSubMode*);
-// a jump without the check (a room's, a replay's) leaves +340 as the last
-// menu set it, and a fighter reads it at its first tick (Z39, rva 0x3C1300:
-// +340 modulo 10 level-ups), so two copies could start one fighter
-// differently. VersusLaunch sets what the check would (CheckGameMode).
-constexpr CodeSite kSetGameMode{"SetGameMode", 0x547860,
-	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48}};
 // Copy constructors of the mode data's fighter (CharPkg, 64 bytes) and match
 // (SpecPkg, 40 bytes) records; FString assignment; the game's free.
 constexpr CodeSite kCopyCharPkg{"CopyCharPkg", 0x581CD0,
@@ -468,7 +457,7 @@ constexpr CodeSite kSetPlayerParam{"SetPlayerParam", 0x309330,
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecord, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kFindPart, kProjectileReleasable, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
-	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kSetGameMode, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
+	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumePackage, kShowResult, kRestartBattle, kSpecData, kMainMenuClass,
 	kSetPlayerParam, kRequestExit, kStageName, kSpecReady, kFindSpecFighter, kFindSpecFighterStep, kFindSpecCostume,
 	kFindSpecCostumeStep, kFindSpecColour, kFindSpecColourStep, kCostumeName, kTextToString, kCreateText,
