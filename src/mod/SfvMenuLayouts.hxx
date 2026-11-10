@@ -167,6 +167,21 @@ constexpr uint32_t kPlatformData = 0xC0;
 constexpr uint32_t kD3DTexture = 0x68;
 } // namespace texture
 
+// The game instance (sfv::kGameInstance, rva 0x521690).
+namespace gameinstance {
+// int: a count the menus leave behind and no battle state holds. Z39's
+// unique tick (rva 0x3C1300), the first time it runs in a battle whose match
+// data is not Training's (no stored count, input source not 2), takes it
+// modulo 10 as its opening level-ups, plays that many and keeps the count
+// in the match data. Two PCs reach a room's battle through different menus,
+// so the count differed and the copies diverged at the first checkpoint
+// (2026-11-09: Z39 against Z38, frame 60, the unique part's +0x444/+0x448 2
+// against 3). Not the sub-mode SetGameMode (rva 0x547860) writes: that
+// writes the battle setup data asset's +340 (rva 0x477A70 finds it), a
+// different object (EMBER_LIBRARY.md section 48).
+constexpr uint32_t kCarriedCount = 340;
+} // namespace gameinstance
+
 namespace jump {
 
 // The init message: +40 the target (0 vs CPU, 1 local versus, 2 training,

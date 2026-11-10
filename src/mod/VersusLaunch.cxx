@@ -36,6 +36,7 @@ using GetPlayerSetupFn = void (*)(uint8_t* playerRef, uint8_t* setup);
 using CopyFn = uint8_t* (*)(uint8_t* out, const uint8_t* from);
 using AssignStringFn = void (*)(uint8_t* to, const GameString* from, int extra);
 using FreeFn = void (*)(void* block);
+using GameInstanceFn = uint8_t* (*)();
 
 // A launch that has not reached the jump's second step by then has failed
 // (the jump is normally there within a few frames).
@@ -298,6 +299,18 @@ void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 	});
 }
 
+// Both copies of a room's battle, and a replay's playback, start from the
+// same carried count (gameinstance::kCarriedCount): 0, what a game just
+// started has, so the opening level-ups depend on nothing a PC's menus left.
+void ClearCarriedCount()
+{
+	uint8_t* instance = At<GameInstanceFn>(sfv::kGameInstance)();
+	if (!instance) return Log("launch: no game instance; the carried count stays as the menus left it");
+	int32_t& count = Field<int32_t>(instance, gameinstance::kCarriedCount);
+	if (count != 0) Log("launch: the carried count was %d; a room's battle and a replay start from 0", count);
+	count = 0;
+}
+
 void* h_JumpSecondStep(uint8_t* jumpState)
 {
 	void* next = o_jumpSecondStep(jumpState);
@@ -318,6 +331,7 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	for (int player = 0; player < jump::kPlayers; player++) written[player] = WriteFighter(modeData, player, picks.players[player]);
 	WriteStage(modeData, picks);
 	GiveBackGameRef(flow);
+	if (picks.linked || picks.replay) ClearCarriedCount();
 	s_linkedLoading = picks.linked;
 	s_replayLoading = picks.replay;
 	s_linkedPractice = picks.linked && picks.practice;
