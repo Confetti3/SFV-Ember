@@ -294,7 +294,8 @@ ReplayFrames ScriptedRecording(int count)
 }
 
 // Plays the recording with `remote`'s inputs `lag` frames late and compares
-// every final state it still keeps with the straight playback's hashes.
+// every final state it still keeps with the straight playback's, by the
+// peers' hash (two mocks hold different clocks and owners).
 // Returns how many final states differed; `compared` and `rollbacks` say how
 // much was checked.
 int LaggedDifferences(MockFighter& game, const ReplayFrames& frames, const std::vector<uint64_t>& straight, int remote,
@@ -308,7 +309,7 @@ int LaggedDifferences(MockFighter& game, const ReplayFrames& frames, const std::
 			const uint8_t* bytes = replay.SavedAt(next);
 			if (!bytes) continue;
 			(*compared)++;
-			if (game.Layout().HashSaved(bytes) != straight[(size_t)next]) differing++;
+			if (game.Layout().HashSaved(bytes, HashScope::Peers) != straight[(size_t)next]) differing++;
 		}
 	};
 	for (int frame = 0; frame < (int)frames.size(); frame++) {
@@ -330,10 +331,10 @@ TEST_CASE("a lagged replay's final states are the recording's, and it catches st
 	{
 		MockFighter game;
 		for (int frame = 0; frame < 900; frame++) {
-			straight.push_back(game.Layout().HashLive());
+			straight.push_back(game.Layout().HashLive(HashScope::Peers));
 			game.Advance(GivenInputs(game, frames[(size_t)frame].inputs, frame), false);
 		}
-		straight.push_back(game.Layout().HashLive());
+		straight.push_back(game.Layout().HashLive(HashScope::Peers));
 	}
 	for (int remote = 0; remote < 2; remote++) {
 		for (int lag : {1, 3, 7}) {
