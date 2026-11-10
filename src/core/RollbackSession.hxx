@@ -53,11 +53,14 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
 namespace sfve {
+
+class SyncTester;
 
 class RollbackSession {
 public:
@@ -109,6 +112,14 @@ public:
 		// the session fails; so does the end of the frames. The frames must
 		// outlive the session.
 		const ReplayFrames* replay = nullptr;
+		// Diagnostics, a replay only: the playback also makes the rollbacks a
+		// session could (SyncTester in learning mode, each rolled-back stretch
+		// first played with wrong inputs), up to this many frames deep at
+		// random spacing from replayCheckSeed, and logs every region that a
+		// rollback leaves different ("replay check:" and "learn:" lines), on the
+		// recording's own inputs. 0: off. Held frames end the checks.
+		int replayCheckDistance = 0;
+		uint32_t replayCheckSeed = 1;
 		// Each frame as this session plays it, before the game sees it: its
 		// number and what it gave the game (RecordedFrame). A rollback's replay
 		// reports the frame again; the last report of a confirmed frame is
@@ -355,6 +366,12 @@ private:
 	bool keptForWatchers_ = false;
 	// A replay plays (Config::replay): Live with no GGPO session.
 	bool replaying_ = false;
+	// The replay's rollback checks (Config::replayCheckDistance), and the
+	// regions they have logged.
+	std::unique_ptr<SyncTester> replayCheck_;
+	int replayCheckFailures_ = 0;
+	std::set<std::string> replayCheckLogged_;
+	void LogReplayCheck();
 };
 
 } // namespace sfve

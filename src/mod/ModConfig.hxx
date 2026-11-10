@@ -15,6 +15,8 @@
 //   -sfve_moves=1        ...playing the game's system moves (input::Script::Moves)
 //   -sfve_practice=1     synctest, netplay: Training's refilling gauges from the first frame
 //   -sfve_replay_regions=F  replay playback: log each checkpoint's region hashes from frame F
+//   -sfve_replay_check=N    replay playback: also make rollbacks up to N frames deep and log
+//                        what they leave different (random spacing from -sfve_schedule)
 //   -sfve_distance=N     synctest rollback distance (default 7)
 //   -sfve_pads=0,1       XInput slots that are virtual pads from the start
 //   -sfve_background=1   keep playing and reading pads while unfocused
@@ -118,6 +120,10 @@ struct ModConfig {
 	// a match's log) can be compared region by region (tools/compare.py).
 	// 0: none.
 	int replayRegionsFrom = 0;
+	// A replay's playback also checks rollbacks of up to this many frames on
+	// the recording's inputs (RollbackSession::Config::replayCheckDistance),
+	// spaced from scheduleSeed. 0: none.
+	int replayCheck = 0;
 	bool room = false; // netplay: Ember's runtime runs, and its rooms' matches give the endpoints, seed and delay
 	// Offline start-up dialogs kept from showing: 0 none, 1 the download
 	// failures, 2 those and the offline-mode notice.

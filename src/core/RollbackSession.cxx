@@ -1,6 +1,7 @@
 #include "core/RollbackSession.hxx"
 
 #include "core/CoreLog.hxx"
+#include "core/SyncTest.hxx"
 
 #include <stdio.h>
 #include <string.h>
@@ -89,11 +90,20 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	watchedStartHashed_ = false;
 	keptForWatchers_ = false;
 	replaying_ = false;
+	replayCheck_.reset();
+	replayCheckFailures_ = 0;
+	replayCheckLogged_.clear();
 
 	if (config.replay) {
 		// No GGPO: the frames are here, all of them confirmed, so the session
 		// runs from its first step.
 		replaying_ = true;
+		if (config.replayCheckDistance > 0) {
+			const uint32_t seed = config.replayCheckSeed ? config.replayCheckSeed : 1;
+			replayCheck_ = std::make_unique<SyncTester>(game_, config.replayCheckDistance, true, true, seed);
+			CoreLog("replay check: rollbacks of up to %d frame(s), schedule %u, each first played with wrong inputs",
+				config.replayCheckDistance, seed);
+		}
 		gate_.Reset();
 		gate_.OnSessionStarted();
 		gate_.OnRunning();
@@ -349,7 +359,15 @@ RollbackSession::StepResult RollbackSession::StepWatched(const std::function<voi
 		// What the fighters' sessions give the game for this frame
 		// (InputsForThisFrame), without telling GGPO: a watcher never predicts,
 		// and every frame it plays is confirmed.
-		game_.Advance(GivenAndReported(inputs), false);
+		const FrameInputs given = GivenAndReported(inputs);
+		// The replay's rollback checks play the frame themselves, as long as
+		// their frames are the session's (a held frame ends them).
+		if (replayCheck_ && replayCheck_->Report().framesRun == frame_) {
+			replayCheck_->Step(given);
+			LogReplayCheck();
+		} else {
+			game_.Advance(given, false);
+		}
 		stats_.framesAdvanced++;
 		// A watcher saves nothing, so its frames are checked here instead.
 		if (FailedByGame()) return StepResult::Failed;
@@ -391,6 +409,28 @@ bool RollbackSession::ReplayInputs(bool held, FrameInputs* inputs)
 	}
 	*inputs = recorded.inputs;
 	return true;
+}
+
+// Each rollback whose replay differed: the frame and the regions; a region's
+// first differing words the first time it differs (SyncTestMode's learning
+// log, in the same form).
+void RollbackSession::LogReplayCheck()
+{
+	const SyncTestReport& r = replayCheck_->Report();
+	if (r.failures == replayCheckFailures_) return;
+	replayCheckFailures_ = r.failures;
+	std::string names;
+	for (const RegionDiff& d : r.diffs) names += (names.empty() ? "" : ", ") + d.region;
+	CoreLog("replay check: frame %d differs after rollback %d: %s", r.failedFrame, r.rollbacks, names.c_str());
+	for (const RegionDiff& d : r.diffs) {
+		if (!replayCheckLogged_.insert(d.region).second) continue;
+		CoreLog("learn: %s differs at frame %d: %zu byte(s) from +0x%zX", d.region.c_str(), r.failedFrame, d.differingBytes,
+			d.firstOffset);
+		for (const WordDiff& w : d.words) {
+			CoreLog("learn:     +0x%04zX  played %016llX  replayed %016llX", w.offset, (unsigned long long)w.saved,
+				(unsigned long long)w.live);
+		}
+	}
 }
 
 void RollbackSession::HashWatched(int frame)
@@ -504,6 +544,11 @@ void RollbackSession::CloseNow()
 		session_ = nullptr;
 	}
 	replaying_ = false;
+	if (replayCheck_) {
+		const SyncTestReport& r = replayCheck_->Report();
+		CoreLog("replay check: %d frame(s), %d rollback(s), %d differed", r.framesRun, r.rollbacks, r.failures);
+		replayCheck_.reset();
+	}
 	localHandle_ = remoteHandle_ = -1;
 	gate_.OnSessionClosed();
 	for (Slot& s : pool_) s.used = false;

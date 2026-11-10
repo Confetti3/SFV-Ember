@@ -374,6 +374,8 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 			adapter::NotePlaybackCheckpoint(frame, hash);
 			if (config_.replayRegionsFrom > 0 && frame >= config_.replayRegionsFrom) adapter::LogCheckpointRegions(*session_, frame);
 		};
+		c.replayCheckDistance = config_.replayCheck;
+		c.replayCheckSeed = config_.scheduleSeed;
 		seed = replay_->header.seed;
 		delay = 0;
 	} else if (room_.Active()) {
