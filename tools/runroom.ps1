@@ -74,9 +74,21 @@ $watchedGames = New-Object System.Collections.Generic.List[int]
 $watcherLeft = $false
 function Ctl([int]$i, [string]$line) { python -I tools\sfve.py ctl $i $line }
 function Status([int]$i) { (Ctl $i status).Substring(3) | ConvertFrom-Json }
+# A copy whose match ended diverged (SfvVerification: "the fight ends") or
+# whose table's game was cancelled never reports the result a wait is for,
+# so every wait ends at once with that as the failure.
+function Ended {
+  foreach ($i in $copies) { if ((Count $i 'desync: checkpoint .* the fight ends|game was cancelled') -gt 0) { return $i } }
+  -1
+}
 function WaitFor([string]$what, [int]$timeout, [scriptblock]$done) {
   $deadline = (Get-Date).AddSeconds($timeout)
-  while ((Get-Date) -lt $deadline) { if (& $done) { return }; Start-Sleep 1 }
+  while ((Get-Date) -lt $deadline) {
+    if (& $done) { return }
+    $ended = Ended
+    if ($ended -ge 0) { throw "copy ${ended}'s game diverged or was cancelled while waiting for $what" }
+    Start-Sleep 1
+  }
   throw "timed out waiting for $what"
 }
 function Answer([int]$i, [string]$say) {
