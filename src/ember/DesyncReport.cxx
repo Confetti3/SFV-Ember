@@ -251,6 +251,30 @@ Outcome Judge(const sf4e::HttpResponse& answer, bool withLog)
 	return outcome;
 }
 
+std::string StateFile(const Facts& facts)
+{
+	std::uint64_t total = 0;
+	for (const StateRegionFacts& r : facts.stateRegions) total += r.size;
+	if (facts.stateRegions.empty() || total != facts.state.size()) return {};
+	std::string out = "SFVSTATE";
+	const auto put = [&out](std::uint64_t value, int bytes) {
+		for (int i = 0; i < bytes; ++i) out.push_back(static_cast<char>((value >> (8 * i)) & 0xFF));
+	};
+	put(1, 4);
+	put(facts.stateRegions.size(), 4);
+	std::size_t at = 0;
+	for (const StateRegionFacts& r : facts.stateRegions) {
+		const std::size_t length = (std::min)(r.name.size(), std::size_t{0xFFFF});
+		put(length, 2);
+		out.append(r.name, 0, length);
+		put(r.size, 8);
+		put(r.address, 8);
+		out.append(reinterpret_cast<const char*>(facts.state.data()) + at, static_cast<std::size_t>(r.size));
+		at += static_cast<std::size_t>(r.size);
+	}
+	return out;
+}
+
 Room MakeRoom(const std::filesystem::path& folder, std::size_t limit)
 {
 	Room room;

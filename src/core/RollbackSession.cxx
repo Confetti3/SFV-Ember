@@ -1,6 +1,7 @@
 #include "core/RollbackSession.hxx"
 
 #include "core/CoreLog.hxx"
+#include "core/SyncTest.hxx"
 
 #include <stdio.h>
 #include <string.h>
@@ -78,6 +79,7 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	for (HashRecord& h : history_) h = {};
 	allHashes_.clear();
 	checkpoints_.clear();
+	for (KeptState& kept : checkpointStates_) kept.frame = -1;
 	// A watcher keeps no saves: one buffer holds the state it hashes.
 	pool_.assign(watches ? 1 : kPoolSlots, Slot{});
 	for (Slot& s : pool_) s.bytes.resize(game_.Layout().TotalSize());
@@ -89,11 +91,34 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	watchedStartHashed_ = false;
 	keptForWatchers_ = false;
 	replaying_ = false;
+	replayCheck_.reset();
+	lagged_.reset();
+	laggedHashed_ = 0;
+	laggedFinished_ = false;
+	replayCheckFailures_ = 0;
+	replayCheckLogged_.clear();
 
 	if (config.replay) {
 		// No GGPO: the frames are here, all of them confirmed, so the session
 		// runs from its first step.
 		replaying_ = true;
+		if (config.replayLag > 0) {
+			lagged_ = std::make_unique<LaggedReplay>(game_, *config.replay, config.replayLagPlayer, config.replayLag,
+				config.replayLagJitter);
+			lagged_->onGuessedState = [this](int frame, const uint8_t* state) {
+				if (frame % kCheckpointInterval != 0) return;
+				CoreLog("replay lag: checkpoint %d on guessed inputs, hash %016llx", frame,
+					(unsigned long long)game_.Layout().HashSaved(state, HashScope::Peers));
+			};
+			CoreLog("replay lag: P%d's inputs arrive %s%d frame(s) late (jitter seed %u); guessed frames are played and "
+				"rolled back", config.replayLagPlayer + 1, config.replayLagJitter ? "up to " : "", config.replayLag,
+				config.replayLagJitter);
+		} else if (config.replayCheckDistance > 0) {
+			const uint32_t seed = config.replayCheckSeed ? config.replayCheckSeed : 1;
+			replayCheck_ = std::make_unique<SyncTester>(game_, config.replayCheckDistance, true, true, seed);
+			CoreLog("replay check: rollbacks of up to %d frame(s), schedule %u, each first played with wrong inputs",
+				config.replayCheckDistance, seed);
+		}
 		gate_.Reset();
 		gate_.OnSessionStarted();
 		gate_.OnRunning();
@@ -293,6 +318,18 @@ RollbackSession::StepResult RollbackSession::StepWatched(const std::function<voi
 	if (replaying_) {
 		// The recording's frame, in place of P1's stream.
 		if (!gate_.CanAdvanceDeterministicFrame()) return StepResult::Waiting;
+		if (lagged_ && !laggedFinished_ && (size_t)frame_ >= config_.replay->size()) {
+			// Past the last frame every input is known: the last guesses are
+			// settled and the last checkpoints hashed, in a step of their own.
+			lagged_->Finish();
+			laggedFinished_ = true;
+			HashLagged();
+			return StepResult::Waiting;
+		}
+		if (lagged_ && onHeld) {
+			Fail("a lagged replay cannot hold the game");
+			return StepResult::Failed;
+		}
 		if (!ReplayInputs(onHeld != nullptr, &inputs)) return StepResult::Failed;
 	} else {
 		ActiveScope active(this);
@@ -349,7 +386,17 @@ RollbackSession::StepResult RollbackSession::StepWatched(const std::function<voi
 		// What the fighters' sessions give the game for this frame
 		// (InputsForThisFrame), without telling GGPO: a watcher never predicts,
 		// and every frame it plays is confirmed.
-		game_.Advance(GivenAndReported(inputs), false);
+		const FrameInputs given = GivenAndReported(inputs);
+		// The replay's rollback checks play the frame themselves, as long as
+		// their frames are the session's (a held frame ends them).
+		if (lagged_) {
+			lagged_->Step(frame_);
+		} else if (replayCheck_ && replayCheck_->Report().framesRun == frame_) {
+			replayCheck_->Step(given);
+			LogReplayCheck();
+		} else {
+			game_.Advance(given, false);
+		}
 		stats_.framesAdvanced++;
 		// A watcher saves nothing, so its frames are checked here instead.
 		if (FailedByGame()) return StepResult::Failed;
@@ -365,7 +412,8 @@ RollbackSession::StepResult RollbackSession::StepWatched(const std::function<voi
 		}
 	}
 	frame_++;
-	HashWatched(frame_);
+	if (lagged_) HashLagged();
+	else HashWatched(frame_);
 	return StepResult::Advanced;
 }
 
@@ -381,9 +429,10 @@ bool RollbackSession::ReplayInputs(bool held, FrameInputs* inputs)
 	const RecordedFrame& recorded = frames[(size_t)frame_];
 	// The game decides each frame's kind from its own state (the WIN held,
 	// the fight reading inputs). One the recording did not have means the
-	// playback is no longer the recorded battle.
+	// playback is no longer the recorded battle. A lagged replay's live state
+	// may be a guess, so its kinds are not compared.
 	const bool fight = !held && game_.InputsMatter();
-	if (recorded.Held() != held || (!held && recorded.Fight() != fight)) {
+	if (!lagged_ && (recorded.Held() != held || (!held && recorded.Fight() != fight))) {
 		snprintf(why, sizeof(why), "the playback left the recording at frame %d (recorded %s, played %s)", frame_,
 			recorded.Held() ? "held" : recorded.Fight() ? "fight" : "ignored", held ? "held" : fight ? "fight" : "ignored");
 		Fail(why);
@@ -391,6 +440,51 @@ bool RollbackSession::ReplayInputs(bool held, FrameInputs* inputs)
 	}
 	*inputs = recorded.inputs;
 	return true;
+}
+
+// A lagged replay's checkpoints, each once its state is final: the
+// recording's states, if the rollbacks restored everything.
+void RollbackSession::HashLagged()
+{
+	StateLayout& layout = game_.Layout();
+	Slot& slot = pool_[0];
+	for (int frame = laggedHashed_ + 1; frame <= lagged_->ConfirmedThrough(); frame++) {
+		if (frame % kCheckpointInterval != 0 && frame % config_.hashEveryFrames != 0) continue;
+		if (const uint8_t* bytes = lagged_->SavedAt(frame)) {
+			memcpy(slot.bytes.data(), bytes, layout.TotalSize());
+		} else if (frame == frame_) {
+			layout.SaveTo(slot.bytes.data());
+		} else {
+			CoreLog("replay lag: the state at frame %d was not kept; not hashed", frame);
+			continue;
+		}
+		slot.frame = frame;
+		slot.used = true;
+		RecordHash(slot, frame, 0);
+	}
+	if (lagged_->ConfirmedThrough() > laggedHashed_) laggedHashed_ = lagged_->ConfirmedThrough();
+}
+
+// Each rollback whose replay differed: the frame and the regions; a region's
+// first differing words the first time it differs (SyncTestMode's learning
+// log, in the same form).
+void RollbackSession::LogReplayCheck()
+{
+	const SyncTestReport& r = replayCheck_->Report();
+	if (r.failures == replayCheckFailures_) return;
+	replayCheckFailures_ = r.failures;
+	std::string names;
+	for (const RegionDiff& d : r.diffs) names += (names.empty() ? "" : ", ") + d.region;
+	CoreLog("replay check: frame %d differs after rollback %d: %s", r.failedFrame, r.rollbacks, names.c_str());
+	for (const RegionDiff& d : r.diffs) {
+		if (!replayCheckLogged_.insert(d.region).second) continue;
+		CoreLog("learn: %s differs at frame %d: %zu byte(s) from +0x%zX", d.region.c_str(), r.failedFrame, d.differingBytes,
+			d.firstOffset);
+		for (const WordDiff& w : d.words) {
+			CoreLog("learn:     +0x%04zX  played %016llX  replayed %016llX", w.offset, (unsigned long long)w.saved,
+				(unsigned long long)w.live);
+		}
+	}
 }
 
 void RollbackSession::HashWatched(int frame)
@@ -402,7 +496,8 @@ void RollbackSession::HashWatched(int frame)
 	game_.Layout().SaveTo(slot.bytes.data());
 	QueryPerformanceCounter(&copied);
 	slot.frame = frame;
-	// A scratch copy, never a save GGPO holds: it stays unused.
+	slot.used = true; // SavedState answers it (a dump)
+	// A scratch copy, never a save GGPO holds.
 	RecordHash(slot, frame, copied.QuadPart - started.QuadPart);
 }
 
@@ -504,6 +599,16 @@ void RollbackSession::CloseNow()
 		session_ = nullptr;
 	}
 	replaying_ = false;
+	if (lagged_) {
+		CoreLog("replay lag: %d frame(s), %d rollback(s), the longest %d frame(s)", frame_, lagged_->Rollbacks(),
+			lagged_->LongestRollback());
+		lagged_.reset();
+	}
+	if (replayCheck_) {
+		const SyncTestReport& r = replayCheck_->Report();
+		CoreLog("replay check: %d frame(s), %d rollback(s), %d differed", r.framesRun, r.rollbacks, r.failures);
+		replayCheck_.reset();
+	}
 	localHandle_ = remoteHandle_ = -1;
 	gate_.OnSessionClosed();
 	for (Slot& s : pool_) s.used = false;
@@ -546,7 +651,8 @@ bool RollbackSession::DrainPendingAbort()
 
 int RollbackSession::LastConfirmedFrame() const
 {
-	if (Live() && config_.watching) return frame_;
+	// A lagged replay's frames are final only once its guesses are settled.
+	if (Live() && config_.watching) return lagged_ ? lagged_->ConfirmedThrough() : frame_;
 	int frame = -1;
 	if (session_ && ggpo_get_last_confirmed_frame(session_, &frame) == GGPO_OK) return frame;
 	return -1;
@@ -592,6 +698,14 @@ const uint8_t* RollbackSession::SavedState(int frame) const
 {
 	for (const Slot& s : pool_) {
 		if (s.used && s.frame == frame) return s.bytes.data();
+	}
+	return nullptr;
+}
+
+const std::vector<uint8_t>* RollbackSession::CheckpointState(int frame) const
+{
+	for (const KeptState& kept : checkpointStates_) {
+		if (kept.frame == frame && !kept.bytes.empty()) return &kept.bytes;
 	}
 	return nullptr;
 }
@@ -697,6 +811,15 @@ void RollbackSession::RecordHash(Slot& slot, int frame, long long copyTicks)
 	}
 	if (checkpoint) {
 		layout.PeerRegionHashesSaved(slot.bytes.data(), checkpoints_[frame]); // a replay overwrites it
+		// Its bytes too, in the older of the two kept unless this frame's
+		// own (saved again after a rollback) is there.
+		KeptState* keep = &checkpointStates_[0];
+		if (checkpointStates_[1].frame == frame || (checkpointStates_[0].frame != frame &&
+				checkpointStates_[1].frame < checkpointStates_[0].frame)) {
+			keep = &checkpointStates_[1];
+		}
+		keep->frame = frame;
+		keep->bytes.assign(slot.bytes.begin(), slot.bytes.end());
 		if (config_.onCheckpoint) config_.onCheckpoint(frame, slot.hash); // RegionHashesAt(frame) answers
 		QueryPerformanceFrequency(&perSecond);
 		const auto us = [&](long long ticks) { return ticks * 1000000 / perSecond.QuadPart; };

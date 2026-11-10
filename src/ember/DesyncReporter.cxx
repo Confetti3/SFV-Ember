@@ -106,6 +106,12 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	facts.longestRollback = session.GetStats().longestRollback;
 	facts.layoutId = session.Layout().LayoutId();
 	facts.matchBuild = MatchBuildId();
+	if (const std::vector<uint8_t>* state = session.CheckpointState(mismatch.frame)) {
+		for (const StateRegion& r : session.Layout().Regions()) {
+			facts.stateRegions.push_back({r.name, r.size, reinterpret_cast<std::uint64_t>(r.ptr)});
+		}
+		facts.state = *state;
+	}
 	std::vector<RegionHash> hashes;
 	if (session.RegionHashesAt(mismatch.frame, &hashes)) {
 		const std::vector<StateRegion>& regions = session.Layout().Regions();
@@ -153,6 +159,38 @@ std::string LogTail(int frame)
 	return desync::TailLines(bytes, size > kept, frame);
 }
 
+// This copy's state at the checkpoint, in its own folder beside the reports
+// (desync::StateFile), whether or not reports are sent; the oldest beyond
+// kStatesKept go.
+void WriteState(const fs::path& settings, const std::wstring& stem, const desync::Facts& facts)
+{
+	const std::string bytes = desync::StateFile(facts);
+	if (bytes.empty()) {
+		mod::Log("desync report: the state at checkpoint %d was no longer kept; no state file", facts.frame);
+		return;
+	}
+	const fs::path folder = settings / desync::kStateFolder;
+	std::error_code ec;
+	fs::create_directories(folder, ec);
+	std::vector<fs::path> kept;
+	for (const fs::directory_entry& entry : fs::directory_iterator(folder, ec)) {
+		if (entry.path().extension() == desync::kStateExtension) kept.push_back(entry.path());
+	}
+	std::sort(kept.begin(), kept.end()); // names start with the time
+	for (std::size_t i = 0; i + desync::kStatesKept <= kept.size(); ++i) fs::remove(kept[i], ec);
+	const fs::path target = folder / (stem + desync::kStateExtension);
+	std::ofstream file(target, std::ios::binary | std::ios::trunc);
+	file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+	file.close();
+	if (!file) {
+		fs::remove(target, ec);
+		mod::Log("desync report: could not write %ls", target.c_str());
+		return;
+	}
+	mod::Log("desync report: this copy's state at checkpoint %d is %ls (%zu bytes); compare it with the other player's "
+		"(tools/diffstate.py)", facts.frame, target.c_str(), bytes.size());
+}
+
 // The report's own thread: writes one gathered report down for the launcher.
 void WriteDown(const desync::Facts& facts)
 {
@@ -161,6 +199,11 @@ void WriteDown(const desync::Facts& facts)
 		mod::Log("desync report: no settings folder, so nothing is written");
 		return;
 	}
+	const long long now =
+		std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+	const std::wstring stem =
+		std::to_wstring(now) + L"-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(facts.frame);
+	WriteState(fs::path(settings), stem, facts);
 	const std::optional<bool> on = sf4e::reports::ReportsOn(settings);
 	if (!on || !*on) {
 		mod::Log("desync report: %s, so this desync's report is not written", on ? "Send problem reports is off" : "the settings cannot be read");
@@ -194,14 +237,12 @@ void WriteDown(const desync::Facts& facts)
 	sf4e::launcher::ReadInstalledVersion(version, static_cast<int>(sizeof(version)));
 	spooled.appVersion = version[0] ? version : "unknown";
 	spooled.sourceRevision = SF4E_SOURCE_REVISION;
-	spooled.time = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+	spooled.time = now;
 	spooled.watcher = facts.watcher;
 	spooled.comment = desync::Comment(facts, spooled.buildId);
 	spooled.regionLines = desync::RegionLines(facts);
 	spooled.logTail = LogTail(facts.frame);
 
-	const std::wstring stem = std::to_wstring(spooled.time) + L"-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
-		std::to_wstring(facts.frame);
 	const fs::path target = folder / (stem + desync::kSpoolExtension);
 	const fs::path partial = folder / (stem + L".tmp");
 	{

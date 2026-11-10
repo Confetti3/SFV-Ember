@@ -280,3 +280,75 @@ TEST_CASE("learning mode stays on one timeline after a difference, so it counts 
 	CHECK(tester.Report().failures == 1);
 	CHECK(tester.Report().regionFailures.at("glitch") == 1);
 }
+
+namespace {
+
+ReplayFrames ScriptedRecording(int count)
+{
+	ReplayFrames frames((size_t)count);
+	for (int frame = 0; frame < count; frame++) {
+		frames[(size_t)frame].inputs = ScriptedFrame(frame, 42);
+		frames[(size_t)frame].flags = RecordedFrame::kFight;
+	}
+	return frames;
+}
+
+// Plays the recording with `remote`'s inputs `lag` frames late and compares
+// every final state it still keeps with the straight playback's, by the
+// peers' hash (two mocks hold different clocks and owners).
+// Returns how many final states differed; `compared` and `rollbacks` say how
+// much was checked.
+int LaggedDifferences(MockFighter& game, const ReplayFrames& frames, const std::vector<uint64_t>& straight, int remote,
+	int lag, int* compared, int* rollbacks, uint32_t jitter = 0)
+{
+	LaggedReplay replay(game, frames, remote, lag, jitter);
+	int differing = 0;
+	int next = 0;
+	const auto compare = [&] {
+		for (; next <= replay.ConfirmedThrough(); next++) {
+			const uint8_t* bytes = replay.SavedAt(next);
+			if (!bytes) continue;
+			(*compared)++;
+			if (game.Layout().HashSaved(bytes, HashScope::Peers) != straight[(size_t)next]) differing++;
+		}
+	};
+	for (int frame = 0; frame < (int)frames.size(); frame++) {
+		replay.Step(frame);
+		compare();
+	}
+	replay.Finish();
+	compare();
+	*rollbacks = replay.Rollbacks();
+	return differing;
+}
+
+} // namespace
+
+TEST_CASE("a lagged replay's final states are the recording's, and it catches state a guessed timeline leaves behind")
+{
+	const ReplayFrames frames = ScriptedRecording(900);
+	std::vector<uint64_t> straight;
+	{
+		MockFighter game;
+		for (int frame = 0; frame < 900; frame++) {
+			straight.push_back(game.Layout().HashLive(HashScope::Peers));
+			game.Advance(GivenInputs(game, frames[(size_t)frame].inputs, frame), false);
+		}
+		straight.push_back(game.Layout().HashLive(HashScope::Peers));
+	}
+	for (int remote = 0; remote < 2; remote++) {
+		for (int lag : {1, 3, 7}) {
+			for (uint32_t jitter : {0u, 99u}) {
+				MockFighter game;
+				int compared = 0, rollbacks = 0;
+				INFO("remote P" << remote + 1 << ", lag " << lag << ", jitter " << jitter);
+				CHECK(LaggedDifferences(game, frames, straight, remote, lag, &compared, &rollbacks, jitter) == 0);
+				CHECK(compared >= 890);
+				CHECK(rollbacks > 0);
+			}
+		}
+	}
+	MockFighter leaky(kBugStateOutsideLayout);
+	int compared = 0, rollbacks = 0;
+	CHECK(LaggedDifferences(leaky, frames, straight, 0, 3, &compared, &rollbacks) > 0);
+}

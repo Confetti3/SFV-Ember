@@ -15,6 +15,15 @@
 //   -sfve_moves=1        ...playing the game's system moves (input::Script::Moves)
 //   -sfve_practice=1     synctest, netplay: Training's refilling gauges from the first frame
 //   -sfve_replay_regions=F  replay playback: log each checkpoint's region hashes from frame F
+//   -sfve_replay_check=N    replay playback: also make rollbacks up to N frames deep and log
+//                        what they leave different (random spacing from -sfve_schedule)
+//   -sfve_tasks=0|1|2    test: battle tasks as the game places them (0), all of the tick on
+//                        the battle's thread (1), and P2's fighter tasks before P1's (2)
+//   -sfve_fma3=0|1       test: the game's CRT math (msvcr120) without or with its FMA3 code
+//   -sfve_replay_lag=N      replay playback: play as a fighter's copy does when P1's inputs
+//                        (-sfve_replay_lag_player=1: P2's) arrive N frames late, with
+//                        guesses and rollbacks; checkpoints once final
+//   -sfve_replay_jitter=SEED  ...with the delay wandering up to N, a new seed each playback
 //   -sfve_distance=N     synctest rollback distance (default 7)
 //   -sfve_pads=0,1       XInput slots that are virtual pads from the start
 //   -sfve_background=1   keep playing and reading pads while unfocused
@@ -118,6 +127,25 @@ struct ModConfig {
 	// a match's log) can be compared region by region (tools/compare.py).
 	// 0: none.
 	int replayRegionsFrom = 0;
+	// A replay's playback also checks rollbacks of up to this many frames on
+	// the recording's inputs (RollbackSession::Config::replayCheckDistance),
+	// spaced from scheduleSeed. 0: none.
+	int replayCheck = 0;
+	// A replay's playback plays as a fighter's copy does when player
+	// replayLagPlayer's inputs arrive this many frames late
+	// (RollbackSession::Config::replayLag). 0: none.
+	int replayLag = 0;
+	// msvcr120's FMA3 code for the game's math: -1 as the CRT chose it at
+	// start (FMA3 where the CPU has it), 0 off, 1 on (DllMain: SetCrtFma3).
+	int crtFma3 = -1;
+	// Where the battle's tick tasks run (ProjectileRelease's task hook, the
+	// modes that roll back): 0 as the game places them, 1 all on the battle's
+	// thread in the scheduler's order, 2 as 1 with P2's fighter tasks first.
+	int battleTasks = 0;
+	int replayLagPlayer = 0;
+	// Nonzero: the lagged replay's delay wanders up to replayLag, seeded from
+	// this plus the playback's number in this process (-sfve_replay_jitter).
+	uint32_t replayLagJitter = 0;
 	bool room = false; // netplay: Ember's runtime runs, and its rooms' matches give the endpoints, seed and delay
 	// Offline start-up dialogs kept from showing: 0 none, 1 the download
 	// failures, 2 those and the offline-mode notice.

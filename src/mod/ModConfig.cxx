@@ -201,6 +201,12 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.lagMs = (int)options.Number(L"sfve_lag", 0);
 	c.hashEvery = (int)options.Number(L"sfve_hash_every", 0);
 	c.replayRegionsFrom = (int)options.Number(L"sfve_replay_regions", 0);
+	c.replayCheck = (int)options.Number(L"sfve_replay_check", 0);
+	c.replayLag = (int)options.Number(L"sfve_replay_lag", 0);
+	c.crtFma3 = (int)options.Number(L"sfve_fma3", -1);
+	c.battleTasks = (int)options.Number(L"sfve_tasks", 0);
+	c.replayLagJitter = (uint32_t)options.Number(L"sfve_replay_jitter", 0);
+	c.replayLagPlayer = (int)options.Number(L"sfve_replay_lag_player", 0) == 1 ? 1 : 0;
 	c.room = options.Number(L"sfve_room", 0) != 0;
 	c.offlineDialogs = (int)options.Number(L"sfve_dialogs", 2);
 	c.ownershipGate = options.Number(L"sfve_ownership", kOwnershipGateByDefault ? 1 : 0) != 0;

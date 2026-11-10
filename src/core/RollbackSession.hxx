@@ -53,11 +53,15 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
 namespace sfve {
+
+class SyncTester;
+class LaggedReplay;
 
 class RollbackSession {
 public:
@@ -109,6 +113,22 @@ public:
 		// the session fails; so does the end of the frames. The frames must
 		// outlive the session.
 		const ReplayFrames* replay = nullptr;
+		// Diagnostics, a replay only: the playback also makes the rollbacks a
+		// session could (SyncTester in learning mode, each rolled-back stretch
+		// first played with wrong inputs), up to this many frames deep at
+		// random spacing from replayCheckSeed, and logs every region that a
+		// rollback leaves different ("replay check:" and "learn:" lines), on the
+		// recording's own inputs. 0: off. Held frames end the checks.
+		int replayCheckDistance = 0;
+		uint32_t replayCheckSeed = 1;
+		// Diagnostics, a replay only: the playback plays as a fighter's copy
+		// does when player replayLagPlayer's inputs arrive this many frames
+		// late (LaggedReplay: guesses, rendered, then rollbacks), and hashes
+		// each checkpoint once its state is final. 0: off. Takes the place of
+		// replayCheckDistance. A held frame fails the playback.
+		int replayLag = 0;
+		int replayLagPlayer = 0;
+		uint32_t replayLagJitter = 0; // nonzero: the delay wanders up to replayLag (LaggedReplay), from this seed
 		// Each frame as this session plays it, before the game sees it: its
 		// number and what it gave the game (RecordedFrame). A rollback's replay
 		// reports the frame again; the last report of a confirmed frame is
@@ -241,6 +261,11 @@ public:
 	const uint8_t* SavedState(int frame) const;
 	// The peers' per-region hashes of checkpoint `frame`, in canonical order.
 	bool RegionHashesAt(int frame, std::vector<RegionHash>* out) const;
+	// The whole state at checkpoint `frame` as last hashed (the layout's
+	// regions one after another), while it is one of the last two
+	// checkpoints; null otherwise. A desync report keeps it, so two copies'
+	// states can be compared byte by byte.
+	const std::vector<uint8_t>* CheckpointState(int frame) const;
 	int LatestCheckpoint(int atOrBefore) const;
 	const Stats& GetStats() const { return stats_; }
 	const StateLayout& Layout() const { return game_.Layout(); }
@@ -327,6 +352,11 @@ private:
 	std::vector<HashRecord> history_;
 	std::vector<HashRecord> allHashes_; // Config::keepAllHashes, indexed by frame
 	std::map<int, std::vector<RegionHash>> checkpoints_;
+	struct KeptState {
+		int frame = -1;
+		std::vector<uint8_t> bytes;
+	};
+	KeptState checkpointStates_[2]; // the last two checkpoints' states (CheckpointState)
 	int frame_ = 0;
 	// Held frames (StepHeld): from heldFrom_ up to heldTo_ (exclusive; the
 	// current frame while holding_).
@@ -355,6 +385,16 @@ private:
 	bool keptForWatchers_ = false;
 	// A replay plays (Config::replay): Live with no GGPO session.
 	bool replaying_ = false;
+	// The replay's rollback checks (Config::replayCheckDistance), and the
+	// regions they have logged.
+	std::unique_ptr<SyncTester> replayCheck_;
+	std::unique_ptr<LaggedReplay> lagged_;
+	int laggedHashed_ = 0;      // checkpoints hashed through this frame
+	bool laggedFinished_ = false;
+	void HashLagged();
+	int replayCheckFailures_ = 0;
+	std::set<std::string> replayCheckLogged_;
+	void LogReplayCheck();
 };
 
 } // namespace sfve
