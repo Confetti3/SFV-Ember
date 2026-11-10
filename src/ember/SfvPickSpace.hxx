@@ -93,6 +93,25 @@ bool SameFitting(const sf4e::selection::Pick& a, const sf4e::selection::Pick& b)
 // "vskill II vtrigger I", for the logs and the pipe.
 std::string LoadoutText(Loadout loadout);
 
+// The player's voice language for the fighter they pick, as the game's own
+// numbers have it (VersusLaunch's CharPkg +61, EKWVoiceLanguage): what their
+// copy's options give for that fighter, so a room's match plays each
+// fighter in its own player's language on both copies. It travels in the
+// shared pick's `winQuote` slot (SF4's win quote, which SFV has no use for),
+// as 1 + the voice: 0, the slot's default, is no voice, so a pick from a
+// copy that sends none (0.1.0-beta.3 and earlier) reads as none.
+// Ready's pick carries it (SfvPick's AddPickTo); nothing judges or fits it.
+constexpr int kVoiceJapanese = 0;
+constexpr int kVoiceEnglish = 1;
+// The voice the pick carries; none for a slot that holds none.
+std::optional<int> VoiceIn(const sf4e::selection::Pick& pick);
+// VoiceIn, or the game's own default, English, for a pick that carries
+// none: a room's match launches that on both copies.
+int VoiceOf(const sf4e::selection::Pick& pick);
+// Carries `voice` (kVoiceJapanese or kVoiceEnglish); any other number
+// carries none.
+void SetVoice(sf4e::selection::Pick& pick, int voice);
+
 struct Costume {
 	int id = 0;               // the game's costume number
 	std::vector<int> colours; // the game's colour numbers for it, in its order

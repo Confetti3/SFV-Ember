@@ -61,7 +61,10 @@ PlayerPick SetDummy(const PlayerPick& dummy)
 
 void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command)
 {
-	const PlayerPick pick = CurrentPick();
+	PlayerPick pick = CurrentPick();
+	// The player's own voice for the fighter goes with the pick, so the
+	// opponent's copy plays it too (picks::VoiceIn, SfvCatalog's LaunchPicks).
+	picks::SetVoice(pick.pick, OwnVoice(pick.pick.fighter));
 	sf4e::selection::ToNative(pick.pick, command.character);
 	command.stage = pick.stage;
 }

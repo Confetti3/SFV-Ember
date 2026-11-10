@@ -3,6 +3,7 @@
 #include "ember/SfvRoomBuild.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvLayoutRules.hxx"
+#include "mod/SfvOffsets.hxx"
 
 #include "common/GameCatalog.hxx"
 #include "common/StageCatalog.hxx"
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <iterator>
 #include <cstdio>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -31,6 +33,12 @@ bool s_sealed = false;
 bool s_gate = true;
 // The roster in the order of the game's list, which is its ids' order.
 std::vector<int> s_rosterOrder;
+// This copy's player's voice for each fighter by id (RefreshOwnVoices),
+// read by any thread; empty before the first read.
+std::mutex s_voicesMutex;
+std::vector<int> s_ownVoices;
+static_assert(picks::kVoiceJapanese == mod::sfv::jump::kVoiceJapanese && picks::kVoiceEnglish == mod::sfv::jump::kVoiceEnglish,
+	"a pick carries the voice as the game numbers it");
 // The table rules a room offers that SFV plays (VersusLaunch's
 // PlayableRounds and RoundClockFrames), in the room's order.
 std::vector<std::uint8_t> s_roundCounts;
@@ -519,7 +527,24 @@ mod::FighterPick FighterPickOf(const sf4e::selection::Pick& pick)
 {
 	const picks::Loadout loadout = picks::LoadoutOf(pick);
 	return {WideCode(FighterCode(pick.fighter)), pick.costume, pick.color, loadout.choice[picks::VSkill],
-		loadout.choice[picks::VTrigger]};
+		loadout.choice[picks::VTrigger], picks::VoiceIn(pick).value_or(mod::kVoiceOfOptions)};
+}
+
+void RefreshOwnVoices(const std::function<std::optional<int>(const std::string& code)>& voiceOf)
+{
+	std::vector<int> voices;
+	for (const mod::FighterContent& fighter : s_lists.fighters) {
+		const std::optional<int> voice = voiceOf(fighter.code);
+		voices.push_back(voice && (*voice == picks::kVoiceJapanese || *voice == picks::kVoiceEnglish) ? *voice : picks::kVoiceEnglish);
+	}
+	std::lock_guard lock(s_voicesMutex);
+	s_ownVoices = std::move(voices);
+}
+
+int OwnVoice(std::int64_t fighter)
+{
+	std::lock_guard lock(s_voicesMutex);
+	return fighter >= 0 && fighter < (std::int64_t)s_ownVoices.size() ? s_ownVoices[(size_t)fighter] : picks::kVoiceEnglish;
 }
 
 std::optional<int> FighterId(const std::wstring& code)
@@ -577,7 +602,11 @@ MatchLaunch LaunchPicks(const RoomMatch& match)
 {
 	if (std::optional<MatchRefusal> refusal = Refusal(match)) return {std::nullopt, std::move(*refusal)};
 	mod::MatchPicks picks;
-	for (int side = 0; side < 2; side++) picks.players[side] = FighterPickOf(match.picks[side]);
+	for (int side = 0; side < 2; side++) {
+		picks.players[side] = FighterPickOf(match.picks[side]);
+		// Never this copy's options: the other copy's are not the same.
+		picks.players[side].voice = sfve::picks::VoiceOf(match.picks[side]);
+	}
 	picks.rules.stage = WideCode(StageCode(match.stage));
 	picks.rules.rounds = match.rounds;
 	picks.rules.timeFrames = *mod::RoomClockFrames(match.roundSeconds);

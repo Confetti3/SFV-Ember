@@ -39,6 +39,26 @@ std::string s_refusal; // why the runtime did not start; written before Refused 
 
 // A wait for the content lists at the main menu longer than this is logged.
 constexpr ULONGLONG kLongContentWaitMs = 60 * 1000;
+// How often the player's voices are read again at the main menu (frames):
+// a change in the game's options reaches the next Ready within a second.
+constexpr int kVoiceReadFrames = 60;
+
+// Game thread: this copy's player's voice for each fighter, from the game's
+// options (SfvCatalog's RefreshOwnVoices). Said in the log when they change.
+void ReadOwnVoices()
+{
+	static std::string said;
+	std::string japanese;
+	RefreshOwnVoices([&japanese](const std::string& code) {
+		const std::optional<int> voice = mod::CharaVoiceLanguage(std::wstring(code.begin(), code.end()));
+		if (voice && *voice == picks::kVoiceJapanese) japanese += (japanese.empty() ? "" : " ") + code;
+		return voice;
+	});
+	if (japanese == said) return;
+	said = japanese;
+	mod::Log("ember: voices from the game's options: japanese for %s, english for the rest",
+		japanese.empty() ? "none" : japanese.c_str());
+}
 
 const char* StateName(HostState state)
 {
@@ -226,6 +246,7 @@ bool TryStart(const HostSettings& settings, ember::GameTick& battle)
 			std::to_string(lists.stages.size()) + " stages) do not make a usable catalog");
 	}
 	SealCatalog();
+	ReadOwnVoices();
 	const size_t named =
 		std::count_if(lists.stages.begin(), lists.stages.end(), [](const mod::StageContent& s) { return !s.name.empty(); });
 	mod::Log("ember: catalog of %d fighters and %zu stages (%zu named by the game; read in %llu ms), build %s",
@@ -286,13 +307,17 @@ void InstallEmberHost(const HostSettings& settings, ember::GameTick& battle)
 		if (state == HostState::Refused) json += ",\"refusal\":" + mod::JsonString(s_refusal);
 		return json + "}";
 	});
-	mod::RunEachGameFrame([settings, &battle] {
+	auto frames = std::make_shared<int>(0);
+	mod::RunEachGameFrame([settings, &battle, frames] {
 		if (s_state == HostState::Stopped) return false;
 		if (s_state != HostState::Running) {
 			if (!mod::MainMenuInFront()) return true;
 			if (!TryStart(settings, battle)) return false;
 			if (s_state != HostState::Running) return true;
 		}
+		// Only at the main menu, where the game's options are settled and no
+		// battle runs (a Ready is only made there).
+		if (++*frames % kVoiceReadFrames == 0 && mod::MainMenuInFront()) ReadOwnVoices();
 		ember::Tick(battle);
 		return true;
 	});

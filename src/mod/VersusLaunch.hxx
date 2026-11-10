@@ -31,10 +31,15 @@ enum class LaunchTarget {
 	Training = 2,
 };
 
+// A FighterPick's voice that the launch takes from this copy's options for
+// the fighter (VoiceToWrite), as the game's own menus do.
+constexpr int kVoiceOfOptions = -1;
+
 // An empty fighter, a negative costume or colour, or an empty stage keeps
 // what the mode's data object already holds (the profile's defaults). The
-// V-Skill and V-Trigger never do: every launch writes both players' choices,
-// so no battle inherits them from an earlier one.
+// V-Skill, V-Trigger and voice never do: every launch writes both players'
+// choices, so no battle inherits them from an earlier one (the mode data
+// keeps the previous battle's records, another fighter's voice included).
 struct FighterPick {
 	std::wstring fighter; // the game's three-letter code, e.g. L"KEN"
 	int costume = -1;
@@ -43,13 +48,29 @@ struct FighterPick {
 	// (SfvCatalog's FighterPickOf makes them from a pick's loadout).
 	int vSkill = 0;
 	int vTrigger = 0;
+	// The fighter's voice language, the game's sfv::jump::kVoiceJapanese or
+	// kVoiceEnglish: a room's match carries each player's own (SfvPickSpace's
+	// VoiceIn), so both copies load the same. kVoiceOfOptions takes this
+	// copy's options, for a launch only this copy plays (Training, the
+	// pipe's, a replay's).
+	int voice = kVoiceOfOptions;
 };
 
-// The pick's costume and colour (where given), its V-Skill and its
-// V-Trigger, into the game's per-fighter record (a CharPkg,
+// The voice a launch writes for `pick`: its own where it is one of the
+// game's two, else `ofOptions` (this copy's options for the fighter,
+// GameContent's CharaVoiceLanguage) where they gave one, else the game's
+// default, English. No game code.
+int VoiceToWrite(const FighterPick& pick, std::optional<int> ofOptions);
+
+// The pick's costume and colour (where given), its V-Skill, its V-Trigger
+// and its voice (where it is one of the game's two: WriteFighter gives it
+// VoiceToWrite's first) into the game's per-fighter record (a CharPkg,
 // sfv::jump::kCharPkgSize bytes): the fields WriteFighter sets besides the
 // code, which the game's own setters then copy. No game code.
 void FillCharPkg(uint8_t* chara, const FighterPick& pick);
+
+// "japanese", "english", or the number, for the launch's log lines.
+std::string VoiceName(int voice);
 
 // A player's look as a launch writes it and as the loaded battle's setting
 // holds it, read back after the load to log what each copy loaded.
@@ -57,10 +78,12 @@ struct PlayerLook {
 	std::string fighter; // the game's code
 	int costume = -1;
 	int colour = -1;
+	int voice = -1; // sfv::jump::kVoiceJapanese or kVoiceEnglish; -1 where not known
 };
 // The loaded look is not the one the launch wrote. Codes compare as the game
 // compares them, ignoring case (GameContent's SameCode): one side is the
-// launch's FString narrowed, the other the setting record's own code.
+// launch's FString narrowed, the other the setting record's own code. The
+// voices compare where both are known.
 bool LookMismatch(const PlayerLook& written, const PlayerLook& loaded);
 
 // The match's rules, as the versus battle settings offer them; negative

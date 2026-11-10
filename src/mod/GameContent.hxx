@@ -308,6 +308,14 @@ void MarkUnowned(ContentLists& lists, const std::vector<UnownedContent>& marks);
 // many stages it cleared.
 int MarkUninstalled(ContentLists& lists, const std::vector<std::string>& codes);
 
+// Game thread. This copy's player's voice language for the fighter `code`
+// names, as the game's options hold it (sfv::kCharaVoiceLanguage, the list
+// the game's own character select reads into a fighter's record):
+// sfv::jump::kVoiceJapanese or kVoiceEnglish, English (the lookup's own
+// default) for a fighter the list does not hold. None while the game's
+// saves or their options are not there.
+std::optional<int> CharaVoiceLanguage(std::wstring_view code);
+
 // Game thread, at the main menu. A text the game's own localization data
 // holds, by namespace and key (sfv::kCreateText, as the game builds its
 // literals), as the game shows it in its current language, UTF-8; empty
