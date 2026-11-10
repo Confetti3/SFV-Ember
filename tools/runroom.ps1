@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [switch]$keep)
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [switch]$keep)
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -20,6 +20,9 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # Rematch, B Back to room), as a player does, instead of the pipe.
 # -quickAnswer: copy 0 also answers Rematch the moment its prompt shows (on
 # its pad with -padAnswers), as a player still pressing from the fight does.
+# -leaveAnswer: over the last WIN copy 1 leaves the room (the pipe's `leave`)
+# instead of Back to room; the runtime's end of its battle must ride as its
+# decline, so both copies still decide on the same frame.
 #
 # -firstTo N without -rematches (EMBER_LIBRARY.md section 28): a first-to-N
 # set played a battle a game. After each game both copies' rooms must agree
@@ -82,6 +85,9 @@ function WaitFor([string]$what, [int]$timeout, [scriptblock]$done) {
   throw "timed out waiting for $what"
 }
 function Answer([int]$i, [string]$say) {
+  # Leaving the room over the WIN: the runtime ends the battle, which the
+  # held frames carry as this fighter's decline (RoomBattle::DeclineToExit).
+  if ($say -eq 'leave') { Ctl $i 'leave' | Out-Null; return }
   if (!$padAnswers) { Ctl $i "rematch $say" | Out-Null; return }
   $button = if ($say -eq 'yes') { 'A' } else { 'B' }
   Ctl $i "pad 0 ${button}:120 -:250" | Out-Null
@@ -192,7 +198,7 @@ try {
         Shot "game$game-prompt"
         # Rematch ("yes") is parked by the runtime as the choice the held frames
         # carry; asked again until this copy's input shows it.
-        $say = if ($last) { @('yes', 'no') } else { @('yes', 'yes') }
+        $say = if ($last) { @('yes', $(if ($leaveAnswer) { 'leave' } else { 'no' })) } else { @('yes', 'yes') }
         Answer 0 $say[0]
         if ($shots) {
           Start-Sleep -Milliseconds 700
@@ -217,7 +223,9 @@ try {
       $want = if ($last) { 'back to the room' } else { 'rematch in place' }
       foreach ($d in $decisions) { if ($d -notlike "*$want") { throw "game ${game}: expected '$want', got: $d" } }
       if ($last) {
-        WaitFor 'every copy back in the room' 90 { foreach ($i in $copies) { if ((Count $i 'battle closed at its match') -eq 0 -or (Status $i).room.room -ne 'joined') { return $false } }; $true }
+        # With -leaveAnswer copy 1 left the room: its battle closes, and it is in none.
+        WaitFor 'every copy back in the room' 90 { foreach ($i in $copies) { if ((Count $i 'battle closed at its match') -eq 0 -or ((Status $i).room.room -ne 'joined' -and -not ($leaveAnswer -and $i -eq 1))) { return $false } }; $true }
+        if ($leaveAnswer -and (Count 1 'the room asks the battle to end over the WIN') -eq 0) { throw "copy 1's leave over the WIN was not carried as its decline" }
         Start-Sleep 3
         Shot "game$game-room"
       }
