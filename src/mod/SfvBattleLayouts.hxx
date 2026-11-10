@@ -6,6 +6,8 @@
 // a Practice room's gauges, the battle flow, frame and units, the battle
 // data, and the rollback manager. Offsets in bytes; addresses are RVAs.
 
+#include "mod/SfvFighterOffsets.hxx"
+
 #include <stdint.h>
 
 namespace sfve::mod::sfv {
