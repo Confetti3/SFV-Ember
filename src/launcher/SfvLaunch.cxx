@@ -290,7 +290,7 @@ HANDLE StartGame(const StartRequest& request, StartFailure& failure)
 	{
 		// Where the game's own log is (the mod's first line there names the file it writes).
 		const std::wstring data = sf4e::netplay::SettingsStore::DefaultDirectory();
-		spdlog::info("The game's log: {}", sf4e::platform::WideToUtf8(data + L"\logs\sfv_ember.log"));
+		spdlog::info("The game's log: {}", sf4e::platform::WideToUtf8(data + L"\\logs\\sfv_ember.log"));
 	}
 	CloseHandle(process.hThread);
 	// The desync reports the game writes down go out from here, outside the
