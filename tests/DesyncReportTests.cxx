@@ -8,7 +8,13 @@
 
 #include "ember/DesyncReport.hxx"
 
+#include <windows.h>
+
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <string>
+#include <vector>
 
 using namespace sfve::adapter::desync;
 
@@ -278,4 +284,58 @@ TEST_CASE("each answer of the intake settles the report's file or keeps it")
 	cancelled.cancelled = true;
 	CHECK(Judge(cancelled, true).verdict == Verdict::Later);
 	CHECK(Judge(cancelled, true).reason == "cancelled");
+}
+
+TEST_CASE("past the limit the oldest waiting reports go, never one the launcher holds")
+{
+	namespace fs = std::filesystem;
+	const fs::path folder = fs::temp_directory_path() / ("sfve-spool-test-" + std::to_string(GetCurrentProcessId()));
+	fs::remove_all(folder);
+	CHECK(MakeRoom(folder, 4).waiting == 0); // no folder: nothing waits
+	fs::create_directories(folder);
+	const auto write = [&](const std::string& name) { std::ofstream(folder / name, std::ios::binary) << "x"; };
+	for (const char* name : {"1000-1-10.desync.json", "1001-1-20.desync.json", "1002-1-30.desync.json"}) write(name);
+	write("1003-1-40.tmp"); // a report being written is not waiting
+	write("notes.txt"); // nor is a file that is not a report
+
+	// Room for one more already: nothing goes.
+	Room room = MakeRoom(folder, 4);
+	CHECK(room.waiting == 3);
+	CHECK(room.removed.empty());
+
+	// At the limit the oldest goes, so the new report is the one kept.
+	write("1004-1-50.desync.json");
+	room = MakeRoom(folder, 4);
+	REQUIRE(room.removed.size() == 1);
+	CHECK(room.removed[0] == L"1000-1-10.desync.json");
+	CHECK(room.waiting == 3);
+
+	// The launcher holds the oldest (open, unshared, as DesyncCourier does):
+	// it stays and the next oldest goes.
+	write("1005-1-60.desync.json");
+	const HANDLE held = CreateFileW((folder / "1001-1-20.desync.json").c_str(), GENERIC_READ | DELETE, 0, nullptr, OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL, nullptr);
+	REQUIRE(held != INVALID_HANDLE_VALUE);
+	room = MakeRoom(folder, 4);
+	REQUIRE(room.removed.size() == 1);
+	CHECK(room.removed[0] == L"1002-1-30.desync.json");
+	CHECK(room.waiting == 3);
+	// Every report held: nothing can go and the count stays at the limit.
+	const HANDLE held2 = CreateFileW((folder / "1004-1-50.desync.json").c_str(), GENERIC_READ | DELETE, 0, nullptr, OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL, nullptr);
+	const HANDLE held3 = CreateFileW((folder / "1005-1-60.desync.json").c_str(), GENERIC_READ | DELETE, 0, nullptr, OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL, nullptr);
+	REQUIRE(held2 != INVALID_HANDLE_VALUE);
+	REQUIRE(held3 != INVALID_HANDLE_VALUE);
+	room = MakeRoom(folder, 3);
+	CHECK(room.waiting == 3);
+	CHECK(room.removed.empty());
+	CloseHandle(held);
+	CloseHandle(held2);
+	CloseHandle(held3);
+
+	// What is left is the newest, and the other files are untouched.
+	CHECK(fs::exists(folder / "1003-1-40.tmp"));
+	CHECK(fs::exists(folder / "notes.txt"));
+	fs::remove_all(folder);
 }

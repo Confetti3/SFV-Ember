@@ -5,8 +5,8 @@
 // the form the report intake (the library's server/ember-reports) takes. The
 // pure parts, shared by the game (which writes the report down as the
 // desync is found, DesyncReporter) and the launcher (which sends what the
-// game wrote, DesyncCourier): nothing here reads a file, the clock or the
-// network.
+// game wrote, DesyncCourier): nothing here reads the clock or the network,
+// and MakeRoom is the one function that touches the report files.
 //
 // A report is a "problem" report: the intake makes its comment the Bugsink
 // event's message, and Bugsink groups problems by the message's first line,
@@ -22,6 +22,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -116,10 +117,27 @@ std::optional<Spooled> ParseSpool(std::string_view text);
 // The folder the reports wait in, under the product's settings folder.
 constexpr const wchar_t* kSpoolFolder = L"desync-reports";
 constexpr const wchar_t* kSpoolExtension = L".desync.json";
-// At most this many wait; a desync past them is not written down.
-constexpr std::size_t kSpoolLimit = 8;
+// At most this many wait (a report is about 75 KB, so about 2.5 MB). A desync
+// past them is still written down: the oldest waiting reports go to make room
+// (MakeRoom), so the newest are the ones kept. The launcher's daily sending
+// limit is separate and stays; it decides what is sent, this what is kept.
+constexpr std::size_t kSpoolLimit = 32;
 // One older than this is never sent: its build is likely gone.
 constexpr std::int64_t kSpoolMaxAgeSeconds = 7 * 24 * 60 * 60;
+
+// What MakeRoom did to the folder of waiting reports.
+struct Room {
+	std::size_t waiting = 0;                 // reports waiting afterwards
+	std::vector<std::wstring> removed;       // the file names it removed, oldest first
+};
+// Brings the folder to fewer than limit waiting reports for one more by
+// removing the oldest ones (the names sort by the time they were written). A
+// report the launcher holds open is never removed: the launcher opens it
+// without sharing deletion until it is settled, so a removal of it fails and
+// the next oldest goes instead. When every one is held, waiting stays at
+// limit or more and the new report is not written. A missing folder holds
+// none.
+Room MakeRoom(const std::filesystem::path& folder, std::size_t limit);
 
 // How one upload of a report ended, and what becomes of its file.
 enum class Verdict {

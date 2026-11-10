@@ -153,20 +153,6 @@ std::string LogTail(int frame)
 	return desync::TailLines(bytes, size > kept, frame);
 }
 
-std::size_t ReportsWaiting(const fs::path& folder)
-{
-	std::size_t count = 0;
-	std::error_code ec;
-	for (fs::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec)) {
-		const std::wstring name = it->path().filename().wstring();
-		const std::wstring extension = desync::kSpoolExtension;
-		if (name.size() > extension.size() && name.compare(name.size() - extension.size(), extension.size(), extension) == 0) {
-			count++;
-		}
-	}
-	return count;
-}
-
 // The report's own thread: writes one gathered report down for the launcher.
 void WriteDown(const desync::Facts& facts)
 {
@@ -187,9 +173,15 @@ void WriteDown(const desync::Facts& facts)
 		mod::Log("desync report: could not make %ls (%s)", folder.c_str(), ec.message().c_str());
 		return;
 	}
-	const std::size_t waiting = ReportsWaiting(folder);
-	if (waiting >= desync::kSpoolLimit) {
-		mod::Log("desync report: %zu reports already wait for the launcher; this one is not written", waiting);
+	// The newest report is the one worth keeping: when the launcher has not
+	// sent the waiting ones (its daily limit), the oldest go to make room.
+	const desync::Room room = desync::MakeRoom(folder, desync::kSpoolLimit);
+	for (const std::wstring& name : room.removed) {
+		mod::Log("desync report: %zu reports wait for the launcher; the oldest, %ls, is removed to keep this one",
+			desync::kSpoolLimit, name.c_str());
+	}
+	if (room.waiting >= desync::kSpoolLimit) {
+		mod::Log("desync report: %zu reports wait for the launcher and none can be removed; this one is not written", room.waiting);
 		return;
 	}
 	desync::Spooled spooled;
