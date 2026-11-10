@@ -61,6 +61,7 @@
 namespace sfve {
 
 class SyncTester;
+class LaggedReplay;
 
 class RollbackSession {
 public:
@@ -120,6 +121,13 @@ public:
 		// recording's own inputs. 0: off. Held frames end the checks.
 		int replayCheckDistance = 0;
 		uint32_t replayCheckSeed = 1;
+		// Diagnostics, a replay only: the playback plays as a fighter's copy
+		// does when player replayLagPlayer's inputs arrive this many frames
+		// late (LaggedReplay: guesses, rendered, then rollbacks), and hashes
+		// each checkpoint once its state is final. 0: off. Takes the place of
+		// replayCheckDistance. A held frame fails the playback.
+		int replayLag = 0;
+		int replayLagPlayer = 0;
 		// Each frame as this session plays it, before the game sees it: its
 		// number and what it gave the game (RecordedFrame). A rollback's replay
 		// reports the frame again; the last report of a confirmed frame is
@@ -369,6 +377,10 @@ private:
 	// The replay's rollback checks (Config::replayCheckDistance), and the
 	// regions they have logged.
 	std::unique_ptr<SyncTester> replayCheck_;
+	std::unique_ptr<LaggedReplay> lagged_;
+	int laggedHashed_ = 0;      // checkpoints hashed through this frame
+	bool laggedFinished_ = false;
+	void HashLagged();
 	int replayCheckFailures_ = 0;
 	std::set<std::string> replayCheckLogged_;
 	void LogReplayCheck();

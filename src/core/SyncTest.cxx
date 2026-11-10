@@ -172,6 +172,69 @@ FrameInputs SyncTester::Perturbed(const FrameInputs& inputs, int frame)
 	return wrong;
 }
 
+LaggedReplay::LaggedReplay(GameAdapter& game, const ReplayFrames& frames, int remote, int lag)
+	: game_(game), frames_(frames), remote_(remote), lag_(lag < 1 ? 1 : lag), saved_((size_t)lag_ + 3)
+{
+	for (Saved& s : saved_) s.bytes.resize(game.Layout().TotalSize());
+}
+
+void LaggedReplay::Step(int frame)
+{
+	if (frame != next_) return;
+	const int known = frame - lag_;
+	Resolve(known);
+	Play(frame, known);
+	next_ = frame + 1;
+	if (known + 1 > confirmedThrough_) confirmedThrough_ = known + 1;
+}
+
+void LaggedReplay::Finish()
+{
+	Resolve(next_ - 1);
+	confirmedThrough_ = next_;
+}
+
+const uint8_t* LaggedReplay::SavedAt(int frame) const
+{
+	if (frame < 0 || frame > confirmedThrough_) return nullptr;
+	const Saved& s = saved_[(size_t)frame % saved_.size()];
+	return s.frame == frame ? s.bytes.data() : nullptr;
+}
+
+void LaggedReplay::Resolve(int known)
+{
+	const int through = known < next_ - 1 ? known : next_ - 1;
+	int wrong = -1;
+	for (int k = checked_ + 1; k <= through; k++) {
+		const Saved& s = At(k);
+		if (s.frame == k && s.guessed && s.remote != frames_[(size_t)k].inputs.p[remote_]) {
+			wrong = k;
+			break;
+		}
+	}
+	if (through > checked_) checked_ = through;
+	if (wrong < 0) return;
+	StateLayout& layout = game_.Layout();
+	layout.LoadFrom(At(wrong).bytes.data());
+	game_.AfterLoad();
+	rollbacks_++;
+	if (next_ - wrong > longest_) longest_ = next_ - wrong;
+	for (int k = wrong; k < next_; k++) Play(k, known);
+}
+
+void LaggedReplay::Play(int frame, int known)
+{
+	Saved& s = At(frame);
+	game_.Layout().SaveTo(s.bytes.data());
+	s.frame = frame;
+	FrameInputs inputs = frames_[(size_t)frame].inputs;
+	s.guessed = game_.InputsMatter() && frame > known;
+	if (s.guessed) inputs.p[remote_] = known >= 0 ? frames_[(size_t)known].inputs.p[remote_] : 0;
+	const FrameInputs given = GivenInputs(game_, inputs, frame);
+	s.remote = given.p[remote_];
+	game_.Advance(given, frame < next_);
+}
+
 SyncTestReport RunSyncTest(GameAdapter& game, const SyncTestOptions& options)
 {
 	SyncTester tester(game, options.distance, false, false, options.scheduleSeed);

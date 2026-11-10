@@ -26,6 +26,7 @@
 // mock game.
 
 #include "core/GameAdapter.hxx"
+#include "core/ReplayFrames.hxx"
 
 #include <functional>
 #include <map>
@@ -126,6 +127,61 @@ struct SyncTestOptions {
 };
 
 SyncTestReport RunSyncTest(GameAdapter& game, const SyncTestOptions& options);
+
+// A recording played the way a fighter's copy plays it when the other
+// player's inputs arrive late: `remote`'s input for frame k is known only once
+// frame k + lag is played, and until then the frame plays that player's last
+// known input, as GGPO guesses. Each frame is played in its own rendered
+// frame, so the game's presentation runs on the guessed timeline as it does
+// live; the synctest instead plays its wrong stretches back to back inside
+// one. When an input arrives that differs from the guess, the state from the
+// first wrong frame is restored and the frames since are played again, all
+// within the rendered frame, as a session's rollback does. Frames whose
+// inputs the game ignores play the recording's (a session steps those that
+// read bits confirmed). The state at the start of a frame is final once every
+// input before it is known (ConfirmedThrough), and it should then equal the
+// recording's at that frame.
+class LaggedReplay {
+public:
+	LaggedReplay(GameAdapter& game, const ReplayFrames& frames, int remote, int lag);
+
+	// Plays frame `frame`, the next one, after the rollback the inputs known
+	// by now call for.
+	void Step(int frame);
+	// Every input known: the rollback the last guesses call for; nothing new
+	// is played.
+	void Finish();
+	// The states at the start of frames 0 to this one are final.
+	int ConfirmedThrough() const { return confirmedThrough_; }
+	// The final state at the start of `frame` while it is kept (the last
+	// lag + 2 frames played), or null.
+	const uint8_t* SavedAt(int frame) const;
+	int Rollbacks() const { return rollbacks_; }
+	int LongestRollback() const { return longest_; }
+
+private:
+	struct Saved {
+		std::vector<uint8_t> bytes;
+		int frame = -1;
+		bool guessed = false;   // the remote input was a guess
+		PackedInput remote = 0; // the remote input the game was given
+	};
+	Saved& At(int frame) { return saved_[(size_t)frame % saved_.size()]; }
+	// The remote inputs known now are those of frames up to `known`.
+	void Resolve(int known);
+	void Play(int frame, int known);
+
+	GameAdapter& game_;
+	const ReplayFrames& frames_;
+	int remote_;
+	int lag_;
+	int next_ = 0;             // the next frame to play
+	int checked_ = -1;         // guesses compared through this frame
+	int confirmedThrough_ = 0;
+	int rollbacks_ = 0;
+	int longest_ = 0;
+	std::vector<Saved> saved_;
+};
 
 // Regions whose bytes differ between a saved buffer and live memory, ignoring
 // masked words and unchecked regions.

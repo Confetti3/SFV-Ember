@@ -215,7 +215,9 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 
 void NetplayMode::WatchFrames(SfvAdapter& adapter)
 {
-	if (!WatchFrame(adapter)) return;
+	const bool advanced = WatchFrame(adapter);
+	if (replay_) DumpIfRequested(); // "dump <frame>" during a playback
+	if (!advanced) return;
 	// The backlog after this update's own frame, as SF4's CatchUpSpectator
 	// reads it; each extra frame goes through the same decisions, so a frame
 	// the fighters held is held here too.
@@ -375,6 +377,8 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 			if (config_.replayRegionsFrom > 0 && frame >= config_.replayRegionsFrom) adapter::LogCheckpointRegions(*session_, frame);
 		};
 		c.replayCheckDistance = config_.replayCheck;
+		c.replayLag = config_.replayLag;
+		c.replayLagPlayer = config_.replayLagPlayer;
 		c.replayCheckSeed = config_.scheduleSeed;
 		seed = replay_->header.seed;
 		delay = 0;

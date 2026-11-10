@@ -17,6 +17,9 @@
 //   -sfve_replay_regions=F  replay playback: log each checkpoint's region hashes from frame F
 //   -sfve_replay_check=N    replay playback: also make rollbacks up to N frames deep and log
 //                        what they leave different (random spacing from -sfve_schedule)
+//   -sfve_replay_lag=N      replay playback: play as a fighter's copy does when P1's inputs
+//                        (-sfve_replay_lag_player=1: P2's) arrive N frames late, with
+//                        guesses and rollbacks; checkpoints once final
 //   -sfve_distance=N     synctest rollback distance (default 7)
 //   -sfve_pads=0,1       XInput slots that are virtual pads from the start
 //   -sfve_background=1   keep playing and reading pads while unfocused
@@ -124,6 +127,11 @@ struct ModConfig {
 	// the recording's inputs (RollbackSession::Config::replayCheckDistance),
 	// spaced from scheduleSeed. 0: none.
 	int replayCheck = 0;
+	// A replay's playback plays as a fighter's copy does when player
+	// replayLagPlayer's inputs arrive this many frames late
+	// (RollbackSession::Config::replayLag). 0: none.
+	int replayLag = 0;
+	int replayLagPlayer = 0;
 	bool room = false; // netplay: Ember's runtime runs, and its rooms' matches give the endpoints, seed and delay
 	// Offline start-up dialogs kept from showing: 0 none, 1 the download
 	// failures, 2 those and the offline-mode notice.
