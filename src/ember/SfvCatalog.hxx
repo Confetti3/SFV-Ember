@@ -70,6 +70,7 @@
 #include "sf4e/sf4e__GameAdapter.hxx"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -224,9 +225,23 @@ std::string MoveName(std::int64_t fighter, picks::LoadoutPart part, int number);
 std::vector<int> LoadoutIndices(std::int64_t fighter);
 
 // The pick as a launch names it (VersusLaunch's FighterPick): the fighter's
-// code, the costume and colour numbers, and the loadout. The one place a
-// pick becomes a launch's, for a room's match, Training and its dummy.
+// code, the costume and colour numbers, the loadout, and the voice the pick
+// carries (picks::VoiceIn), or, where it carries none, this copy's options
+// at the launch (mod::kVoiceOfOptions: Training's own picks carry none). The
+// one place a pick becomes a launch's, for a room's match, Training and its
+// dummy.
 mod::FighterPick FighterPickOf(const sf4e::selection::Pick& pick);
+
+// This copy's player's voice language for each fighter, as the game's
+// options give it (GameContent's CharaVoiceLanguage, which `voiceOf` reads
+// by the fighter's code): RefreshOwnVoices reads them all, on the game
+// thread (EmberHost: once the catalog is filled, then now and then at the
+// main menu, so a change in the game's options reaches the next Ready).
+// OwnVoice is any thread's: the last read's voice for the fighter, or the
+// game's default, English, before any read or where the read gave none.
+// Ready carries it for the pick's fighter (SfvPick's AddPickTo).
+void RefreshOwnVoices(const std::function<std::optional<int>(const std::string& code)>& voiceOf);
+int OwnVoice(std::int64_t fighter);
 
 // The other way, from a code as a launch names it (L"RYU", VersusLaunch's
 // FighterPick): its id, empty for one not listed.
@@ -263,7 +278,9 @@ struct MatchLaunch {
 // cannot play the rounds or the time (VersusLaunch's PlayableRounds and
 // RoundClockFrames; UnsupportedMatch): this is the backstop that keeps a copy
 // from launching content it does not have. The match's end is not part of it
-// (MatchEnd's choice).
+// (MatchEnd's choice). Each player's voice is their own (picks::VoiceOf:
+// what their copy sent, or English for a copy that sent none), so every copy
+// launches the same.
 MatchLaunch LaunchPicks(const RoomMatch& match);
 
 } // namespace sfve::adapter

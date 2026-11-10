@@ -167,6 +167,16 @@ constexpr uint32_t kPlatformData = 0xC0;
 constexpr uint32_t kD3DTexture = 0x68;
 } // namespace texture
 
+// The game's saves (sfv::kSystemSave): KWGameSystemSave, the object behind
+// GameSystemSave.sav. Its +96 is the options (KWOptionSettingsSave), whose
+// +192 TArray<uint8> holds each fighter's voice language by fighter id
+// (CharacterVoiceLanguage; sfv::kCharaVoiceLanguage reads it by code, its
+// setter rva 0x79EF10 writes it). The game's readers all take the options
+// so: rva 0x59C5C0, 0x602C80, 0x4F72E0.
+namespace saves {
+constexpr uint32_t kOptions = 96;
+} // namespace saves
+
 // The game instance (sfv::kGameInstance, rva 0x521690).
 namespace gameinstance {
 // int: a count the menus leave behind and no battle state holds. Z39's
@@ -229,6 +239,7 @@ constexpr uint32_t kSettingCode = 144;
 constexpr uint32_t kSettingCodeSize = 4;
 constexpr uint32_t kSettingCostume = 176;
 constexpr uint32_t kSettingColour = 180;
+constexpr uint32_t kSettingVoice = 240; // int: kVoiceJapanese or kVoiceEnglish (rva 0x7CAA40, from a CharPkg's +61)
 // The mode data object's type for each target (the first step's mapping:
 // 0 -> 4, 2 -> 0, else 3).
 constexpr int kVersusCpuType = 4;
@@ -246,11 +257,23 @@ constexpr uint32_t kDataGetSpec = 112;  // const SpecPkg* ()
 // CharPkg (CopyCharPkg copies every field): +0 FString fighter code, +16
 // costume, +20 colour, +24 TArray of 16-byte items, +40 int (default 1),
 // +44 int (default -1), +48 V-Trigger, +52 int, +56 V-Skill (0 is I, 1 is
-// II), +60 and +61 bytes. The select screen's ChangeCostume (rva 0x592C50)
-// stores the two choices at +48 and +56 and applies the record through the
-// same two setters WriteFighter calls (rva 0x6C8540); the battle setting
-// copies them to its player record's +220 and +228 (rva 0x7CAA40). A fresh
-// mode data object's default record holds 0 in both (rva 0x70C180).
+// II), +60 byte, +61 the voice language (byte, the game's EKWVoiceLanguage:
+// kVoiceJapanese or kVoiceEnglish). The select screen's ChangeCostume (rva
+// 0x592C50) stores the two choices at +48 and +56 and applies the record
+// through the same two setters WriteFighter calls (rva 0x6C8540); the battle
+// setting copies them to its player record's +220 and +228 (rva 0x7CAA40). A
+// fresh mode data object's default record holds 0 in all three (rva
+// 0x70C180), and the mode data a jump gets keeps the previous battle's
+// records, other fighters' voices included.
+//
+// The voice: the battle setting's copy (rva 0x7CAA40) makes +61's 0 or 1 its
+// player record's +240 (kSettingVoice) and leaves the record as it was for
+// any other value. The game's own ways into a battle fill +61 for each
+// player from the player's options first, by the fighter's code
+// (sfv::kCharaVoiceLanguage, the per-fighter list of KWOptionSettingsSave):
+// character select before the battle (rva 0x59C5C0, then the setter at rva
+// 0x6C8540) and the jump into training (its second step, rva 0x602E8E). A
+// record whose +61 nobody filled plays the fighter in Japanese.
 // SpecPkg: +0 byte, +4 time, +8 rounds, +16 FString stage code, +32..+34 bytes.
 constexpr uint32_t kCharPkgSize = 64;
 constexpr uint32_t kCharCode = 0;
@@ -259,6 +282,12 @@ constexpr uint32_t kCharColour = 20;
 constexpr uint32_t kCharItems = 24;
 constexpr uint32_t kCharVTrigger = 48;
 constexpr uint32_t kCharVSkill = 56;
+constexpr uint32_t kCharVoice = 61;
+// EKWVoiceLanguage (registered by rva 0xC9C820: JPN, ENG, NUM, UNKNOWN). Only
+// these two reach a battle (rva 0x7CAA40); the options' lookup gives English
+// for a fighter its list does not hold (rva 0x78A450).
+constexpr int kVoiceJapanese = 0;
+constexpr int kVoiceEnglish = 1;
 constexpr uint32_t kSpecPkgSize = 40;
 constexpr uint32_t kSpecTime = 4;
 constexpr uint32_t kSpecRounds = 8;

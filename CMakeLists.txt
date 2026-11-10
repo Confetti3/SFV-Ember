@@ -210,6 +210,7 @@ add_executable(sfve_ember_tests
     tests/SfvCatalogTests.cxx
     tests/SfvPickRulesTests.cxx
     tests/SfvLoadoutTests.cxx
+    tests/SfvVoiceTests.cxx
     tests/SfvSelectionScreenTests.cxx
     tests/GameContentTests.cxx
     tests/ProductIdentityTests.cxx

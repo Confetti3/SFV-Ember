@@ -203,6 +203,21 @@ constexpr CodeSite kGetPlayerSetup{"GetPlayerSetup", 0x7B5940,
 // (rva 0x600AF0) copies it into the battle setting.
 constexpr CodeSite kJumpSecondStep{"JumpSecondStep", 0x602C80,
 	{0x4C, 0x8B, 0xDC, 0x55, 0x41, 0x55, 0x49, 0x8D, 0x6B, 0xA1, 0x48, 0x81, 0xEC, 0xF8, 0x00, 0x00}};
+// The player's voice language for a fighter (VersusLaunch, GameContent's
+// CharaVoiceLanguage; sfv::saves).
+// KWGameSystemSave* SystemSave(GameInstance*): the instance's +80 object's
+// vtable +520, if it is a KWGameSystemSave (class getter rva 0xC26A70).
+constexpr CodeSite kSystemSave{"SystemSave", 0x68E0D0,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0x49, 0x50, 0x48, 0x8B, 0x01, 0xFF, 0x90, 0x08}};
+// uint8 CharaVoiceLanguage(KWOptionSettingsSave*, const FString* code): the
+// options' entry for the fighter (+192, by the fighter's id from its code,
+// rva 0x68D6B0), or 1 (English) for a fighter outside the list. The native
+// behind GetCharaVoiceLanguageFromCharaCode (rva 0xD14830); what character
+// select (rva 0x59C5C0) and the jump into training (rva 0x602E8E) put in a
+// CharPkg's +61 (jump::kCharVoice).
+constexpr CodeSite kCharaVoiceLanguage{"CharaVoiceLanguage", 0x78A450,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0xFA, 0x48, 0x8B, 0xD9}};
+
 // Copy constructors of the mode data's fighter (CharPkg, 64 bytes) and match
 // (SpecPkg, 40 bytes) records; FString assignment; the game's free.
 constexpr CodeSite kCopyCharPkg{"CopyCharPkg", 0x581CD0,
@@ -491,7 +506,7 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kSetPlayerParam, kRequestExit, kStageName, kSpecReady, kFindSpecFighter, kFindSpecFighterStep, kFindSpecCostume,
 	kFindSpecCostumeStep, kFindSpecColour, kFindSpecColourStep, kCostumeName, kTextToString, kCreateText,
 	kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke, kBattleSetupClass, kOwnedFighters, kOwnedCostumes,
-	kOwnedColours, kLoggedIn, kVersionDataClass,
+	kOwnedColours, kLoggedIn, kVersionDataClass, kSystemSave, kCharaVoiceLanguage,
 	// The fighter state the frame meter reads (SfvFighterOffsets.hxx).
 	kUpdateUntilActionable, kFrameAdvantage, kChangeState, kStateTableInit, kApplyHitStop, kSetScript, kSetScriptFrame,
 	kScriptPosture, kStartAction, kProjectileDie, kDamage};

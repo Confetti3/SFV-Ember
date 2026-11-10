@@ -229,9 +229,18 @@ with neutral inputs, and no check restores to one's start.
   with a target of the mod's own: local versus, versus CPU or training.
   Before its first step the mod gives the battle flow a loader (leaving the
   main menu resets the flow, and that step reads the previous battle's);
-  after its second step it writes the fighters, costumes, colours and stage
-  into the new mode's data object through the object's own setters. The
-  game loads and enters the battle itself (about 4 s).
+  after its second step it writes the fighters, costumes, colours, loadouts,
+  voices and stage into the new mode's data object through the object's own
+  setters. The game loads and enters the battle itself (about 4 s). The
+  voice is the per-fighter record's +61 (`sfv::jump::kCharVoice`, 0
+  Japanese, 1 English), which the game's own menus fill from the player's
+  options for that fighter (`sfv::kCharaVoiceLanguage`) and which a fresh or
+  reused mode data record holds as 0 or the previous fighter's: before
+  2026-11-10 the launch left it so, and fighters spoke Japanese whatever the
+  options said. A room's Ready now carries each player's own voice for their
+  fighter in the pick's `winQuote` slot (`picks::VoiceIn`; none, from an
+  older copy, plays English on both copies); Training, the pipe's launch and
+  a replay take this copy's options.
   `launch versus RYU:0:1 CNL -`. A room's launch never runs the game's
   own ownership check (it would judge both players by this copy and can
   replace the stage by `rand()`); Ember's gate judges each player's pick on

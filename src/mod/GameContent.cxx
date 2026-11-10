@@ -684,4 +684,20 @@ std::string LocalizedText(const wchar_t* textNamespace, const wchar_t* key)
 	return out == asKey ? std::string() : out;
 }
 
+std::optional<int> CharaVoiceLanguage(std::wstring_view code)
+{
+	using SystemSaveFn = uint8_t* (*)(uint8_t* gameInstance);
+	using CharaVoiceFn = uint8_t (*)(uint8_t* options, const GameString* code);
+	uint8_t* instance = At<GameDataFn>(sfv::kGameData)();
+	uint8_t* save = instance ? At<SystemSaveFn>(sfv::kSystemSave)(instance) : nullptr;
+	uint8_t* options = save ? Field<uint8_t*>(save, sfv::saves::kOptions) : nullptr;
+	if (!options || code.empty()) return std::nullopt;
+	const CodeView view(code);
+	const GameString game = view.Get();
+	const int voice = At<CharaVoiceFn>(sfv::kCharaVoiceLanguage)(options, &game);
+	// The battle takes only these two (sfv::jump::kCharVoice); another
+	// number is the lookup's own default, English.
+	return voice == sfv::jump::kVoiceJapanese ? voice : sfv::jump::kVoiceEnglish;
+}
+
 } // namespace sfve::mod

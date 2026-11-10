@@ -186,7 +186,7 @@ std::optional<PlayerLook> LoadedLook(int player)
 	uint8_t* record = records + (size_t)jump::kSettingRecordSize * index;
 	const char* code = reinterpret_cast<const char*>(record + jump::kSettingCode);
 	return PlayerLook{std::string(code, strnlen(code, jump::kSettingCodeSize)), Field<int32_t>(record, jump::kSettingCostume),
-		Field<int32_t>(record, jump::kSettingColour)};
+		Field<int32_t>(record, jump::kSettingColour), Field<int32_t>(record, jump::kSettingVoice)};
 }
 
 // Once the battle has loaded, each player's look as the battle setting holds
@@ -204,14 +204,14 @@ void LogLoadedLooks(const PlayerLooks& written)
 			Log("launch: player %d's loaded look cannot be read from the battle setting", player + 1);
 			continue;
 		}
-		Log("launch: player %d loaded %s costume %d colour %d", player + 1, loaded->fighter.c_str(), loaded->costume,
-			loaded->colour);
+		Log("launch: player %d loaded %s costume %d colour %d voice %s", player + 1, loaded->fighter.c_str(), loaded->costume,
+			loaded->colour, VoiceName(loaded->voice).c_str());
 		const PlayerLook& launched = written[(size_t)player];
 		if (!LookMismatch(launched, *loaded)) continue;
-		Log("launch: warning: player %d loaded %s costume %d colour %d, not the %s costume %d colour %d launched; another "
-			"copy that loaded the launched look shows a different one",
-			player + 1, loaded->fighter.c_str(), loaded->costume, loaded->colour, launched.fighter.c_str(), launched.costume,
-			launched.colour);
+		Log("launch: warning: player %d loaded %s costume %d colour %d voice %s, not the %s costume %d colour %d voice %s "
+			"launched; another copy that loaded the launched look shows a different one",
+			player + 1, loaded->fighter.c_str(), loaded->costume, loaded->colour, VoiceName(loaded->voice).c_str(),
+			launched.fighter.c_str(), launched.costume, launched.colour, VoiceName(launched.voice).c_str());
 	}
 }
 
@@ -223,17 +223,26 @@ PlayerLook WriteFighter(uint8_t* modeData, int player, const FighterPick& pick)
 	At<CopyFn>(sfv::kCopyCharPkg)(chara, current);
 	const std::string before = Narrow(chara + jump::kCharCode);
 	if (!pick.fighter.empty()) AssignString(chara + jump::kCharCode, pick.fighter);
-	FillCharPkg(chara, pick);
+	// The voice the game's own menus would give: this copy's options for the
+	// fighter now in the record, unless the pick carries the player's own.
+	// The record's own +61 is never kept: it is the previous battle's, or 0
+	// (Japanese) in a fresh record.
+	FighterPick filled = pick;
+	const std::string code = Narrow(chara + jump::kCharCode);
+	filled.voice = VoiceToWrite(pick,
+		pick.voice == kVoiceOfOptions ? CharaVoiceLanguage(std::wstring(code.begin(), code.end())) : std::nullopt);
+	FillCharPkg(chara, filled);
 	// The game's own order (rva 0x602C80, 0x6C8540): the fighter's setup,
 	// then the selected fighter. Both copy the record.
 	Virtual<void>(modeData, jump::kDataSetChara, player, (const uint8_t*)chara);
 	Virtual<void>(modeData, jump::kDataSetCode, player, (const uint8_t*)chara);
 	const PlayerLook written{Narrow(chara + jump::kCharCode), Field<int32_t>(chara, jump::kCharCostume),
-		Field<int32_t>(chara, jump::kCharColour)};
+		Field<int32_t>(chara, jump::kCharColour), chara[jump::kCharVoice]};
 	// The V-Skill and V-Trigger as the pipe names them, 1 for I and 2 for II.
-	Log("launch: player %d %s -> %s costume %d colour %d vskill %d vtrigger %d", player + 1, before.c_str(),
+	Log("launch: player %d %s -> %s costume %d colour %d vskill %d vtrigger %d voice %s (%s)", player + 1, before.c_str(),
 		written.fighter.c_str(), written.costume, written.colour, Field<int32_t>(chara, jump::kCharVSkill) + 1,
-		Field<int32_t>(chara, jump::kCharVTrigger) + 1);
+		Field<int32_t>(chara, jump::kCharVTrigger) + 1, VoiceName(written.voice).c_str(),
+		pick.voice == kVoiceOfOptions ? "this copy's options" : "the player's own");
 	// What the copy allocated: the code's characters and the items' array
 	// (its 16-byte items hold no pointers: the copy is a memcpy).
 	FreeGameBlock(chara, jump::kCharCode);
@@ -529,17 +538,42 @@ bool ParsePick(const std::string& word, FighterPick* pick)
 
 } // namespace
 
+namespace {
+
+bool GameVoice(int voice)
+{
+	return voice == jump::kVoiceJapanese || voice == jump::kVoiceEnglish;
+}
+
+} // namespace
+
+int VoiceToWrite(const FighterPick& pick, std::optional<int> ofOptions)
+{
+	if (GameVoice(pick.voice)) return pick.voice;
+	return ofOptions && GameVoice(*ofOptions) ? *ofOptions : jump::kVoiceEnglish;
+}
+
 void FillCharPkg(uint8_t* chara, const FighterPick& pick)
 {
 	if (pick.costume >= 0) Field<int32_t>(chara, jump::kCharCostume) = pick.costume;
 	if (pick.colour >= 0) Field<int32_t>(chara, jump::kCharColour) = pick.colour;
 	Field<int32_t>(chara, jump::kCharVSkill) = pick.vSkill;
 	Field<int32_t>(chara, jump::kCharVTrigger) = pick.vTrigger;
+	if (GameVoice(pick.voice)) chara[jump::kCharVoice] = (uint8_t)pick.voice;
+}
+
+std::string VoiceName(int voice)
+{
+	if (voice == jump::kVoiceJapanese) return "japanese";
+	if (voice == jump::kVoiceEnglish) return "english";
+	return std::to_string(voice);
 }
 
 bool LookMismatch(const PlayerLook& written, const PlayerLook& loaded)
 {
-	return !SameCode(written.fighter, loaded.fighter) || written.costume != loaded.costume || written.colour != loaded.colour;
+	const bool voices = written.voice >= 0 && loaded.voice >= 0;
+	return !SameCode(written.fighter, loaded.fighter) || written.costume != loaded.costume || written.colour != loaded.colour ||
+		(voices && written.voice != loaded.voice);
 }
 
 bool PlayableRounds(int rounds)

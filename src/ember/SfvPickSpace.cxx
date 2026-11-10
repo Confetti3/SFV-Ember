@@ -57,6 +57,23 @@ bool SameFitting(const sf4e::selection::Pick& a, const sf4e::selection::Pick& b)
 		a.handicap == b.handicap;
 }
 
+std::optional<int> VoiceIn(const sf4e::selection::Pick& pick)
+{
+	const int voice = pick.winQuote - 1;
+	if (voice == kVoiceJapanese || voice == kVoiceEnglish) return voice;
+	return std::nullopt;
+}
+
+int VoiceOf(const sf4e::selection::Pick& pick)
+{
+	return VoiceIn(pick).value_or(kVoiceEnglish);
+}
+
+void SetVoice(sf4e::selection::Pick& pick, int voice)
+{
+	pick.winQuote = voice == kVoiceJapanese || voice == kVoiceEnglish ? voice + 1 : 0;
+}
+
 std::string LoadoutText(Loadout loadout)
 {
 	return std::string("vskill ") + Numeral(loadout.choice[VSkill]) + " vtrigger " + Numeral(loadout.choice[VTrigger]);

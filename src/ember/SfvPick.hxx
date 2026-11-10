@@ -49,7 +49,8 @@ PlayerPick CurrentDummy();
 PlayerPick SetDummy(const PlayerPick& dummy);
 
 // The pick in a room command (Ready, the room's pick updates), as the wire
-// carries it.
+// carries it, with this copy's player's voice for its fighter (SfvCatalog's
+// OwnVoice, picks::SetVoice). The stored pick carries none.
 void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command);
 
 // "RYU costume 0 colour 1 vskill II vtrigger I stage S25", by the game's
