@@ -130,7 +130,8 @@ TEST_CASE("the pick screen offers the game's costume codes, None first, and chan
 	FillTestCatalog();
 	const std::vector<StageOption> stages = StageOptions(MissingStages());
 	PlayerPick pick = PlayerPickOf(kCnl, kOneOne);
-	const MenuEntry& row = RowOf(PlayerRows(pick), "costume-code");
+	const std::vector<MenuEntry> rows = PlayerRows(pick);
+	const MenuEntry& row = RowOf(rows, "costume-code");
 	CHECK(row.enabled);
 	CHECK(row.chosen == "#0");
 	REQUIRE(row.choices.size() == (size_t)picks::kLoadCodeCount);
