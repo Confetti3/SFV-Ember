@@ -392,9 +392,16 @@ TEST_CASE("a skip read confirmed ends the ignored frames on the same frame on bo
 		hashes.push_back(reference.Layout().HashLive(HashScope::Peers));
 	}
 	CHECK(reference.SkippedAt() == kSkippedAt);
-	uint64_t ha = 0, hb = 0;
-	REQUIRE(pair.a.HashAt(confirmed, &ha));
-	REQUIRE(pair.b.HashAt(confirmed, &hb));
-	CHECK(ha == hb);
-	CHECK(ha == hashes[confirmed]);
+	// The newest confirmed frame may not be hashed yet: compare the frames
+	// since the skip that both peers hashed, as the loopback test above does.
+	int compared = 0;
+	for (int f = kSkippedAt; f <= confirmed; f++) {
+		uint64_t ha = 0, hb = 0;
+		if (!pair.a.HashAt(f, &ha) || !pair.b.HashAt(f, &hb)) continue;
+		INFO("frame " << f);
+		CHECK(ha == hb);
+		CHECK(ha == hashes[f]);
+		compared++;
+	}
+	CHECK(compared > 100);
 }
