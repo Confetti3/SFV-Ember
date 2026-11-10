@@ -215,6 +215,9 @@ RollbackSession::StepResult RollbackSession::Step(PackedInput localInput)
 		heldTo_ = frame_;
 		CoreLog("session: hold ended at frame %d (%d held frame(s))", frame_, frame_ - heldFrom_);
 	}
+	// A frame that reads bits only confirmed (GameAdapter::ConfirmedBits)
+	// waits for its inputs to be final, as a held frame does.
+	if (ReadsConfirmed(game_, frame_) && LastConfirmedFrame() < frame_) return StepResult::Waiting;
 
 	StepResult result = StepResult::Advanced;
 	GGPOErrorCode err = ggpo_add_local_input(session_, localHandle_, &localInput, sizeof(localInput));
@@ -344,11 +347,9 @@ RollbackSession::StepResult RollbackSession::StepWatched(const std::function<voi
 			CoreLog("session: hold ended at frame %d (%d held frame(s))", frame_, frame_ - heldFrom_);
 		}
 		// What the fighters' sessions give the game for this frame
-		// (InputsForThisFrame), without telling GGPO: a watcher never predicts.
-		const bool matter = game_.InputsMatter();
-		const FrameInputs given = matter ? Restricted(inputs, game_.InputBits()) : FrameInputs{};
-		Report(given, matter ? RecordedFrame::kFight : 0);
-		game_.Advance(given, false);
+		// (InputsForThisFrame), without telling GGPO: a watcher never predicts,
+		// and every frame it plays is confirmed.
+		game_.Advance(GivenAndReported(inputs), false);
 		stats_.framesAdvanced++;
 		// A watcher saves nothing, so its frames are checked here instead.
 		if (FailedByGame()) return StepResult::Failed;
@@ -738,15 +739,24 @@ void RollbackSession::Free(void* buffer)
 }
 
 // The frame about to be advanced: when the game ignores its inputs, GGPO is
-// told (no misprediction on it) and the game gets neutral inputs, so what
-// the players' copies happened to send cannot change the simulation; when it
-// reads them, only the bits a pad can produce reach it.
+// told (no misprediction on it) and the game gets neutral inputs but for the
+// bits it reads confirmed (Step waited for them), so what the players'
+// copies happened to send cannot change the simulation; when it reads them,
+// only the bits a pad can produce reach it.
 FrameInputs RollbackSession::InputsForThisFrame(const FrameInputs& inputs)
 {
+	ggpo_set_inputs_ignored(session_, !game_.InputsMatter());
+	return GivenAndReported(inputs);
+}
+
+FrameInputs RollbackSession::GivenAndReported(const FrameInputs& inputs)
+{
 	const bool matter = game_.InputsMatter();
-	ggpo_set_inputs_ignored(session_, !matter);
-	const FrameInputs given = matter ? Restricted(inputs, game_.InputBits()) : FrameInputs{};
+	const FrameInputs given = GivenInputs(game_, inputs, frame_);
 	Report(given, matter ? RecordedFrame::kFight : 0);
+	if (!matter && given != FrameInputs{}) {
+		CoreLog("session: frame %d gives the game confirmed bits %08x %08x", frame_, given.p[0], given.p[1]);
+	}
 	return given;
 }
 

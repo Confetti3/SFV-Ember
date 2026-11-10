@@ -149,6 +149,8 @@ public:
 	bool Start(const Config& config, std::string* error);
 	// One outer frame: pumps the network, then adds the local input and runs
 	// at most one deterministic frame (plus any rollback GGPO asks for). A
+	// frame that reads bits only confirmed (GameAdapter::ConfirmedBits) runs
+	// once its inputs are confirmed, Waiting until then, as StepHeld's do. A
 	// watcher's runs the next frame P1 streamed, Waiting until it has come;
 	// `localInput` is unused.
 	StepResult Step(PackedInput localInput);
@@ -277,6 +279,11 @@ private:
 	// The frame about to be advanced as the game gets it; reported to
 	// onFrame as this frame's.
 	FrameInputs InputsForThisFrame(const FrameInputs& inputs);
+	// What the game gets of `inputs` on the frame about to be advanced
+	// (GivenInputs), reported to onFrame; logged when a frame outside the
+	// fight gives it bits it reads confirmed (an intro's skip), which every
+	// copy then logs on the same frame.
+	FrameInputs GivenAndReported(const FrameInputs& inputs);
 	void Report(const FrameInputs& inputs, uint8_t flags) const
 	{
 		if (config_.onFrame) config_.onFrame(frame_, RecordedFrame{inputs, flags});

@@ -33,12 +33,13 @@
 // hold, so a frame there must never be replayed from its own start. The
 // game ignores the players' inputs there (SfvAdapter::InputsMatter): such a
 // frame gets neutral inputs and GGPO takes no input on it for a
-// misprediction, so every rollback starts on a fight frame (replaying across
-// a fight's end, which the flow record handles). The flow itself is part of
-// the rollback state, so a guessed KO that a rollback removes puts the fight
-// back. A room match's end is decided on a confirmed frame. Time sync
-// stretches frames by a few milliseconds while this side runs ahead
-// (FramePacer).
+// misprediction (but for the intro's skip request on its skip frames, which
+// are stepped confirmed, IntroSkip.hxx), so every rollback starts on a fight
+// frame (replaying across a fight's end, which the flow record handles). The
+// flow itself is part of the rollback state, so a guessed KO that a rollback
+// removes puts the fight back. A room match's end is decided on a confirmed
+// frame. Time sync stretches frames by a few milliseconds while this side
+// runs ahead (FramePacer).
 //
 // Pipe commands (cross-copy desync checks): "hash <frame>", "checkpoint
 // [frame]" (latest confirmed per-region checkpoint), "dump <frame>" (that
@@ -53,6 +54,7 @@
 #include "ember/RoomBattle.hxx"
 #include "mod/BattleMode.hxx"
 #include "mod/FramePacer.hxx"
+#include "mod/IntroSkip.hxx"
 #include "mod/ModConfig.hxx"
 
 #include "sf4e/sf4e__RuntimeTick.hxx"
@@ -111,6 +113,7 @@ private:
 
 	const ModConfig& config_;
 	input::ScriptedInput script_{config_.script, config_.player}; // the local player's, for tests
+	intro_skip::Request introSkip_; // the local player's ask to skip the intros
 	mutable std::mutex mutex_; // the game thread steps, the pipe thread reads
 	std::unique_ptr<RollbackSession> session_;
 	// P1's last session, kept after its battle for the watchers still

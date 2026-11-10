@@ -97,8 +97,10 @@ bool SfvAdapter::Bind()
 	flow_.AddTo(layout_);
 	battleData_ = battleData;
 	bound_ = true;
-	Log("adapter: bound: %zu game regions + %zu outside the game's snapshot, %zu bytes", gameRegions_,
-		layout_.Regions().size() - gameRegions_, layout_.TotalSize());
+	Log("adapter: bound: %zu game regions + %zu outside the game's snapshot, %zu bytes; intros %s, input source %d",
+		gameRegions_, layout_.Regions().size() - gameRegions_, layout_.TotalSize(),
+		Field<int32_t>(battleData, sfv::battledata::kIntroSkippable) ? "skippable" : "not skippable",
+		Field<int32_t>(battleData, sfv::battledata::kInputSource));
 	return true;
 }
 

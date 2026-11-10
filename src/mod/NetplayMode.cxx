@@ -83,6 +83,7 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	}
 	started_ = leaveWanted_ = leaving_ = false;
 	exitAsked_ = false;
+	introSkip_ = {};
 	ForgetEndedVersusBattle();
 	pacer_.Reset();
 }
@@ -103,9 +104,14 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		if (replayEnd_.empty()) replayEnd_ = "stopped by the player";
 		exitAsked_ = true;
 	}
-	if (exitAsked_.exchange(false)) {
-		// The runtime retired or aborted the match: no session goes on, and
-		// the battle goes back to the main menu.
+	// The runtime retired or aborted the match. Over the fighters' held WIN
+	// the exit rides in the held frames as this fighter's decline, so both
+	// copies leave on the same confirmed frame (RoomBattle::DeclineToExit);
+	// anywhere else no session goes on, and the battle goes back to the main
+	// menu now. The ask stands while the WIN carries it: one that ends in a
+	// rematch both had already chosen leaves on the next frame.
+	if (exitAsked_ && !(session_->Live() && room_.DeclineToExit())) {
+		exitAsked_ = false;
 		room_.FlushHeld("the runtime ended the battle");
 		if (session_->Live()) session_->Close();
 		started_ = true;
@@ -163,6 +169,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 			startTime_ = adapter.StartTime();
 		} else if (decided == adapter::RoomBattle::Answer::Leave) {
 			recordingWhole_ = true;
+			exitAsked_ = false; // a runtime's exit the WIN carried is this leave
 			Leave(); // both copies leave on this same confirmed frame
 		}
 		return;
@@ -177,9 +184,11 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	}
 	if (session_->Running()) pacer_.Frame(*session_, last_ == RollbackSession::StepResult::PredictionStall);
 	const int frame = session_->Frame();
-	// Sent as the player plays; frames whose inputs the game ignores (outside
-	// the fight) get neutral ones in RollbackSession, whatever was sent.
-	const PackedInput local = script_.At(frame).value_or(adapter.Sampled(0));
+	// Sent as the player plays, with the intro's skip request (IntroSkip.hxx);
+	// frames whose inputs the game ignores (outside the fight) get neutral
+	// ones in RollbackSession, whatever was sent, but for the request on the
+	// intro's skip frames, which are stepped confirmed.
+	const PackedInput local = introSkip_.Next(adapter.FlowState(), script_.At(frame).value_or(adapter.Sampled(0)));
 
 	// The game's judgement, the same on both copies (it is restored with the
 	// rest of the state on rollback): both copies hold the battle for the

@@ -100,7 +100,8 @@ bool SyncTester::Step(const FrameInputs& inputs)
 	Saved& s = At(frame_);
 	s.inputs = inputs;
 	s.restorable = game_.InputsMatter();
-	game_.Advance(AsPlayed(inputs), false);
+	s.readsConfirmed = ReadsConfirmed(game_, frame_);
+	game_.Advance(AsPlayed(inputs, frame_), false);
 	report_.framesRun = ++frame_;
 	if (frame_ < nextCheck_) return true;
 	const int from = OldestRestorable(nextDepth_);
@@ -110,18 +111,20 @@ bool SyncTester::Step(const FrameInputs& inputs)
 
 int SyncTester::OldestRestorable(int depth)
 {
-	for (int k = std::max(0, frame_ - depth); k < frame_; k++) {
-		if (At(k).restorable) return k;
+	int oldest = frame_;
+	for (int k = frame_ - 1; k >= std::max(0, frame_ - depth); k--) {
+		if (At(k).readsConfirmed) break; // a session's rollback never replays it
+		if (At(k).restorable) oldest = k;
 	}
-	return frame_;
+	return oldest;
 }
 
 // As RollbackSession::InputsForThisFrame, asked again on every replayed
 // frame: a replay that changes the course of the game (a guessed KO taken
 // back) changes which frames read inputs.
-FrameInputs SyncTester::AsPlayed(const FrameInputs& inputs) const
+FrameInputs SyncTester::AsPlayed(const FrameInputs& inputs, int frame) const
 {
-	return game_.InputsMatter() ? Restricted(inputs, game_.InputBits()) : FrameInputs{};
+	return GivenInputs(game_, inputs, frame);
 }
 
 bool SyncTester::CheckRollback(int from, int now)
@@ -133,7 +136,7 @@ bool SyncTester::CheckRollback(int from, int now)
 		// The timeline a misprediction would have played, then thrown away.
 		layout.LoadFrom(At(from).bytes.data());
 		game_.AfterLoad();
-		for (int k = from; k < now; k++) game_.Advance(AsPlayed(Perturbed(At(k).inputs, k)), true);
+		for (int k = from; k < now; k++) game_.Advance(AsPlayed(Perturbed(At(k).inputs, k), k), true);
 	}
 	layout.LoadFrom(At(from).bytes.data());
 	game_.AfterLoad();
@@ -145,7 +148,7 @@ bool SyncTester::CheckRollback(int from, int now)
 	}
 	bool diverged = false;
 	for (int k = from; k < now; k++) {
-		game_.Advance(AsPlayed(At(k).inputs), true);
+		game_.Advance(AsPlayed(At(k).inputs, k), true);
 		if (!diverged && layout.HashLive() != At(k + 1).hash) {
 			Fail(k + 1, "replayed frame differs");
 			if (!learn_) return false;

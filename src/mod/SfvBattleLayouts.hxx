@@ -64,8 +64,31 @@ constexpr int kVGaugeParam = 26, kVGaugeRefill = 5;
 namespace flow {
 constexpr uint32_t kStateMessageType = 0x3A651C0; // data: what a state-change message's type call returns
 constexpr uint32_t kStateIndex = 12;              // int in the message
+constexpr int kIntroDemo = 3;                      // the fighters' intros (IntroSkip.hxx)
 constexpr int kFight = 6;                          // players are fighting
 } // namespace flow
+
+// The fighters' intros (flow state 3, IntroDemo: class vtable rva 0x2C6ABE8,
+// built by rva 0x41CF00 in the versus flow builders such as rva 0x4274B0).
+// Its phases (bound at rva 0x3EF7C0): 0 rva 0x40CCC0, 1 rva 0x40EEE0, 2 rva
+// 0x40D7E0, 3 rva 0x40B720, 4 rva 0x3DAFC0 (a 15-tick wait), 5 rva 0x40EBE0
+// (requests the next state). Its Enter (rva 0x413A70) goes straight to phase
+// 5 when the battle has no intros. Phase 1 runs every tick until the intro's
+// presentation ends (rva 0x2FC0A0), then goes to phase 2. Each run it marks
+// phase 2 as the skip's target (rva 0x3EC380: the state's +136 = 2, +140 =
+// 1) when the battle data's kIntroSkippable is set, and asks the battle's
+// input for kSkipBit (rva 0x2F2D40): before the match is decided that is any
+// pad's value the battle reads this tick, InputUnit+0x128 (rva 0x2F2C40;
+// filled by rva 0x4440D0 from the record ring at the input frame, one tick
+// behind the record, inputunit::kInputFrame). A press goes to the marked
+// phase (the state's virtual +56, rva 0x445040): the intro ends as it does
+// by itself, some 15 ticks later. (Once the match is decided rva
+// 0x2F2D40 reads the pads themselves instead, rva 0x2F30D0.) The bit is the
+// one the battle keeps of the local pads when another source plays the
+// battle (battle data kInputSource 2, rva 0x423A50 masks them to it).
+namespace intro {
+constexpr uint32_t kSkipBit = 0x4000;
+} // namespace intro
 
 // The battle object (0x1D0 bytes, constructor rva 0x4C5C40, reset 0x4D8830).
 // It is allocated by FMemory::Malloc directly (rva 0x4F4788 calls 0x11370F0),
@@ -213,6 +236,14 @@ constexpr uint32_t kFlowFlagsSize = 4;
 // with side + this + rounds judged * 8 (CharaUnit, rva 0x37B43E), so two
 // processes' fighters draw different numbers unless it is the same.
 constexpr uint32_t kStartTime = 108;
+// int: the intros may be skipped (IntroDemo marks its skip only when set, rva
+// 0x3EC380); 1 in the match data's defaults (rva 0x2EDCB0, reset rva
+// 0x304CC0). Read, never written, by the mod.
+constexpr uint32_t kIntroSkippable = 28;
+// int: where the battle's inputs come from (rva 0x423A50): 0 the local pads;
+// another value another source, and with 2 the local pads keep only the
+// intro's skip bit (intro::kSkipBit).
+constexpr uint32_t kInputSource = 64;
 
 // The match's result (MatchResult), all inside kResults..: the versus rule
 // unit's tick (rva 0x487CD0) commits each judged round (judge rva 0x485240)

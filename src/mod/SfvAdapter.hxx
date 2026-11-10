@@ -19,6 +19,7 @@
 #include "mod/BattleIdentity.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameInput.hxx"
+#include "mod/IntroSkip.hxx"
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvRegionNames.hxx"
 
@@ -68,10 +69,13 @@ public:
 
 	// The state the battle flow last announced (part of the rollback state).
 	void SeeFlowState(int state) { flow_.Announce(state); }
+	int FlowState() const { return flow_.Announced(); }
 	bool Fighting() const;
-	// Only the fight reads the players' inputs (GameAdapter::InputsMatter).
+	// Only the fight reads the players' inputs (GameAdapter::InputsMatter),
+	// and the intro its skip request on its skip frames (IntroSkip.hxx).
 	bool InputsMatter() const override { return Fighting(); }
 	PackedInput InputBits() const override { return input::kInputBits; }
+	PackedInput ConfirmedBits(int frame) const override { return intro_skip::ConfirmedBits(FlowState(), frame); }
 
 	// The original update with no injection (outside any session).
 	void RunOriginal();

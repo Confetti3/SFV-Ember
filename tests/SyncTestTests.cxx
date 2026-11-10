@@ -101,17 +101,20 @@ TEST_CASE("perturbed replays pass for a correct game and catch state the wrong t
 namespace {
 
 // Counts frames in its layout, reads no inputs on frames [ignoreFrom,
-// ignoreTo), and remembers every frame a load went back to and every input
+// ignoreTo) but for a bit no scripted input has on frame `confirmedAt`, read
+// confirmed, and remembers every frame a load went back to and every input
 // an ignored frame was given.
 class FrameCounter : public GameAdapter {
 public:
-	FrameCounter(int ignoreFrom, int ignoreTo) : ignoreFrom_(ignoreFrom), ignoreTo_(ignoreTo)
+	FrameCounter(int ignoreFrom, int ignoreTo, int confirmedAt = -1)
+		: ignoreFrom_(ignoreFrom), ignoreTo_(ignoreTo), confirmedAt_(confirmedAt)
 	{
 		layout_.Add("frame", &frame_, sizeof(frame_));
 	}
 	std::string BuildId() const override { return "counter"; }
 	StateLayout& Layout() override { return layout_; }
 	bool InputsMatter() const override { return frame_ < ignoreFrom_ || frame_ >= ignoreTo_; }
+	PackedInput ConfirmedBits(int frame) const override { return frame == confirmedAt_ ? 1u << 31 : 0; }
 	void Advance(const FrameInputs& inputs, bool) override
 	{
 		if (!InputsMatter() && (inputs.p[0] || inputs.p[1])) inputsWhileIgnored++;
@@ -125,6 +128,7 @@ private:
 	int frame_ = 0;
 	int ignoreFrom_;
 	int ignoreTo_;
+	int confirmedAt_;
 	StateLayout layout_;
 };
 
@@ -143,6 +147,20 @@ TEST_CASE("checks start only on frames that read inputs, and replay across those
 	const std::vector<int> expected = {0, 7, 14, 21, 40, 42, 49};
 	CHECK(game.loads == expected);
 	CHECK(game.inputsWhileIgnored == 0); // played and replayed with neutral inputs
+}
+
+TEST_CASE("no check replays across a frame that reads bits confirmed")
+{
+	// As above, but frame 25 reads a bit confirmed (an intro's skip frame): a
+	// session steps it once its inputs are final, so no rollback reaches back
+	// past it, and the check at 28 that started from 21 is not made.
+	FrameCounter game(23, 40, 25);
+	SyncTester tester(game, 7);
+	for (int frame = 0; frame < 60; frame++) REQUIRE(tester.Step(ScriptedFrame(frame, 42)));
+	CHECK(tester.Report().rollbacks == 6);
+	const std::vector<int> expected = {0, 7, 14, 40, 42, 49};
+	CHECK(game.loads == expected);
+	CHECK(game.inputsWhileIgnored == 0);
 }
 
 TEST_CASE("a mock fight whose inputs are ignored for a while survives perturbed rollbacks")

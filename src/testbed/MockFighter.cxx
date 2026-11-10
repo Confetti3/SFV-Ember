@@ -28,6 +28,7 @@ MockFighter::MockFighter(unsigned bugs)
 	world_.rng = 0x5eed1234u;
 	world_.roundTimer = 99 * 60;
 	world_.koAt = -1;
+	world_.skippedAt = -1;
 	for (int p = 0; p < kPlayers; p++) {
 		Fighter& f = world_.fighters[p];
 		f = {};
@@ -64,6 +65,8 @@ void MockFighter::Advance(const FrameInputs& inputs, bool resimulating)
 	if (resimulating && !lastWasResimulation_) rollbackTargets_.push_back(world_.frame);
 	lastWasResimulation_ = resimulating;
 	callsSinceStart_++;
+	// A skip of the ignored frames (SkipEvery) ends them from the next frame.
+	if (!InputsMatter() && ((inputs.p[0] | inputs.p[1]) & kSkip)) world_.skippedAt = world_.frame + 1;
 
 	for (int p = 0; p < kPlayers; p++) {
 		Fighter& f = world_.fighters[p];
