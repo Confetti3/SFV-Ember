@@ -11,7 +11,10 @@
   (`scripts/build.ps1 -EmberRoot`, docs/design/EMBER_LIBRARY.md). Change it in
   the library, never by copying it here. `vcpkg-overlays/ports/ggpo` is Ember's
   GGPO port plus `ignored-inputs.patch`.
-- No entitlement or character unlocks beyond Ember's own ownership gate,
-  which is off by default while Capcom's entitlement server is down
-  (`kOwnershipGateByDefault`, EMBER_LIBRARY.md section 54; the maintainer, 2026-11-10).
-  Turn it back on when the server answers again.
+- SFV grants every player everything in the game itself (every fighter,
+  costume, colour and stage installed, in all of SFV's modes; `EntitlementGrant`,
+  EMBER_LIBRARY.md section 57; the maintainer, 2026-11-10). Ownership, when it
+  applies, is Ember's gate alone (`kOwnershipGateByDefault`, off while Capcom's
+  entitlement server is down, section 54), judged by the account's own
+  entitlement cache, never by the game's grant. When the server answers again,
+  turn the gate on; the grant stays. `-sfve_grant_all=0` is a development flag.
