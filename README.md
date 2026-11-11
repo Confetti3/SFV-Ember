@@ -22,9 +22,11 @@ Ember release.
 ## What it has
 
 - Private rooms with rollback netplay, spectators and rematches.
-- Players with different DLC can play: each player picks from what their
-  account owns, the opponent's picks always play, and stages one player lacks
-  are left out of the stage choice. Random stage picks from stages both have.
+- Every player has every fighter, costume, colour and stage the game has
+  installed, in SFV's own modes as well as in rooms: Capcom's servers, which
+  told the game what each account owns, no longer answer. Stages one player
+  lacks on disk are left out of the stage choice; Random stage picks from
+  stages both have.
 - Fighter select with costumes and colours, V-Skill and V-Trigger, and
   previews of each pick and stage.
 - Ember's frame meter in SFV's Training.
@@ -45,11 +47,11 @@ pads, in slots no Xbox-style pad holds. `"controllerLayer": false` in
 Needs Visual Studio 18 Build Tools (C++ x64), a vcpkg checkout next to this
 folder (`..\vcpkg`), and the Ember library: the `feat/ember-library` branch of
 [SF4-Ember-Netplay](https://github.com/Confetti3/SF4-Ember-Netplay). This
-release builds against library commit `648175d89`.
+release builds against library commit `c4a6c02c8`.
 
 ```powershell
 git clone -b feat/ember-library https://github.com/Confetti3/SF4-Ember-Netplay ember-library
-git -C ember-library checkout 648175d89
+git -C ember-library checkout c4a6c02c8
 .\scripts\build.ps1 -EmberRoot ..\ember-library
 ```
 
