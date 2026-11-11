@@ -2781,3 +2781,13 @@ The 15808 bytes at 8700 (the laptop's dump equals her state) are mostly 120-byte
 - SFV's own menus: the costume menu, Training's and versus's select screens list the 481 costumes and every stage; Story and Arcade start with one of them. The account's save is untouched: start once with `-sfve_grant_all=0` afterwards and the menus are vanilla again.
 - A room match with copy 0 on `-sfve_ownership=1`: copy 0's pick screen still shows RYU 24 NOT OWNED.
 - What a copy with no account cache at all (a fresh save) does: the grant needs the account's entitlements object (`UKWEntitlementsData`) to exist when step 8 runs, as both refreshes do; if it does not, the log's counts show it.
+
+## 58. Back to room waits 2 s over the WIN (2026-11-11)
+
+**What the maintainer saw.** Rematch in place rarely happened in her beta.5 session. Of the six WINs whose prompt opened, four ended with a "Back to room" decline 4 to 45 held frames (0.1 to 1.4 s) after the prompt appeared: a press meant to skip SFV's scenes landing on the new prompt (her own copy twice, the opponent's twice).
+
+**What changed.** The library's `Branding::leaveGuardSeconds` (0 for SF4 Ember, 2.0 for SFV Ember): over the WIN, Back to room and Character select count only that long after the prompt opens; Rematch counts at once. A press there declines nothing. `tools/runroom.ps1 -padAnswers` presses copy 1's B inside the guard and checks it decides nothing before its real B.
+
+**Tried and taken back.** Opening the prompt at the deciding KO, while the game plays its scenes (library `GameAdapter::ResultScenesPlaying`, sfv `RoomBattle::NoteDecided`, reverted in both). The maintainer, watching it in game: it came up very early and was jarring; the prompt belongs to the end screen, some 20 s after the KO. It opens with SFV's RESULT screen, as in section 19.
+
+**Tests.** Library `product_rules_journey_test`'s `ResultsRematch` with the guard (rules-on product, 2 s); `ProductIdentityTest`: SF4 Ember's guard is 0.
