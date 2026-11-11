@@ -91,7 +91,6 @@ void RoomBattle::Bind(RollbackSession* previous, RollbackSession& session, const
 	streamLossTold_ = false;
 	matchEnded_ = false;
 	prompt_ = {};
-	scenes_ = {};
 	declines_ = 0;
 	s_prompting = false;
 	gamesInPlace_ = 0;
@@ -285,8 +284,6 @@ bool RoomBattle::TakeEnd(const mod::SfvAdapter& game, const RollbackSession& ses
 	}
 	lastResult_ = mod::DescribeMatchResult(*decided);
 	prompt_ = {};
-	scenes_ = {};
-	scenes_.taken = true; // the prompt over the scenes, if any, goes on over this WIN
 	declines_ = 0;
 	prompt_.active = true;
 	prompt_.result = RoomResult(*decided);
@@ -316,34 +313,6 @@ bool RoomBattle::TakeEnd(const mod::SfvAdapter& game, const RollbackSession& ses
 	// does (NativeResult); the held frames only carry the decline.
 	if (!prompt_.offered) Report(false);
 	return true;
-}
-
-void RoomBattle::NoteDecided(const mod::SfvAdapter& game, const RollbackSession& session)
-{
-	// A watcher and a replay have no prompt; a new game (a rematch reset the
-	// match data) or a rollback that undid the decision starts it over.
-	if (!active_ || watching_ || replay_ || !game.MatchDecided()) {
-		scenes_ = {};
-		return;
-	}
-	if (prompt_.active || scenes_.active || scenes_.taken) return;
-	const int frame = session.Frame() - 1; // the frame just stepped
-	if (scenes_.seen < 0) scenes_.seen = frame;
-	// Opened only once the frame it was first seen decided on is confirmed,
-	// so a decision a misprediction made never opens it.
-	if (session.LastConfirmedFrame() < scenes_.seen) return;
-	const mod::MatchResult decided = mod::ReadMatchResult(game.BattleData());
-	if (!decided.decided) {
-		scenes_.seen = -1;
-		return;
-	}
-	scenes_.active = true;
-	const sf4e::room::MatchResult result = RoomResult(decided);
-	scenes_.offered = ember::Catalog().rematchInPlace && facade::RematchInPlaceOffered(result);
-	s_gameResult = result; // the prompt's score and seat rules read it (RoomGameResult); TakeEnd sets it again
-	Log("netplay: the match is decided (seen at frame %d, confirmed %d), game %u of this battle; %s", scenes_.seen,
-		session.LastConfirmedFrame(), gamesInPlace_ + 1,
-		scenes_.offered ? "the rematch prompt opens while the game plays its scenes" : "no rematch in place offered");
 }
 
 void RoomBattle::NoteFightFrame()
@@ -415,7 +384,6 @@ void RoomBattle::Decided(Answer answer, const RollbackSession& session)
 		s_gameResult = sf4e::room::MatchResult::Abort;
 		matchEnded_ = false;
 		prompt_ = {};
-		scenes_ = {};
 	} else {
 		if (!prompt_.reported && !watching_) Report(false);
 		prompt_.active = false;
@@ -482,8 +450,8 @@ std::string RoomBattle::DescribeRematch() const
 {
 	char text[256];
 	snprintf(text, sizeof(text),
-		"{\"prompt\":%s,\"scenes\":%s,\"offered\":%s,\"held\":%d,\"choices\":%u,\"declines\":%u,\"bits\":[%u,%u],\"games\":%u,\"last\":\"%s\"}",
-		prompt_.active ? "true" : "false", ResultScenesPlaying() ? "true" : "false", prompt_.offered ? "true" : "false", prompt_.held, prompt_.choices, declines_,
+		"{\"prompt\":%s,\"offered\":%s,\"held\":%d,\"choices\":%u,\"declines\":%u,\"bits\":[%u,%u],\"games\":%u,\"last\":\"%s\"}",
+		prompt_.active ? "true" : "false", prompt_.offered ? "true" : "false", prompt_.held, prompt_.choices, declines_,
 		(unsigned)prompt_.bits[0], (unsigned)prompt_.bits[1], gamesInPlace_, lastAnswer_.c_str());
 	return text;
 }

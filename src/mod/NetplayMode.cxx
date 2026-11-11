@@ -209,7 +209,6 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		adapter.SetStartTime(startTime_);
 	}
 	last_ = session_->Step(local);
-	room_.NoteDecided(adapter, *session_);
 	DumpIfRequested();
 	PerturbIfDue();
 }
