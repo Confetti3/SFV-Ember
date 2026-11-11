@@ -489,6 +489,10 @@ std::optional<RoomMatch> RoomMatchNow()
 	room.rounds = lobby.roundCount;
 	room.roundSeconds = lobby.roundTime.integral;
 	room.practice = lobby.trainingMode; // a Practice room's (TRAINING_OVER_ROLLBACK.md, step 2)
+	// Tiny fighters only where the room allows them, never in a public
+	// (server-owned) room (EMBER_LIBRARY.md section 59).
+	const auto& snapshot = netplay->client.GetRoomSnapshot();
+	room.tinyAllowed = snapshot.tinyFighters && !snapshot.serverOwned;
 	return room;
 }
 

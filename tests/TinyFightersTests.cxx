@@ -164,6 +164,12 @@ TEST_CASE("a room's match launches a tiny side drawn small, and no other")
 	CHECK_FALSE(launched->players[0].tiny);
 	CHECK_FALSE(launched->players[1].tiny);
 	match.picks[1].size = 1;
+	// A room that does not allow tiny fighters (a public room's, or a private
+	// room without the rule) draws a Tiny pick normal size.
+	launched = LaunchPicks(match).picks;
+	REQUIRE(launched);
+	CHECK_FALSE(launched->players[1].tiny);
+	match.tinyAllowed = true;
 	launched = LaunchPicks(match).picks;
 	REQUIRE(launched);
 	CHECK_FALSE(launched->players[0].tiny);

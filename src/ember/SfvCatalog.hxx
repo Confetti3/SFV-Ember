@@ -255,6 +255,10 @@ struct RoomMatch {
 	int rounds = 0;       // the room's round count
 	int roundSeconds = 0; // the room's round time
 	bool practice = false; // a Practice room's (the lobby's trainingMode)
+	// The room allows tiny fighters (room::Snapshot::tinyFighters, a private
+	// room's rule): only then is a pick's Tiny drawn, so a public room's
+	// battle is always normal size whatever a pick carries.
+	bool tinyAllowed = false;
 };
 
 // Why this copy cannot launch a room's match: the reason the runtime words

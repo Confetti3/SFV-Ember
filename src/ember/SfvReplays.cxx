@@ -551,7 +551,7 @@ bool RecordingHeader(int slot, std::uint32_t seed, int delay, replay::Header* ou
 		p.vSkill = picks->players[side].vSkill;
 		p.vTrigger = picks->players[side].vTrigger;
 		p.loadCode = picks->players[side].loadCode;
-		p.size = room->picks[side].size == sfve::picks::kSizeTiny ? sfve::picks::kSizeTiny : sfve::picks::kSizeNormal;
+		p.size = picks->players[side].tiny ? sfve::picks::kSizeTiny : sfve::picks::kSizeNormal;
 	}
 	h.stage = room->stage;
 	h.stageCode = sf4e::platform::WideToUtf8(picks->rules.stage);
