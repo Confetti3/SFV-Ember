@@ -310,6 +310,53 @@ constexpr CodeSite kStageName{"StageName", 0x564550,
 // (rva 0x7878F0, with the spec from kSpecData).
 constexpr CodeSite kSpecReady{"SpecReady", 0x546710,
 	{0x80, 0xB9, 0xE8, 0x00, 0x00, 0x00, 0x00, 0x74, 0x0C, 0x80, 0xB9, 0xE9, 0x00, 0x00, 0x00, 0x00}};
+// The spec's code cache (sfv::codecache) and the grant every player gets
+// (EntitlementGrant, EMBER_LIBRARY.md section 57).
+// void SpecGrantPass(SpecData* spec): step 8's first call (rva 0x57CE10,
+// then the refreshes rva 0x57CE50 and 0x57E380, then +233): unless the
+// account's entitlements are missing (the game instance's +72 object's
+// vtable +520, its +208, then +144: rva 0x68E080, 0x78B240), asks them
+// for every entry of kinds 0-9 with a row (rva 0x543EB0, 0x78CC90). Its only
+// caller is rva 0x57CE10, and step 8 (rva 0x7A3BB0, case 8) that one's.
+// Hooked: the account's answer is read after it, then every code granted.
+constexpr CodeSite kSpecGrantPass{"SpecGrantPass", 0x57DEB0,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x48, 0x8B, 0xD9, 0xE8, 0xD2, 0x37, 0xFA, 0xFF, 0x48, 0x8B}};
+// The grant pass's write (rva 0x543EB0, called once per kind with a context
+// whose +8 points at the account's entitlements): the answer of rva 0x78CC90
+// goes to the entry's +8 (codecache::kEntryGranted): mov rcx, [r14+8];
+// mov rcx, [rcx]; call; mov [rdi+8], al.
+constexpr CodeSite kSpecGrantWrite{"SpecGrantWrite", 0x543F7B,
+	{0x49, 0x8B, 0x4E, 0x08, 0x48, 0x8B, 0x09, 0xE8, 0x09, 0x8D, 0x24, 0x00, 0x88, 0x47, 0x08, 0xFF}};
+// The refreshes' reader of the cache (rva 0x54F680: void(SpecData**, int
+// kind, TSet<uint64>* out), the granted keys of one kind), whose walk
+// EntitlementGrant repeats. Its sites:
+// mov r8d, [r10+140h]; test; jz: the hash's size (codecache::kMapBucketCount).
+constexpr CodeSite kSpecCodesBucketCount{"SpecCodesBucketCount", 0x54F68F,
+	{0x45, 0x8B, 0x82, 0x40, 0x01, 0x00, 0x00, 0x45, 0x85, 0xC0, 0x0F, 0x84, 0xF4, 0x00, 0x00, 0x00}};
+// lea rcx, [r10+130h]; ...; mov r9, [rcx+8]: the inline bucket and, 8 bytes
+// on, the hash's allocation (kMapInlineBucket, kMapBuckets).
+constexpr CodeSite kSpecCodesBuckets{"SpecCodesBuckets", 0x54F69F,
+	{0x49, 0x8D, 0x8A, 0x30, 0x01, 0x00, 0x00, 0x48, 0x89, 0x5C, 0x24, 0x58, 0x33, 0xDB, 0x4C, 0x8B}};
+// mov rdx, [r10+0F8h]; movsxd; shl rcx, 5; cmp [rcx+rdx], r11d: the pairs'
+// data (kMap), 32 bytes a pair (kPairStride), the kind at +0.
+constexpr CodeSite kSpecCodesPairs{"SpecCodesPairs", 0x54F6DA,
+	{0x49, 0x8B, 0x92, 0xF8, 0x00, 0x00, 0x00, 0x48, 0x63, 0xC8, 0x48, 0xC1, 0xE1, 0x05, 0x44, 0x39}};
+// shl; cmp; jz; mov eax, [rcx+rdx+18h]; cmp eax, -1: the chain's next at +24
+// (kPairNext).
+constexpr CodeSite kSpecCodesNext{"SpecCodesNext", 0x54F6E4,
+	{0x48, 0xC1, 0xE1, 0x05, 0x44, 0x39, 0x1C, 0x11, 0x74, 0x14, 0x8B, 0x44, 0x11, 0x18, 0x83, 0xF8}};
+// lea rcx, [rax+rax*2]; movups xmm0, [rdx+rcx*8]; movsd xmm1, [rdx+rcx*8+10h]:
+// 24-byte entries (kEntryStride), the row and granted byte in the first 16
+// (+0, +8; the reader takes an entry whose +8 byte and +0 are both set) and
+// the key at +16 (kEntryKey). The entries' TArray is the pair's +8, its
+// count +16 (rva 0x54F71C, 0x54F72A).
+constexpr CodeSite kSpecCodesEntry{"SpecCodesEntry", 0x54F73A,
+	{0x48, 0x8D, 0x0C, 0x40, 0x0F, 0x10, 0x04, 0xCA, 0xF2, 0x0F, 0x10, 0x4C, 0xCA, 0x10, 0x0F, 0x10}};
+static_assert(kSpecCodesBucketCount.bytes[3] == 0x40 && kSpecCodesBucketCount.bytes[4] == 0x01 &&
+		kSpecCodesBuckets.bytes[3] == 0x30 && kSpecCodesPairs.bytes[3] == 0xF8 && kSpecCodesPairs.bytes[13] == 5 &&
+		kSpecCodesNext.bytes[13] == 0x18 && kSpecCodesEntry.bytes[13] == 0x10 && kSpecGrantWrite.bytes[14] == 0x08,
+	"the sites hold the offsets above");
+
 // int* Find(TSet* set, int* outIndex, int key): the index of the set's
 // element whose int key (element +0) is `key`, written to *outIndex and
 // returned, or -1 for none. The set is UE4's TSet: +0 the elements' data,
@@ -501,6 +548,9 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kFindSpecCostumeStep, kFindSpecColour, kFindSpecColourStep, kCostumeName, kTextToString, kCreateText,
 	kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke, kBattleSetupClass, kOwnedFighters, kOwnedCostumes,
 	kOwnedColours, kLoggedIn, kVersionDataClass, kSystemSave, kCharaVoiceLanguage,
+	// The spec's code cache and its grant pass (EntitlementGrant).
+	kSpecGrantPass, kSpecGrantWrite, kSpecCodesBucketCount, kSpecCodesBuckets, kSpecCodesPairs, kSpecCodesNext,
+	kSpecCodesEntry,
 	// The fighter state the frame meter reads (SfvFighterOffsets.hxx).
 	kUpdateUntilActionable, kFrameAdvantage, kChangeState, kStateTableInit, kApplyHitStop, kSetScript, kSetScriptFrame,
 	kScriptPosture, kStartAction, kProjectileDie, kDamage};
@@ -536,6 +586,10 @@ static_assert(kSpecFighterSet.step.bytes[3] == kSpecFighterSet.stride && kSpecFi
 static_assert(kSpecCostumeSet.step.bytes[3] == kSpecCostumeSet.stride, "the costumes' stride is the one their find scales by");
 static_assert(kSpecColourSet.step.bytes[3] == 0x89 && kSpecColourSet.step.bytes[7] == 0xD0 && kSpecColourSet.stride == 5 * 8,
 	"the colours' stride is the one their find scales by");
+static_assert(codecache::kMapBucketCount == 0x140 && codecache::kMapInlineBucket == 0x130 &&
+		codecache::kMapBuckets == 0x130 + 8 && codecache::kMap == 0xF8 && codecache::kPairStride == 1u << 5 &&
+		codecache::kPairNext == 0x18 && codecache::kEntryStride == 3 * 8 && codecache::kEntryKey == 0x10,
+	"the code cache's layout is the one its reader's sites encode");
 
 inline const GameBuild* VerifiedBuild()
 {

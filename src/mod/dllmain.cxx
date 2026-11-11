@@ -28,6 +28,7 @@
 #include "mod/ControlPipe.hxx"
 #include "mod/CrashRecord.hxx"
 #include "mod/EarlyStart.hxx"
+#include "mod/EntitlementGrant.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/GameExit.hxx"
 #include "mod/GameHooks.hxx"
@@ -281,6 +282,11 @@ extern "C" int SfveStart(int beforeGameCode)
 	if (!scene) dialogs = std::min(dialogs, OfflineDialogs::HideDownloadFails);
 	InstallOfflineDialogs(base, dialogs);
 	RegisterStatus("suppressedDialogs", [] { return std::to_string(SuppressedDialogs()); });
+	// SFV grants every player everything it has installed, in its own modes
+	// too (EMBER_LIBRARY.md section 57); the account's own answer stays
+	// Ember's to judge by. The spec's refresh runs once, at boot, so this
+	// goes in now, before the game's code runs.
+	InstallEntitlementGrant(base, Config().grantAll);
 	if (scene && InstallVersusLaunch(base, Config().gameOwnershipCheck)) RegisterVersusLaunchCommands();
 	// The game's exit request: the point the netplay mode's runtime leaves
 	// its room from (EmberHost), before the engine stops.

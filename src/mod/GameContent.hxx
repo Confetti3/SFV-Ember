@@ -19,8 +19,12 @@
 //   41.
 // - This copy's own: whether its install has a fighter's, a costume's or a
 //   stage's package (`installed`), what its account's entitlement cache
-//   grants (`entitled`), what this copy's player may pick (`owned`: the
-//   game's answer, sfv::kOwnedFighters and the rest, for fighters; under
+//   grants (`entitled`: the account's own answer, kept apart from the game's
+//   now that SFV grants every player everything, EntitlementGrant and
+//   EMBER_LIBRARY.md section 57), what the game itself grants (`granted`),
+//   what this copy's player may pick (`owned`: the game's answer,
+//   sfv::kOwnedFighters and the rest, limited to what the account's own
+//   cache would let them pick, LimitToAccount, for fighters; under
 //   kContentOwnership for looks and stages), and the names, in the game's
 //   language.
 //
@@ -89,9 +93,13 @@ struct ColourContent {
 	// as well (SfvCatalog's LookOwned).
 	bool owned = false;
 	// The account's entitlement cache grants the colour's code
-	// (RefColorAvailableCode, sfv::spec::kEntitled). Reported, never gated on
-	// directly.
+	// (RefColorAvailableCode): the account's own answer (EntitlementGrant's
+	// AccountGrants), never the grant the game now gets. Reported, never
+	// gated on directly.
 	bool entitled = false;
+	// The game itself grants it (sfv::spec::kEntitled): everything while
+	// SFV's grant is on (EntitlementGrant). Reported only.
+	bool granted = false;
 	// The colour's two swatch colours (the costume settings menu's) are not
 	// read with the lists: the game reads them from the costume's
 	// CostumeColorPreview data asset, which it finds or loads first
@@ -112,9 +120,11 @@ struct CostumeContent {
 	// This copy's player may pick it, under kContentOwnership.
 	bool owned = false;
 	// The account's entitlement cache grants the costume's code
-	// (RefCostumeAvailableCode, sfv::spec::kEntitled). Reported, never gated
-	// on directly.
+	// (RefCostumeAvailableCode; the account's own answer, as a colour's).
+	// Reported, never gated on directly.
 	bool entitled = false;
+	// The game itself grants it (sfv::spec::kEntitled). Reported only.
+	bool granted = false;
 };
 
 // The costume's colour `id`; null for a colour it does not have.
@@ -127,7 +137,9 @@ struct FighterContent {
 	std::vector<CostumeContent> costumes; // in the game's order
 	std::string name;                     // UTF-8, display only; empty where the game has none
 	bool installed = false;               // this copy has the fighter's package (sfv::kFighterInstalled)
-	bool owned = false;                   // the game lets this copy's player pick the fighter (sfv::kOwnedFighters)
+	// The game lets this copy's player pick the fighter (sfv::kOwnedFighters)
+	// and so would the account's own cache (LimitToAccount).
+	bool owned = false;
 	// The fighter's V-Skills and V-Triggers, I first, by the game's names for
 	// them (UTF-8, display only; empty where the game has none). How many
 	// there are is part of the pick space; the names are not. Always one or
@@ -135,8 +147,14 @@ struct FighterContent {
 	std::vector<std::string> vSkills{std::string()};
 	std::vector<std::string> vTriggers{std::string()};
 	// The account's entitlement cache grants the fighter's RefAvailableCode
-	// (sfv::spec::kEntitled). Reported only.
+	// (the account's own answer, as a colour's). Reported only.
 	bool entitled = false;
+	// The account's entitlement cache grants its RefVisibleCode, which the
+	// game's fighter lists need as well (sfv::spec::kFighterVisible).
+	bool visible = false;
+	// The game itself grants its RefAvailableCode (sfv::spec::kEntitled).
+	// Reported only.
+	bool granted = false;
 };
 
 // Where `owned` came from, for the log and the status.
@@ -167,15 +185,19 @@ struct StageContent {
 	std::string code;       // "S01"
 	std::string name;       // UTF-8, display only; empty where the game has none
 	bool installed = false; // this copy has the stage's package (sfv::spec::kStageInstalled)
-	// The game's own selectable flag (sfv::spec::kStageSelectable): the
-	// stage's package is here AND the account's entitlement cache grants both
-	// of its StageSpec row's codes. What SFV's own stage lists keep.
+	// The stage's package is here AND the account's entitlement cache grants
+	// both of its StageSpec row's codes: the game's own selectable flag
+	// (sfv::spec::kStageSelectable) as the account's own answer would set
+	// it, whatever the game now grants.
 	bool entitled = false;
 	// This copy's player may choose it, under kContentOwnership: their stage
 	// row, the fitting of their stored stage and the Random their copy rolls
 	// as P1 take only these (SfvCatalog's StageOffered). Never asked of the
 	// room's stage: one P1 chose plays on any copy that has it installed.
 	bool owned = false;
+	// The game's own selectable flag (sfv::spec::kStageSelectable): every
+	// installed stage while SFV's grant is on. Reported only.
+	bool granted = false;
 };
 
 struct ContentLists {
@@ -200,9 +222,28 @@ struct ContentLists {
 // loaded, with StaticLoadObject, so call it at the main menu (never in a
 // battle). Once everything is there, empty lists with `error` for tables
 // that can never make lists. This copy's installs and the names are read
-// last: each asks the game's package files. The costumes' and stages'
-// `owned` is kContentOwnership's (ApplyContentOwnership).
+// last: each asks the game's package files. `owned` is limited to the
+// account's own answer (LimitToAccount), then the costumes' and stages' is
+// kContentOwnership's (ApplyContentOwnership).
 ContentLists ReadContentLists();
+
+// Makes `owned` what the game's answer would be from the account's own
+// cache: SFV now grants every player everything (EntitlementGrant), so the
+// game's lists (ReadOwnership) offer everything installed, and Ember's gate,
+// when it is on, must still judge by the account. The rules are the spec
+// refresh's (rva 0x57CE50) over `entitled`, `visible` and `installed`:
+// - a colour stays owned only if `entitled`, unless the battle setup asset
+//   restricts the picks (the game's colour list is then the asset's own,
+//   which asks no cache);
+// - a costume stays owned only if `entitled` (the game's costume list keeps
+//   only those, restricted or not);
+// - a fighter stays owned only if `entitled` and `visible` and one of its
+//   costumes is installed, `entitled` and has an `entitled` colour (the
+//   game's fighter list needs its selectable flag, which needs all three).
+// Only ever takes away: what the account's cache would offer the game
+// already offers. Before ApplyContentOwnership, after the installs are
+// read. No game code: the tests call it.
+void LimitToAccount(ContentLists& lists);
 
 // Makes each costume's, colour's and stage's `owned` the `policy`'s: the one
 // place the rule is applied. Looks start from the game's answer they hold
@@ -232,6 +273,23 @@ struct ContentCounts {
 	int stages = 0, stagesInstalled = 0, stagesNotEntitled = 0, stagesNotOwned = 0;
 };
 ContentCounts CountContent(const ContentLists& lists);
+
+// What the game grants beside what the account's own cache holds, for the
+// grant's line at the main menu (EntitlementGrant): the universe's fighters,
+// costumes and colours (as ReadContentLists reads them), the stages of the
+// universe installed here, and of each how many the game grants (`granted`)
+// and the account's cache grants (`entitled`).
+struct GrantCounts {
+	int fighters = 0, fightersGranted = 0, fightersEntitled = 0;
+	int costumes = 0, costumesGranted = 0, costumesEntitled = 0;
+	int colours = 0, coloursGranted = 0, coloursEntitled = 0;
+	int stagesInstalled = 0, stagesGranted = 0, stagesEntitled = 0;
+	std::string error; // tables that can never give lists (ContentLists::error); the counts are then zero
+};
+// Game thread. None until the content tables are loaded and the spec's map
+// is built and refreshed (sfv::kSpecReady); reads no asset and asks no
+// package but the spec's own flags.
+std::optional<GrantCounts> CountGrants();
 
 // Whether a battle on this copy loads a look as picked, by one lookup of the
 // fighter: the fighter `code` names (compared as the game compares codes) is

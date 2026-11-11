@@ -49,6 +49,24 @@ std::vector<int> ColourNumbers(const CostumeContent& costume)
 	return numbers;
 }
 
+void LimitToAccount(ContentLists& lists)
+{
+	const bool coloursByAsset = lists.ownership.restricted;
+	for (FighterContent& fighter : lists.fighters) {
+		bool selectableCostume = false; // the refresh's costume value+1: installed, entitled, an entitled colour
+		for (CostumeContent& costume : fighter.costumes) {
+			bool entitledColour = false;
+			for (ColourContent& colour : costume.colours) {
+				entitledColour = entitledColour || colour.entitled;
+				if (!coloursByAsset) colour.owned = colour.owned && colour.entitled;
+			}
+			costume.owned = costume.owned && costume.entitled;
+			selectableCostume = selectableCostume || (costume.installed && costume.entitled && entitledColour);
+		}
+		fighter.owned = fighter.owned && fighter.entitled && fighter.visible && selectableCostume;
+	}
+}
+
 void ApplyContentOwnership(ContentLists& lists, ContentOwnership policy)
 {
 	const bool byInstall = policy == ContentOwnership::Installed;

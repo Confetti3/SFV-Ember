@@ -47,6 +47,10 @@
 //                        on this copy, comma separated (S01,S25): one full
 //                        install then plays a copy that lacks those stages
 //                        (EMBER_LIBRARY.md section 38)
+//   -sfve_grant_all=0    development, diagnostics: the game grants what the
+//                        account's own cache holds, as SFV did before; by
+//                        default it grants every player everything
+//                        (EntitlementGrant, EMBER_LIBRARY.md section 57)
 //   -sfve_game_ownership=1  a launch that is not a room's runs the game's own
 //                        ownership check (default off; a room's never does)
 //   -sfve_dialogs=N      offline start-up dialogs hidden: 0 none, 1 download errors,
@@ -59,7 +63,8 @@
 // All of them are a development build's (mod/BuildKind.hxx). A player build
 // reads only what its launcher passes, -sfve_mode=netplay, -sfve_room and
 // -sfve_dump_channel, and every other option or value as if it were absent:
-// its ownership gate is on, nothing drives its player, it is copy 0. (The
+// its ownership gate is kOwnershipGateByDefault, the game grants everything,
+// nothing drives its player, it is copy 0. (The
 // launcher's -sfve_loader=launcher is EarlyStart's, read before this.)
 
 #include "mod/BuildKind.hxx"
@@ -153,6 +158,11 @@ struct ModConfig {
 	// Ember's ownership gate: this copy's player may pick only what the game
 	// lets them (GameContent's `owned`).
 	bool ownershipGate = kOwnershipGateByDefault;
+	// The game grants every player everything it has installed
+	// (EntitlementGrant): always in a player build; -sfve_grant_all=0 turns
+	// it off in a development build, to see the account's own answer in the
+	// game's menus.
+	bool grantAll = true;
 	// Content this copy treats as unowned on top of the game's answer, to try
 	// the gate's screens and refusals with an account that owns everything.
 	std::vector<UnownedContent> unowned;

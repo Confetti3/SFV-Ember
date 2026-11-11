@@ -25,6 +25,7 @@ namespace {
 constexpr const wchar_t* kTestLine =
 	L"StreetFighterV.exe -sfve_instance=1 -sfve_ownership=0 -sfve_mash=7 -sfve_mash_pad=1 -sfve_perturb=1 -sfve_lag=60 "
 	L"-sfve_crash_command=1 -sfve_unowned=RYU -sfve_uninstalled=S01 -sfve_pads=0,1 -sfve_background=1 -sfve_port=7100 "
+	L"-sfve_grant_all=0 "
 	L"-sfve_loader=launcher -sfve_mode=netplay -sfve_room=1 -sfve_dump_channel=1a4:1b0:2c8";
 
 } // namespace
@@ -38,6 +39,7 @@ TEST_CASE("a player build reads only its launcher's options")
 	CHECK(player.dumpChannel.Present());
 	CHECK(player.instance == 0);
 	CHECK(player.ownershipGate == sfve::mod::kOwnershipGateByDefault);
+	CHECK(player.grantAll); // a player build's game always grants everything
 	CHECK(player.script.seed == 0);
 	CHECK_FALSE(player.script.padBefore);
 	CHECK_FALSE(player.perturb);
@@ -49,7 +51,8 @@ TEST_CASE("a player build reads only its launcher's options")
 	CHECK_FALSE(player.backgroundPlay);
 	CHECK(player.port == 7000);
 	const std::string& ignored = sfve::mod::PlayerBuildIgnored();
-	for (const char* option : {"-sfve_instance", "-sfve_ownership", "-sfve_mash", "-sfve_lag", "-sfve_crash_command", "-sfve_pads"}) {
+	for (const char* option :
+		{"-sfve_instance", "-sfve_ownership", "-sfve_mash", "-sfve_lag", "-sfve_crash_command", "-sfve_pads", "-sfve_grant_all"}) {
 		CHECK(ignored.find(option) != std::string::npos);
 	}
 	CHECK(ignored.find("-sfve_mode") == std::string::npos);
@@ -59,6 +62,7 @@ TEST_CASE("a player build reads only its launcher's options")
 	const sfve::mod::ModConfig& development = Config();
 	CHECK(development.instance == 1);
 	CHECK_FALSE(development.ownershipGate);
+	CHECK_FALSE(development.grantAll);
 	CHECK(development.script.seed == 7);
 	CHECK(development.lagMs == 60);
 	CHECK(development.crashCommand);

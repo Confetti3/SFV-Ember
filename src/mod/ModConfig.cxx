@@ -211,6 +211,7 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.offlineDialogs = (int)options.Number(L"sfve_dialogs", 2);
 	c.ownershipGate = options.Number(L"sfve_ownership", kOwnershipGateByDefault ? 1 : 0) != 0;
 	c.gameOwnershipCheck = options.Number(L"sfve_game_ownership", 0) != 0;
+	c.grantAll = options.Number(L"sfve_grant_all", 1) != 0;
 	c.crashCommand = options.Number(L"sfve_crash_command", 0) != 0;
 	wchar_t channel[64];
 	if (options.Find(L"sfve_dump_channel", channel, 64)) c.dumpChannel = ParseDumpChannel(channel);

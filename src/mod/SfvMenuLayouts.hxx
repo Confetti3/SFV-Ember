@@ -123,7 +123,69 @@ constexpr uint32_t kStageInstalled = 3;
 // lister keeps), which the stages' refresh (rva 0x57E380) sets to +3 and both
 // of the stage row's codes granted by the entitlement cache (+0 and +1).
 constexpr uint32_t kStageSelectable = 2;
+// A fighter's value: +1 its RefVisibleCode granted (element +9, rva 0x57D423).
+constexpr uint32_t kFighterVisible = 1;
+// The codes' keys the builder stored (rva 0x56C2B0 and 0x56CB10, each made
+// by rva 0x78B1A0, the key codecache::kEntryKey holds too), which the
+// refreshes look up in the code cache's granted keys of the value's kind:
+// - a fighter's RefAvailableCode at value+16 (rva 0x57D325: element +24)
+//   and its RefVisibleCode at value+24 (rva 0x57D398: element +32), kind 0;
+// - a costume's RefCostumeAvailableCode at value+16 (rva 0x57D752), kind 1;
+// - a colour's RefColorAvailableCode at value+16 (rva 0x57DA29), kind 2;
+// - a stage's RefAvailableCode at value+16 (rva 0x57E77C) and
+//   RefVisibleCode at value+24 (rva 0x57E7E8), kind 3.
+// Its value+0 (and a fighter's or stage's +1) is that key's being granted.
+constexpr uint32_t kCodeKey = 16;
+constexpr uint32_t kSecondCodeKey = 24;
 } // namespace spec
+
+// The spec's code cache (SpecData +248), which the spec's refresh asks
+// instead of the account (EMBER_LIBRARY.md section 57). Step 7's
+// MakeEntitlementCache (rva 0x56CA40) fills it from the EntitlementSpec
+// DataTable (SpecData +104, rows of KWEntitlementSpec: +0 FString RefCode,
+// +16 int Type, then Unlockable and DefaultValue, 24 bytes; the table comes
+// from DA_Spec in the paks, not the exe): for each kind 0-9, every row of
+// that Type as an entry {row, granted = 0, key} (rva 0x543D40). Step 8's
+// grant pass (sfv::kSpecGrantPass, rva 0x57DEB0) then asks the account's
+// entitlements (UKWEntitlementsData, rva 0x78CC90: the key in one of its two
+// key sets, chosen by its vtable +480, the one at +456 built from
+// AuthorizedEntitlementIds by rva 0x7874E0 and 0x798A90, the other at +536;
+// failing that, the code among LocalEntitlementIds, +392) for each entry
+// with a row and writes the answer to its `granted` (rva 0x543EB0). The refreshes that follow (rva 0x57CE50, 0x57E380) take the
+// keys of the granted entries with a row of kinds 0-3 (rva 0x54F680) and set
+// the spec's value flags from them. Nothing else reads it.
+//
+// It is a UE4 TMap<int kind, TArray<Entry>> laid out as the game's reader
+// walks it (rva 0x54F680): its pairs' TSparseArray at +0 (data) and +8
+// (count, slots included), its hash's inline bucket at +56, the hash's
+// allocation at +64 and its size at +72, all from SpecData +248. A pair is
+// 32 bytes: +0 the kind, +8 the entries' TArray (data, then count at +16),
+// +24 the index of the next pair in its bucket's chain (-1 ends it). A
+// bucket is the kind masked by size - 1.
+namespace codecache {
+constexpr uint32_t kMap = 248;              // SpecData: the pairs' data
+constexpr uint32_t kMapCount = 256;         // SpecData: their count (TSparseArray slots)
+constexpr uint32_t kMapInlineBucket = 304;  // SpecData: the hash's inline bucket
+constexpr uint32_t kMapBuckets = 312;       // SpecData: the hash's allocation, null while inline
+constexpr uint32_t kMapBucketCount = 320;   // SpecData: the hash's size (a power of two)
+constexpr uint32_t kPairStride = 32;
+constexpr uint32_t kPairKind = 0;
+constexpr uint32_t kPairEntries = 8;
+constexpr uint32_t kPairEntryCount = 16;
+constexpr uint32_t kPairNext = 24;
+constexpr uint32_t kEntryStride = 24;
+constexpr uint32_t kEntryRow = 0;     // the KWEntitlementSpec row; null for none
+constexpr uint32_t kEntryGranted = 8; // byte: the account grants the code
+constexpr uint32_t kEntryKey = 16;    // uint64: the code's key (rva 0x78B1A0)
+// The kinds the refreshes read: fighters' codes (both), costumes', colours'
+// and stages' (both). Kinds 4-9 are filled and asked the same way and read
+// by nothing found.
+constexpr int32_t kFighterCodes = 0;
+constexpr int32_t kCostumeCodes = 1;
+constexpr int32_t kColourCodes = 2;
+constexpr int32_t kStageCodes = 3;
+constexpr int32_t kKinds = 4;
+} // namespace codecache
 
 // A fighter's V-Trigger and V-Skill names (/Game/Chara/DA_VTriggerNameAsset
 // and DA_VSkillNameAsset, KWVersionDataAsset). The game's lookup (rva

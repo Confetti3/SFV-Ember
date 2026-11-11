@@ -1,5 +1,6 @@
 #include "mod/GameContent.hxx"
 
+#include "mod/EntitlementGrant.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -279,23 +280,41 @@ std::optional<Records> SetElements(uint8_t* set, uint32_t stride, const char* wh
 	return Records(set, sfv::spec::kSetElements, sfv::spec::kSetCount, stride);
 }
 
-// The entitlement cache grants the value's code (set by the spec's refresh).
-bool Entitled(uint8_t* value)
+// The game grants the value's code: its flag at `flag` (sfv::spec), set by
+// the spec's refresh from the code cache, which SFV's grant marks granted
+// throughout (EntitlementGrant).
+bool GameGrants(uint8_t* value, uint32_t flag = sfv::spec::kEntitled)
 {
-	return Field<uint8_t>(value, sfv::spec::kEntitled) != 0;
+	return Field<uint8_t>(value, flag) != 0;
+}
+
+// The account's own cache grants the value's code whose key is at `key`
+// (sfv::spec::kCodeKey, kSecondCodeKey), of the code cache's kind `kind`:
+// the answer EntitlementGrant read at the spec's last refresh, before it
+// granted everything. Without that answer nothing was granted (the grant
+// writes only what it read first), so the game's flag at `flag` is still the
+// account's.
+bool AccountGrantsCode(const AccountGrants& account, uint8_t* value, int32_t kind, uint32_t key, uint32_t flag)
+{
+	if (!account.captured) return GameGrants(value, flag);
+	return account.Grants(kind, Field<uint64_t>(value, key));
 }
 
 // The fighter's costumes and colours: every costume number of its
 // CostumeDatas that names a package and has a row, in number order, and
 // under each every colour 0-127 with a row, in number order; with what the
-// entitlement cache grants of each. This copy's installs and the names are
-// ReadInstallsAndNames'.
-FighterContent ReadFighter(uint8_t* entry, uint8_t* value)
+// account's entitlement cache grants of each and what the game grants. This
+// copy's installs and the names are ReadInstallsAndNames'.
+FighterContent ReadFighter(uint8_t* entry, uint8_t* value, const AccountGrants& account)
 {
+	namespace cc = sfv::codecache;
 	FighterContent fighter;
 	fighter.code = Narrow(Field<GameString>(entry, 0));
 	fighter.name = FighterName(entry);
-	fighter.entitled = Entitled(value);
+	fighter.entitled = AccountGrantsCode(account, value, cc::kFighterCodes, sfv::spec::kCodeKey, sfv::spec::kEntitled);
+	fighter.visible =
+		AccountGrantsCode(account, value, cc::kFighterCodes, sfv::spec::kSecondCodeKey, sfv::spec::kFighterVisible);
+	fighter.granted = GameGrants(value);
 	const Records costumeDatas(entry, sfv::content::kCharaCostumeDatas, sfv::content::kCharaCostumeCount,
 		sfv::content::kGameStringStride);
 	for (int number = 0; number < costumeDatas.count; number++) {
@@ -305,10 +324,14 @@ FighterContent ReadFighter(uint8_t* entry, uint8_t* value)
 		if (!path || !costumeValue || Field<GameString>(path, 0).count <= 1) continue;
 		CostumeContent costume;
 		costume.id = number;
-		costume.entitled = Entitled(costumeValue);
+		costume.entitled =
+			AccountGrantsCode(account, costumeValue, cc::kCostumeCodes, sfv::spec::kCodeKey, sfv::spec::kEntitled);
+		costume.granted = GameGrants(costumeValue);
 		for (int colour = 0; colour < sfv::spec::kColourKeys; colour++) {
 			if (uint8_t* colourValue = LinkedValue(sfv::kSpecColourSet, costumeValue, colour)) {
-				costume.colours.push_back({colour, false, Entitled(colourValue)});
+				costume.colours.push_back({colour, false,
+					AccountGrantsCode(account, colourValue, cc::kColourCodes, sfv::spec::kCodeKey, sfv::spec::kEntitled),
+					GameGrants(colourValue)});
 			}
 		}
 		fighter.costumes.push_back(std::move(costume));
@@ -335,7 +358,7 @@ struct FighterUniverse {
 // error: the builder keeps one element for both and adds both entries'
 // costume numbers under it, so which entry's CostumeDatas the rows describe
 // is not known.
-FighterUniverse ReadFighters(const SpecTables& tables)
+FighterUniverse ReadFighters(const SpecTables& tables, const AccountGrants& account)
 {
 	FighterUniverse universe;
 	std::vector<std::pair<int, std::string>> added; // the builder's entries: id, code
@@ -355,7 +378,7 @@ FighterUniverse ReadFighters(const SpecTables& tables)
 		uint8_t* value = LinkedValue(sfv::kSpecFighterSet, tables.spec, id);
 		if (!value || !NamesSetup(entry)) return;
 		universe.keys.push_back(id);
-		universe.fighters.push_back(ReadFighter(entry, value));
+		universe.fighters.push_back(ReadFighter(entry, value, account));
 	});
 	if (!universe.error.empty()) return {{}, {}, std::move(universe.error)};
 	return universe;
@@ -416,13 +439,16 @@ std::string StageCodeAt(uint8_t* stageAsset, int32_t index)
 // The stage universe: every element of the spec's stage set (one per
 // StageSpec row), in the set's order, less Random and the stages without
 // stage data, each with whether this copy has its package (the refresh's
-// own test, sfv::spec::kStageInstalled) and the game's selectable flag
-// (sfv::spec::kStageSelectable: that package and both of the row's codes in
-// the account's entitlement cache). The game's stage listers are not asked:
-// both keep only the selectable stages (sfv::kSpecData's comment), and the
-// universe must not depend on the account.
-std::vector<StageContent> ReadStages(const SpecTables& tables, std::string& error)
+// own test, sfv::spec::kStageInstalled), whether that package is here and
+// the account's own cache grants both of the row's codes (`entitled`, the
+// selectable flag as the account's answer sets it) and the game's selectable
+// flag (sfv::spec::kStageSelectable, `granted`: every installed stage while
+// SFV's grant is on). The game's stage listers are not asked: both keep only
+// the selectable stages (sfv::kSpecData's comment), and the universe must not
+// depend on the account.
+std::vector<StageContent> ReadStages(const SpecTables& tables, const AccountGrants& account, std::string& error)
 {
+	namespace cc = sfv::codecache;
 	const std::optional<Records> elements = SetElements(tables.spec + sfv::spec::kStages, sfv::spec::kStageStride, "stages", error);
 	if (!elements) return {};
 	std::vector<StageContent> stages;
@@ -433,7 +459,11 @@ std::vector<StageContent> ReadStages(const SpecTables& tables, std::string& erro
 		StageContent stage;
 		stage.code = std::move(code);
 		stage.installed = Field<uint8_t>(value, sfv::spec::kStageInstalled) != 0;
-		stage.entitled = Field<uint8_t>(value, sfv::spec::kStageSelectable) != 0;
+		stage.granted = GameGrants(value, sfv::spec::kStageSelectable);
+		stage.entitled = account.captured
+			? stage.installed && account.Grants(cc::kStageCodes, Field<uint64_t>(value, sfv::spec::kCodeKey)) &&
+				account.Grants(cc::kStageCodes, Field<uint64_t>(value, sfv::spec::kSecondCodeKey))
+			: stage.granted;
 		stages.push_back(std::move(stage));
 	});
 	return stages;
@@ -626,11 +656,12 @@ ContentLists ReadContentLists()
 	// Everything is there: what is read from here on is final for this exe,
 	// so a list it cannot make is an error, never a wait.
 	ContentLists lists;
-	FighterUniverse universe = ReadFighters(tables);
+	const AccountGrants account = AccountGrantsNow();
+	FighterUniverse universe = ReadFighters(tables, account);
 	if (!universe.error.empty()) return Never(std::move(universe.error));
 	if (universe.fighters.empty()) return Never("the spec has no fighter a battle can load");
 	lists.fighters = std::move(universe.fighters);
-	lists.stages = ReadStages(tables, lists.error);
+	lists.stages = ReadStages(tables, account, lists.error);
 	if (!lists.error.empty()) return Never(std::move(lists.error));
 	if (std::none_of(lists.stages.begin(), lists.stages.end(), [](const StageContent& stage) { return stage.installed; })) {
 		return Never("this copy has none of the spec's " + std::to_string(lists.stages.size()) + " stages installed");
@@ -641,6 +672,7 @@ ContentLists ReadContentLists()
 	s_choiceCounts.clear();
 	for (const FighterContent& fighter : lists.fighters) s_choiceCounts.emplace_back(CodeView(fighter.code).wide, CountsOf(fighter));
 	ReadInstallsAndNames(tables.charaAsset, lists.fighters);
+	LimitToAccount(lists);
 	ApplyContentOwnership(lists, kContentOwnership);
 
 	// The stages' names last: each may load a stage's data, so only an
@@ -650,6 +682,43 @@ ContentLists ReadContentLists()
 		if (stage.installed) stage.name = StageName(tables.stageAsset, stage.code);
 	}
 	return lists;
+}
+
+std::optional<GrantCounts> CountGrants()
+{
+	const SpecTables tables = Tables();
+	if (!tables.Loaded() || !At<SpecReadyFn>(sfv::kSpecReady)(tables.spec)) return std::nullopt;
+	const AccountGrants account = AccountGrantsNow();
+	GrantCounts counts;
+	FighterUniverse universe = ReadFighters(tables, account);
+	if (!universe.error.empty()) {
+		counts.error = std::move(universe.error);
+		return counts;
+	}
+	const std::vector<StageContent> stages = ReadStages(tables, account, counts.error);
+	if (!counts.error.empty()) return counts;
+	for (const FighterContent& fighter : universe.fighters) {
+		counts.fighters++;
+		counts.fightersGranted += fighter.granted;
+		counts.fightersEntitled += fighter.entitled;
+		for (const CostumeContent& costume : fighter.costumes) {
+			counts.costumes++;
+			counts.costumesGranted += costume.granted;
+			counts.costumesEntitled += costume.entitled;
+			for (const ColourContent& colour : costume.colours) {
+				counts.colours++;
+				counts.coloursGranted += colour.granted;
+				counts.coloursEntitled += colour.entitled;
+			}
+		}
+	}
+	for (const StageContent& stage : stages) {
+		if (!stage.installed) continue;
+		counts.stagesInstalled++;
+		counts.stagesGranted += stage.granted;
+		counts.stagesEntitled += stage.entitled;
+	}
+	return counts;
 }
 
 std::optional<ChoiceCounts> FighterChoiceCounts(std::wstring_view code)

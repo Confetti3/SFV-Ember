@@ -63,6 +63,7 @@ inline mod::FighterContent Fighter(const char* code, std::vector<mod::CostumeCon
 {
 	mod::FighterContent fighter{code, std::move(costumes), name, installed, owned};
 	fighter.entitled = owned;
+	fighter.visible = owned;
 	return fighter;
 }
 
