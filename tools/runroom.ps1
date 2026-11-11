@@ -197,6 +197,27 @@ try {
         Answer 0 'yes'
         "game ${game}: copy 0 pressed A as its prompt showed"
       }
+      # Over the WIN the library's Branding::leaveGuardSeconds (2 s in SFV
+      # Ember) ignores Back to room for 2 s after the prompt opens, so a B
+      # mashed to skip the scenes declines nothing. Copy 1 mashes B as soon as
+      # its own log has the result (the prompt opens with it); the status
+      # pipe is too slow to aim inside 2 s. Its real B comes later.
+      if ($last -and $padAnswers -and -not $leaveAnswer -and $firstTo -eq 0) {
+        $deadline = (Get-Date).AddSeconds($gameSeconds)
+        while ((Count 1 'netplay: match result') -le $results[1]) {
+          if ((Get-Date) -gt $deadline) { throw "game ${game}: copy 1 never logged its result" }
+          Start-Sleep -Milliseconds 50
+        }
+        $mashed = Get-Date
+        Ctl 1 'pad 0 B:100 -:150' | Out-Null
+        Ctl 1 'pad 0 B:100 -:150' | Out-Null
+        $took = [int]((Get-Date) - $mashed).TotalMilliseconds
+        if ($took -gt 1800) { throw "game ${game}: the mash took $took ms, past the guard; the check proves nothing" }
+        "game ${game}: copy 1 mashed B twice within $took ms of its result"
+        Start-Sleep -Milliseconds (2600 - $took)
+        if ((Count 1 "the WIN's answers") -gt $answers[1]) { throw "game ${game}: copy 1's B inside the 2 s guard declined the rematch" }
+        "game ${game}: copy 1's B inside the guard declined nothing"
+      }
       WaitFor "game $game's result on both copies" $gameSeconds { (Count 0 'netplay: match result') -gt $results[0] -and (Count 1 'netplay: match result') -gt $results[1] }
       # A game that ends the first-to-N set offers no rematch: both copies
       # decline at once, and the WIN may be over before the status shows it.
@@ -219,18 +240,6 @@ try {
         if ($shots) {
           Start-Sleep -Milliseconds 700
           Shot "game$game-prompt-one-chose"
-        }
-        # Over the WIN the library's Branding::leaveGuardSeconds (2 s in SFV
-        # Ember) ignores Back to room for 2 s after the prompt opens, so a B
-        # left over from skipping the scenes declines nothing: this one is
-        # pressed inside the guard, must decide nothing, and the second B,
-        # after it, is the real answer.
-        if ($padAnswers -and $say[1] -eq 'no') {
-          Answer 1 'no'
-          Start-Sleep -Milliseconds 400
-          if (& $decided) { throw "game ${game}: copy 1's B inside the 2 s guard declined the rematch" }
-          "game ${game}: copy 1's B inside the guard declined nothing"
-          Start-Sleep -Milliseconds 1500
         }
         Answer 1 $say[1]
         WaitFor "both copies' decision over game $game's WIN" 30 {
