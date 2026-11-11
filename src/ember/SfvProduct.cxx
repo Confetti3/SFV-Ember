@@ -142,6 +142,10 @@ constexpr ember::ProductIdentity SfvEmber = {
 		// Rematch goes on over the room's results once the WIN is over, so a
 		// press that skips SFV's scenes never sends the pair to Ready by hand.
 		true,
+		// Over the WIN, Back to room and Character select count only 2 s after
+		// the prompt opens, so a press that skips SFV's scenes cannot decline
+		// the rematch in place (EMBER_LIBRARY.md section 58).
+		2.0,
 	},
 	L"SFVEmber",
 	// Settings and logs under %APPDATA%\SFVEmber, as SF4 Ember's are under
