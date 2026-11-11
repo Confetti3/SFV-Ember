@@ -220,6 +220,18 @@ try {
           Start-Sleep -Milliseconds 700
           Shot "game$game-prompt-one-chose"
         }
+        # Over the WIN the library's Branding::leaveGuardSeconds (2 s in SFV
+        # Ember) ignores Back to room for 2 s after the prompt opens, so a B
+        # left over from skipping the scenes declines nothing: this one is
+        # pressed inside the guard, must decide nothing, and the second B,
+        # after it, is the real answer.
+        if ($padAnswers -and $say[1] -eq 'no') {
+          Answer 1 'no'
+          Start-Sleep -Milliseconds 400
+          if (& $decided) { throw "game ${game}: copy 1's B inside the 2 s guard declined the rematch" }
+          "game ${game}: copy 1's B inside the guard declined nothing"
+          Start-Sleep -Milliseconds 1500
+        }
         Answer 1 $say[1]
         WaitFor "both copies' decision over game $game's WIN" 30 {
           foreach ($i in 0, 1) {
