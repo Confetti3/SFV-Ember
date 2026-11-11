@@ -186,6 +186,7 @@ try {
       $last = $game -eq $rematches + 1
       $results = @((Count 0 'netplay: match result'), (Count 1 'netplay: match result'))
       $answers = @((Count 0 "the WIN's answers"), (Count 1 "the WIN's answers"), (Count 2 "the WIN's answers"))
+      $scenes = @((Count 0 'the rematch prompt opens while the game plays its scenes'), (Count 1 'the rematch prompt opens while the game plays its scenes'))
       Start-Sleep 20
       Shot "game$game-fight"
       if ($quickAnswer) {
@@ -206,6 +207,11 @@ try {
         ($r0.prompt -and $r1.prompt -and $r0.offered -and $r1.offered) -or (& $decided)
       }
       $setEnded = & $decided
+      # The prompt opened at the deciding round, before the WIN (EMBER_LIBRARY.md 58).
+      if (-not $setEnded) {
+        foreach ($i in 0, 1) { if ((Count $i 'the rematch prompt opens while the game plays its scenes') -le $scenes[$i]) { throw "game ${game}: copy $i's prompt did not open before the WIN" } }
+        "game ${game}: both copies opened the prompt at the deciding round"
+      }
       if ($setEnded) {
         if (-not $last) { throw "game ${game}'s WIN offered no rematch (did the set end early?)" }
         "game ${game}: no rematch offered (the set is over); both copies declined"

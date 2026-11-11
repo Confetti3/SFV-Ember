@@ -120,6 +120,15 @@ public:
 	// (false).
 	bool TakeEnd(const mod::SfvAdapter& game, const RollbackSession& session);
 
+	// After the step of a fight frame: once the match is decided on a
+	// confirmed frame, the prompt opens while the game still plays its
+	// scenes (the last KO, the winner's pose and quote) before its WIN
+	// (EMBER_LIBRARY.md section 58). Answers given there are the runtime's
+	// parked Ready, which the held frames carry once the WIN comes; nothing
+	// of the game or of the inputs it is given changes, so the copies need
+	// not agree on when it opens.
+	void NoteDecided(const mod::SfvAdapter& game, const RollbackSession& session);
+
 	// The battle stands still over its WIN, for the answers.
 	bool Prompting() const { return prompt_.active; }
 	// This copy's bits for the next held frame (RematchDecision's LocalBits).
@@ -156,8 +165,11 @@ public:
 	// The adapter's view (SfvGame's Battle): the result held for the prompt,
 	// the WIN being shown, each side's Rematch as the inputs carry it, and
 	// the games this battle played and went on from.
-	bool ResultHeld() const { return prompt_.active && prompt_.offered && !prompt_.reported && !watching_; }
-	bool ResultScreenShown() const { return prompt_.active; }
+	bool ResultHeld() const { return (prompt_.active && prompt_.offered && !prompt_.reported && !watching_) || ResultScenesPlaying(); }
+	bool ResultScreenShown() const { return prompt_.active || ResultScenesPlaying(); }
+	// The decided match's scenes before the WIN, with the rematch offered
+	// (NoteDecided): the prompt is open, its countdown waits for the WIN.
+	bool ResultScenesPlaying() const { return scenes_.active && scenes_.offered && !prompt_.active && !watching_; }
 	unsigned RematchChoices() const { return prompt_.active ? prompt_.choices : 0; }
 	// Each side whose input declined, from the held frame that decided on it
 	// (a decline leaves at once) until the next WIN or battle.
@@ -195,6 +207,14 @@ private:
 	bool streamLossTold_ = false; // a watcher's stream failure was reported
 	bool matchEnded_ = false;  // its match reached its end (the result was taken)
 	Prompt prompt_;
+	// The decided match before its WIN (NoteDecided).
+	struct Scenes {
+		bool active = false;   // decided on a confirmed frame; the WIN not yet taken
+		bool offered = false;  // this copy's room offers the rematch in place
+		bool taken = false;    // this decided match's WIN was taken: no second prompt for it
+		int seen = -1;         // the frame it was first seen decided, in the current timeline
+	};
+	Scenes scenes_;
 	unsigned declines_ = 0;    // RematchDeclines
 	unsigned gamesInPlace_ = 0;
 	bool linkWarned_ = false;  // the warning NoteLink last told of

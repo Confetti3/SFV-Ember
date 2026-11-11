@@ -198,6 +198,7 @@ public:
 	// result held there for the post-match prompt, and the WIN itself.
 	bool ResultHeld() const override { return s_battle.room && s_battle.room->ResultHeld(); }
 	bool ResultScreenShown() const override { return s_battle.room && s_battle.room->ResultScreenShown(); }
+	bool ResultScenesPlaying() const override { return s_battle.room && s_battle.room->ResultScenesPlaying(); }
 	// The result taken on the match end's confirmed frame; Abort before that
 	// and once a rematch went on from it.
 	sf4e::room::MatchResult GameResult() const override { return RoomGameResult(); }
