@@ -287,6 +287,8 @@ std::optional<mod::MatchPicks> PicksOf(const replay::Header& h)
 		picks.players[side].vTrigger = p.vTrigger;
 		// As the recording loaded: its costume codes, or none.
 		picks.players[side].loadCode = p.loadCode;
+		// As the recording was drawn (Tiny fighters, EMBER_LIBRARY.md section 59).
+		picks.players[side].tiny = p.size == sfve::picks::kSizeTiny;
 	}
 	if (picks.players[0].loadCode < 0 || picks.players[1].loadCode < 0) picks.players[0].loadCode = picks.players[1].loadCode = mod::kNoLoadCode;
 	picks.rules.stage = sf4e::platform::Utf8ToWide(h.stageCode.c_str());
@@ -549,6 +551,7 @@ bool RecordingHeader(int slot, std::uint32_t seed, int delay, replay::Header* ou
 		p.vSkill = picks->players[side].vSkill;
 		p.vTrigger = picks->players[side].vTrigger;
 		p.loadCode = picks->players[side].loadCode;
+		p.size = room->picks[side].size == sfve::picks::kSizeTiny ? sfve::picks::kSizeTiny : sfve::picks::kSizeNormal;
 	}
 	h.stage = room->stage;
 	h.stageCode = sf4e::platform::WideToUtf8(picks->rules.stage);

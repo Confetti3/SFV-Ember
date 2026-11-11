@@ -146,7 +146,10 @@ public:
 		const PlayerPick pick = dummy ? CurrentDummy() : CurrentPick();
 		const std::string error =
 			PickAvailable(pick, snapshot) ? std::string() : loc::T("runtime.selection_combination_unavailable");
-		(dummy ? dummyScreen_ : screen_).Draw(snapshot.canEditSelection, stage && !dummy, error, snapshot.unavailableStages);
+		// The Size row only in a room whose host allowed tiny fighters
+		// (the snapshot's room is empty out of a room: Training, Home).
+		(dummy ? dummyScreen_ : screen_)
+			.Draw(snapshot.canEditSelection, stage && !dummy, error, snapshot.unavailableStages, snapshot.Room().tinyFighters);
 	}
 
 private:

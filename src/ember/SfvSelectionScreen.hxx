@@ -59,14 +59,18 @@ public:
 	// readied, if it cannot. `unavailableStages` (the runtime's): the stages
 	// the stage row cannot offer (SfvCatalog's StageOptions). Writes a
 	// changed pick back to SfvPick.
-	void Draw(bool editable, bool stageEditable, const std::string& error, const std::vector<std::int64_t>& unavailableStages);
+	// `tinyAllowed`: the room's Tiny fighters allowed rule is on, so the
+	// screen shows the Size row (EMBER_LIBRARY.md section 59).
+	void Draw(bool editable, bool stageEditable, const std::string& error, const std::vector<std::int64_t>& unavailableStages,
+		bool tinyAllowed = false);
 
 	// What Draw shows and does, without drawing, so the pick screen's
 	// journeys can be walked without a frame. The rows for `pick`, with the
 	// stage row (`withStage`, the player's screen; the dummy's has none)
-	// listing `stageOptions`.
+	// listing `stageOptions`. `withSize`: the Size row (Normal or Tiny) after
+	// the loadout's rows, for a room that allows tiny fighters.
 	static std::vector<sf4e::ui::MenuEntry> Rows(const PlayerPick& pick, bool editable, bool withStage, bool stageEditable,
-		const std::vector<StageOption>& stageOptions);
+		const std::vector<StageOption>& stageOptions, bool withSize = false);
 	// The pick with the row's change made; false when the action changes
 	// nothing. A stage is one of `stageOptions`' PlayableIds.
 	static bool Apply(const sf4e::ui::MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions);

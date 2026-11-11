@@ -71,9 +71,12 @@ private:
 
 json PlayerJson(const Player& p)
 {
-	return {{"name", p.name}, {"fighter", p.fighter}, {"costume", p.costume}, {"colour", p.colour}, {"code", p.code},
+	json j = {{"name", p.name}, {"fighter", p.fighter}, {"costume", p.costume}, {"colour", p.colour}, {"code", p.code},
 		{"launchCostume", p.launchCostume}, {"launchColour", p.launchColour}, {"vSkill", p.vSkill}, {"vTrigger", p.vTrigger},
 		{"loadCode", p.loadCode}};
+	// Only a Tiny side writes it, so every other header is what it was.
+	if (p.size != 0) j["size"] = p.size;
+	return j;
 }
 
 json HeaderJson(const Header& h)
@@ -139,6 +142,8 @@ Player ReadPlayer(const json& j)
 	p.vTrigger = FieldOr<int>(j, "vTrigger", 0);
 	p.loadCode = FieldOr<std::int64_t>(j, "loadCode", -1);
 	if (p.loadCode < -1 || p.loadCode > 0xFFFFFFFFll) p.loadCode = -1;
+	p.size = FieldOr<int>(j, "size", 0);
+	if (p.size != 0 && p.size != 1) p.size = 0;
 	return p;
 }
 

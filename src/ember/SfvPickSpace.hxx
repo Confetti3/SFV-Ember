@@ -87,8 +87,14 @@ std::optional<Loadout> LoadoutAt(int index);
 std::optional<Loadout> LoadoutIn(const sf4e::selection::Pick& pick);
 Loadout LoadoutOf(const sf4e::selection::Pick& pick);
 void SetLoadout(sf4e::selection::Pick& pick, Loadout loadout);
-// The two picks hold the same fighter, look, Ultra slot and handicap: every
-// part of a pick SFV's fitting can change.
+// The pick's model size (selection::Pick::size, which rides in the wire pick's
+// spare byte): normal, or Tiny, a Tiny fighters room's choice (EMBER_LIBRARY.md
+// section 59). The picture only. FitPick keeps 0 and 1 and makes any other
+// number 0, on every copy alike; ValidPick refuses any other number.
+constexpr int kSizeNormal = 0;
+constexpr int kSizeTiny = 1;
+// The two picks hold the same fighter, look, Ultra slot, handicap and size:
+// every part of a pick SFV's fitting can change.
 bool SameFitting(const sf4e::selection::Pick& a, const sf4e::selection::Pick& b);
 // "vskill II vtrigger I", for the logs and the pipe.
 std::string LoadoutText(Loadout loadout);

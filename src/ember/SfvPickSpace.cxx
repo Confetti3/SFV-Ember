@@ -54,7 +54,7 @@ void SetLoadout(sf4e::selection::Pick& pick, Loadout loadout)
 bool SameFitting(const sf4e::selection::Pick& a, const sf4e::selection::Pick& b)
 {
 	return a.fighter == b.fighter && a.costume == b.costume && a.color == b.color && a.ultra == b.ultra &&
-		a.handicap == b.handicap;
+		a.handicap == b.handicap && a.size == b.size;
 }
 
 std::optional<int> VoiceIn(const sf4e::selection::Pick& pick)
@@ -227,7 +227,7 @@ bool ValidPick(const PickSpace& space, const sf4e::selection::Pick& pick)
 	const Costume* costume = CostumeAt(space, pick.fighter, pick.costume);
 	const std::optional<Loadout> loadout = LoadoutIn(pick);
 	return costume && HasColour(*costume, pick.color) && loadout && HasLoadout(*FighterAt(space, pick.fighter), *loadout) &&
-		pick.handicap == 0;
+		pick.handicap == 0 && (pick.size == kSizeNormal || pick.size == kSizeTiny);
 }
 
 bool ValidStage(const PickSpace& space, std::int64_t stage)
@@ -248,6 +248,7 @@ bool FitPick(const PickSpace& space, sf4e::selection::Pick& pick)
 	if (costume && !HasColour(*costume, pick.color)) pick.color = costume->colours.front();
 	SetLoadout(pick, fighter ? FitLoadout(*fighter, LoadoutOf(pick)) : Loadout{});
 	pick.handicap = 0;
+	if (pick.size != kSizeNormal && pick.size != kSizeTiny) pick.size = kSizeNormal;
 	return !SameFitting(pick, before);
 }
 

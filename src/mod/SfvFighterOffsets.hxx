@@ -75,6 +75,44 @@ constexpr CodeSite kProjectileDie{"ProjectileDie", 0x4576B0,
 constexpr CodeSite kDamage{"Damage", 0x361670,
 	{0x44, 0x89, 0x4C, 0x24, 0x20, 0x55, 0x53, 0x56, 0x57, 0x41, 0x54, 0x41, 0x56, 0x41, 0x57, 0x48}};
 
+// The fighter's picture: Ember's Tiny fighters (EMBER_LIBRARY.md section 59)
+// draws a side's model small, on screen only. Each site's bytes are read from
+// the exe; BuildCheck verifies them, so another build hooks nothing.
+//
+// void CharaVisualPartUpdate(CharaVisualPart*) (__fastcall): once per
+// presented frame per fighter on the game thread; pushes the fighter's
+// transform into its Unreal actor. Hooked: the original runs first, then a
+// tiny side's mesh is scaled.
+constexpr CodeSite kCharaVisualUpdate{"CharaVisualUpdate", 0x3A06C0,
+	{0x40, 0x55, 0x53, 0x41, 0x55, 0x41, 0x57, 0x48, 0x8D, 0xAC, 0x24, 0x98, 0xFD, 0xFF, 0xFF, 0x48}};
+// void USceneComponent::SetWorldScale3D(USceneComponent*, const float* xyz)
+// (UE4: divides by the parent's scale and sets the relative scale). The game
+// calls it on the fighter's mesh component itself (rva 0x3A16C4). Called, not
+// hooked.
+constexpr CodeSite kSetWorldScale3D{"SetWorldScale3D", 0x1BE8B40,
+	{0x48, 0x89, 0x5C, 0x24, 0x18, 0x57, 0x48, 0x83, 0xEC, 0x70, 0x48, 0x8B, 0x05, 0x2F, 0x97, 0xDD}};
+// void ActorSetMeshTransform(AActor*, const __m128 transform[3]) (__fastcall):
+// the actor's whole-mesh transform, [0] the rotation quaternion, [1] the
+// translation, [2] the scale (xyz). Cinematics (Critical Arts and the like)
+// may set the mesh's transform through it after the per-frame update above.
+// Hooked: a tiny side's actor gets the scale times kTinyScale.
+constexpr CodeSite kActorSetMeshTransform{"ActorSetMeshTransform", 0xE5BD90,
+	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x40, 0x48, 0x8B, 0xD9, 0x48, 0x8B, 0x89}};
+
+namespace visual {
+
+// CharaVisualPart.
+constexpr uint32_t kWantedScale = 0xD0;     // float3 (+0xD0, +0xD4, +0xD8): the scale the game wants; its setter (rva 0x3A3C20) writes 16 bytes here
+constexpr uint32_t kOwnerObject = 0x98;     // the owning fighter's weak pointer: the CharaUnit* ...
+constexpr uint32_t kOwnerControl = 0xA0;    // ... and its control block (the game's lock, rva 0x315870, reads both)
+constexpr uint32_t kActor = 0xA90;          // AActor* the part updates
+// The control block's use count (int): the object is alive while it is above 0.
+constexpr uint32_t kControlUseCount = 8;
+// AActor: the mesh component the game scales itself.
+constexpr uint32_t kActorMesh = 0x3A8;
+
+} // namespace visual
+
 namespace fighter {
 
 // CharaUnit (unit::kCharaUnitType).

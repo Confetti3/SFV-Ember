@@ -466,6 +466,8 @@ Capabilities SfvCapabilities()
 	caps.spectators = true;
 	caps.replays = true;
 	caps.training = true;
+	// A private room's host may allow tiny fighters (TinyFighters, EMBER_LIBRARY.md section 59).
+	caps.tinyFighters = true;
 	caps.settingsFeatures.shortcutHint = true;
 	return caps;
 }

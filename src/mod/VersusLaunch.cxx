@@ -8,6 +8,7 @@
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
+#include "mod/TinyFighters.hxx"
 
 #include <stdlib.h>
 #include <string.h>
@@ -70,6 +71,11 @@ bool s_linkedLoading = false;
 bool s_linkedPractice = false; // ...and it was a Practice room's
 // The same for a replay's launch (TakeReplayBattle).
 bool s_replayLoading = false;
+// The sides that launch draws small (MatchPicks::players' tiny), kept until
+// its battle binds: a room battle the main menu never closed is closed as the
+// new one binds (RoomBattle::Bind), which clears the sides, so the take
+// below sets them again.
+std::array<bool, 2> s_loadingTiny = {false, false};
 // The costume codes that launch gave both players (LoadingCodes).
 std::optional<std::array<std::uint32_t, 2>> s_loadingCodes;
 
@@ -305,6 +311,8 @@ void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 		if (!why) return true; // still loading
 		Log("launch: failed: %s", why);
 		s_linkedLoading = s_replayLoading = false; // no battle came for it
+		s_loadingTiny = {false, false};
+		ClearTinyFighters();
 		if (onFailed) onFailed(why);
 		return false;
 	});
@@ -346,6 +354,11 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	s_linkedLoading = picks.linked;
 	s_replayLoading = picks.replay;
 	s_linkedPractice = picks.linked && picks.practice;
+	// The sides drawn small: a room's or a replay's battle only, from the
+	// moment it loads; any other launch (the pipe's, Training) is normal.
+	const bool drawn = picks.linked || picks.replay;
+	s_loadingTiny = {drawn && picks.players[0].tiny, drawn && picks.players[1].tiny};
+	SetTinyFighters(s_loadingTiny[0], s_loadingTiny[1]);
 	s_loadingCodes.reset();
 	if ((picks.linked || picks.replay) && picks.players[0].loadCode >= 0 && picks.players[1].loadCode >= 0) {
 		s_loadingCodes = std::array<std::uint32_t, 2>{(std::uint32_t)picks.players[0].loadCode, (std::uint32_t)picks.players[1].loadCode};
@@ -654,6 +667,10 @@ bool TakeLinkedBattle(bool* practice)
 	const bool linked = s_linkedLoading;
 	if (practice) *practice = linked && s_linkedPractice;
 	s_linkedLoading = s_linkedPractice = false;
+	// A battle that is no room's and no replay's (a native menu's, Training)
+	// draws every fighter normal; a room's draws the sides its launch said.
+	if (linked) SetTinyFighters(s_loadingTiny[0], s_loadingTiny[1], false);
+	else if (!s_replayLoading) ClearTinyFighters();
 	return linked;
 }
 
@@ -661,6 +678,7 @@ bool TakeReplayBattle()
 {
 	const bool replay = s_replayLoading;
 	s_replayLoading = false;
+	if (replay) SetTinyFighters(s_loadingTiny[0], s_loadingTiny[1], false);
 	return replay;
 }
 

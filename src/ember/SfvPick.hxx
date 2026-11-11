@@ -50,8 +50,14 @@ PlayerPick SetDummy(const PlayerPick& dummy);
 
 // The pick in a room command (Ready, the room's pick updates), as the wire
 // carries it, with this copy's player's voice for its fighter (SfvCatalog's
-// OwnVoice, picks::SetVoice). The stored pick carries none.
+// OwnVoice, picks::SetVoice). The stored pick carries none. Its size (Tiny)
+// goes only while the room's Tiny fighters allowed rule is on (SizeToSend).
 void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command);
+
+// The model size a pick sends (EMBER_LIBRARY.md section 59): Tiny only where
+// the room allows tiny fighters, else normal, whatever the stored pick says. A
+// pick keeps its size while the rule is off, so a rule turned back on finds it.
+int SizeToSend(int storedSize, bool roomAllowsTiny);
 
 // "RYU costume 0 colour 1 vskill II vtrigger I stage S25", by the game's
 // codes, for the status and the logs ("stage random" for Random).

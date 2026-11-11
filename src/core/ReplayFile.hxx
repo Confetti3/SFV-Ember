@@ -67,6 +67,9 @@ struct Player {
 	// section 55): the game's input bits, or -1 where the battle loaded with
 	// nothing held, as every header written before codes reads.
 	std::int64_t loadCode = -1;
+	// The player picked Tiny (EMBER_LIBRARY.md section 59): the playback draws
+	// the side small. Written only when set; a header without it reads 0.
+	int size = 0;
 };
 
 // One game of the battle, as the game judged it on its match end's frame.

@@ -39,6 +39,7 @@
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
 #include "mod/ModConfig.hxx"
+#include "mod/TinyFighters.hxx"
 #include "mod/MultiInstance.hxx"
 #include "mod/NetGuard.hxx"
 #include "mod/NetplayMode.hxx"
@@ -293,6 +294,9 @@ extern "C" int SfveStart(int beforeGameCode)
 	InstallGameExit(base);
 	// The HUD's plate labels: the netplay mode's shell names them (SfvHud).
 	InstallHudText(base);
+	// A Tiny fighters room's tiny sides are drawn small (EMBER_LIBRARY.md
+	// section 59); with no tiny side the hooks change nothing.
+	InstallTinyFighters(base);
 	// The host for Ember's interface (its shell is plugged in below, with
 	// rooms on); the game's content lists, on the pipe. Its swap chain hooks
 	// are one set, so without the overlay none of them is live and the pads

@@ -96,14 +96,24 @@ void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command)
 	// The costume code the player chose, with the marker that says this copy
 	// knows codes even for none (picks::LoadCodeIn, SfvCatalog's LaunchPicks).
 	picks::SetLoadCode(pick.pick, picks::LoadCodeIn(pick.pick).value_or(0));
+	// The size only where the room allows tiny fighters (a Training or Home
+	// pick is never sent, and a room without the rule sees 0).
+	const auto runtime = sf4e::NetplayFacade::GetRuntimeSnapshotShared();
+	pick.pick.size = SizeToSend(pick.pick.size, runtime && runtime->Room().tinyFighters);
 	sf4e::selection::ToNative(pick.pick, command.character);
 	command.stage = pick.stage;
+}
+
+int SizeToSend(int storedSize, bool roomAllowsTiny)
+{
+	return roomAllowsTiny && storedSize == picks::kSizeTiny ? picks::kSizeTiny : picks::kSizeNormal;
 }
 
 std::string PickText(const PlayerPick& pick)
 {
 	return FighterCode(pick.pick.fighter) + " costume " + std::to_string(pick.pick.costume) + " colour " +
-		std::to_string(pick.pick.color) + " " + picks::LoadoutText(picks::LoadoutOf(pick.pick)) + " stage " +
+		std::to_string(pick.pick.color) + " " + picks::LoadoutText(picks::LoadoutOf(pick.pick)) +
+		(pick.pick.size == picks::kSizeTiny ? " size tiny" : "") + " stage " +
 		(pick.stage == picks::kRandomStage ? "random" : StageCode(pick.stage));
 }
 

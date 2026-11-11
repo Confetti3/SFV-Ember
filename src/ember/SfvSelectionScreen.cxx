@@ -32,6 +32,9 @@ constexpr const char* kColour = "color";
 constexpr const char* kCostumeCode = "costume-code";
 constexpr const char* kVSkill = "vskill";
 constexpr const char* kVTrigger = "vtrigger";
+// The model size, Normal or Tiny (picks::kSizeNormal, kSizeTiny): a room that
+// allows tiny fighters only (EMBER_LIBRARY.md section 59).
+constexpr const char* kSize = "size";
 constexpr const char* kStage = "stage";
 constexpr const char* kDone = "done";
 
@@ -97,6 +100,17 @@ std::vector<int> LoadCodeIds()
 	std::vector<int> ids;
 	for (int index = 0; index < picks::kLoadCodeCount; index++) ids.push_back(index);
 	return ids;
+}
+
+// The sizes Left and Right step through, and the words for each.
+std::vector<int> SizeIds()
+{
+	return {picks::kSizeNormal, picks::kSizeTiny};
+}
+
+std::string SizeName(int size)
+{
+	return loc::T(size == picks::kSizeTiny ? "selection.size.tiny" : "selection.size.normal");
 }
 
 // A value row Left and Right step; with `choices`, Select opens them all.
@@ -206,7 +220,7 @@ bool StepTableSelection(const sf4e::ui::ShellAction::SelectionStep& step, bool c
 }
 
 std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool editable, bool withStage, bool stageEditable,
-	const std::vector<StageOption>& stageOptions)
+	const std::vector<StageOption>& stageOptions, bool withSize)
 {
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const char* adjusts = editable ? "selection.adjust_saves" : "selection.locked_detail";
@@ -257,6 +271,12 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 	for (int index : LoadCodeIds()) codes.push_back({OptionId(index), LoadCodeName(index), std::string(), editable});
 	rows.push_back(StepRow(kCostumeCode, "selection.personal_action", LoadCodeName(code), adjusts, editable, std::move(codes), code));
 	for (const LoadoutRow& row : kLoadoutRows) rows.push_back(PartRow(row, pick.pick, editable, adjusts));
+	// A tiny fighters room's own choice: the picture only, nothing of the fight.
+	if (withSize) {
+		std::vector<MenuChoice> sizes;
+		for (int size : SizeIds()) sizes.push_back({OptionId(size), SizeName(size), std::string(), editable});
+		rows.push_back(StepRow(kSize, "selection.size", SizeName(pick.pick.size), adjusts, editable, std::move(sizes), pick.pick.size));
+	}
 	if (withStage) {
 		rows.push_back(StepRow(kStage, "selection.stage", sf4e::ui::StageLabel(pick.stage),
 			!editable ? "selection.locked_detail" : stageEditable ? "selection.p1_stage" : "selection.only_p1_stage",
@@ -289,6 +309,10 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const
 			int code = picks::LoadCodeIn(pick.pick).value_or(0);
 			sf4e::ui::Step(code, LoadCodeIds(), action.delta);
 			picks::SetLoadCode(pick.pick, code);
+		} else if (action.id == kSize) {
+			int size = pick.pick.size;
+			sf4e::ui::Step(size, SizeIds(), action.delta);
+			pick.pick.size = size;
 		}
 	} else if (action.kind == MenuAction::Chosen) {
 		const std::optional<int> option = OptionOf(action.text);
@@ -301,14 +325,15 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const
 			pick.pick.color = *option;
 		} else if (action.id == kStage && pickable(stageChoices)) pick.stage = *option;
 		else if (action.id == kCostumeCode && pickable(LoadCodeIds())) picks::SetLoadCode(pick.pick, *option);
+		else if (action.id == kSize && pickable(SizeIds())) pick.pick.size = *option;
 	}
 	return pick.pick.fighter != before.pick.fighter || pick.pick.costume != before.pick.costume ||
 		pick.pick.color != before.pick.color || pick.stage != before.stage ||
-		pick.pick.personalAction != before.pick.personalAction;
+		pick.pick.personalAction != before.pick.personalAction || pick.pick.size != before.pick.size;
 }
 
 void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::string& error,
-	const std::vector<std::int64_t>& unavailableStages)
+	const std::vector<std::int64_t>& unavailableStages, bool tinyAllowed)
 {
 	auto& nav = menu_.navigation;
 	// The shell says where Back goes and which of its shortcuts this screen
@@ -330,7 +355,7 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	menu_.shortcutHints = embedded.shortcutHints;
 	PlayerPick pick = dummy_ ? CurrentDummy() : CurrentPick();
 	const std::vector<StageOption> stageOptions = StageOptions(unavailableStages);
-	const std::vector<MenuEntry> rows = Rows(pick, editable, !dummy_, stageEditable && !dummy_, stageOptions);
+	const std::vector<MenuEntry> rows = Rows(pick, editable, !dummy_, stageEditable && !dummy_, stageOptions, tinyAllowed && !dummy_);
 	const char* status = loc::T(editable ? "selection.status_adjust" : "selection.locked_detail");
 	// The pane beside the rows is the pick's preview, as wide as the fighter's
 	// banner. The choice dialog draws an option's detail under its list,
@@ -389,6 +414,8 @@ PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::stri
 		ready ? FitLookWithin(look) : FitToSpec(look);
 	} else if (rowId == kColour && Contains(ColourIds(look.fighter, look.costume), *option)) {
 		look.color = *option;
+	} else if (rowId == kSize && Contains(SizeIds(), *option)) {
+		look.size = *option;
 	} else if (rowId == kStage) {
 		shown.stage = *option;
 	}

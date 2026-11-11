@@ -199,7 +199,7 @@ add_library(sfve_ember_test_mod OBJECT
     src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/EntitlementGrant.cxx src/mod/FighterReader.cxx
     src/mod/GameArt.cxx src/mod/GameInput.cxx
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
-    src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx
+    src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx src/mod/TinyFighters.cxx
     src/mod/ModConfig.cxx src/mod/PadLayer.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx
     src/mod/SfvRegionNames.cxx src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx src/mod/XInputHooks.cxx)
 target_link_libraries(sfve_ember_test_mod PUBLIC sfve_ember minhook::minhook)
@@ -216,6 +216,7 @@ add_executable(sfve_ember_tests
     tests/SfvSelectionScreenTests.cxx
     tests/GameContentTests.cxx
     tests/EntitlementGrantTests.cxx
+    tests/TinyFightersTests.cxx
     tests/ProductIdentityTests.cxx
     tests/GameLocatorTests.cxx
     tests/SelectionArtTests.cxx
@@ -307,6 +308,7 @@ add_library(sfv_ember SHARED
     src/mod/EntitlementGrant.cxx
     src/mod/GameExit.cxx
     src/mod/FighterReader.cxx
+    src/mod/TinyFighters.cxx
     src/mod/HudText.cxx)
 target_link_libraries(sfv_ember PRIVATE sfve_ember dbghelp ember_sdl_pads_x64 SDL3::SDL3-static)
 target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")

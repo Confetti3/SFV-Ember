@@ -6,6 +6,7 @@
 #include "mod/MatchEnd.hxx"
 #include "mod/MatchResult.hxx"
 #include "mod/SfvAdapter.hxx"
+#include "mod/TinyFighters.hxx"
 #include "mod/VersusLaunch.hxx"
 
 #include "common/GameCatalog.hxx"
@@ -412,6 +413,8 @@ void RoomBattle::Report(bool continued)
 
 bool RoomBattle::Close(RollbackSession* session)
 {
+	// Back in the room (or at the main menu): nothing is drawn small now.
+	mod::ClearTinyFighters();
 	if (!active_) return false;
 	FlushHeld("the battle closed");
 	if (replay_) {

@@ -606,6 +606,8 @@ MatchLaunch LaunchPicks(const RoomMatch& match)
 		picks.players[side] = FighterPickOf(match.picks[side]);
 		// Never this copy's options: the other copy's are not the same.
 		picks.players[side].voice = sfve::picks::VoiceOf(match.picks[side]);
+		// Drawn small on every copy of the room's battle, the watchers' and a replay's too.
+		picks.players[side].tiny = match.picks[side].size == sfve::picks::kSizeTiny;
 	}
 	// The costume codes (picks::LoadCodeIn) play only when both copies know
 	// them: an older copy loads with nothing held, so this one must too.

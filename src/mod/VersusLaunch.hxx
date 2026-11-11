@@ -66,6 +66,10 @@ struct FighterPick {
 	// itself. A launch gives both players a code or neither (SfvCatalog's
 	// LaunchPicks), so two copies never load one battle two ways.
 	std::int64_t loadCode = kNoLoadCode;
+	// The player picked Tiny (selection::Pick::size 1): a room's or a replay's
+	// battle draws this side small (TinyFighters). Presentation only: nothing
+	// written to the game's launch depends on it.
+	bool tiny = false;
 };
 
 // The voice a launch writes for `pick`: its own where it is one of the

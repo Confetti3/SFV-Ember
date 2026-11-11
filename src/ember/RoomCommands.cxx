@@ -22,6 +22,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace sfve::adapter {
 
@@ -182,13 +183,40 @@ std::string StageRefusalText(StageRefusal refusal)
 	return {};
 }
 
-std::string Pick(const std::string& args)
+// `pick`'s optional "size tiny|normal" token, taken out of `args` where it
+// stands: the size it names, or none for no such token. False for a size word
+// that is neither (the token is then still taken out).
+bool TakeSizeToken(std::string& args, std::optional<int>* size)
+{
+	std::istringstream in(args);
+	std::vector<std::string> words;
+	for (std::string word; in >> word;) words.push_back(word);
+	std::string kept;
+	bool valid = true;
+	for (size_t i = 0; i < words.size(); i++) {
+		if (words[i] == "size") {
+			const std::string value = i + 1 < words.size() ? words[++i] : std::string();
+			if (value == "tiny") *size = picks::kSizeTiny;
+			else if (value == "normal") *size = picks::kSizeNormal;
+			else valid = false;
+			continue;
+		}
+		kept += (kept.empty() ? "" : " ") + words[i];
+	}
+	args = kept;
+	return valid;
+}
+
+std::string Pick(const std::string& pipeArgs)
 {
 	if (!EmberRuntimeRunning()) return "error Ember's runtime is not running, so the catalog is not filled";
+	std::string args = pipeArgs;
+	std::optional<int> size;
+	const bool sizeValid = TakeSizeToken(args, &size);
 	mod::FighterPick fighter;
 	mod::MatchRules rules;
-	if (!mod::ParseSetup(args, &fighter, &rules) || fighter.fighter.empty()) {
-		return "error usage: pick CODE[:costume[:colour[:vskill[:vtrigger]]]] [STAGE|RND] (vskill and vtrigger 1|2)";
+	if (!sizeValid || !mod::ParseSetup(args, &fighter, &rules) || fighter.fighter.empty()) {
+		return "error usage: pick CODE[:costume[:colour[:vskill[:vtrigger]]]] [STAGE|RND] [size tiny|normal] (vskill and vtrigger 1|2)";
 	}
 	const std::optional<int> id = FighterId(fighter.fighter);
 	if (!id) return "error that fighter is not in this game's list";
@@ -206,6 +234,8 @@ std::string Pick(const std::string& args)
 	// ParseSetup takes only 1 or 2 for each, so the numbers make a loadout.
 	const picks::Loadout loadout = *picks::LoadoutOfNumbers(fighter.vSkill, fighter.vTrigger);
 	picks::SetLoadout(pick.pick, loadout);
+	// A size left out stays; Tiny is sent only in a room that allows it (AddPickTo).
+	if (size) pick.pick.size = *size;
 	// The store fits the pick to the catalog, as for the shell's picks: a
 	// V-Skill or V-Trigger the fighter does not have becomes I.
 	const PlayerPick asked = pick;
