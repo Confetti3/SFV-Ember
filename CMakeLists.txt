@@ -84,6 +84,7 @@ add_executable(sfve_tests
     tests/StateRegionsTests.cxx
     tests/SyncTestTests.cxx
     tests/RollbackSessionTests.cxx
+    tests/RollbackCostTests.cxx
     tests/StartAgreementTests.cxx
     tests/NetPolicyTests.cxx
     tests/MatchResultTests.cxx

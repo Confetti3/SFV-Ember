@@ -1,0 +1,96 @@
+diff --git a/src/include/ggponet.h b/src/include/ggponet.h
+--- a/src/include/ggponet.h
++++ b/src/include/ggponet.h
+@@ -520,6 +520,20 @@
+  */
+ GGPO_API GGPOErrorCode __cdecl ggpo_get_last_confirmed_frame(GGPOSession *,
+                                                            int *frame);
++
++/*
++ * Read-only, game-thread accessor for the last frame whose inputs every
++ * connected player has given as of now: the local players' as added, the
++ * remote players' as received by the last poll, which also rolled back any
++ * misprediction among them.  ggpo_get_last_confirmed_frame is the same
++ * number as of the last poll; this one also counts the inputs added since,
++ * so it is never behind it.  A rollback starts after it, and a dropped
++ * peer's resimulation no earlier than it.  Returns -1 until input is
++ * confirmed; backends other than peer-to-peer return UNSUPPORTED.  This
++ * call does not poll, advance, or change pacing.
++ */
++GGPO_API GGPOErrorCode __cdecl ggpo_get_confirmed_input_frame(GGPOSession *,
++                                                            int *frame);
+ 
+ /*
+  * Spectator sessions only: the number of confirmed frames received from the
+diff --git a/src/lib/ggpo/backends/backend.h b/src/lib/ggpo/backends/backend.h
+--- a/src/lib/ggpo/backends/backend.h
++++ b/src/lib/ggpo/backends/backend.h
+@@ -24,6 +24,7 @@
+    virtual GGPOErrorCode Logv(const char *fmt, va_list list) { ::Logv(fmt, list); return GGPO_OK; }
+ 
+    virtual GGPOErrorCode GetLastConfirmedFrame(int *frame) { return GGPO_ERRORCODE_UNSUPPORTED; }
++   virtual GGPOErrorCode GetConfirmedInputFrame(int *frame) { return GGPO_ERRORCODE_UNSUPPORTED; }
+    virtual GGPOErrorCode GetSpectatorBacklog(int *frames) { return GGPO_ERRORCODE_UNSUPPORTED; }
+    virtual GGPOErrorCode SetFrameDelay(GGPOPlayerHandle player, int delay) { return GGPO_ERRORCODE_UNSUPPORTED; }
+    virtual GGPOErrorCode SetInputsIgnored(bool ignored) { return GGPO_ERRORCODE_UNSUPPORTED; }
+diff --git a/src/lib/ggpo/backends/p2p.cpp b/src/lib/ggpo/backends/p2p.cpp
+--- a/src/lib/ggpo/backends/p2p.cpp
++++ b/src/lib/ggpo/backends/p2p.cpp
+@@ -549,6 +549,27 @@
+ 
+ 
+ GGPOErrorCode
++Peer2PeerBackend::GetConfirmedInputFrame(int *frame)
++{
++   /*
++    * What Poll2Players would confirm now, without polling: the least last
++    * frame of the players still connected.  With more than two players the
++    * endpoints' views count too (PollNPlayers), so the last poll's number
++    * is given instead.
++    */
++   int confirmed = MAX_INT;
++   if (_num_players <= 2) {
++      for (int i = 0; i < _num_players; i++) {
++         if (!_local_connect_status[i].disconnected) {
++            confirmed = MIN(_local_connect_status[i].last_frame, confirmed);
++         }
++      }
++   }
++   *frame = confirmed == MAX_INT ? _sync.GetLastConfirmedFrame() : confirmed;
++   return GGPO_OK;
++}
++
++GGPOErrorCode
+ Peer2PeerBackend::GetNetworkStats(GGPONetworkStats *stats, GGPOPlayerHandle player)
+ {
+    int queue;
+diff --git a/src/lib/ggpo/backends/p2p.h b/src/lib/ggpo/backends/p2p.h
+--- a/src/lib/ggpo/backends/p2p.h
++++ b/src/lib/ggpo/backends/p2p.h
+@@ -30,6 +30,7 @@
+    virtual GGPOErrorCode DisconnectPlayer(GGPOPlayerHandle handle);
+    virtual GGPOErrorCode GetNetworkStats(GGPONetworkStats *stats, GGPOPlayerHandle handle);
+    virtual GGPOErrorCode GetLastConfirmedFrame(int *frame) { *frame = _sync.GetLastConfirmedFrame(); return GGPO_OK; }
++   virtual GGPOErrorCode GetConfirmedInputFrame(int *frame);
+    virtual GGPOErrorCode SetFrameDelay(GGPOPlayerHandle player, int delay);
+    virtual GGPOErrorCode SetInputsIgnored(bool ignored) { _sync.SetInputsIgnored(ignored); return GGPO_OK; }
+    virtual GGPOErrorCode SetDisconnectTimeout(int timeout);
+diff --git a/src/lib/ggpo/main.cpp b/src/lib/ggpo/main.cpp
+--- a/src/lib/ggpo/main.cpp
++++ b/src/lib/ggpo/main.cpp
+@@ -175,6 +175,15 @@
+    *frame = -1;
+    return ggpo->GetLastConfirmedFrame(frame);
+ }
++
++GGPOErrorCode
++ggpo_get_confirmed_input_frame(GGPOSession *ggpo, int *frame)
++{
++   if (!ggpo) { return GGPO_ERRORCODE_INVALID_SESSION; }
++   if (!frame) { return GGPO_ERRORCODE_INVALID_REQUEST; }
++   *frame = -1;
++   return ggpo->GetConfirmedInputFrame(frame);
++}
+ 
+ GGPOErrorCode
+ ggpo_get_spectator_backlog(GGPOSession *ggpo, int *frames)
