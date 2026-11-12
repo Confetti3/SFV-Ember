@@ -31,6 +31,7 @@
 #include "ui/MenuRows.hxx"
 #include "ui/OverlayPresentation.hxx"
 #include "ui/PassiveHint.hxx"
+#include "ui/RowId.hxx"
 #include "ui/ReplayPlaybackHud.hxx"
 #include "ui/SelectionLabels.hxx"
 #include "ui/Theme.hxx"
@@ -187,6 +188,7 @@ struct ShellStatus {
 	// one drawn, and whether it is the dummy's; the stored pick (PickText)
 	// and whether it is Random.
 	std::string pickPage, pickFocus, pickText;
+	std::string pickCode; // the game's code of the fighter whose card has the focus, if one has
 	bool pickDummy = false, pickRandom = false;
 	// The pad as the shell navigated by it this frame: the runtime's menu
 	// sample (device, whether it read, its menu bits), the capture and
@@ -428,6 +430,7 @@ void PublishStatus(Shell& shell)
 	const SfvShellGame::PickPlace pick = shell.game.LastPickPlace();
 	status.pickPage = pick.page;
 	status.pickFocus = pick.focus;
+	if (const std::optional<int> fighter = sf4e::ui::RowKey<int>(pick.focus, "fighter-")) status.pickCode = FighterCode(*fighter);
 	status.pickDummy = pick.dummy;
 	status.pickText = PickText(CurrentPick());
 	status.pickRandom = PickRandom();
@@ -563,6 +566,7 @@ std::string StatusJson()
 	return "{\"shown\":" + std::string(s_status.shown ? "true" : "false") + ",\"why\":" + mod::JsonString(s_status.why) +
 		",\"screen\":" + mod::JsonString(s_status.screen) + ",\"focus\":" + mod::JsonString(s_status.focus) +
 		",\"pick\":{\"page\":" + mod::JsonString(s_status.pickPage) + ",\"focus\":" + mod::JsonString(s_status.pickFocus) +
+		",\"code\":" + mod::JsonString(s_status.pickCode) +
 		",\"dummy\":" + (s_status.pickDummy ? "true" : "false") + ",\"stored\":" + mod::JsonString(s_status.pickText) +
 		",\"random\":" + (s_status.pickRandom ? "true" : "false") + "}" +
 		",\"input\":{\"device\":[" + std::to_string(s_status.deviceType) + "," + std::to_string(s_status.deviceIndex) +

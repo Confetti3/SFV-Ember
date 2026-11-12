@@ -159,6 +159,12 @@ public:
 	// Random's column, the room the Random tile takes beyond its own column,
 	// as the game's own select screen places them.
 	static float BoardColumn(const grid::SelectGrid& table, grid::Cell cell);
+	// The board's moves across the Random tile, as the game's cursor makes
+	// them: Random's Left and Right are the tiles beside it on its own row,
+	// and their Right and Left (and those of the tiles beside its foot on the
+	// last row) are Random. Nothing without the Random card among `rows` (the
+	// dummy's board).
+	static void LinkRandom(std::vector<sf4e::ui::MenuEntry>& rows, const grid::SelectGrid& table);
 
 	// The costume cards: "costume-<n>" for every costume of the fighter, in
 	// the game's order, each shown in the colour worn where it has it and
