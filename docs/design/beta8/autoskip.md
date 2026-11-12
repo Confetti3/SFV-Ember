@@ -26,6 +26,8 @@ the exchanged input, and the adapter ends the scenes on confirmed skip frames (`
   game's scenes: the guard applies again.
 - Rule off: today's behaviour exactly, a new press by either player after the guard.
 - The intro is untouched: the rule is about the winner scenes, the intro still needs a press.
+- Since 2026-11-12 the rule covers the scenes between two rounds too (the KO's finish to the next
+  round's call, `skip.md`): each fighter copy asks after the same guard there.
 - Watchers and replay playback never ask. They follow the fighters' confirmed skip frames, as for a
   press, so what they see and what a replay records is unchanged in kind (a replay of a rule-on
   game holds the skip bits like any other).

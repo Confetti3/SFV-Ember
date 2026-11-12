@@ -93,6 +93,7 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	introSkip_ = {};
 	scenes_ = {};
 	scenesSkips_ = 0;
+	roundScenes_ = false;
 	ForgetEndedVersusBattle();
 	pacer_.Reset();
 }
@@ -197,14 +198,15 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	if (session_->Running()) pacer_.Frame(*session_, last_ == RollbackSession::StepResult::PredictionStall);
 	const int frame = session_->Frame();
 	NoteScenes(adapter, frame);
-	// Sent as the player plays, with the skip request of the intro and of a
-	// decided match's scenes (IntroSkip.hxx); frames whose inputs the game
-	// ignores (outside the fight) get neutral ones in RollbackSession,
-	// whatever was sent, but for the request on the skip frames, which are
-	// stepped confirmed.
+	// Sent as the player plays, with the skip request of the intro, of the
+	// scenes between two rounds and of a decided match's (IntroSkip.hxx);
+	// frames whose inputs the game ignores (outside the fight) get neutral
+	// ones in RollbackSession, whatever was sent, but for the request on the
+	// skip frames, which are stepped confirmed.
 	const bool asked = introSkip_.Requested();
 	// The room's Skip winner scenes rule: a fighter's copy of a room battle
-	// asks for the decided match's scenes to be skipped on its own.
+	// asks for the scenes between rounds and the decided match's to be
+	// skipped on its own.
 	introSkip_.SetAutoScenes(room_.SkipScenes());
 	const PackedInput local = introSkip_.Next(adapter.FlowState(), LocalInput(adapter, frame), adapter.MatchDecided(), frame);
 	if (!asked && introSkip_.Requested() && scenes_.From() >= 0) {
@@ -242,11 +244,12 @@ PackedInput NetplayMode::LocalInput(SfvAdapter& adapter, int frame)
 		const std::optional<bool> facing = config_.script.seed ? adapter.FacingRight(session_->LocalPlayer()) : std::nullopt;
 		return script_.At(frame, facing).value_or(adapter.Sampled(0));
 	}
-	// The decided match's scenes read nothing but the skip request, so only a
-	// press counts here: the pad as the battle records it and, should that
-	// record stand still, as the game asks its pads itself (its own way after
-	// the decision, unhooked). A test's script presses only where "skipafter"
-	// says, so a scripted match plays its scenes whole unless asked.
+	// The scenes (between two rounds, or a decided match's) read nothing but
+	// the skip request, so only a press counts here: the pad as the battle
+	// records it and, should that record stand still, as the game asks its
+	// pads itself (its own way after the decision, unhooked). A test's
+	// script presses only where "skipafter" says, so a scripted match plays
+	// its scenes whole unless asked.
 	PackedInput local = adapter.Sampled(0);
 	if (adapter.LocalPadsAny(intro_skip::kPressBits)) local |= intro_skip::kSkipBit;
 	if (intro_skip::ScriptedPress(scenes_.From(), frame, skipAfter_)) local |= input::kLP;
@@ -256,14 +259,32 @@ PackedInput NetplayMode::LocalInput(SfvAdapter& adapter, int frame)
 void NetplayMode::NoteScenes(SfvAdapter& adapter, int frame)
 {
 	const int before = scenes_.From();
-	scenes_.Note(intro_skip::Scenes(adapter.FlowState(), adapter.MatchDecided()), frame);
+	const bool decided = adapter.MatchDecided();
+	scenes_.Note(intro_skip::Scenes(adapter.FlowState(), decided), frame);
 	if (before < 0 && scenes_.From() >= 0) {
+		// A round that does not decide the match ends in the scenes between
+		// two rounds; the deciding one's are the match's (the decision is
+		// made in the KO's own tick, before Finish).
 		scenesSkips_ = 0;
-		Log("netplay: the match is decided at frame %d (flow state %d, %u input tick(s) in the last update); its scenes "
-			"play to the result", frame, adapter.FlowState(), adapter.TicksInLastUpdate());
+		roundScenes_ = !decided;
+		if (roundScenes_) {
+			Log("netplay: a round is over at frame %d (flow state %d, %u input tick(s) in the last update); its scenes "
+				"play to the next round's call", frame, adapter.FlowState(), adapter.TicksInLastUpdate());
+		} else {
+			Log("netplay: the match is decided at frame %d (flow state %d, %u input tick(s) in the last update); its "
+				"scenes play to the result", frame, adapter.FlowState(), adapter.TicksInLastUpdate());
+		}
 	} else if (before >= 0 && scenes_.From() < 0) {
-		Log("netplay: the match is no longer decided at frame %d (flow state %d): a rematch in place, or a rollback took "
-			"the deciding hit back", frame, adapter.FlowState());
+		if (roundScenes_ && adapter.FlowState() == sfv::flow::kFight) {
+			// A rollback took back the KO this copy guessed: the fight again.
+			Log("netplay: the round's end seen at frame %d was taken back by a rollback at frame %d", before, frame);
+		} else if (roundScenes_) {
+			Log("netplay: the round's scenes took %d frame(s), from the round's end at frame %d to the next round at "
+				"frame %d, flow state %d (%d skip(s) applied)", frame - before, before, frame, adapter.FlowState(), scenesSkips_);
+		} else {
+			Log("netplay: the match is no longer decided at frame %d (flow state %d): a rematch in place, or a rollback "
+				"took the deciding hit back", frame, adapter.FlowState());
+		}
 	}
 }
 
@@ -282,6 +303,13 @@ void NetplayMode::NoteScenesEnd()
 	const int frame = session_->Frame();
 	Log("netplay: the scenes took %d frame(s), from the decision at frame %d to the result at frame %d (%d skip(s) applied)",
 		scenes_.Shown(frame), scenes_.From(), frame, scenesSkips_);
+}
+
+bool NetplayMode::GamePauseAllowed() const
+{
+	// Called from the battle's update inside Frame, on the game thread that
+	// holds mutex_, so the members are read as Frame sees them.
+	return !(room_.Active() || (session_ && session_->Live()));
 }
 
 void NetplayMode::WatchFrames(SfvAdapter& adapter)

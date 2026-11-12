@@ -370,8 +370,8 @@ extern "C" int SfveStart(int beforeGameCode)
 		Log("battle hooks: missing %s, so Ember's netplay is off and the game plays offline as SFV", missing->site);
 		return 1;
 	}
-	Log("battle hooks: battle frame and its constructor, input record, rollback unit, battle flow, allocator and "
-		"match end%s hooked", RollsBack(Config().mode) ? ", and dead projectiles released on the battle's clock and thread" : "");
+	Log("battle hooks: battle frame and its constructor, input record, rollback unit, battle flow, allocator, the "
+		"game's pause and match end%s hooked", RollsBack(Config().mode) ? ", and dead projectiles released on the battle's clock and thread" : "");
 	// The mode's own commands and hosts (the netplay mode's Ember runtime,
 	// whose rooms launch linked matches), once the driver holds it for the
 	// process's life and only on battles it can drive.

@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog, [switch]$autoSkip, [switch]$rngAudit, [string]$startPerturb = '', [switch]$plainSaves, [int]$verifyLoads = -1)
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog, [switch]$autoSkip, [switch]$rngAudit, [string]$startPerturb = '', [switch]$plainSaves, [int]$verifyLoads = -1, [switch]$pressStart)
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -96,6 +96,15 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # checked). -skipPad presses copy -skipCopy's virtual pad (X) instead,
 # about N frames (default 90) after its log shows the decision: the player's
 # own path, through the pads.
+#
+# -rounds 2 and more: every game also prints the scenes between its rounds
+# (the KO's finish to the next round's call), which must end on the same
+# frame with the same skips on both copies, skipped or not as above
+# (-skipAfter and -autoSkip apply to them too; the round call itself is
+# never cut). -pressStart: copy -skipCopy presses Start half a second into
+# each scene (between rounds and at the match's end), where SFV would open
+# its own pause on that copy alone; no copy's battle may be paused, and
+# both fighters must log the game's pause off.
 # -autoSkip opens the room with its Skip winner scenes rule on
 # (docs/design/beta8/autoskip.md; the product's default, off here so the runs
 # above mean what they did): both fighters' copies then ask for the skip on
@@ -195,24 +204,60 @@ function AwaitWatcher([int]$game, [int]$before) {
 $guardFrames = 60
 if ($skipCopy -lt 0 -or $skipCopy -gt 1) { throw '-skipCopy is 0 or 1' }
 $skipWanted = $skipPad -or $autoSkip -or $skipAfter -ge $guardFrames
-# Each copy's games as its log has them: frames from the decision to the
-# result, the result's frame, and the skips applied before it ("<frame>:
-# <what>"), in order.
-function ScenesOf([int]$i) {
-  $games = New-Object System.Collections.Generic.List[object]
-  if ($copies -notcontains $i -or -not (Test-Path $logOf[$i])) { return ,$games }
+# Each copy's scenes as its log has them, in order: the decided matches'
+# (Kind 'match': frames from the decision to the result, the result's frame)
+# and those between two rounds (Kind 'round': frames from the round's end to
+# the next round's call, that frame), each with the skips applied in it
+# ("<frame>: <what>").
+function ScenesLog([int]$i) {
+  $all = New-Object System.Collections.Generic.List[object]
+  if ($copies -notcontains $i -or -not (Test-Path $logOf[$i])) { return ,$all }
   $skips = @()
-  $pattern = 'netplay: the scenes took (\d+) frame\(s\), from the decision at frame (\d+) to the result at frame (\d+) \((\d+) skip|netplay: scenes skipped at frame (\d+): (.*)$'
+  $pattern = 'netplay: the scenes took (\d+) frame\(s\), from the decision at frame (\d+) to the result at frame (\d+) \((\d+) skip|netplay: scenes skipped at frame (\d+): (.*)$|netplay: the round''s scenes took (\d+) frame\(s\), from the round''s end at frame (\d+) to the next round at frame (\d+), flow state \d+ \((\d+) skip'
   foreach ($m in Select-String -Path $logOf[$i] -Pattern $pattern) {
     $g = $m.Matches[0].Groups
     if ($g[1].Success) {
-      $games.Add([pscustomobject]@{ Took = [int]$g[1].Value; From = [int]$g[2].Value; Result = [int]$g[3].Value; Skips = [int]$g[4].Value; At = $skips })
+      $all.Add([pscustomobject]@{ Kind = 'match'; Took = [int]$g[1].Value; From = [int]$g[2].Value; Result = [int]$g[3].Value; Skips = [int]$g[4].Value; At = $skips })
+      $skips = @()
+    } elseif ($g[7].Success) {
+      $all.Add([pscustomobject]@{ Kind = 'round'; Took = [int]$g[7].Value; From = [int]$g[8].Value; Result = [int]$g[9].Value; Skips = [int]$g[10].Value; At = $skips })
       $skips = @()
     } else {
       $skips += "$($g[5].Value): $($g[6].Value)"
     }
   }
+  return ,$all
+}
+function ScenesOf([int]$i) {
+  $games = New-Object System.Collections.Generic.List[object]
+  foreach ($s in (ScenesLog $i)) { if ($s.Kind -eq 'match') { $games.Add($s) } }
   return ,$games
+}
+function RoundsOf([int]$i) {
+  $rounds = New-Object System.Collections.Generic.List[object]
+  foreach ($s in (ScenesLog $i)) { if ($s.Kind -eq 'round') { $rounds.Add($s) } }
+  return ,$rounds
+}
+$roundsChecked = 0
+# The scenes between game `$game`'s rounds (-rounds 2 and more), on both
+# fighters' copies: as many, each ending on the same frame with the same
+# skips, and skipped (or not) as the run asked. Their length is the log's.
+function CheckRounds([int]$game) {
+  $r0 = RoundsOf 0; $r1 = RoundsOf 1
+  if ($r0.Count -ne $r1.Count) { throw "game ${game}: copy 0 logged $($r0.Count) round ends, copy 1 $($r1.Count)" }
+  for ($k = $script:roundsChecked; $k -lt $r0.Count; $k++) {
+    $a = $r0[$k]; $b = $r1[$k]
+    $applied = if ($a.At.Count) { $a.At -join '; ' } else { 'none' }
+    "game ${game}: a round's scenes took $($a.Took) frames on copy 0 (from $($a.From)), $($b.Took) on copy 1 (from $($b.From)); next round at frame $($a.Result); skips applied: $applied"
+    if ($a.Result -ne $b.Result) { throw "game ${game}: the copies reached the next round at frames $($a.Result) and $($b.Result)" }
+    if (($a.At -join '|') -ne ($b.At -join '|')) { throw "game ${game}: the copies applied different skips between rounds: copy 0 [$($a.At -join '; ')], copy 1 [$($b.At -join '; ')]" }
+    if ($skipWanted) {
+      if ($a.Skips -lt 1) { throw "game ${game}: the scenes between rounds were not skipped (copy ${skipCopy}'s press, or the room's rule)" }
+    } else {
+      foreach ($s in $a, $b) { if ($s.Skips -gt 0) { throw "game ${game}: the scenes between rounds were skipped though no press came after the guard" } }
+    }
+  }
+  $script:roundsChecked = $r0.Count
 }
 $scenesChecked = 0
 # Game `$game`'s scenes on both fighters' copies: the same result frame and
@@ -255,17 +300,36 @@ function CheckScenes([int]$game) {
 # `$rolling` false only the after-skip shot is taken. Every shot runs
 # without blocking (ShotAsync), so the result is seen within a quarter
 # second: the last WIN's B mash after it must land inside the 2 s guard.
+#
+# -pressStart, in the same loop: copy -skipCopy's pad presses Start half a
+# second into each scene its log shows (a round's end, the match's decision),
+# where SFV would open its own pause on that copy alone. Start must do
+# nothing there; the end of the run checks that no copy's battle was paused.
 function ScenesShots([int]$game, [int]$results0, [int]$decided0, [bool]$rolling) {
-  if (!$shots) { return }
+  if (!$shots -and !$pressStart) { return }
   $skips0 = Count 0 'netplay: scenes skipped at frame'
-  $dir = Join-Path $shots "rolling-$game"
-  New-Item -ItemType Directory -Force $dir | Out-Null
+  $dir = if ($shots) { Join-Path $shots "rolling-$game" } else { '' }
+  if ($dir) { New-Item -ItemType Directory -Force $dir | Out-Null }
   $taken = New-Object System.Collections.Generic.List[object]
   $skipSeen = $null
   $afterSkipTaken = $false
+  $scenePattern = 'netplay: (a round is over|the match is decided) at frame'
+  $scenesSeen = Count $skipCopy $scenePattern
+  $startDue = $null
   $deadline = (Get-Date).AddSeconds($gameSeconds)
   while ((Count 0 'netplay: match result') -le $results0) {
     if ((Get-Date) -gt $deadline) { throw "game ${game}: no result within $gameSeconds s" }
+    if ($pressStart) {
+      $now = Count $skipCopy $scenePattern
+      if ($now -gt $scenesSeen) { $scenesSeen = $now; $startDue = (Get-Date).AddMilliseconds(500) }
+      if ($startDue -and (Get-Date) -ge $startDue) {
+        $startDue = $null
+        Ctl $skipCopy 'pad 0 START:100 -:150' | Out-Null
+        $script:startPresses++
+        "game ${game}: copy ${skipCopy} pressed Start in the scenes ($((Select-String -Path $logOf[$skipCopy] -Pattern $scenePattern | Select-Object -Last 1).Line.Substring(24)))"
+      }
+    }
+    if (!$shots) { Start-Sleep -Milliseconds 250; continue }
     if (-not $skipSeen -and (Count 0 'netplay: scenes skipped at frame') -gt $skips0) { $skipSeen = Get-Date }
     if ($skipSeen -and -not $afterSkipTaken -and ((Get-Date) - $skipSeen).TotalSeconds -ge 1) {
       $afterSkipTaken = $true
@@ -292,6 +356,7 @@ function ScenesShots([int]$game, [int]$results0, [int]$decided0, [bool]$rolling)
     "game ${game}: shot $([int]($resultAt - $best.At).TotalMilliseconds) ms before copy 0's result was seen"
   }
 }
+$startPresses = 0
 # At the end of the run: every shot finished, and the rolling shots' folders gone.
 function RemoveRollingShots {
   if (!$shots) { return }
@@ -422,6 +487,7 @@ try {
       }
       WaitFor "game $game's result on both copies" $gameSeconds { (Count 0 'netplay: match result') -gt $results[0] -and (Count 1 'netplay: match result') -gt $results[1] }
       CheckScenes $game
+      CheckRounds $game
       # A game that ends the first-to-N set offers no rematch: both copies
       # decline at once, and the WIN may be over before the status shows it.
       $decided = { (Count 0 "the WIN's answers") -gt $answers[0] -and (Count 1 "the WIN's answers") -gt $answers[1] }
@@ -548,6 +614,7 @@ try {
     ScenesShots $game $results[0] $decided0 $true
     WaitFor "game $game's result on both copies" $gameSeconds { (Count 0 'netplay: match result') -gt $results[0] -and (Count 1 'netplay: match result') -gt $results[1] }
     CheckScenes $game
+    CheckRounds $game
     WaitFor "both copies back in the room after game $game" 90 { (Count 0 'battle closed at its match') -gt $closes[0] -and (Count 1 'battle closed at its match') -gt $closes[1] -and (Status 0).room.room -eq 'joined' -and (Status 1).room.room -eq 'joined' }
     if ($watched -and -not $watcherLeft) {
       WaitFor "copy 2 back in the room after game $game" 90 { (Count 2 "the room's battle closed") -gt $wcloses -and (Status 2).room.room -eq 'joined' }
@@ -655,6 +722,22 @@ foreach ($i in $copies) {
 }
 if ($startPerturb -and -not $failure -and (Count 1 'start: repaired after') -eq 0) {
   $failure = "copy 1's start state was perturbed ($startPerturb) and not repaired"
+}
+# SFV's own pause never runs in a session's battle (docs/design/beta8/skip.md):
+# a pause bit on any copy's battle frame would be that copy's alone.
+foreach ($i in $copies) {
+  $paused = Count $i "adapter: the game's pause bits are [1-7] "
+  if ($paused -gt 0) {
+    "copy ${i}: " + (Select-String -Path $logOf[$i] -Pattern "adapter: the game's pause bits are" | Select-Object -First 1).Line.Substring(24)
+    if (-not $failure) { $failure = "copy ${i}'s battle was paused by SFV's own pause" }
+  }
+}
+if ($pressStart) {
+  "Start pressed in the scenes $startPresses time(s) on copy $skipCopy"
+  if (-not $failure -and $startPresses -eq 0) { $failure = '-pressStart pressed Start nowhere (no scenes seen)' }
+  foreach ($i in 0, 1) {
+    if (-not $failure -and (Count $i "hooks: SFV's own pause is off") -eq 0) { $failure = "copy ${i} never logged its game's pause off" }
+  }
 }
 $played = if ($rematches -ge 0) { $rematches + 1 } else { $games }
 $passed = Write-Verdict $failure $desyncs $checkpoints.Compared "$played game(s), no desync"

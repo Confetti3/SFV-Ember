@@ -180,6 +180,9 @@ private:
 	// The input unit's ticks per update while the match is decided: logged
 	// each time the count changes.
 	void NoteDecidedTicks();
+	// The battle frame's pause bits after a session's update (sfv::pause):
+	// logged each time they change.
+	void NotePause();
 	// Both fighters' CharaVisualParts, in the battle's order (null where
 	// there is none).
 	void FighterVisualParts(uint8_t* parts[kPlayers]) const;
@@ -239,6 +242,7 @@ private:
 	int scenesIdleState_ = -1;
 	int scenesIdlePhase_ = -1;
 	int64_t decidedTicks_ = -1; // the tick count last logged with the match decided; -1 none
+	uint32_t pausedBits_ = 0;   // the battle frame's pause bits last logged (NotePause)
 };
 
 } // namespace sfve::mod

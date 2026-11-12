@@ -86,6 +86,10 @@ public:
 	void NewBattle(SfvAdapter& adapter) override;
 	void Frame(SfvAdapter& adapter) override;
 	std::string Describe() const override;
+	// Never in a battle a session plays: a room's (fighting or watching), a
+	// replay's, a linked test's. Training and offline battles keep the
+	// game's pause. Game thread, inside Frame's update (mutex_ is held).
+	bool GamePauseAllowed() const override;
 
 	// Ember's outer tick (EmberHost), on the game thread between battle
 	// frames: a room's battle whose scene has gone, with the main menu back,
@@ -154,6 +158,7 @@ private:
 	intro_skip::Request introSkip_; // the local player's ask to skip the intros and the decided match's scenes
 	intro_skip::ScenesClock scenes_; // where this copy saw the decided match's scenes start (NoteScenes)
 	int scenesSkips_ = 0;            // skips the adapter applied in them
+	bool roundScenes_ = false;       // ...which are the scenes between two rounds, not the match's
 	// "skipafter <n>" (tests, runroom's -skipAfter): the script presses an
 	// attack n frames into each decided match's scenes; -1 never.
 	int skipAfter_ = -1;

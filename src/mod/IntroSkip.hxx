@@ -33,9 +33,17 @@
 // SFV's results screens (the win quote, then the results card), whose pages
 // turn on any button or after 600 ticks each: a question for any button hears
 // the request as the press it stands for (PadsHear), inside the tick, from
-// the same confirmed inputs. Either player's press skips for both. A copy asks only for a new press made at least kScenesGuardFrames
-// after it saw the match decided, so a button still down from the last hit,
-// or mashed through the KO, skips nothing.
+// the same confirmed inputs. Either player's press skips for both.
+//
+// The scenes between two rounds (the KO's finish, RoundOver, the round's
+// demo; RoundScenes) take the same press, guard and rule: the frame ends
+// Finish as at the match's end, and the round demos end on the confirmed
+// bit by themselves (they read the battle's input before the decision). The
+// next round's call (RoundStart, Ready) is not skipped.
+//
+// A copy asks only for a new press made at least kScenesGuardFrames after it
+// saw the scenes start, so a button still down from the last hit, or mashed
+// through the KO, skips nothing.
 //
 // With the room's Skip winner scenes rule on (the default,
 // docs/design/beta8/autoskip.md) a fighter's copy asks on its own
@@ -73,19 +81,32 @@ constexpr int kEvery = 15;
 // player's press there asks for the skip: about a second of the KO.
 constexpr int kScenesGuardFrames = 60;
 
-// A press skips what flow state `flowState` (the one the flow last
-// announced) shows: the intro, or with the match decided
-// (sfv::battledata::kDecided) anything but the fight. Both are part of the
-// rollback state, so every copy answers alike at a frame's start.
-constexpr bool Skippable(int flowState, bool decided)
+// The scenes between two rounds: Finish, RoundOver and the round's demo
+// (sfv::resultflow), from the KO (or time-over) that ends a round to the
+// next round's call, which they are not. Only a round's end reaches these
+// states, and with the match decided they are its scenes anyway.
+constexpr bool RoundScenes(int flowState)
 {
-	return flowState == sfv::flow::kIntroDemo || (decided && flowState != sfv::flow::kFight);
+	namespace rf = sfv::resultflow;
+	return flowState == rf::kFinish || flowState == rf::kRoundOver || flowState == rf::kRoundResultDemo ||
+		flowState == rf::kRoundDoubleKODemo;
 }
 
-// The decided match's scenes: anything but the fight once it is decided.
+// A press skips what flow state `flowState` (the one the flow last
+// announced) shows: the intro, the scenes between two rounds, or with the
+// match decided (sfv::battledata::kDecided) anything but the fight. Both are
+// part of the rollback state, so every copy answers alike at a frame's start.
+constexpr bool Skippable(int flowState, bool decided)
+{
+	return flowState == sfv::flow::kIntroDemo || RoundScenes(flowState) || (decided && flowState != sfv::flow::kFight);
+}
+
+// The scenes a press (after the guard) or the room's rule skips: a decided
+// match's (anything but the fight once it is decided) and those between two
+// rounds. Not the intro, which takes a press at once and no rule.
 constexpr bool Scenes(int flowState, bool decided)
 {
-	return decided && flowState != sfv::flow::kFight;
+	return (decided && flowState != sfv::flow::kFight) || RoundScenes(flowState);
 }
 
 // Session frame `frame`, starting from that state, reads the skip bit.
@@ -211,6 +232,8 @@ struct ScenesStep {
 //   game makes when its gate is open (phase 4, then the results' event and
 //   the wait for the results' unit, as unskipped). Phases 0 and 2 run at
 //   once, and from phase 4 on it is ending already.
+// - RoundResultDemo, RoundDoubleKODemo: nothing; they end on the skip bit by
+//   themselves (sfv::resultflow), on the same confirmed frame.
 // - MatchDrawDemo: the wait for its demo ends (phase 3, which goes to 4 at
 //   once), and its 300-tick wait (phase 5, the results' event).
 constexpr ScenesStep ScenesStepFor(int stateId, uint32_t vtableRva, int phase)
