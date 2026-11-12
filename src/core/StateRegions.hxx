@@ -70,14 +70,9 @@ using AddressTest = bool (*)(uint64_t value);
 class StateLayout {
 public:
 	void Clear();
-	// `mapped` (optional): the value is an address of this process's memory
-	// (committed), asked only where two overlapping 8-byte windows both pass
-	// `test` (AddressAt).
-	void SetAddressTest(AddressTest test, AddressTest mapped = nullptr)
-	{
-		addressTest_ = test;
-		addressMapped_ = mapped;
-	}
+	// `test` reads values only, so every process masks the same bytes of
+	// the same values (AddressAt settles two overlapping windows by value too).
+	void SetAddressTest(AddressTest test) { addressTest_ = test; }
 	size_t Add(std::string name, void* ptr, size_t size, bool checked = true);
 	// Marks the 8-byte word holding `offset` in region `region` as not hashed.
 	void IgnoreWord(size_t region, size_t offset);
@@ -165,7 +160,6 @@ private:
 	std::vector<StateRegion> regions_;
 	size_t totalSize_ = 0;
 	AddressTest addressTest_ = nullptr;
-	AddressTest addressMapped_ = nullptr;
 	mutable Costs costs_; // TakeCosts; the game thread's
 };
 
