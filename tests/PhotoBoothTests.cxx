@@ -348,7 +348,7 @@ TEST_CASE("the depth target a grab copies")
 
 	const std::string json = grab::DepthTargetsJson({Candidate(0, 1920, 1080, 123)});
 	CHECK(json == "{\"targets\":[{\"index\":0,\"format\":\"R24G8_TYPELESS\",\"width\":1920,\"height\":1080,\"samples\":1,"
-				  "\"draws\":123,\"id\":0,\"firstDraw\":0,\"lastDraw\":0,\"clears\":0,\"clearDepth\":-1.000000}]}");
+				  "\"draws\":123,\"id\":0,\"firstDraw\":1,\"lastDraw\":0,\"clears\":0,\"clearDepth\":-1.000000}]}");
 	CHECK(grab::DepthTargetsJson({}) == "{\"targets\":[]}");
 }
 
