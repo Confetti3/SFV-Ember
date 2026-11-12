@@ -1,4 +1,4 @@
-param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash = 31337, [int]$mashFrom = 600, [int]$distance = 8, [int]$schedule = 1, [int]$frames = 7000, [int]$waitSeconds = 420, [switch]$keep, [int]$learn = 1, [switch]$moves, [switch]$practice, [string]$moveset = '', [int]$idle = -1, [switch]$tiny, [int]$tinySides = 3, [switch]$socketLog)
+param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash = 31337, [int]$mashFrom = 600, [int]$distance = 8, [int]$schedule = 1, [int]$frames = 7000, [int]$waitSeconds = 420, [switch]$keep, [int]$learn = 1, [switch]$moves, [switch]$practice, [string]$moveset = '', [int]$idle = -1, [switch]$tiny, [int]$tinySides = 3, [switch]$socketLog, [switch]$check)
 # One copy in synctest mode: both players mash, every rolled-back stretch is
 # first played with wrong inputs, rollbacks of random depth and spacing (up
 # to -distance, from seed -schedule; 0 for the fixed schedule), learning
@@ -15,7 +15,11 @@ param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash 
 # player (P1 or P2) stand still, and the other walk forward at the start of
 # each block, so its moves land. -tiny draws -tinySides (1 P1, 2 P2, 3 both)
 # small. -socketLog logs the fight's reads of the fighters' models
-# (SocketProbe) and prints them with the report.
+# (SocketReads) and prints them with the report; the `sockets:` lines (the
+# reads recorded, given the straight read, missed and conflicting, and the
+# microseconds per update the keys cost) are printed either way.
+# -check ends with PASS (the run reached -frames, 0 failures, no conflicting
+# socket read) or FAIL, and the exit code says the same.
 Set-Location (Split-Path -Parent $PSScriptRoot)
 python -I tools\sfve.py kill | Out-Null
 $extra = @()
@@ -39,6 +43,18 @@ while ((Get-Date) -lt $deadline) {
 $i = $s.IndexOf('"mode":{"ok"')
 if ($i -ge 0) { $s.Substring($i, [Math]::Min(700, $s.Length - $i)) } else { 'no synctest report' }
 $log = Join-Path $env:APPDATA 'SFVEmber\logs\sfv_ember.log'
-$pattern = if ($socketLog) { 'synctest:|learn:|adapter: (expected|no )|socket:|tiny:' } else { 'synctest:|learn:|adapter: (expected|no )|tiny:' }
+$pattern = if ($socketLog) { 'synctest:|learn:|adapter: (expected|no |socket)|socket:|sockets:|tiny:' } else { 'synctest:|learn:|adapter: (expected|no |socket)|sockets:|tiny:' }
 Select-String -Path $log -Pattern $pattern | ForEach-Object { $_.Line.Substring(24) }
 if (!$keep) { python -I tools\sfve.py kill | Out-Null }
+if ($check) {
+  $run = [regex]::Match($s, '"framesRun":(\d+)')
+  $failures = [regex]::Match($s, '"failures":(\d+)')
+  $conflicts = @(Select-String -Path $log -Pattern 'sockets: .* ([1-9]\d*) conflicting' | Select-Object -Last 1)
+  $why = @()
+  if (-not $run.Success -or [int]$run.Groups[1].Value -lt $frames) { $why += "the run stopped before $frames frames" }
+  if (-not $failures.Success -or [int]$failures.Groups[1].Value -ne 0) { $why += "failures: $(if ($failures.Success) { $failures.Groups[1].Value } else { 'no report' })" }
+  if ($conflicts.Count) { $why += 'a socket read conflicted with the straight read of its state' }
+  if ($why.Count) { "FAIL: $($why -join '; ')"; exit 1 }
+  "PASS: $($run.Groups[1].Value) frames, 0 failures"
+  exit 0
+}

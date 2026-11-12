@@ -40,7 +40,7 @@
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
 #include "mod/ModConfig.hxx"
-#include "mod/SocketProbe.hxx"
+#include "mod/SocketReads.hxx"
 #include "mod/TinyFighters.hxx"
 #include "mod/MultiInstance.hxx"
 #include "mod/NetGuard.hxx"
@@ -300,9 +300,10 @@ extern "C" int SfveStart(int beforeGameCode)
 	// A Tiny fighters room's tiny sides are drawn small (EMBER_LIBRARY.md
 	// section 59); with no tiny side the hooks change nothing.
 	InstallTinyFighters(base);
-	// Diagnostics (development, -sfve_socket_log): the fight's reads of the
-	// fighters' models, logged (docs/design/beta8/desync.md).
-	if (Config().socketLog) InstallSocketProbe(base);
+	// The fight's reads of the fighters' models take the pose a straight play
+	// of the same state shows, on replayed frames too (docs/design/beta8/
+	// desync.md); -sfve_socket_log (development) logs every one.
+	InstallSocketReads(base, Config().socketLog);
 	// The host for Ember's interface (its shell is plugged in below, with
 	// rooms on); the game's content lists, on the pipe. Its swap chain hooks
 	// are one set, so without the overlay none of them is live and the pads

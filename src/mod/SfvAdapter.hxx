@@ -205,7 +205,13 @@ private:
 	uint32_t ticksInLastUpdate_ = 0;
 	uint8_t* (*gameInstance_)() = nullptr; // sfv::kGameInstance
 	uint32_t ticksThisUpdate_ = 0;
-	bool replaying_ = false; // the update Advance runs replays a frame (SocketProbe)
+	bool replaying_ = false; // the update Advance runs replays a frame (SocketReads' log)
+	// The models show the state the next update starts from: the engine drew a
+	// frame since the last update, and nothing was restored (SocketReads).
+	bool poseFresh_ = false;
+	std::vector<size_t> fighterRegions_[kPlayers]; // each side's regions, the key of its socket reads
+	uint64_t keyedUpdates_ = 0; // updates whose fighters were keyed, and the time that took
+	int64_t keyTicks_ = 0;
 	FlowRollback flow_;
 
 	// Ending the decided match's scenes (EndScenes); the game's functions

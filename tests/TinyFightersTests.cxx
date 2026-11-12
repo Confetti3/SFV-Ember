@@ -2,8 +2,8 @@
 // pick's size through SFV's fitting, validity and launch; what Ready sends;
 // the pick screen's Size row; the scale a tiny side's mesh is given and the
 // whole-mesh transform's, on memory laid out as the game's; the game's own
-// scale the fight's update sees; the socket read's site and its log's
-// every-tick readers; and the state that says which sides are drawn small.
+// scale the fight's update sees; and the state that says which sides are
+// drawn small.
 
 #include <doctest/doctest.h>
 
@@ -15,7 +15,6 @@
 #include "ember/SfvPickSpace.hxx"
 #include "ember/SfvSelectionScreen.hxx"
 #include "mod/SfvOffsets.hxx"
-#include "mod/SocketProbe.hxx"
 #include "mod/TinyFighters.hxx"
 
 #include "common/GameCatalog.hxx"
@@ -373,23 +372,6 @@ TEST_CASE("a battle update without the picture's hooks touches nothing")
 	mod::EndFightUpdate(none);
 	mod::ClearTinyFighters();
 	CHECK_FALSE(mod::TinyFightersNow().Any());
-}
-
-TEST_CASE("the socket read's site, and the readers left out of its log")
-{
-	CHECK(mod::sfv::kSocketWorldPosition.rva == 0x3919D0);
-	CHECK(mod::sfv::kSocketWorldPosition.bytes[0] == 0x48);
-	CHECK(mod::sfv::kSocketWorldPosition.bytes[15] == 0x63);
-	const mod::GameBuild* build = mod::sfv::VerifiedBuild();
-	CHECK(std::any_of(build->sites, build->sites + build->siteCount,
-		[](const mod::CodeSite& listed) { return listed.rva == mod::sfv::kSocketWorldPosition.rva; }));
-	// Every tick: bone 28 in Chara PreInput, the camera's handlers, CharaManager's.
-	for (const uint32_t every : {0x37D48Eu, 0x31B10Eu, 0x31B1DEu, 0x32FA5Fu, 0x33C41Fu, 0x3E3EF0u, 0x3E3F57u}) {
-		CHECK(mod::socket_probe::EveryTick(every));
-	}
-	// Spawns at a bone: Z33's part as its V-Trigger ends, and any script's
-	// spawn with a bone (through rva 0x32BAA0's jump, so from rva 0x4CFB70).
-	for (const uint32_t spawn : {0x3BDB02u, 0x4CFC99u, 0x3BC294u, 0x3BDF3Bu}) CHECK_FALSE(mod::socket_probe::EveryTick(spawn));
 }
 
 TEST_CASE("a part that is no live fighter's, or has no actor or mesh, is left as the game made it")

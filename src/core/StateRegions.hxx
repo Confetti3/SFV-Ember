@@ -96,6 +96,10 @@ public:
 	// the same value for the same contents.
 	uint64_t HashLive(HashScope scope = HashScope::Local) const;
 	uint64_t HashSaved(const uint8_t* src, HashScope scope = HashScope::Local) const;
+	// The hash of some regions' live memory, each as HashLive takes it (masked,
+	// addresses zeroed; a region not hashed in `scope` left out): what that part
+	// of the state is now. Indices past the layout are left out.
+	uint64_t HashLiveRegions(const std::vector<size_t>& regions, HashScope scope = HashScope::Local) const;
 	// One hash per region (unchecked regions hash as 0), in layout order, for
 	// locating a desync within one process.
 	void RegionHashesSaved(const uint8_t* src, std::vector<uint64_t>& out) const;

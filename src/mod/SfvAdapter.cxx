@@ -4,7 +4,7 @@
 #include "mod/Log.hxx"
 #include "mod/SfvLayoutRules.hxx"
 #include "mod/SfvOffsets.hxx"
-#include "mod/SocketProbe.hxx"
+#include "mod/SocketReads.hxx"
 #include "mod/TinyFighters.hxx"
 
 #include <windows.h>
@@ -27,11 +27,31 @@ constexpr uint64_t kMaxRegionSize = 64ull << 20;
 
 constexpr size_t kMaxRegions = 4096;
 
+// How often the socket reads' counts and the keys' cost are logged.
+constexpr uint64_t kSocketSummaryUpdates = 1800;
+
+// The CharaUnit index a region's name starts with ("CharaUnit[1].CharaActionPart+0xD8"
+// is 1), or -1.
+int CharaIndexOf(const std::string& name)
+{
+	static const char kPrefix[] = "CharaUnit[";
+	if (name.compare(0, sizeof(kPrefix) - 1, kPrefix) != 0) return -1;
+	int index = 0;
+	size_t at = sizeof(kPrefix) - 1;
+	if (at >= name.size() || name[at] < '0' || name[at] > '9') return -1;
+	for (; at < name.size() && name[at] >= '0' && name[at] <= '9' && index < 1000; at++) index = index * 10 + (name[at] - '0');
+	return at < name.size() && name[at] == ']' ? index : -1;
+}
+
 } // namespace
 
 void SfvAdapter::SeeBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 {
 	original_ = original;
+	// The engine calls the battle once a frame, and evaluates the fighters'
+	// poses between two calls from what the last update's visual task set: the
+	// models now show the state the last update left (SocketReads).
+	poseFresh_ = true;
 	if (!identity_.See(battleFrame)) return;
 	const bool sameAddress = battleFrame == battleFrame_;
 	Forget();
@@ -53,6 +73,9 @@ void SfvAdapter::Forget()
 	waitingFor_ = nullptr;
 	for (PackedInput& bits : neutralised_) bits = 0;
 	flow_.Forget();
+	if (bound_ || !fighterRegions_[0].empty()) Log("sockets: the battle ends: %s", SocketReadsSummary().c_str());
+	for (std::vector<size_t>& regions : fighterRegions_) regions.clear();
+	ForgetSocketReads();
 	scenesSkip_ = nullptr;
 	scenesIdleState_ = scenesIdlePhase_ = -1;
 	decidedTicks_ = -1;
@@ -72,12 +95,14 @@ bool SfvAdapter::Bind()
 	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
 	OutsideState outside = {reinterpret_cast<uintptr_t>(ruleUnit), reinterpret_cast<uintptr_t>(battleData),
 		reinterpret_cast<uintptr_t>(battleFrame_), reinterpret_cast<uintptr_t>(inputUnit_), base};
+	int sideOf[kPlayers] = {-1, -1}; // by CharaUnit index, as the regions are named
 	for (int index = 0; index < kPlayers; index++) {
 		uint8_t* chara = GameFindUnit(rollbackUnit_, sfv::unit::kCharaUnitType, (uint32_t)index);
 		if (!chara) {
 			WaitingToBind("both fighters");
 			return false;
 		}
+		if (!TryRead(chara + sfv::fighter::kSide, &sideOf[index]) || sideOf[index] < 0 || sideOf[index] >= kPlayers) sideOf[index] = -1;
 		for (size_t row = 0; row < std::size(sfv::kPartRunsOutsideSnapshot); row++) {
 			outside.fighterParts[index][row] =
 				reinterpret_cast<uintptr_t>(GameFindPart(chara, sfv::kPartRunsOutsideSnapshot[row].partType));
@@ -105,6 +130,13 @@ bool SfvAdapter::Bind()
 	CollectPostRestore(manager);
 	AddStateOutsideTheGameSnapshot(layout_, outside);
 	flow_.AddTo(layout_);
+	// Each fighter's regions, by side: the key of its socket reads (SocketReads).
+	for (std::vector<size_t>& regions : fighterRegions_) regions.clear();
+	for (size_t i = 0; i < layout_.Regions().size(); i++) {
+		const int index = CharaIndexOf(layout_.Regions()[i].name);
+		if (index >= 0 && index < kPlayers && sideOf[index] >= 0) fighterRegions_[sideOf[index]].push_back(i);
+	}
+	Log("adapter: socket reads keyed by P1's %zu and P2's %zu regions", fighterRegions_[0].size(), fighterRegions_[1].size());
 	battleData_ = battleData;
 	bound_ = true;
 	Log("adapter: bound: %zu game regions + %zu outside the game's snapshot, %zu bytes; intros %s, input source %d",
@@ -391,9 +423,35 @@ void SfvAdapter::RunUpdate()
 	uint8_t* visualParts[kPlayers] = {};
 	if (TinyFightersNow().Any()) FighterVisualParts(visualParts);
 	BeginFightUpdate(visualParts);
-	NoteSocketProbeUpdate(inputUnit_ ? Field<int32_t>(inputUnit_, sfv::inputunit::kInputFrame) : -1, replaying_);
+	// The fight's socket reads in this update: whether the models show the
+	// state it starts from, and each fighter's state now, their key.
+	SocketUpdate sockets;
+	sockets.inputFrame = inputUnit_ ? Field<int32_t>(inputUnit_, sfv::inputunit::kInputFrame) : -1;
+	sockets.replaying = replaying_;
+	sockets.fresh = poseFresh_;
+	if (bound_) {
+		LARGE_INTEGER from{}, to{};
+		QueryPerformanceCounter(&from);
+		for (int side = 0; side < kPlayers; side++) {
+			if (fighterRegions_[side].empty()) continue;
+			const uint64_t h = layout_.HashLiveRegions(fighterRegions_[side]);
+			sockets.fighterState[side] = h ? h : 1; // 0 is "unknown"
+		}
+		QueryPerformanceCounter(&to);
+		keyTicks_ += to.QuadPart - from.QuadPart;
+		keyedUpdates_++;
+	}
+	NoteSocketUpdate(sockets);
 	original_(battleFrame_);
+	poseFresh_ = false; // the state moved on; the models show it after the engine's next frame
 	EndFightUpdate(visualParts);
+	if (bound_ && keyedUpdates_ % kSocketSummaryUpdates == 0) {
+		LARGE_INTEGER frequency{};
+		QueryPerformanceFrequency(&frequency);
+		const double us = frequency.QuadPart ? 1e6 * (double)keyTicks_ / (double)frequency.QuadPart / (double)keyedUpdates_ : 0.0;
+		Log("sockets: %llu updates keyed, %.1f us per update to key both fighters; %s", (unsigned long long)keyedUpdates_, us,
+			SocketReadsSummary().c_str());
+	}
 	ticksInLastUpdate_ = ticksThisUpdate_;
 	flow_.Capture(); // the record mirrors the game whenever it is saved or hashed
 }
@@ -480,6 +538,7 @@ void SfvAdapter::SetStartTime(uint32_t value)
 
 void SfvAdapter::AfterLoad()
 {
+	poseFresh_ = false; // a restored state: the models show another one (SocketReads)
 	// The callbacks take the restored state's frame id, as the game's own load
 	// passes it (rva 0x48A310); the sound callbacks drop what was played after
 	// it (rva 0x4D5820, 0x4B6230).

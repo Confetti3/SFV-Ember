@@ -107,7 +107,8 @@ constexpr CodeSite kActorSetMeshTransform{"ActorSetMeshTransform", 0xE5BD90,
 // 0x37D250), the camera's handlers, and spawns placed at a bone (rva 0x4CFB70
 // through 0x32BAA0 for any script's spawn with a bone; Z33's part at the end
 // of its V-Trigger, rva 0x3BD900). The socket names come from the table rva
-// 0x351250 reads. Hooked only by the -sfve_socket_log diagnostics.
+// 0x351250 reads. Hooked (SocketReads): a read on a stale pose takes the
+// straight play's value for the same state.
 constexpr CodeSite kSocketWorldPosition{"SocketWorldPosition", 0x3919D0,
 	{0x48, 0x89, 0x5C, 0x24, 0x20, 0x57, 0x48, 0x83, 0xEC, 0x70, 0x48, 0x8B, 0x05, 0x9F, 0x08, 0x63}};
 
