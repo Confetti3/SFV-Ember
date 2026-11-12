@@ -183,6 +183,10 @@ private:
 	// Both fighters' CharaVisualParts, in the battle's order (null where
 	// there is none).
 	void FighterVisualParts(uint8_t* parts[kPlayers]) const;
+	// The cost line (every kCostAdvances updates played forward): each kind
+	// of update's time, and saving, loading, hashing (StateLayout::TakeCosts)
+	// and the restore's callbacks since the last line.
+	void LogCosts();
 
 	BattleIdentity identity_;
 	uint8_t* battleFrame_ = nullptr;
@@ -214,6 +218,13 @@ private:
 	uint64_t keyedUpdates_ = 0; // updates whose fighters were keyed, and the time that took
 	int64_t keyTicks_ = 0;
 	FlowRollback flow_;
+	// The costs since the last cost line (LogCosts), in QueryPerformanceCounter
+	// ticks: updates played forward and replayed, and AfterLoad's work.
+	struct UpdateCosts {
+		uint64_t ticks = 0, replayed = 0, callbacks = 0;
+		int64_t tickTicks = 0, replayedTicks = 0, callbackTicks = 0;
+	};
+	UpdateCosts costs_;
 
 	// Ending the decided match's scenes (EndScenes); the game's functions
 	// from the bind's image base.

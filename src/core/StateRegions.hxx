@@ -9,9 +9,9 @@
 // * Local (one process: the synctest, load checks) leaves out
 //   - masked words: 8-byte words marked ignored (heap and vtable pointers,
 //     engine clocks);
-//   - unchecked regions: restored on rollback but never hashed (SFV's pawn
-//     and camera animation clocks follow how ticks fall into rendered frames,
-//     which differs per machine).
+//   - unchecked regions: restored on rollback but never hashed (SFV's
+//     camera follows how ticks fall into rendered frames, which differs per
+//     machine).
 // * Peers (the hash two processes compare) leaves out all of that, and also
 //   - peer-masked dwords: values each process legitimately has its own of (a
 //     clock reading, a heap leftover in padding) that a replay in one process
@@ -110,6 +110,23 @@ public:
 
 	uint64_t LayoutId() const;
 
+	// The 4-byte units of region `region` (unit i: region bytes 4i..4i+3) that
+	// the peers' hash zeroes as part of an address, with the region's bytes as
+	// `bytes` holds them (its size): the same scan HashRegion runs, over the
+	// region with its masked words and peers' dwords zeroed first. Bit i of
+	// `out` is unit i. None without an address test.
+	void AddressUnits(size_t region, const uint8_t* bytes, std::vector<uint64_t>& out) const;
+
+	// What saving, loading and hashing cost since the last TakeCosts: the
+	// calls and their QueryPerformanceCounter ticks (the cost log, SFV's
+	// adapter). Hashing counts HashSaved and HashLive, the state hashes; the
+	// hash of some regions (HashLiveRegions) is its caller's to count.
+	struct Costs {
+		uint64_t saves = 0, loads = 0, hashes = 0;
+		int64_t saveTicks = 0, loadTicks = 0, hashTicks = 0;
+	};
+	Costs TakeCosts() const;
+
 private:
 	bool Hashed(const StateRegion& r, HashScope scope) const
 	{
@@ -127,6 +144,7 @@ private:
 	std::vector<StateRegion> regions_;
 	size_t totalSize_ = 0;
 	AddressTest addressTest_ = nullptr;
+	mutable Costs costs_; // TakeCosts; the game thread's
 };
 
 } // namespace sfve

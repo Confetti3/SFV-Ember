@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <windows.h>
 
 #include <algorithm>
 #include <bit>
@@ -48,6 +49,31 @@ void Mark(std::vector<uint64_t>& marks, size_t unitIndex)
 {
 	marks[unitIndex / 64] |= 1ull << (unitIndex % 64);
 }
+
+int64_t Now()
+{
+	LARGE_INTEGER t;
+	QueryPerformanceCounter(&t);
+	return t.QuadPart;
+}
+
+// Adds the time from its construction to its end to one of the costs.
+class Timed {
+public:
+	Timed(uint64_t& calls, int64_t& ticks) : calls_(calls), ticks_(ticks), from_(Now()) {}
+	~Timed()
+	{
+		calls_++;
+		ticks_ += Now() - from_;
+	}
+	Timed(const Timed&) = delete;
+	Timed& operator=(const Timed&) = delete;
+
+private:
+	uint64_t& calls_;
+	int64_t& ticks_;
+	int64_t from_;
+};
 
 } // namespace
 
@@ -151,6 +177,7 @@ bool StateLayout::IsIgnored(size_t region, size_t offset) const
 
 void StateLayout::SaveTo(uint8_t* dst) const
 {
+	const Timed timed(costs_.saves, costs_.saveTicks);
 	for (const StateRegion& r : regions_) {
 		memcpy(dst, r.ptr, r.size);
 		dst += r.size;
@@ -159,6 +186,7 @@ void StateLayout::SaveTo(uint8_t* dst) const
 
 void StateLayout::LoadFrom(const uint8_t* src) const
 {
+	const Timed timed(costs_.loads, costs_.loadTicks);
 	for (const StateRegion& r : regions_) {
 		memcpy(r.ptr, src, r.size);
 		src += r.size;
@@ -191,6 +219,7 @@ uint64_t StateLayout::HashRegion(size_t index, const uint8_t* bytes, HashScope s
 
 uint64_t StateLayout::HashLive(HashScope scope) const
 {
+	const Timed timed(costs_.hashes, costs_.hashTicks);
 	uint64_t h = 0x5346564521ull; // "SFVE!"
 	for (size_t i = 0; i < regions_.size(); i++) {
 		if (Hashed(regions_[i], scope)) h += Mix(HashRegion(i, regions_[i].ptr, scope), regions_[i].size);
@@ -209,6 +238,7 @@ uint64_t StateLayout::HashLiveRegions(const std::vector<size_t>& regions, HashSc
 
 uint64_t StateLayout::HashSaved(const uint8_t* src, HashScope scope) const
 {
+	const Timed timed(costs_.hashes, costs_.hashTicks);
 	uint64_t h = 0x5346564521ull;
 	for (size_t i = 0; i < regions_.size(); i++) {
 		if (Hashed(regions_[i], scope)) h += Mix(HashRegion(i, src, scope), regions_[i].size);
@@ -235,6 +265,35 @@ void StateLayout::PeerRegionHashesSaved(const uint8_t* src, std::vector<RegionHa
 	}
 	std::sort(out.begin(), out.end(),
 		[](const RegionHash& a, const RegionHash& b) { return a.size != b.size ? a.size < b.size : a.hash < b.hash; });
+}
+
+void StateLayout::AddressUnits(size_t region, const uint8_t* bytes, std::vector<uint64_t>& out) const
+{
+	const StateRegion& r = regions_.at(region);
+	out.assign((r.size / 4 + 64) / 64, 0);
+	if (!addressTest_ || r.size < 8) return;
+	// What HashRegion's scan reads: masked words and the peers' dwords as zero.
+	std::vector<uint8_t> masked(bytes, bytes + r.size);
+	ZeroMarked(masked.data(), 0, r.size, r.ignore, 8);
+	ZeroMarked(masked.data(), 0, r.size, r.peerIgnore, 4);
+	size_t at = (4 - (reinterpret_cast<uintptr_t>(r.ptr) & 3)) & 3; // from the first 4-byte boundary
+	while (at + 8 <= r.size) {
+		uint64_t value;
+		memcpy(&value, masked.data() + at, 8);
+		if (!addressTest_(value)) {
+			at += 4;
+			continue;
+		}
+		for (size_t unit = at / 4; unit <= (at + 7) / 4; unit++) Mark(out, unit);
+		at += 8; // as ZeroAddresses: the scan resumes after the address
+	}
+}
+
+StateLayout::Costs StateLayout::TakeCosts() const
+{
+	const Costs taken = costs_;
+	costs_ = {};
+	return taken;
 }
 
 uint64_t StateLayout::LayoutId() const

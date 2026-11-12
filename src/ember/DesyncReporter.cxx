@@ -12,6 +12,7 @@
 #include "netplay/SettingsStore.hxx"
 #include "platform/ReportWorkflow.hxx"
 #include "session/sf4e__SessionClient.hxx"
+#include "sf4e/sf4e__RuntimeSession.hxx"
 
 // SFV Ember's source revision (CMakeLists.txt, sfve_build_identity).
 #include "SfvBuildIdentity.hxx"
@@ -299,6 +300,9 @@ void Run()
 	}
 }
 
+// Hands gathered facts to the report's own thread.
+void Queue(desync::Facts facts);
+
 } // namespace
 
 void ReportDesync(const RollbackSession& session, const sf4e::SessionClient& client,
@@ -308,6 +312,52 @@ void ReportDesync(const RollbackSession& session, const sf4e::SessionClient& cli
 	mod::Log("desync report: checkpoint %d, room %016llx table %d match %llu, %zu regions; written down off the game thread",
 		facts.frame, (unsigned long long)facts.roomEpoch, facts.table, (unsigned long long)facts.generation,
 		facts.regions.size());
+	Queue(std::move(facts));
+}
+
+void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& layout, bool watcher, int delay)
+{
+	desync::Facts facts;
+	facts.watcher = watcher;
+	if (const RoomBattle* room = CurrentBattle().room) {
+		facts.slot = static_cast<int>(room->LocalSlot());
+		facts.gamesEnded = room->GamesEnded();
+	}
+	if (const auto& netplay = ember::RuntimeSession::netplay) RoomFacts(facts, netplay->client.GetRoomSnapshot());
+	PickFacts(facts);
+	facts.frame = 0;
+	facts.local = report.localBefore;
+	facts.remote = report.reference;
+	facts.confirmed = -1;
+	facts.delay = delay;
+	facts.layoutId = layout.LayoutId();
+	facts.matchBuild = MatchBuildId();
+	size_t written = 0, kept = 0, still = 0;
+	for (const StartAgreement::RegionOutcome& r : report.regions) {
+		facts.regions.push_back({r.name, r.size, r.before});
+		written += r.unitsWritten;
+		kept += r.unitsKept;
+		if (r.after != r.reference) still++;
+	}
+	if (report.stateBefore.size() == layout.TotalSize()) {
+		for (const StateRegion& r : layout.Regions()) {
+			facts.stateRegions.push_back({r.name, r.size, reinterpret_cast<std::uint64_t>(r.ptr)});
+		}
+		facts.state = report.stateBefore;
+	}
+	facts.startRepair = std::to_string(report.regions.size()) + " region(s) differed from P1's: " + std::to_string(written) +
+		" dword(s) taken from P1, " + std::to_string(kept) + " left as they were (addresses, masked words); " +
+		std::to_string(still) + " region(s) still differ, " + std::to_string(report.unpaired.size()) +
+		" unpaired. Result: " + StartAgreement::ResultName(report.result) + ", now " +
+		(report.localAfter == report.reference ? "the same as P1's." : "still not P1's.");
+	mod::Log("desync report: the start state's repair, %zu region(s); written down off the game thread", facts.regions.size());
+	Queue(std::move(facts));
+}
+
+namespace {
+
+void Queue(desync::Facts facts)
+{
 	Writer& writer = TheWriter();
 	std::lock_guard lock(writer.mutex);
 	if (writer.queue.size() >= kQueued) {
@@ -326,5 +376,7 @@ void ReportDesync(const RollbackSession& session, const sf4e::SessionClient& cli
 	writer.queue.push_back(std::move(facts));
 	writer.wake.notify_one();
 }
+
+} // namespace
 
 } // namespace sfve::adapter

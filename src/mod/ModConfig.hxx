@@ -25,6 +25,12 @@
 //                        given the straight read, or missed
 //   -sfve_replay_any_build=1  diagnostics: Watch now plays a replay made with
 //                        another build (its result says nothing of this build)
+//   -sfve_rng_audit=1    diagnostics: every draw from a random generator in a battle
+//                        update is checked against the rollback state; a generator
+//                        outside it is logged once with its caller (RngAudit)
+//   -sfve_start_perturb=R,O,A  test: adds A to the dword at offset O of region R
+//                        (a name, or a size) of this copy's start state, before the
+//                        start state's agreement, which then repairs it
 //   -sfve_practice=1     synctest, netplay: Training's refilling gauges from the first frame
 //   -sfve_replay_regions=F  replay playback: log each checkpoint's region hashes from frame F
 //   -sfve_replay_check=N    replay playback: also make rollbacks up to N frames deep and log
@@ -135,6 +141,11 @@ struct ModConfig {
 	bool socketLog = false;
 	// Watch now plays a replay of another build (-sfve_replay_any_build).
 	bool replayAnyBuild = false;
+	// Check every random draw against the rollback state (-sfve_rng_audit).
+	bool rngAudit = false;
+	// "<region>,<offset>,<add>": this copy's start state changed before its
+	// agreement (-sfve_start_perturb); empty for none.
+	std::string startPerturb;
 	// Training's refilling gauges from the battle's first frame on both
 	// players, as a Practice room's match has them, so every V-Trigger and
 	// Critical Art a script asks for is played (synctest and netplay).

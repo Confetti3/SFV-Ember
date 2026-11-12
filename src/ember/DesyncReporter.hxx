@@ -18,6 +18,7 @@
 // id, reads the tail of the mod's log and writes the file. Nothing there can stall or end the game:
 // every failure is a log line and no report.
 
+#include "core/StartAgreement.hxx"
 #include "ember/SfvVerification.hxx"
 
 namespace sf4e {
@@ -31,5 +32,12 @@ namespace sfve::adapter {
 // watcher's).
 void ReportDesync(const RollbackSession& session, const sf4e::SessionClient& client,
 	const CheckpointExchange::Mismatch& mismatch, bool player);
+
+// Game thread, once a room battle's start state agreement wrote some of P1's
+// bytes into this copy's state (core/StartAgreement.hxx): the same kind of
+// report, titled as a start state repair, with this copy's state before the
+// repair as its state file (frame 0). `layout` is the battle's; `delay` the
+// session's input delay.
+void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& layout, bool watcher, int delay);
 
 } // namespace sfve::adapter

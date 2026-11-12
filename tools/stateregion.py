@@ -18,7 +18,8 @@ address is sfv::rng::kGlobal + kState past it), `heap` for another address
 own and the owner's (`+run / @owner`).
 
 Field names come from build 13173604 (IDA, every one with its rva in
-docs/design/beta8/desync.md); a name is only given where the code was read.
+docs/design/beta8/desync.md and determinism.md); a name is only given where
+the code was read.
 """
 
 from __future__ import annotations
@@ -42,10 +43,28 @@ RUN_START = re.compile(r"\+0x([0-9A-F]+)(?:\.[a-z]+)?$")
 
 
 def timeline_fields() -> dict[int, str]:
-    # The timeline object (272 bytes, constructor rva 0x2ECAD0) whose +0x30..
-    # +0x110 is registered (map step 5). The script player fields are the
-    # frame meter's (SfvFighterOffsets.hxx: SetScript rva 0x307840,
-    # SetScriptFrame rva 0x3099E0); keys are object offsets.
+    # The timeline object (272 bytes, constructor rva 0x2ECAD0, which zeroes
+    # it) whose +0x30..+0x110 is registered (map step 5; registration rva
+    # 0x315A30, 4-byte pieces, +0x108 and +0x10C included: both are in the
+    # game's snapshot). The script player fields are the frame meter's
+    # (SfvFighterOffsets.hxx: SetScript rva 0x307840, SetScriptFrame rva
+    # 0x3099E0); keys are object offsets, so the region's run offset is the
+    # key - 0x30 (script number and frame: run +0x18; data revision and
+    # condition flags: run +0xD8).
+    #
+    # +0x108, the data revision: written once, at CharaActionPart's
+    # registration (rva 0x32F570), from the battle data's u16 at +76 for both
+    # timelines; fighter code compares it with constants 2..0x1A (rva 0x35F5A0
+    # among many), so it is constant for a battle.
+    # +0x10C, the condition flags: set and cleared by the script's flag command
+    # (rva 0x2E4340: |= or &= ~ of the command's mask), zeroed by SetScript
+    # (rva 0x307840) for every new script, and tested by the command runners
+    # (rva 0x302780, 0x30D570, 0x30D850, 0x30DF50): each command record's
+    # require mask (+0) and forbid mask (+4) against it, a command that fails
+    # them skipped (rva 0x302926..0x302943). It decides which of the playing
+    # script's commands run (spawns, hitboxes, branches): fight state.
+    # A difference at run +0xD8/+0xDC means the copies took different script
+    # branches; run +0x18 says which script and frame set it.
     return {
         0x30: "-1 at construction (qword)",
         0x38: "-1 at construction (qword)",
@@ -55,6 +74,30 @@ def timeline_fields() -> dict[int, str]:
         0x58: "first attack frame | last attack frame (16.16)",
         0x60: "interrupt frame | time scale (16.16, 0 while frozen)",
         0x68: "speed (16.16, 0x10000 at construction) | phase bits",
+        0x108: "data revision (battle data u16 +76, rva 0x32F570) | condition flags (each command's require/forbid "
+               "masks, tested by the command runners rva 0x302780 etc.; zeroed by SetScript)",
+    }
+
+
+def status_part_fields() -> dict[int, str]:
+    # CharaStatusPart's run at +0xC0 (372 bytes, registration rva 0x354260);
+    # keys are part offsets (run +0x50 is +0x110, run +0x98 is +0x158).
+    # +0x110 bit 0: the hold that stops the V-Trigger timer draining (rva
+    # 0x3632E0, 0x361590; SfvBattleLayouts.hxx, kPartRunsOutsideSnapshot).
+    # +0x158, the dizzy variant: picked by rva 0x35F810 when the fighter is
+    # stunned, the fighter's per-tick draw (CharaUnit +0xC50, the 24-byte
+    # generator pair) modulo a 4-entry weight table, or 3 when status dword
+    # 203 is set; handed to the fighter's CharaVisualPart (rva 0x3A42E0). Only
+    # a visual reader was found, but a difference means the fighters' draws
+    # differed.
+    # +0x15C, the dizzied flag: set to 1 by rva 0x35F5A0's "Stun" case (stun
+    # reached the meter), cleared by the status reset (rva 0x35DD20) and by
+    # rva 0x343E00 and 0x38C480; the stun add (rva 0x346250) accumulates only
+    # while it is 0. Fight state.
+    return {
+        0x110: "V-Trigger timer hold (bit 0) | dword",
+        0x158: "dizzy variant (rva 0x35F810: the fighter's draw mod a weight table) | dizzied flag (rva 0x35F5A0 sets, "
+               "0x35DD20 clears; stun adds only while 0, rva 0x346250)",
     }
 
 
@@ -83,6 +126,8 @@ def owner_fields(name: str) -> tuple[int, dict[int, str]]:
         return start, timeline_fields()
     if "ActionPart+0xD8" in name:
         return start, action_part_fields()
+    if "CharaStatusPart+0xC0" in name:
+        return start, status_part_fields()
     if name.startswith(("CharaUnit[", "ProjectileUnit[")) and name.endswith("]+0xF8"):
         # ActionUnit's run (rva 0x2FED60): +248, +252 counter, +256 player slot.
         return start, {0xF8: "dword | sequential counter", 0x100: "player slot (0 P1, 1 P2) | dword"}

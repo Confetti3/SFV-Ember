@@ -77,6 +77,12 @@ bool TakePlaybackStop();
 void NotePlaybackFrame(bool fight, unsigned game);
 // A checkpoint the playback reached, compared with the recording's.
 void NotePlaybackCheckpoint(int frame, std::uint64_t hash);
+// The playback's start state before its first frame, compared with the
+// state P1's copy started the recorded battle from (the header's startHash,
+// core/StartAgreement.hxx; nothing when the header has none). A difference
+// is logged and counted as a differing checkpoint, so the playback ends
+// failed: it plays on, as a later checkpoint's difference does.
+void NotePlaybackStart(std::uint64_t recorded, std::uint64_t played);
 // The replay's battle is gone, the main menu back: why it ended.
 void EndPlayback(const std::string& why);
 // While a replay's battle plays: the shell hides the pads from the game

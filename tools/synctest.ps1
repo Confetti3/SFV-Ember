@@ -1,4 +1,4 @@
-param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash = 31337, [int]$mashFrom = 600, [int]$distance = 8, [int]$schedule = 1, [int]$frames = 7000, [int]$waitSeconds = 420, [switch]$keep, [int]$learn = 1, [switch]$moves, [switch]$practice, [string]$moveset = '', [int]$idle = -1, [switch]$tiny, [int]$tinySides = 3, [switch]$socketLog, [switch]$check)
+param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash = 31337, [int]$mashFrom = 600, [int]$distance = 8, [int]$schedule = 1, [int]$frames = 7000, [int]$waitSeconds = 420, [switch]$keep, [int]$learn = 1, [switch]$moves, [switch]$practice, [string]$moveset = '', [int]$idle = -1, [switch]$tiny, [int]$tinySides = 3, [switch]$socketLog, [switch]$rngAudit, [switch]$check)
 # One copy in synctest mode: both players mash, every rolled-back stretch is
 # first played with wrong inputs, rollbacks of random depth and spacing (up
 # to -distance, from seed -schedule; 0 for the fixed schedule), learning
@@ -18,8 +18,15 @@ param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash 
 # (SocketReads) and prints them with the report; the `sockets:` lines (the
 # reads recorded, given the straight read, missed and conflicting, and the
 # microseconds per update the keys cost) are printed either way.
+# -rngAudit checks every random draw of a battle update against the rollback
+# state (RngAudit; docs/design/beta8/determinism.md): a generator outside it,
+# or in it but not reseeded, is logged once with its caller, and the battle's
+# end logs the counts (`rng audit:` lines, printed). The `costs:` lines (each
+# kind of update's time, save, load, hash and the restore's callbacks, every
+# 600 updates) are printed either way.
 # -check ends with PASS (the run reached -frames, 0 failures, no conflicting
-# socket read) or FAIL, and the exit code says the same.
+# socket read, and with -rngAudit no generator outside the rollback state)
+# or FAIL, and the exit code says the same.
 Set-Location (Split-Path -Parent $PSScriptRoot)
 python -I tools\sfve.py kill | Out-Null
 $extra = @()
@@ -27,6 +34,7 @@ if ($moveset) { $extra += "-sfve_moveset=$moveset" }
 if ($idle -ge 0) { $extra += "-sfve_idle=$idle" }
 if ($tiny) { $extra += "-sfve_tiny=$tinySides" }
 if ($socketLog) { $extra += '-sfve_socket_log=1' }
+if ($rngAudit) { $extra += '-sfve_rng_audit=1' }
 python -I tools\sfve.py launch 0 --mode synctest -- '-sfve_pads=01' '-sfve_background=1' "-sfve_mash=$mash" "-sfve_mash_from=$mashFrom" "-sfve_distance=$distance" '-sfve_perturb=1' "-sfve_learn=$learn" "-sfve_schedule=$schedule" "-sfve_moves=$([int][bool]$moves)" "-sfve_practice=$([int][bool]$practice)" $extra | Out-Null
 for ($k = 0; $k -lt 60; $k++) { Start-Sleep 2; if ((python -I tools\sfve.py ctl 0 status) -match '"scene":"0x2D98660"') { break } }
 Start-Sleep 3
@@ -43,7 +51,7 @@ while ((Get-Date) -lt $deadline) {
 $i = $s.IndexOf('"mode":{"ok"')
 if ($i -ge 0) { $s.Substring($i, [Math]::Min(700, $s.Length - $i)) } else { 'no synctest report' }
 $log = Join-Path $env:APPDATA 'SFVEmber\logs\sfv_ember.log'
-$pattern = if ($socketLog) { 'synctest:|learn:|adapter: (expected|no |socket)|socket:|sockets:|tiny:' } else { 'synctest:|learn:|adapter: (expected|no |socket)|sockets:|tiny:' }
+$pattern = if ($socketLog) { 'synctest:|learn:|adapter: (expected|no |socket|input unit)|socket:|sockets:|tiny:|rng audit|costs:' } else { 'synctest:|learn:|adapter: (expected|no |socket|input unit)|sockets:|tiny:|rng audit|costs:' }
 Select-String -Path $log -Pattern $pattern | ForEach-Object { $_.Line.Substring(24) }
 if (!$keep) { python -I tools\sfve.py kill | Out-Null }
 if ($check) {
@@ -54,6 +62,7 @@ if ($check) {
   if (-not $run.Success -or [int]$run.Groups[1].Value -lt $frames) { $why += "the run stopped before $frames frames" }
   if (-not $failures.Success -or [int]$failures.Groups[1].Value -ne 0) { $why += "failures: $(if ($failures.Success) { $failures.Groups[1].Value } else { 'no report' })" }
   if ($conflicts.Count) { $why += 'a socket read conflicted with the straight read of its state' }
+  if ($rngAudit -and @(Select-String -Path $log -Pattern 'rng audit: a draw from a generator outside').Count) { $why += 'a random generator outside the rollback state was drawn from' }
   if ($why.Count) { "FAIL: $($why -join '; ')"; exit 1 }
   "PASS: $($run.Groups[1].Value) frames, 0 failures"
   exit 0

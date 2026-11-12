@@ -165,6 +165,18 @@ constexpr uint32_t kInstanceInputFrame = 0x150;
 // QueryPerformanceCounter's low part when the unit starts its frame sync
 // (rva 0x423630); online play measures time from it (rva 0x420170).
 constexpr uint32_t kSyncClock = 0x2214;
+// An int in the counters (hashed, also for peers), written as a round starts:
+// the unit's message handler (rva 0x438E40, a message whose flags have bit
+// 1) stores at rva 0x438EBD the dword at +6360 of the match data the battle's
+// context holds (rva 0x2F85B0 returns its owner's +272; that object's +6408
+// is the rounds judged, battledata::kRoundCount), or -1 when the unit's
+// +0x10C is set. +6360 is inside the match data's part of the game's own
+// snapshot (+6176..+6404). Logged at bind on every copy (SfvAdapter) to show
+// whether two copies ever start a battle with different values; peers'
+// checkpoints have never differed there (EMBER_LIBRARY.md section 47).
+constexpr uint32_t kRoundStartValue = 0x2178;
+constexpr uint32_t kRoundStartOverride = 0x10C;
+constexpr uint32_t kRoundStartSource = 6360; // in the match data
 } // namespace inputunit
 
 namespace rollbackunit {
@@ -437,6 +449,29 @@ constexpr uint32_t kNodeFunction = 0x30;
 // fighters start a move on the same frame the result depends on which writes
 // last, and the two copies (or a replay) can differ; only the Combo event's
 // statistics listener reads it (rva 0x4B27D0).
+//
+// Never masked: words that look like per-machine drift but are fight state
+// (docs/design/beta8/determinism.md; IDA, 2026-11-12). A difference in any of
+// them is a real divergence, so no rule here may ever cover them:
+//   - each timeline object's (->0x3EC8/0x3ED0/0x3ED8, registered +0x30..+0x110
+//     by rva 0x315A30) script number and frame (+0x48, +0x4C: run +0x18),
+//     interrupt and time scale (+0x60, +0x64), its data revision (+0x108:
+//     the battle data's u16 +76, written once by rva 0x32F570) and its
+//     condition flags (+0x10C: run +0xDC). The flags are set and cleared by
+//     the script's flag command (rva 0x2E4340), zeroed by SetScript (rva
+//     0x307840), and every command record's require (+0) and forbid (+4)
+//     masks are tested against them by the command runners (rva 0x302780,
+//     0x30D570, 0x30D850, 0x30DF50; a failing command is skipped at rva
+//     0x302926..0x302943): they decide which spawns, hitboxes and branches a
+//     script runs;
+//   - CharaStatusPart's dizzy variant (+0x158, run +0x98 of its +0xC0 run:
+//     rva 0x35F810 picks it from the fighter's draw, CharaUnit +0xC50) and
+//     dizzied flag (+0x15C: set by rva 0x35F5A0's Stun case, cleared by rva
+//     0x35DD20, 0x343E00 and 0x38C480; the stun add, rva 0x346250, adds only
+//     while it is 0);
+//   - the fighters' random generators and draws (the 24-byte pairs) and the
+//     global generator's state (rng::kGlobal + kState).
+// tools/stateregion.py names these words in a desync's state file.
 //
 // Masked in every slot: a projectile group's run at +0x500 (1408 bytes,
 // registered at rva 0x480670) is 8 spawn requests of 176 bytes (walked at
