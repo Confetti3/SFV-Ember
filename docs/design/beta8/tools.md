@@ -5,6 +5,10 @@
 `tools/boothpack.py` turns the masters into the pack (`pack.md`); `tools/boothsheet.py` makes
 contact sheets. Development builds only; never on a player build.
 
+Pack formats: costume cutouts are 256x384 palette PNGs (SF4's importer); loadout pictures are
+`vs<k>.png` / `vt<k>.png`, 256x144 RGB PNGs made as SF4 makes its `ultra-N.png` (Lanczos
+`ImageOps.fit` from the lossless 16:9 master, saved as PNG, no palette, `optimize=True`).
+
 ## Setup
 
 Python 3.10+, Pillow and numpy pinned in `tools/booth-requirements.txt` (Pillow 11.1.0, numpy

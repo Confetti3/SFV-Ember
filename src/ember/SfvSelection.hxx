@@ -10,7 +10,7 @@
 // asked by: a picture is of ONE part's choice. SFV Ember asks Ultra with
 // n = part * 2 + choice (V-Skill I 0, V-Skill II 1, V-Trigger I 2, V-Trigger
 // II 3: LoadoutPictureNumber), and SfvSelection.cxx's Ultra answers it from
-// the package's `assets\selection\<CODE>\vs<k>.jpg` / `vt<k>.jpg`
+// the package's `assets\selection\<CODE>\vs<k>.png` / `vt<k>.png`
 // (SfvSelectionAssetPath.hxx). LoadoutPicture is the one typed way for the
 // screens to ask.
 //

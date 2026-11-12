@@ -20,10 +20,10 @@ fighter's code as the pick space writes it):
 |---|---|
 | `assets\selection\manifest.json` | always |
 | `assets\selection\<CODE>\costume-<N>\color-<M>-cutout.png` | the fighter has costume N (the game's costume id, with gaps) and that costume has colour M (the game's number; EX colours are 100 and up) |
-| `assets\selection\<CODE>\vs<k>.jpg` | k from 1 to the fighter's V-Skill count |
-| `assets\selection\<CODE>\vt<k>.jpg` | k from 1 to the fighter's V-Trigger count |
+| `assets\selection\<CODE>\vs<k>.png` | k from 1 to the fighter's V-Skill count |
+| `assets\selection\<CODE>\vt<k>.png` | k from 1 to the fighter's V-Trigger count |
 
-Everything else is refused: other extensions or case (`.PNG`, `.jpg` for a cutout, `.png` for a
+Everything else is refused: other extensions or case (`.PNG`, `.jpg` for a cutout or a
 loadout picture), any suffix or trailing separator, forward slashes or doubled backslashes,
 `..` or `.` segments, `:` streams, lowercase or longer/shorter codes, leading zeros or signs in
 N, M and k, numbers past six digits, an embedded NUL. The comparison is exact and
@@ -50,7 +50,7 @@ package ships exists. Costume and colour numbers come from the catalog (`Costume
   No fallback; the pane falls back to `Character`, then `FighterPicture::Large`
   (`PartCharacter`), then the banner.
 - `Ultra(fighter, n)`: n = part * 2 + choice (`LoadoutPictureNumber`; V-Skill I 0, II 1,
-  V-Trigger I 2, II 3), the file `<CODE>/vs<choice+1>.jpg` or `vt<choice+1>.jpg`, 512 px. Missing
+  V-Trigger I 2, II 3), the file `<CODE>/vs<choice+1>.png` or `vt<choice+1>.png` (256x144, decoded at its own size). Missing
   for n outside 0 to 3, a choice the fighter lacks, or an unknown fighter. `LoadoutPicture`
   wraps it with the typed part and choice.
 - `FighterPicture::Tile` / `Large` (`CharaSelectIconLeft` whole, `PartCharacter` whole) are
@@ -128,7 +128,7 @@ holds the files. Paths in JSON use forward slashes and are relative to `pack\`.
       "stage": "TRN"
     },
     {
-      "path": "assets/selection/RYU/vs1.jpg",
+      "path": "assets/selection/RYU/vs1.png",
       "sha256": "<64 hex>",
       "bytes": 31844,
       "look": { "fighter": "RYU", "part": "vskill", "choice": 1 },
@@ -158,7 +158,8 @@ Fields:
   `"vtrigger"`, `choice` = 1 or 2, the file's k), all of which must agree with `path`; `frame`
   (the fight frame captured, number) and `stage` (string) are required and only recorded.
 - The manifest is shipped as `assets\selection\manifest.json`, so it must stay ASCII-safe
-  JSON and carry nothing private. Cutouts are PNG, loadout pictures JPEG; the pack is what the
+  JSON and carry nothing private. Cutouts are 256x384 palette PNGs and loadout pictures 256x144 RGB PNGs, both as SF4's importer and
+  its Ultra pictures are made (Lanczos, `ImageOps.fit` for the loadout ones, no palette for them); the pack is what the
   game draws, not the 512x768 masters (those stay in the store).
 
 ## Not verified

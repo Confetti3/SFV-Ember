@@ -15,7 +15,7 @@
 // or colour (its select screens show the 3D model), so those are the
 // package's captured renders (beta.8: assets/selection/<CODE>/costume-<N>/
 // color-<M>-cutout.png) and, for a V-Skill or V-Trigger, its captured
-// loadout pictures (<CODE>/vs<k>.jpg, vt<k>.jpg), loaded as SF4's are
+// loadout pictures (<CODE>/vs<k>.png, vt<k>.png), loaded as SF4's are
 // (Request over PackagedFiles) and missing where the package has none. The
 // pick pane falls back to the game's own large figure, then its banner.
 // There are no ranking emblems of SF4's, and no one picture of a V-Skill and
@@ -150,7 +150,7 @@ SelectionImage SelectionArt::Appearance(int fighter, int costume, int colour)
 	return Request(key, [&] { return PackagedFiles(key); }, MaximumImageSide);
 }
 // A loadout picture (SfvSelection.hxx's LoadoutPicture): `ultra` is part * 2 +
-// choice, 0 to 3, and the picture is <CODE>/vs<k>.jpg or vt<k>.jpg of the
+// choice, 0 to 3, and the picture is <CODE>/vs<k>.png or vt<k>.png of the
 // package (k is choice + 1). Missing for a number outside 0 to 3 and for a
 // choice the fighter lacks.
 SelectionImage SelectionArt::Ultra(int fighter, int ultra)

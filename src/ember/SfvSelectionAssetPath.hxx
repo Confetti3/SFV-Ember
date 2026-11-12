@@ -16,8 +16,8 @@
 //
 //   assets\selection\manifest.json
 //   assets\selection\<CODE>\costume-<N>\color-<M>-cutout.png   (costume N has colour M)
-//   assets\selection\<CODE>\vs<k>.jpg                          (V-Skill choice k, 1 or 2)
-//   assets\selection\<CODE>\vt<k>.jpg                          (V-Trigger choice k, 1 or 2)
+//   assets\selection\<CODE>\vs<k>.png                          (V-Skill choice k, 1 or 2)
+//   assets\selection\<CODE>\vt<k>.png                          (V-Trigger choice k, 1 or 2)
 //
 // Nothing else is a selection asset path. N and M are the game's own numbers
 // (a costume's `id`, a colour's number: SFV's have gaps), written in decimal

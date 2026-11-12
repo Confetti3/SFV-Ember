@@ -134,8 +134,8 @@ The board's pane, the look page's pane and the card pages' panes are one drawing
 Card pictures: costume cards show the figure in the colour worn (or the costume's first
 colour this player can ready); colour cards the exact look's cutout (`Appearance`), else the
 colour's two-tone swatch as a square, else the figure; stage cards `StageSelectIcon_l`;
-loadout cards the captured move picture (`LoadoutPicture`, stream B's `vs<k>.jpg` /
-`vt<k>.jpg`), else the fighter in their look, with the game's I/II mark top right, SAVED top
+loadout cards the captured move picture (`LoadoutPicture`, stream B's `vs<k>.png` /
+`vt<k>.png`), else the fighter in their look, with the game's I/II mark top right, SAVED top
 left on the stored choice, then the part and numeral, the game's move name and the note
 (`LoadoutNote`, stream D, drawn after `NoteUserText` so CJK glyphs load). Until streams B and D
 land, every picture falls back as above and the notes are empty.

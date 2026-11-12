@@ -50,10 +50,10 @@ bool IsCutout(std::wstring_view rest, const picks::Fighter& fighter)
 	return false;
 }
 
-// `vs<k>.jpg` and `vt<k>.jpg`, k from 1 to the fighter's number of choices.
+// `vs<k>.png` and `vt<k>.png`, k from 1 to the fighter's number of choices.
 bool IsLoadoutPicture(std::wstring_view rest, const picks::Fighter& fighter)
 {
-	if (rest.size() != 7 || rest[0] != L'v' || rest.substr(3) != L".jpg") return false;
+	if (rest.size() != 7 || rest[0] != L'v' || rest.substr(3) != L".png") return false;
 	if (rest[1] != L's' && rest[1] != L't') return false;
 	if (rest[2] < L'1' || rest[2] > L'9') return false;
 	const picks::LoadoutPart part = rest[1] == L's' ? picks::LoadoutPart::VSkill : picks::LoadoutPart::VTrigger;
@@ -115,7 +115,7 @@ std::wstring LoadoutPicturePath(std::string_view fighterCode, picks::LoadoutPart
 {
 	if (fighterCode.empty() || choice < 0 || choice >= picks::kPartChoices) return {};
 	return std::wstring(kSelectionRoot) + Wide(fighterCode) + (part == picks::LoadoutPart::VSkill ? L"\\vs" : L"\\vt") +
-		std::to_wstring(choice + 1) + L".jpg";
+		std::to_wstring(choice + 1) + L".png";
 }
 
 } // namespace sfve::assets

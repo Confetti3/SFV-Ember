@@ -24,7 +24,7 @@ the art pane's fallback).
 `LoadoutPicture(art, fighter, part, choice)` and `LoadoutPictureNumber(part, choice)`
 (part * 2 + choice, the number `SelectionArt::Ultra` is asked with). The wrapper is real;
 stream B makes `SelectionArt::Ultra` in `SfvSelection.cxx` answer it from the package's
-`vs<k>.jpg` / `vt<k>.jpg`, and stream C's loadout cards call `LoadoutPicture`.
+`vs<k>.png` / `vt<k>.png`, and stream C's loadout cards call `LoadoutPicture`.
 
 **Loadout notes** (`src/ember/SfvLoadoutNotes.hxx`, `sfve::adapter`). `LoadoutNoteKey`
 (real), `LoadoutNoteFor(code, part, choice)`, `LoadoutNote(fighter, part, choice)` and
