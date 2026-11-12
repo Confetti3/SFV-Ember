@@ -7,6 +7,11 @@
 #include <mstcpip.h>
 #include <windows.h>
 
+// mstcpip.h declares it only for some Windows targets; its value is fixed by Windows.
+#ifndef SIO_UDP_CONNRESET
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+#endif
+
 #include <string.h>
 
 #include <algorithm>
