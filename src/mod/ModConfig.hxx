@@ -4,7 +4,8 @@
 // know), so test scripts can start several copies side by side:
 //
 //   -sfve_instance=N     0, 1, ...: separate log, ports and pad slot
-//   -sfve_mode=M         inert | probe | synctest | netplay   (default probe)
+//   -sfve_mode=M         inert | probe | synctest | netplay | booth   (default probe;
+//                        booth: development, the photo booth, mod/BoothMode.hxx)
 //   -sfve_player=P       netplay: 0 = P1, 1 = P2
 //   -sfve_port=N         netplay: this copy's UDP port   (default 7000 + 2*instance)
 //   -sfve_peer_port=N    netplay: the other copy's port on loopback
@@ -87,7 +88,7 @@
 
 namespace sfve::mod {
 
-enum class ModMode { Inert, Probe, SyncTest, Netplay };
+enum class ModMode { Inert, Probe, SyncTest, Netplay, Booth };
 
 // One -sfve_unowned entry: a fighter, one costume of it (colour -1), or one
 // colour of that costume.

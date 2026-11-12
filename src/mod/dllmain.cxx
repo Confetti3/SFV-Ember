@@ -24,6 +24,7 @@
 #include "ember/SfvGame.hxx"
 #include "mod/BackgroundPlay.hxx"
 #include "mod/BattleDriver.hxx"
+#include "mod/BoothMode.hxx"
 #include "mod/BuildCheck.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/CrashRecord.hxx"
@@ -76,6 +77,7 @@ std::unique_ptr<sfve::mod::BattleMode> MakeMode(const sfve::mod::ModConfig& conf
 	switch (config.mode) {
 	case ModMode::SyncTest: return std::make_unique<SyncTestMode>(config);
 	case ModMode::Netplay: return std::make_unique<NetplayMode>(config);
+	case ModMode::Booth: return std::make_unique<BoothMode>(config);
 	default: return std::make_unique<PassThroughMode>();
 	}
 }
