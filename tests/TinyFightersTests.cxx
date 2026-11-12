@@ -486,3 +486,98 @@ TEST_CASE("the sides drawn small are set by a launch and cleared by the end of t
 	mod::ClearTinyFighters();
 	CHECK_FALSE(mod::TinyFightersNow().Any());
 }
+
+TEST_CASE("the booth's factor scales a mesh as Tiny's does, by its own size")
+{
+	// The default stays the Tiny size.
+	const float normal[3] = {1.0f, 2.0f, 1.0f};
+	float out[3];
+	tiny::ScaledScale(normal, out);
+	CHECK(Near(out[1], 0.8f));
+	tiny::ScaledScale(normal, out, 0.001f);
+	CHECK(Near(out[0], 0.001f));
+	CHECK(Near(out[1], 0.002f));
+	tiny::ScaledScale(normal, out, 1.0f);
+	CHECK(Near(out[1], 2.0f));
+	CHECK(tiny::UsableFactor(0.001f));
+	CHECK(tiny::UsableFactor(1.0f));
+	for (const float bad : {0.0f, -1.0f, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+		CHECK_FALSE(tiny::UsableFactor(bad));
+	}
+	// A side's factor in the sides: each side scaled by its own.
+	mod::TinySides sides = Sides(true, true);
+	CHECK(sides.factor[0] == mod::kTinyScale);
+	sides.factor[1] = 0.001f;
+	FakePart p1(0), p2(1, 1.5f, 1.0f, 1.0f);
+	s_call = {};
+	REQUIRE(tiny::ApplyToPart(p2.part, sides, &RecordScale).scaled);
+	CHECK(Near(s_call.xyz[0], 0.0015f));
+	REQUIRE(tiny::ApplyToPart(p1.part, sides, &RecordScale).scaled);
+	CHECK(Near(s_call.xyz[0], 0.4f));
+	// The fight still sees the game's own scale (BeginFightUpdate).
+	REQUIRE(tiny::RestoreToPart(p2.part, sides, &RecordScale).scaled);
+	CHECK(Near(s_call.xyz[0], 1.5f));
+	// A whole-mesh transform by the side's factor.
+	alignas(16) float in[12] = {0.0f, 0.0f, 0.0f, 1.0f, 10.0f, 20.0f, 30.0f, 0.0f, 1.0f, 1.0f, 2.0f, 0.0f};
+	alignas(16) __m128 source[3];
+	for (int i = 0; i < 3; i++) source[i] = _mm_load_ps(in + 4 * i);
+	alignas(16) __m128 scaled[3];
+	tiny::ScaledTransform(source, scaled, 0.5f);
+	alignas(16) float scale[4];
+	_mm_store_ps(scale, scaled[2]);
+	CHECK(Near(scale[0], 0.5f));
+	CHECK(Near(scale[2], 1.0f));
+}
+
+TEST_CASE("the booth scales both sides' parts at once, each on its own side")
+{
+	FakePart p1(0), p2(1, 1.0f, 2.0f, 1.0f);
+	const uint8_t* parts[2] = {p1.part, p2.part};
+	const float factors[2] = {0.001f, 1.0f};
+	tiny::PartResult results[2];
+	s_call = {};
+	CHECK(tiny::ScaleBothSides(parts, factors, &RecordScale, results));
+	CHECK(s_call.count == 2);
+	CHECK(results[0].side == 0);
+	CHECK(results[0].actor == p1.actor);
+	CHECK(results[1].side == 1);
+	CHECK(s_call.component == p2.mesh);
+	CHECK(Near(s_call.xyz[1], 2.0f)); // factor 1: the game's own size
+	// A part remembered for a side that reads as the other's, or none: not both.
+	const uint8_t* swapped[2] = {p2.part, p1.part};
+	CHECK_FALSE(tiny::ScaleBothSides(swapped, factors, &RecordScale, results));
+	const uint8_t* missing[2] = {p1.part, nullptr};
+	CHECK_FALSE(tiny::ScaleBothSides(missing, factors, &RecordScale, results));
+	CHECK(results[0].scaled);
+	CHECK(results[1].side == -1);
+	// A factor that is no size: nothing is called.
+	const float bad[2] = {0.0f, 1.0f};
+	s_call = {};
+	CHECK_FALSE(tiny::ScaleBothSides(parts, bad, &RecordScale, results));
+	CHECK(s_call.count == 0);
+	CHECK_FALSE(results[0].scaled);
+}
+
+TEST_CASE("the booth's scale now is refused outside the booth, unbound, or off the game thread")
+{
+	// Not the booth (no BoothMode installed it): refused, and no side scaled.
+	CHECK_FALSE(mod::ApplyFighterScaleNow(0.001f, 0.001f));
+	CHECK_FALSE(mod::TinyFightersNow().Any());
+	// The booth, but the picture's hooks are not in (the tests install none)
+	// and no part has been seen: still refused, and nothing changes.
+	mod::SetFighterScaleAllowed(true);
+	CHECK_FALSE(mod::ApplyFighterScaleNow(0.001f, 0.001f));
+	CHECK_FALSE(mod::ApplyFighterScaleNow(0.0f, 1.0f));
+	CHECK_FALSE(mod::TinyFightersNow().Any());
+	mod::ForgetFighterScale();
+	mod::SetFighterScaleAllowed(false);
+	CHECK_FALSE(mod::TinyFightersNow().Any());
+	// A Tiny pick's sides still read as before.
+	mod::SetTinyFighters(false, true, false);
+	const mod::TinySides sides = mod::TinyFightersNow();
+	CHECK_FALSE(sides.side[0]);
+	CHECK(sides.side[1]);
+	CHECK(sides.factor[1] == mod::kTinyScale);
+	mod::ClearTinyFighters();
+	CHECK_FALSE(mod::TinyFightersNow().Any());
+}
