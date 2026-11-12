@@ -48,5 +48,6 @@
     {"code": "Z35", "column": 21, "row": 1},
     {"code": "Z40", "column": 22, "row": 1}
   ],
-  "random": {"column": 11, "row": 0}
+  "random": {"column": 11, "row": 0},
+  "eleven": {"column": 23, "row": 1}
 }

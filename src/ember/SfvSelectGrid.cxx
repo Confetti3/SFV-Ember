@@ -75,8 +75,8 @@ bool ParseSelectGrid(std::string_view json, SelectGrid& grid, std::string& error
 	SelectGrid parsed;
 	try {
 		const nlohmann::json root = nlohmann::json::parse(json.begin(), json.end());
-		if (!Keys(root, {"columns", "fighters"}, {"columns", "rowOffsets", "fighters", "random"})) {
-			error = "not a select grid: an object of columns, fighters and optionally rowOffsets and random";
+		if (!Keys(root, {"columns", "fighters"}, {"columns", "rowOffsets", "fighters", "random", "eleven"})) {
+			error = "not a select grid: an object of columns, fighters and optionally rowOffsets, random and eleven";
 			return false;
 		}
 		if (!Whole(root["columns"], 1, kMostColumns)) {
@@ -105,7 +105,7 @@ bool ParseSelectGrid(std::string_view json, SelectGrid& grid, std::string& error
 		}
 		// Each cell holds one entry, and each code has one cell.
 		const auto taken = [&parsed](Cell cell) {
-			return (parsed.random && *parsed.random == cell) ||
+			return (parsed.random && *parsed.random == cell) || (parsed.eleven && *parsed.eleven == cell) ||
 				std::any_of(parsed.fighters.begin(), parsed.fighters.end(), [cell](const Entry& entry) { return entry.cell == cell; });
 		};
 		if (root.contains("random")) {
@@ -115,6 +115,15 @@ bool ParseSelectGrid(std::string_view json, SelectGrid& grid, std::string& error
 				return false;
 			}
 			parsed.random = cell;
+		}
+		if (root.contains("eleven")) {
+			Cell cell;
+			if (!Keys(root["eleven"], {"column", "row"}, {"column", "row"}) || !ReadCell(root["eleven"], parsed.columns, cell) ||
+				taken(cell)) {
+				error = "eleven is not a cell of the grid, or its cell is taken";
+				return false;
+			}
+			parsed.eleven = cell;
 		}
 		for (const nlohmann::json& fighter : fighters) {
 			Entry entry;
@@ -165,6 +174,7 @@ std::optional<Cell> CellOf(const SelectGrid& grid, std::string_view code)
 std::optional<std::string> CodeAt(const SelectGrid& grid, Cell cell)
 {
 	if (grid.random && *grid.random == cell) return std::string(kRandomCellCode);
+	if (grid.eleven && *grid.eleven == cell) return std::string(kElevenCellCode);
 	const auto entry =
 		std::find_if(grid.fighters.begin(), grid.fighters.end(), [cell](const Entry& candidate) { return candidate.cell == cell; });
 	if (entry == grid.fighters.end()) return std::nullopt;
@@ -174,6 +184,7 @@ std::optional<std::string> CodeAt(const SelectGrid& grid, Cell cell)
 int RowCount(const SelectGrid& grid)
 {
 	int rows = grid.random ? grid.random->row + 1 : 0;
+	if (grid.eleven) rows = (std::max)(rows, grid.eleven->row + 1);
 	for (const Entry& entry : grid.fighters) rows = (std::max)(rows, entry.cell.row + 1);
 	return rows;
 }
@@ -190,6 +201,7 @@ std::vector<std::string> FitToRoster(SelectGrid& grid, const std::vector<std::st
 	// The first cell after the last one taken, in row order.
 	long long next = 0;
 	if (grid.random) next = Order(grid, *grid.random) + 1;
+	if (grid.eleven) next = (std::max)(next, Order(grid, *grid.eleven) + 1);
 	for (const Entry& entry : grid.fighters) next = (std::max)(next, Order(grid, entry.cell) + 1);
 	for (const std::string& code : roster) {
 		if (code.empty() || CellOf(grid, code)) continue;

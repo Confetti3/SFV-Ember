@@ -53,6 +53,11 @@ enum class FighterPicture {
 // Render thread. Not missing and no texture while it loads; missing when the
 // game has none.
 sf4e::ui::SelectionImage FighterImage(int fighter, FighterPicture picture);
+// The game's own ELEVEN's picture of that kind, from its Hud textures
+// (Chara/ELV/Hud, the same names as a fighter's): the board's Eleven tile and
+// card. ELEVEN is not a fighter of the catalog, so it has no id; missing
+// where the game has no such texture.
+sf4e::ui::SelectionImage ElevenImage(FighterPicture picture);
 // A stage's card (SfvPictureSpec's StageCard), or its cut background
 // (StageBackground) where the card does not load; Random's
 // (picks::kRandomStage) is the game's own Random stage picture.

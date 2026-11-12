@@ -4,6 +4,7 @@
 #include "ember/RoomBattle.hxx"
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvEleven.hxx"
 #include "ember/SfvHud.hxx"
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPick.hxx"
@@ -106,7 +107,10 @@ public:
 		// Ember's summaries name it (the room's seat shows Random's mark).
 		view.selectedRandom = PickRandom();
 		const std::string fighter = ember::Catalog().fighterName(pick.pick.fighter);
-		view.fighterName = view.selectedRandom ? loc::Tf("selection.random_fighter", fighter) : fighter;
+		// Eleven is Random's pick in the game's Eleven look: named as the
+		// game names it.
+		view.fighterName = PickEleven() ? ElevenTitle(fighter) :
+			view.selectedRandom ? loc::Tf("selection.random_fighter", fighter) : fighter;
 		view.appearanceName = loc::Tf("selection.appearance_value", sf4e::ui::CostumeLabel(pick.pick), ColourName(pick.pick.color));
 		view.selectionSummary = view.fighterName + " / " + view.appearanceName;
 		view.stageName = sf4e::ui::StageLabel(pick.stage);
@@ -189,7 +193,7 @@ struct ShellStatus {
 	// and whether it is Random.
 	std::string pickPage, pickFocus, pickText;
 	std::string pickCode; // the game's code of the fighter whose card has the focus, if one has
-	bool pickDummy = false, pickRandom = false;
+	bool pickDummy = false, pickRandom = false, pickEleven = false;
 	// The pad as the shell navigated by it this frame: the runtime's menu
 	// sample (device, whether it read, its menu bits), the capture and
 	// context that gate it, and what navigation made of it.
@@ -434,6 +438,7 @@ void PublishStatus(Shell& shell)
 	status.pickDummy = pick.dummy;
 	status.pickText = PickText(CurrentPick());
 	status.pickRandom = PickRandom();
+	status.pickEleven = PickEleven();
 	if (shell.frame) {
 		const Snapshot& snapshot = *shell.frame->runtime;
 		status.deviceType = snapshot.menuController.deviceType;
@@ -568,7 +573,7 @@ std::string StatusJson()
 		",\"pick\":{\"page\":" + mod::JsonString(s_status.pickPage) + ",\"focus\":" + mod::JsonString(s_status.pickFocus) +
 		",\"code\":" + mod::JsonString(s_status.pickCode) +
 		",\"dummy\":" + (s_status.pickDummy ? "true" : "false") + ",\"stored\":" + mod::JsonString(s_status.pickText) +
-		",\"random\":" + (s_status.pickRandom ? "true" : "false") + "}" +
+		",\"random\":" + (s_status.pickRandom ? "true" : "false") + ",\"eleven\":" + (s_status.pickEleven ? "true" : "false") + "}" +
 		",\"input\":{\"device\":[" + std::to_string(s_status.deviceType) + "," + std::to_string(s_status.deviceIndex) +
 		"],\"capture\":" + std::to_string(s_status.capture) + ",\"context\":" + std::to_string(s_status.context) +
 		",\"sample\":" + (s_status.sampleConnected ? std::to_string(s_status.sampleButtons) : std::string("null")) +

@@ -2,6 +2,7 @@
 
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvEleven.hxx"
 #include "ember/SfvLoadoutNotes.hxx"
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPickPreview.hxx"
@@ -59,6 +60,7 @@ constexpr const char* kDone = "done";
 // The cards' ids: a prefix and the card's number (RowKey reads it back).
 constexpr const char* kFighterCard = "fighter-";
 constexpr const char* kRandomCard = "random-fighter";
+constexpr const char* kElevenCard = "eleven-fighter";
 constexpr const char* kCostumeCard = "costume-";
 constexpr const char* kColourCard = "color-";
 constexpr const char* kStageCard = "stage-";
@@ -285,10 +287,11 @@ int CardColour(const sf4e::selection::Pick& pick, int costume)
 	return sf4e::ui::GalleryColor(ready.empty() ? ColourIds(pick.fighter, costume) : ready, pick.color);
 }
 
-// The card on the board that is the stored pick: Random's while Random is
-// the pick, else the fighter's.
-std::string SavedCard(const PlayerPick& pick, bool random)
+// The card on the board that is the stored pick: Eleven's while Eleven is
+// the pick, Random's while Random is, else the fighter's.
+std::string SavedCard(const PlayerPick& pick, bool random, bool eleven = false)
 {
+	if (eleven) return kElevenCard;
 	return random ? std::string(kRandomCard) : CardId(kFighterCard, pick.pick.fighter);
 }
 
@@ -352,6 +355,7 @@ struct BoardFrame {
 	bool random = false;     // Random is the stored pick
 	bool remembered = false; // the player's screen: fighters in their remembered looks
 	bool fighterKept = false;
+	bool eleven = false;     // the stored pick is Eleven (and `random` is set as well)
 };
 
 // A tile's frame: a parallelogram around `centre`, `scale` times the game's
@@ -372,8 +376,10 @@ void DrawFrameEdge(ImDrawList* draw, const Frame& f, ImU32 colour, float thickne
 	draw->AddQuad(f.topLeft, f.topRight, f.footRight, f.footLeft, colour, thickness);
 }
 
+// `eleven`: the game's ELEVEN's tile (no fighter of the catalog; `fighter` is
+// unused): its own pictures, and never dimmed.
 void DrawTile(ImDrawList* draw, const MenuEntry& e, ImVec2 centre, float scale, float side, bool focused, bool hovered,
-	bool saved, int fighter)
+	bool saved, int fighter, bool eleven = false)
 {
 	const auto& colors = v2::Colors();
 	const float s = sf4e::ui::Scale();
@@ -383,8 +389,8 @@ void DrawTile(ImDrawList* draw, const MenuEntry& e, ImVec2 centre, float scale, 
 	if (focused || hovered) {
 		draw->AddQuadFilled(frame.topLeft, frame.topRight, frame.footRight, frame.footLeft, focused ? colors.header : colors.hover);
 	}
-	const float alpha = FighterLocked(fighter) ? kLocked : 1.f;
-	const sf4e::ui::SelectionImage tile = FighterImage(fighter, FighterPicture::Tile);
+	const float alpha = !eleven && FighterLocked(fighter) ? kLocked : 1.f;
+	const sf4e::ui::SelectionImage tile = eleven ? ElevenImage(FighterPicture::Tile) : FighterImage(fighter, FighterPicture::Tile);
 	if (tile.texture && tile.width > 0 && tile.height > 0) {
 		// At its own shape on the frame's centre; mirrored on the right side,
 		// where the game draws the face's Right picture.
@@ -398,7 +404,7 @@ void DrawTile(ImDrawList* draw, const MenuEntry& e, ImVec2 centre, float scale, 
 		// The head's square, else the fighter's name, upright in the frame.
 		const v2::Box box{ImVec2(centre.x - kTileWidth * .5f * scale, centre.y - kTileHeight * .5f * scale),
 			ImVec2(centre.x + kTileWidth * .5f * scale, centre.y + kTileHeight * .5f * scale)};
-		if (!DrawFitted(draw, FighterImage(fighter, FighterPicture::Face), box, alpha, false)) {
+		if (!DrawFitted(draw, eleven ? ElevenImage(FighterPicture::Face) : FighterImage(fighter, FighterPicture::Face), box, alpha, false)) {
 			std::string elided;
 			sf4e::ui::DrawCardText(elided, ImVec2(box.min.x + 2 * s, centre.y - ImGui::GetFontSize() * .5f), box.W() - 4 * s, e.label,
 				(std::min)(ImGui::GetFontSize(), 13 * s), colors.muted, true);
@@ -468,6 +474,12 @@ void DrawBoard(const std::vector<MenuEntry>& entries, MenuNavigation& nav, MenuA
 		most = any ? (std::max)(most, x) : x;
 		any = true;
 	}
+	if (table.eleven) {
+		const float x = across(*table.eleven);
+		least = any ? (std::min)(least, x) : x;
+		most = any ? (std::max)(most, x) : x;
+		any = true;
+	}
 	const float centre =
 		plate ? (plate->topLeft.x + plate->topRight.x + plate->footLeft.x + plate->footRight.x) * .25f : (least + most) * .5f;
 	const float reach = (std::max)(std::fabs(least - centre), std::fabs(most - centre)) + kPictureWidth * .5f;
@@ -488,7 +500,17 @@ void DrawBoard(const std::vector<MenuEntry>& entries, MenuNavigation& nav, MenuA
 			const float mid = (q.footLeft.x + q.footRight.x) * .5f;
 			const v2::Box b{ImVec2(mid - half, q.topLeft.y), ImVec2(mid + half, q.footLeft.y)};
 			const bool hovered = sf4e::ui::PressEntry(nav, entries, e, b, action).hovered;
-			DrawRandomTile(draw, q, e.id == nav.Focus(), hovered, frame.random);
+			DrawRandomTile(draw, q, e.id == nav.Focus(), hovered, frame.random && !frame.eleven);
+			continue;
+		}
+		if (e.id == kElevenCard) {
+			// The game's ELEVEN, in its own cell (the table's `eleven`).
+			if (!table.eleven) continue;
+			const ImVec2 centreAt = screen(across(*table.eleven), middle(table.eleven->row));
+			const float w = std::floor(kTileWidth * .5f * scale), h = std::floor(kTileHeight * .5f * scale);
+			const v2::Box b{ImVec2(centreAt.x - w, centreAt.y - h), ImVec2(centreAt.x + w, centreAt.y + h)};
+			const bool hovered = sf4e::ui::PressEntry(nav, entries, e, b, action).hovered, focused = e.id == nav.Focus();
+			DrawTile(draw, e, centreAt, scale, side(*table.eleven), focused, hovered, frame.eleven, -1, true);
 			continue;
 		}
 		const std::optional<int> fighter = sf4e::ui::RowKey<int>(e.id, kFighterCard);
@@ -507,7 +529,10 @@ void DrawBoard(const std::vector<MenuEntry>& entries, MenuNavigation& nav, MenuA
 		preview.pick = SfvSelectionScreen::BoardPick(frame.pick, focused->id, frame.remembered);
 		if (focused->id == kRandomCard) {
 			preview.focus = PreviewFocus::Random;
-			preview.randomSaved = frame.random;
+			preview.randomSaved = frame.random && !frame.eleven;
+		} else if (focused->id == kElevenCard) {
+			preview.focus = PreviewFocus::Eleven;
+			preview.randomSaved = frame.eleven;
 		} else if (const std::optional<int> fighter = sf4e::ui::RowKey<int>(focused->id, kFighterCard)) {
 			if (FighterLocked(*fighter)) preview.note = loc::T("selection.not_owned");
 			else if (frame.fighterKept && *fighter != frame.pick.pick.fighter) preview.note = loc::T("selection.winner_keeps_fighter");
@@ -785,7 +810,7 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const
 }
 
 std::vector<MenuEntry> SfvSelectionScreen::LookRows(const PlayerPick& pick, bool random, bool editable, bool withStage,
-	bool stageEditable, const std::vector<StageOption>& stageOptions, bool withSize)
+	bool stageEditable, const std::vector<StageOption>& stageOptions, bool withSize, bool eleven)
 {
 	std::vector<MenuEntry> rows = Rows(pick, editable, withStage, stageEditable, stageOptions, withSize);
 	for (MenuEntry& row : rows) {
@@ -800,14 +825,15 @@ std::vector<MenuEntry> SfvSelectionScreen::LookRows(const PlayerPick& pick, bool
 		row.chosen.clear();
 		row.opens = true;
 		if (row.id == kFighter && random) {
-			row.value = loc::Tf("selection.random_fighter", ember::Catalog().fighterName(pick.pick.fighter));
+			const std::string name = ember::Catalog().fighterName(pick.pick.fighter);
+			row.value = eleven ? ElevenTitle(name) : loc::Tf("selection.random_fighter", name);
 		}
 	}
 	return rows;
 }
 
 std::vector<MenuEntry> SfvSelectionScreen::BoardRows(const PlayerPick& pick, bool random, bool editable, bool fighterKept,
-	bool withRandom)
+	bool withRandom, bool eleven)
 {
 	const ember::GameCatalog& catalog = ember::Catalog();
 	const char* saves = editable ? "selection.select_saves" : "selection.locked_detail";
@@ -829,9 +855,16 @@ std::vector<MenuEntry> SfvSelectionScreen::BoardRows(const PlayerPick& pick, boo
 		const bool choosable = editable && !fighterKept;
 		MenuEntry row = sf4e::ui::Row(kRandomCard, loc::T("selection.random_card"),
 			loc::T(fighterKept ? "selection.winner_keeps_fighter" : editable ? "selection.random_card.detail" : "selection.locked_detail"),
-			choosable || random);
+			choosable || (random && !eleven));
 		if (choosable) row.hint = loc::T("menu.hint.save_fighter");
 		rows.push_back(std::move(row));
+		// The game's ELEVEN, in its own cell: Random's pick in the Eleven
+		// look (SfvEleven); stored, it opens the rolled fighter's page.
+		MenuEntry card = sf4e::ui::Row(kElevenCard, ElevenName(),
+			loc::T(fighterKept ? "selection.winner_keeps_fighter" : editable ? "selection.random_card.detail" : "selection.locked_detail"),
+			choosable || eleven);
+		if (choosable) card.hint = loc::T("menu.hint.save_fighter");
+		rows.push_back(std::move(card));
 	}
 	return rows;
 }
@@ -973,10 +1006,11 @@ bool SfvSelectionScreen::ChooseLoadout(const std::string& cardId, PlayerPick& pi
 	return card && SetPart(card->part, card->choice, pick.pick);
 }
 
-SfvSelectionScreen::Opening SfvSelectionScreen::OpeningFor(SelectionStart start, const PlayerPick& pick, bool random, bool dummy)
+SfvSelectionScreen::Opening SfvSelectionScreen::OpeningFor(SelectionStart start, const PlayerPick& pick, bool random, bool dummy,
+	bool eleven)
 {
 	Opening opening;
-	opening.pages.push_back({kBoard, SavedCard(pick, random && !dummy)});
+	opening.pages.push_back({kBoard, SavedCard(pick, random && !dummy, eleven && !dummy)});
 	const std::string vSkill = CardId(PartPrefix(picks::LoadoutPart::VSkill).c_str(), picks::LoadoutOf(pick.pick).choice[picks::VSkill]);
 	switch (start) {
 	case SelectionStart::Board:
@@ -1058,13 +1092,14 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	auto& nav = menu_.navigation;
 	PlayerPick pick = dummy_ ? CurrentDummy() : CurrentPick();
 	const bool random = !dummy_ && PickRandom();
+	const bool eleven = random && PickEleven();
 	const bool withStage = !dummy_, stageMine = stageEditable && withStage;
 	// The shell says where Back goes and which of its shortcuts this screen
 	// hands back; one it has just opened starts where the shell asked.
 	const sf4e::ui::EmbeddedReturn& embedded = sf4e::ui::EmbeddedReturnContext();
 	if (sf4e::ui::TakeEmbeddedFresh()) {
 		openOn_ = embedded.openOn;
-		Open(OpeningFor(openOn_, pick, random, dummy_));
+		Open(OpeningFor(openOn_, pick, random, dummy_, eleven));
 		costume_ = pick.pick.costume;
 		stageRefusal_.clear();
 	}
@@ -1092,12 +1127,12 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 		bodyFocus_ = navigation.Focus();
 		return changed;
 	};
-	const BoardFrame frame{grid_, pick, random, !dummy_, fighterKept};
+	const BoardFrame frame{grid_, pick, random, !dummy_, fighterKept, eleven};
 	const char* status = editable ? "selection.status_editable" : "selection.locked_detail";
 	stageCardClicked_ = false;
 	if (screen == kLook) {
-		title = random ? loc::Tf("selection.random_fighter", fighterName) : fighterName;
-		rows = LookRows(pick, random, editable, withStage, stageMine, stageOptions, tinyAllowed && withStage);
+		title = eleven ? ElevenTitle(fighterName) : random ? loc::Tf("selection.random_fighter", fighterName) : fighterName;
+		rows = LookRows(pick, random, editable, withStage, stageMine, stageOptions, tinyAllowed && withStage, eleven);
 		if (editable) status = "selection.status_adjust";
 		// The pane beside the rows is the pick's preview, as wide as the
 		// fighter's banner; its stage card, shown while the stage row has the
@@ -1194,12 +1229,16 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 		body = [cards, moved](const std::vector<MenuEntry>& entries, MenuNavigation& navigation, MenuAction& action, float height,
 				   const sf4e::ui::MenuVisualFeedback&) { DrawCardGrid(entries, navigation, action, height, moved(navigation), cards); };
 	} else {
-		rows = BoardRows(pick, random, editable, fighterKept, !dummy_);
+		rows = BoardRows(pick, random, editable, fighterKept, !dummy_, eleven);
+		// A table with no cell for ELEVEN draws no card, so none is offered.
+		if (!grid_.eleven) {
+			rows.erase(std::remove_if(rows.begin(), rows.end(), [](const MenuEntry& row) { return row.id == kElevenCard; }), rows.end());
+		}
 		LinkRandom(rows, grid_);
 		columns = (std::max)(1, grid_.columns);
 		if (editable) status = fighterKept ? "selection.winner_keeps_fighter" : "selection.status_browse";
 		// A focus from no card of the board (a first visit) starts on the stored card.
-		if (!EntryOf(rows, nav.Focus())) nav.Prefer(SavedCard(pick, random));
+		if (!EntryOf(rows, nav.Focus())) nav.Prefer(SavedCard(pick, random, eleven));
 		body = [&frame](const std::vector<MenuEntry>& entries, MenuNavigation& navigation, MenuAction& action, float height,
 				   const sf4e::ui::MenuVisualFeedback&) { DrawBoard(entries, navigation, action, height, frame); };
 	}
@@ -1207,11 +1246,11 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 	const std::string statusLine = !error.empty() ? error : refused ? stageRefusal_ : std::string(loc::T(status));
 	const MenuAction action = menu_.Draw(title.c_str(), rows, statusLine.c_str(), detail, columns, {}, body, false, 100,
 		error.empty() && !refused ? sf4e::ui::Tone::Neutral : sf4e::ui::Tone::Error);
-	Answer(action, screen, pick, random, editable, stageMine, fighterKept, stageOptions);
+	Answer(action, screen, pick, random, eleven, editable, stageMine, fighterKept, stageOptions);
 }
 
-void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& screen, PlayerPick pick, bool random, bool editable,
-	bool stageMine, bool fighterKept, const std::vector<StageOption>& stageOptions)
+void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& screen, PlayerPick pick, bool random, bool eleven,
+	bool editable, bool stageMine, bool fighterKept, const std::vector<StageOption>& stageOptions)
 {
 	auto& nav = menu_.navigation;
 	const auto close = [] { sf4e::ui::ForwardMenuAction({MenuAction::Close}); };
@@ -1231,10 +1270,19 @@ void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& scr
 				// Chosen, Random rolls its fighter (the runtime's
 				// RandomFighterPick) and the board stays; stored, it opens the
 				// rolled fighter's page.
-				if (!random && editable && !fighterKept) {
+				// From Eleven, Random is a choice of its own.
+				if ((!random || eleven) && editable && !fighterKept) {
 					SetPickRandom(true);
 					if (closesOnChoice_ && startPage_.empty()) close();
-				} else if (random) look();
+				} else if (random && !eleven) look();
+			} else if (action.id == kElevenCard && !dummy_) {
+				// Chosen, Eleven rolls its fighter as Random does, in the look
+				// the game's Eleven wears; stored, it opens the rolled
+				// fighter's page.
+				if (!eleven && editable && !fighterKept) {
+					SetPickEleven(true);
+					if (closesOnChoice_ && startPage_.empty()) close();
+				} else if (eleven) look();
 			} else if (const std::optional<int> fighter = sf4e::ui::RowKey<int>(action.id, kFighterCard)) {
 				const bool choosable = editable && !fighterKept && ember::ValidFighter(*fighter) && !FighterLocked(*fighter);
 				if (choosable) {
@@ -1249,7 +1297,7 @@ void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& scr
 			if (action.id == kDone) close();
 			else if (action.id == kFighter) {
 				nav.Home();
-				nav.Prefer(SavedCard(pick, random));
+				nav.Prefer(SavedCard(pick, random, eleven));
 			} else if (action.id == kCostume) {
 				costume_ = pick.pick.costume;
 				nav.Push(kCostumes);

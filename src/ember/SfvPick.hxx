@@ -72,7 +72,18 @@ void ToWire(sf4e::selection::Pick pick, bool roomAllowsTiny, sf4e::wire::Confirm
 // choosing a fighter turns it off. Not saved between runs, as the pick is
 // not. The dummy has no Random. Any thread.
 bool PickRandom();
+// Choosing Random again, or any fighter, takes Eleven off.
 void SetPickRandom(bool random);
+
+// Eleven on the fighter board (SfvEleven, SfvRandomFighter): Random's rolled
+// fighter in the look the game's Eleven wears, with a loadout drawn for each
+// game. Eleven is a Random pick, so PickRandom is true while it is on; it is
+// off until the board's Eleven card is chosen, and choosing Random or a
+// fighter turns it off. The looks it stores are not remembered for their
+// fighters (SetPick), so the remembered look stays the one the player chose.
+// Not saved between runs. The dummy has no Eleven. Any thread.
+bool PickEleven();
+void SetPickEleven(bool eleven);
 
 // The look last stored for each fighter this run (SetPick remembers the
 // stored pick under its fighter: costume, colour, loadout, costume code and

@@ -212,6 +212,12 @@ struct ContentLists {
 	// With it the lists are empty and stay so: the host refuses rather than
 	// waits.
 	std::string error;
+	// The game's own ELEVEN as the spec lists it: its costumes and colours,
+	// the look the game's Eleven wears (docs/design/beta8/eleven.md). Not a
+	// fighter of the universe: it has no battle setup, so it is in neither
+	// `fighters`, the pick space nor the build id, and no pick ever names it.
+	// Empty where the spec has no row for it.
+	std::optional<FighterContent> eleven;
 };
 
 // Game thread. Empty lists until the game's content tables are loaded, the

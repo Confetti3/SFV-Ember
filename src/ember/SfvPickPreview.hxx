@@ -46,8 +46,8 @@
 namespace sfve::adapter {
 
 // What the pane shows, from the focused row (SfvSelectionScreen's FocusOf),
-// or the board's Random card.
-enum class PreviewFocus { Look, Loadout, Stage, Random };
+// or the board's Random or Eleven card.
+enum class PreviewFocus { Look, Loadout, Stage, Random, Eleven };
 
 struct PickPreview {
 	PlayerPick pick; // the stored pick, with an open choice's focused option in it
@@ -61,7 +61,8 @@ struct PickPreview {
 	// The stage shown is one both seated players have (not the stage row's
 	// OpponentLacks).
 	bool stageShared = true;
-	// Random: Random is the stored pick, whose fighter (`pick`) it rolled.
+	// Random, and Eleven: it is the stored pick, whose fighter (`pick`) it
+	// rolled.
 	bool randomSaved = false;
 };
 

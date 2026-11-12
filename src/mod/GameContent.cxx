@@ -345,6 +345,9 @@ struct FighterUniverse {
 	std::vector<FighterContent> fighters;
 	std::vector<int> keys;
 	std::string error;
+	// ELEVEN's spec row, read as a fighter's is, though a battle cannot load
+	// it (BattleFighter): Ember asks it for the look the game's Eleven wears.
+	std::optional<FighterContent> eleven;
 };
 
 // The fighters of the universe, in the fighter table's order (the order the
@@ -376,11 +379,12 @@ FighterUniverse ReadFighters(const SpecTables& tables, const AccountGrants& acco
 		}
 		added.emplace_back(id, code);
 		uint8_t* value = LinkedValue(sfv::kSpecFighterSet, tables.spec, id);
+		if (value && !NamesSetup(entry) && SameCode(code, "ELV")) universe.eleven = ReadFighter(entry, value, account);
 		if (!value || !NamesSetup(entry)) return;
 		universe.keys.push_back(id);
 		universe.fighters.push_back(ReadFighter(entry, value, account));
 	});
-	if (!universe.error.empty()) return {{}, {}, std::move(universe.error)};
+	if (!universe.error.empty()) return {{}, {}, std::move(universe.error), std::nullopt};
 	return universe;
 }
 
@@ -689,6 +693,7 @@ ContentLists ReadContentLists()
 	if (!universe.error.empty()) return Never(std::move(universe.error));
 	if (universe.fighters.empty()) return Never("the spec has no fighter a battle can load");
 	lists.fighters = std::move(universe.fighters);
+	lists.eleven = std::move(universe.eleven);
 	lists.stages = ReadStages(tables, account, lists.error);
 	if (!lists.error.empty()) return Never(std::move(lists.error));
 	if (std::none_of(lists.stages.begin(), lists.stages.end(), [](const StageContent& stage) { return stage.installed; })) {
