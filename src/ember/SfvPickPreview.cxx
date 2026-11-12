@@ -289,7 +289,8 @@ void DrawRandom(ImDrawList* draw, const PickPreview& preview, ImVec2 at, float w
 	const float natural = std::floor(width * kBannerShape), height = (std::min)(natural, std::floor(PictureRoom(room, words, gap)));
 	if (height > 0) {
 		const float wide = height < natural ? std::floor(height / kBannerShape) : width;
-		const v2::Box plate{ImVec2(at.x + std::floor((width - wide) * .5f), at.y), ImVec2(at.x + std::floor((width - wide) * .5f) + wide, at.y + height)};
+		const float left = at.x + std::floor((width - wide) * .5f);
+		const v2::Box plate{ImVec2(left, at.y), ImVec2(left + wide, at.y + height)};
 		draw->AddRectFilled(plate.min, plate.max, colors.frame);
 		DrawRandomMark(draw, plate, preview.randomSaved ? colors.accent : colors.text);
 		at.y += height + gap;

@@ -510,8 +510,8 @@ void DrawLoadoutCards(const std::vector<MenuEntry>& entries, MenuNavigation& nav
 		if (!DrawFitted(draw, shot, picture, 1.f, false)) DrawFigure(draw, pick.pick, v2::Inset(picture, 0, 4 * s), 1.f);
 		// The game's mark top right, as wide as half again its height.
 		const float mark = std::floor((std::min)(64 * s, (std::max)(20 * s, picture.H() * .2f)));
-		DrawLoadoutMark(draw, card->part, card->choice,
-			{ImVec2(picture.max.x - corner - std::floor(mark * 1.5f), picture.min.y + corner), ImVec2(picture.max.x - corner, picture.min.y + corner + mark)});
+		const ImVec2 markMax(picture.max.x - corner, picture.min.y + corner + mark);
+		DrawLoadoutMark(draw, card->part, card->choice, {ImVec2(markMax.x - std::floor(mark * 1.5f), markMax.y - mark), markMax});
 		if (saved) {
 			sf4e::ui::DrawCardBadge(ImVec2(picture.min.x + corner, picture.min.y + corner), picture.W() * .5f, loc::T("selection.saved"),
 				"saved-badge");
