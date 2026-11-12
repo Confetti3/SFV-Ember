@@ -304,6 +304,28 @@ void DrawRandom(ImDrawList* draw, const PickPreview& preview, ImVec2 at, float w
 	v2::Paragraph(draw, at, width, detail, ImGui::GetFontSize(), colors.muted);
 }
 
+// The board's Eleven card: the game's own ELEVEN banner where it has one, its
+// name, what it does (Random's words: a new fighter for every game), and the
+// fighter it rolled while Eleven is the pick.
+void DrawEleven(ImDrawList* draw, const PickPreview& preview, ImVec2 at, float width, float room)
+{
+	const auto& colors = v2::Colors();
+	const float gap = 10 * sf4e::ui::Scale(), line = ImGui::GetTextLineHeightWithSpacing();
+	const std::string detail = loc::T("selection.random_card.detail");
+	const bool rolled = preview.randomSaved && ember::ValidFighter(preview.pick.pick.fighter);
+	const std::string fighter = rolled ? ember::Catalog().fighterName(preview.pick.pick.fighter) : std::string();
+	const float words = line + v2::Paragraph(nullptr, at, width, detail, ImGui::GetFontSize(), colors.muted) + (rolled ? line : 0);
+	const float drawn = DrawPicture(draw, ElevenImage(FighterPicture::Banner), at, width, kBannerShape, PictureRoom(room, words, gap));
+	if (drawn > 0) at.y += drawn + gap;
+	draw->AddText(at, preview.randomSaved ? colors.accent : colors.text, ElevenName().c_str());
+	at.y += line;
+	if (rolled) {
+		draw->AddText(at, colors.text, fighter.c_str());
+		at.y += line;
+	}
+	v2::Paragraph(draw, at, width, detail, ImGui::GetFontSize(), colors.muted);
+}
+
 } // namespace
 
 float PictureRoom(float room, float words, float gap)
@@ -381,6 +403,10 @@ v2::Box DrawPickPreviewIn(const PickPreview& preview, v2::Box box)
 	if (preview.focus == PreviewFocus::Stage) return DrawStage(draw, preview, at, width, bottom - at.y);
 	if (preview.focus == PreviewFocus::Random) {
 		DrawRandom(draw, preview, at, width, bottom - at.y);
+		return {};
+	}
+	if (preview.focus == PreviewFocus::Eleven) {
+		DrawEleven(draw, preview, at, width, bottom - at.y);
 		return {};
 	}
 	const PlayerPick& shown = preview.pick;

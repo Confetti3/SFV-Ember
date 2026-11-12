@@ -34,7 +34,13 @@ void NoteRandomFighter(bool random);
 // snapshot.randomFighter is a fighter of the catalog), the stored pick
 // becomes that fighter in its remembered look, fitted; one log line
 // "Fighter select: Random rolled <CODE>". Does nothing while the pick is not
-// Random.
+// Random. While the pick is Eleven (SfvPick's PickEleven, SfvEleven) every
+// roll is taken, even a repeat of the stored fighter, as that fighter in the
+// look the game's Eleven wears with a loadout drawn for the roll ("Fighter
+// select: Eleven rolled <CODE> ..."); a roll already taken is taken again
+// when the pick changes between Random and Eleven. NoteRandomFighter hands
+// the runtime Eleven's looks for the next roll in place of the remembered
+// ones, so a Ready the runtime remakes over a new roll carries them.
 void FollowRandomFighter(const sf4e::NetplayFacade::RuntimeSnapshot& snapshot);
 
 // Training from Home played the rolled fighter: the next roll comes at once

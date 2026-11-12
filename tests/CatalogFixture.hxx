@@ -102,10 +102,11 @@ inline mod::StageContent Stage(const char* code, const char* name = "", bool ins
 // stage of the universe this copy has not installed (S26, id 3). The
 // fighters' V-Skills and V-Triggers (section 40) are every mix: RYU and BSN
 // two of each, CNL two V-Skills and one V-Trigger, CMY one V-Skill and two
-// V-Triggers, KEN one of each; BSN's are unnamed.
+// V-Triggers, KEN one of each; BSN's are unnamed. The game's ELEVEN is listed
+// beside them, with one costume (0) in one colour (2), and is no fighter.
 inline mod::ContentLists TestContent()
 {
-	return {{WithChoices(Fighter("RYU",
+	mod::ContentLists lists{{WithChoices(Fighter("RYU",
 							 {Costume(0, {0, 1, 2}, "Story"),
 								 Costume(1, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, "", true, true, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}),
 								 Costume(4, {0, 1, 100, 101}, "Nostalgia", true, true, {100, 101})},
@@ -118,6 +119,10 @@ inline mod::ContentLists TestContent()
 				WithChoices(Fighter("CMY", {Costume(3, {5, 6})}, "", false), {"Skill One"}, {"Trigger One", "Trigger Two"}),
 				WithChoices(Fighter("BSN", {Costume(0, {0, 1}), Costume(1, {0, 1}, "", false)}, "M. Bison"), {"", ""}, {"", ""})},
 		{Stage("S01", "Stage One"), Stage("S02", "", true, false), Stage("S25", "Stage Twenty-five"), Stage("S26", "", false)}};
+	// The game's ELEVEN, as the spec lists it: one costume (number 0) in one
+	// colour (2). Not a fighter of the pick space.
+	lists.eleven = Fighter("ELV", {Costume(0, {2})}, "ELEVEN");
+	return lists;
 }
 
 // The id of TestContent's stage this copy has not installed.

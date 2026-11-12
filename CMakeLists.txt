@@ -120,6 +120,7 @@ add_library(sfve_ember STATIC
     src/ember/SfvPickPreview.cxx
     src/ember/SfvPictureSpec.cxx
     src/ember/SfvRandomFighter.cxx
+    src/ember/SfvEleven.cxx
     src/ember/SfvReplays.cxx
     src/ember/SfvRoomBuild.cxx
     src/ember/SfvSelectGrid.cxx
@@ -284,6 +285,7 @@ add_executable(sfve_ember_tests
     tests/SfvVoiceTests.cxx
     tests/SfvLoadCodeTests.cxx
     tests/SfvSelectionScreenTests.cxx
+    tests/SfvElevenTests.cxx
     tests/GameContentTests.cxx
     tests/EntitlementGrantTests.cxx
     tests/TinyFightersTests.cxx

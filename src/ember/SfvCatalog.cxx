@@ -286,6 +286,23 @@ std::wstring WideCode(const std::string& code)
 	return std::wstring(code.begin(), code.end());
 }
 
+// What the spec lists for ELEVEN, once, so a run's log says which look Eleven
+// plays in (docs/design/beta8/eleven.md): each costume with its colours.
+void LogEleven()
+{
+	if (!s_lists.eleven) {
+		mod::Log("catalog: the spec has no row for ELEVEN; Eleven plays each fighter in its first look");
+		return;
+	}
+	std::string text;
+	for (const mod::CostumeContent& costume : s_lists.eleven->costumes) {
+		text += " costume " + std::to_string(costume.id) + " colours";
+		for (const mod::ColourContent& colour : costume.colours) text += " " + std::to_string(colour.id);
+		text += ";";
+	}
+	mod::Log("catalog: ELEVEN lists%s", text.empty() ? " no costume" : text.c_str());
+}
+
 } // namespace
 
 bool FillCatalog(const mod::ContentLists& lists, bool ownershipGate)
@@ -310,6 +327,7 @@ bool FillCatalog(const mod::ContentLists& lists, bool ownershipGate)
 	FillRules();
 	FillLimits();
 	s_catalog.fighterCount = (int)s_lists.fighters.size();
+	LogEleven();
 	return true;
 }
 
@@ -521,6 +539,20 @@ std::vector<int> LoadoutIndices(std::int64_t fighter)
 {
 	const picks::Fighter* content = picks::FighterAt(s_space, fighter);
 	return content ? picks::LoadoutIndices(*content) : std::vector<int>();
+}
+
+std::optional<ElevenSpec> ElevenSpecOf()
+{
+	if (s_catalog.fighterCount == 0 || !s_lists.eleven) return std::nullopt;
+	for (const mod::CostumeContent& costume : s_lists.eleven->costumes) {
+		if (!costume.colours.empty()) return ElevenSpec{costume.id, costume.colours.front().id};
+	}
+	return std::nullopt;
+}
+
+std::string ElevenName()
+{
+	return s_lists.eleven && !s_lists.eleven->name.empty() ? s_lists.eleven->name : std::string("ELEVEN");
 }
 
 mod::FighterPick FighterPickOf(const sf4e::selection::Pick& pick)
