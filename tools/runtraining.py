@@ -107,7 +107,7 @@ def launch(indexes: list[int], mash: bool = True, mash_from: int = 300, lag_ms: 
         play = [f"-sfve_mash={seed}", f"-sfve_mash_from={mash_from}", "-sfve_mash_pad=1"] if mash else []
         lag = [f"-sfve_lag={lag_ms}"] if lag_ms else []
         lib.launch(i, "netplay", ["-sfve_pads=01", "-sfve_background=1", "-sfve_room=1"] + play + lag)
-    wait_for("the runtime", 120, lambda: all(status(i)["ember"]["host"] == "running" for i in indexes))
+    wait_for("the runtime", 120, lambda: all(status(i).get("ember", {}).get("host") == "running" for i in indexes))
 
 
 def solo(shots: Path | None) -> None:

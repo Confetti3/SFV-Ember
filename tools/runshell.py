@@ -376,7 +376,7 @@ def main(argv: list[str]) -> int:
     failure = ""
     try:
         wait_for("the runtime on both copies", 120,
-                 lambda: all(status(i)["ember"]["host"] == "running" for i in (0, 1)))
+                 lambda: all(status(i).get("ember", {}).get("host") == "running" for i in (0, 1)))
         create_room(a.shots)
         copy_invitation(a.shots)
         join_room()
