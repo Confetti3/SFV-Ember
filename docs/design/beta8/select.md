@@ -93,10 +93,13 @@ and `SfvSelectGridTests` checks the table's shape (two rows, 11/11 and 12/11 aro
 the tiles beside Random and at the ends).
 
 Pad: Left and Right along a row; Up and Down to the nearest tile by where it is drawn (the
-second row's offset makes Down from a first-row tile its right-hand neighbour below). Random's
-Left and Right are the tiles beside it on its own row (Ryu and Ken), set on its entry, so the
-cursor crosses it along the first row as the game's does; from the second row, Right from Nash
-and Left from M. Bison reach Random by position.
+second row's offset makes Down from a first-row tile its right-hand neighbour below). The moves
+across Random are set on the entries (`SfvSelectionScreen::LinkRandom`, tested), both ways:
+Right from Ryu and Left from Ken land on Random, and Random's Left and Right are Ryu and Ken;
+on the second row Right from Nash and Left from M. Bison land on Random too. Up from Nash and
+Down from Ryu stay positional (row to row). The dummy's board has no Random card and no links.
+The status' `pick.code` names the fighter whose tile has the focus, so the tools find a
+fighter on the board by its code.
 
 Not done here: the development dump of the setup asset's "+48 select-grid list"
 (`SfvOffsets.hxx:477-478, 489-497`) on the `content` command. It needs the battle setup asset

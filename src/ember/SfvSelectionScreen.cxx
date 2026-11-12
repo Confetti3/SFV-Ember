@@ -518,25 +518,6 @@ void DrawBoard(const std::vector<MenuEntry>& entries, MenuNavigation& nav, MenuA
 	ImGui::Dummy(ImVec2(area.width, 0));
 }
 
-// Random's Left and Right: the tiles beside it on its own row, across the
-// gap as the game's cursor crosses it (by position alone the tile below
-// would be nearer).
-void LinkRandom(std::vector<MenuEntry>& rows, const grid::SelectGrid& table)
-{
-	if (!table.random) return;
-	const auto card = [&table](grid::Cell cell) {
-		const std::optional<std::string> code = grid::CodeAt(table, cell);
-		if (!code || *code == grid::kRandomCellCode) return std::string();
-		const std::optional<int> id = FighterId(std::wstring(code->begin(), code->end()));
-		return id ? CardId(kFighterCard, *id) : std::string();
-	};
-	for (MenuEntry& row : rows) {
-		if (row.id != kRandomCard) continue;
-		row.left = card({table.random->column - 1, table.random->row});
-		row.right = card({table.random->column + 1, table.random->row});
-	}
-}
-
 // --- Picture cards: costumes, colours, stages --------------------------------
 
 // A grid of picture cards (the library's FitGallery, as SF4 Ember's
@@ -859,6 +840,35 @@ float SfvSelectionScreen::BoardColumn(const grid::SelectGrid& table, grid::Cell 
 {
 	const bool pastRandom = table.random && cell.column > table.random->column;
 	return (float)cell.column + grid::RowOffset(table, cell.row) + (pastRandom ? kRandomGap : 0.f);
+}
+
+void SfvSelectionScreen::LinkRandom(std::vector<MenuEntry>& rows, const grid::SelectGrid& table)
+{
+	const auto random = std::find_if(rows.begin(), rows.end(), [](const MenuEntry& row) { return row.id == kRandomCard; });
+	if (!table.random || random == rows.end()) return;
+	const auto card = [&table](grid::Cell cell) {
+		const std::optional<std::string> code = grid::CodeAt(table, cell);
+		if (!code || *code == grid::kRandomCellCode) return std::string();
+		const std::optional<int> id = FighterId(std::wstring(code->begin(), code->end()));
+		return id ? CardId(kFighterCard, *id) : std::string();
+	};
+	const auto link = [&rows](const std::string& id, std::string MenuEntry::*side) {
+		for (MenuEntry& row : rows) {
+			if (!id.empty() && row.id == id) row.*side = kRandomCard;
+		}
+	};
+	const int column = table.random->column, top = table.random->row, last = (std::max)(top, grid::RowCount(table) - 1);
+	// On Random's row, and on the last row, where a tile may stand in
+	// Random's own column (the game's second row has one more on the left).
+	random->left = card({column - 1, top});
+	random->right = card({column + 1, top});
+	link(random->left, &MenuEntry::right);
+	link(random->right, &MenuEntry::left);
+	if (last != top) {
+		const std::string below = card({column, last});
+		link(below.empty() ? card({column - 1, last}) : below, &MenuEntry::right);
+		link(card({column + 1, last}), &MenuEntry::left);
+	}
 }
 
 PlayerPick SfvSelectionScreen::BoardPick(const PlayerPick& pick, const std::string& cardId, bool remembered)
