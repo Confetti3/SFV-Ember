@@ -569,10 +569,13 @@ class Copy:
                     frame = self.grab(path, False)
                     frames.append((k, path, frame))
                     if k == after:
-                        self.hide(True, True)
+                        # The fighter scaled away for the crop's plate (the opponent stays hidden):
+                        # a hidden side is never shown again, since showing it would show a partner
+                        # the game keeps hidden (R. Mika's).
+                        self.scale(0.001 if side == 0 else 1.0, 0.001 if side == 1 else 1.0)
                         b_path = raw_root / f"{prefix}{choice}-away.bmp"
                         self.grab(b_path, False)
-                        self.hide(side != 0, side != 1)
+                        self.scale(1.0, 1.0)
                 self.post.submit(self.save_loadout, code, prefix, choice, side, frames, after, raw_root / f"{prefix}{choice}-away.bmp")
                 if n + 1 < len(steps):
                     self.advance(f"booth run {cfg['gap']}", cfg["gap"])
