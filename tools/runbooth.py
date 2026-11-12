@@ -331,6 +331,10 @@ class Copy:
 
     def to_menu(self) -> None:
         self.wait_for(lambda s: s.get("scene") == MAIN_MENU_SCENE, LEAVE_TIMEOUT_S, "the main menu")
+        # The stage just left is still being unloaded: a launch on the same stage straight away
+        # never finishes loading (the laptop pilot 2026-11-12: 1-2 s after the leave it hung,
+        # 4 s and 8 s after it loaded three in a row).
+        time.sleep(self.args.menu_settle)
 
     def recover(self) -> None:
         """After a failed load: `booth leave` and the menu, else kill and relaunch this copy."""
@@ -701,6 +705,8 @@ def main(argv: list[str]) -> int:
     p.add_argument("--keep-raw", action="store_true", help="keep the raw grabs (about 30 MB a load) instead of deleting them once the masters exist")
     p.add_argument("--relaunch-every", type=int, default=200, help="restart a copy's game after this many loads")
     p.add_argument("--stagger", type=float, default=6.0, help="seconds between copy starts")
+    p.add_argument("--menu-settle", type=float, default=4.0,
+                   help="seconds on the main menu after a leave before the next launch (default 4: less hangs the next load of the same stage)")
     p.add_argument("--show-hud", action="store_true", help="leave the HUD on screen (by default `booth hudhide on` hides it for every grab)")
     p.add_argument("--hud-hide", action="append", help='a `booth hud` argument ("<method> <number> [text]") sent after each load, to hide the HUD')
     p.add_argument("--game-option", action="append", help="extra game option for every copy")
