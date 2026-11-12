@@ -210,6 +210,7 @@ private:
 	// frame since the last update, and nothing was restored (SocketReads).
 	bool poseFresh_ = false;
 	std::vector<size_t> fighterRegions_[kPlayers]; // each side's regions, the key of its socket reads
+	uint8_t* fighterVisualParts_[kPlayers] = {};   // the fighters' CharaVisualParts, in the battle's order (from Bind)
 	uint64_t keyedUpdates_ = 0; // updates whose fighters were keyed, and the time that took
 	int64_t keyTicks_ = 0;
 	FlowRollback flow_;

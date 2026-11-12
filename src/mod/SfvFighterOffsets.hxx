@@ -125,8 +125,40 @@ constexpr uint32_t kActor = 0xA90;          // AActor* the part updates
 constexpr uint32_t kControlUseCount = 8;
 // AActor: the mesh component the game scales itself.
 constexpr uint32_t kActorMesh = 0x3A8;
+// The fighter actor's other skeletal mesh components: a second one (rva
+// 0xE5D300 and 0xE5D880 work on it) and the layers the visual task sets a
+// motion and time on, an array of pointers and its count (rva 0xE5F7D0).
+constexpr uint32_t kActorSecondMesh = 0x400;
+constexpr uint32_t kActorLayers = 0x420;
+constexpr uint32_t kActorLayerCount = 0x428;
+constexpr int kMostLayers = 32; // a sanity bound on the count
 
 } // namespace visual
+
+// UObject and USkinnedMeshComponent, as the engine in this build lays them out.
+namespace mesh {
+
+constexpr uint32_t kObjectFlags = 0x8;  // int32; the game skips an object with kUnusable set (rva 0xE5F7D0)
+constexpr uint32_t kUnusable = 0x4000;
+constexpr uint32_t kObjectClass = 0x10; // UClass*
+constexpr uint32_t kClassCastFlags = 0xA8; // uint64 in the UClass
+// The cast flag the game tests before asking a component for a socket (rva
+// 0xE58F10): a skeletal mesh component.
+constexpr uint64_t kSkeletalMeshComponentFlag = 0x40000000000ull;
+// USkinnedMeshComponent's reflected properties (their offsets are the ones
+// the class's registration passes, rva 0x20F7A60), read by its LOD update
+// (rva 0x1C8B830): ForcedLodModel > 0 forces LOD ForcedLodModel - 1;
+// otherwise the LOD is the renderer's from the mesh's screen size (the mesh
+// object +24) plus the global LOD bias. MinLodModel then raises it.
+// RefreshBoneTransforms (rva 0x1C0B890) rebuilds the bones it evaluates from
+// PredictedLODLevel (rva 0x1C0B3E0).
+constexpr uint32_t kForcedLodModel = 0x560;    // int, 1376
+constexpr uint32_t kMinLodModel = 0x564;       // int, 1380
+constexpr uint32_t kPredictedLodLevel = 0x568; // int, 1384
+constexpr uint32_t kUpdateFlag = 0x5AC;        // uint8 MeshComponentUpdateFlag, 1452 (logged only)
+constexpr int32_t kForceLodZero = 1;
+
+} // namespace mesh
 
 namespace fighter {
 

@@ -28,6 +28,18 @@ bool TryRead(const void* at, T* out)
 	}
 }
 
+// Writes `value` at `at` if the memory is writable (TryRead's counterpart).
+template <typename T>
+bool TryWrite(void* at, const T& value)
+{
+	__try {
+		*static_cast<T*>(at) = value;
+		return true;
+	} __except (1 /* EXCEPTION_EXECUTE_HANDLER */) {
+		return false;
+	}
+}
+
 // MSVC std::shared_ptr, as the game stores it. The control block is
 // {vtable, long uses, long weaks}.
 struct GameSharedPtr {
