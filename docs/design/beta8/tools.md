@@ -177,6 +177,6 @@ Pipe replies and `status` JSON as `booth.md`: `status.scene` equals the main-men
 (`sfvelib.MAIN_MENU_SCENE`); `status.launch` has `loaded`, `mismatch`, `failure`, `state`; `status.booth`
 has `battle`, `fightFrame`, `held`, `presents`, `pending`, `lastGrab {path, ok, error, depth}`;
 `lastGrab.path` is compared case-insensitively with forward slashes; `pending` false means the BMP and
-depth files are written; `peek CameraUnit[0]+0x450 0 16` answers `ok <words>` (if it errors the camera
-check is skipped with one warning). Not verified: any of this against a running game; the loadout
+depth files are written; `peek CameraUnit[0]+0x100.presentation 112 40` answers `ok <words>`: the camera
+(verified on the laptop 2026-11-12; +0x450 named a run the state no longer has). Not verified: any of this against a running game; the loadout
 start frame (150), the 16:9 crop fraction and the camera check's meaning need the pilot.
