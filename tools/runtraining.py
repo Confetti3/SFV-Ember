@@ -220,7 +220,7 @@ def wait_in_training(index: int) -> None:
 
 def leave_seat(index: int) -> None:
     """The table page's Leave seat (Y on the table's card)."""
-    seek(index, "table-0", ["UP"], 20)
+    shell_steps.seek_table(index)
     press(index, "Y")
     expect(index, "room-table")
     seek(index, "unqueue", ["DOWN"], 20)
@@ -283,7 +283,7 @@ def call(shots: Path | None) -> None:
     press(0, "B")  # from the table page to the room's board, where Ready is
     # A third time, cut short with Enter in copy 0's window (in front).
     leave_seat(1)
-    seek(0, "table-0", ["UP"], 20)
+    shell_steps.seek_table(0)
     wait_in_training(0)
     time.sleep(3)
     calls = lib.count_log(0, "training: leaving for the main menu in")

@@ -136,6 +136,31 @@ def seek_cards(index: int, card: str) -> None:
         raise lib.SfveError(f"copy {index}: could not reach {card} on the pick screen (at {at()})")
 
 
+def seek_runs(index: int, focus: str, runs: list[tuple[str, int]]) -> None:
+    """Presses each run's direction up to its count, a run ending early where a
+    press no longer moves the focus, until the focus is `focus`."""
+    for move, limit in runs:
+        for _ in range(limit):
+            if shell(index)["focus"] == focus:
+                return
+            before = shell(index)["focus"]
+            press(index, move)
+            if shell(index)["focus"] == before:
+                break
+    if shell(index)["focus"] != focus:
+        raise lib.SfveError(f"copy {index}: could not reach {focus} (at {shell(index)['focus']})")
+
+
+# The room board's first table from anywhere on it: up from the bar and the
+# table's rows, left from the members and chat panels beside the tables, and
+# up again from where those lead.
+TABLE_RUNS = [("UP", 20), ("LEFT", 8), ("UP", 20), ("DOWN", 3), ("LEFT", 8), ("UP", 20)]
+
+
+def seek_table(index: int) -> None:
+    seek_runs(index, "table-0", TABLE_RUNS)
+
+
 def seek(index: int, focus: str | tuple[str, ...], moves: list[str], limit: int = 12) -> None:
     """Presses `moves` in turn, round and round, until the focus is `focus`
     (or any of them)."""
@@ -232,7 +257,7 @@ def join_room() -> None:
 def take_seat(index: int, seat: int) -> None:
     """Table 1's card opens its seat chooser, whose first choice is its first
     open seat: P1 for the first to sit, P2 for the second."""
-    seek(index, "table-0", ["UP"], 20)
+    seek_table(index)
     press(index, "A")
     press(index, "A")
     wait_for(f"copy {index} seated", 60, lambda: status(index)["room"]["slot"] == seat)
@@ -270,7 +295,7 @@ def pick(index: int, fighter_steps: int, shots: Path | None, name: str | None) -
 
 def table_row(index: int, row: str) -> None:
     """The table page (Y on the table's card) with `row` focused."""
-    seek(index, "table-0", ["UP"], 20)
+    seek_table(index)
     press(index, "Y")
     expect(index, "room-table")
     seek(index, row, ["DOWN"], 20)
@@ -385,7 +410,7 @@ def room_shots(shots: Path | None) -> None:
     table page (Y: the table's rules as a guest reads them)."""
     if not shots:
         return
-    seek(1, "table-0", ["UP"], 20)
+    seek_table(1)
     time.sleep(1)
     shot(shots, "5-room-seated", 1)
     press(1, "Y")
@@ -404,7 +429,7 @@ def ready_both(game: int) -> None:
     def started() -> bool:
         for i in (0, 1):
             if status(i)["room"]["canReady"]:
-                seek(i, "table-0", ["UP"], 20)
+                seek_table(i)
                 press(i, "A")
         return all(lib.count_log(i, "netplay: room match as P") > starts[i] for i in (0, 1))
     wait_for(f"game {game}'s sessions", 180, started)

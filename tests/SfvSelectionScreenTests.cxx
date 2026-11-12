@@ -863,3 +863,18 @@ TEST_CASE("a look whose own colour has no picture shows its costume's picture, t
 	CHECK(IdsOf(colours) == std::vector<std::string>{"color-0", "color-1", "color-100", "color-101"});
 	CHECK(RowOf(colours, "color-101").label == "EX02");
 }
+
+TEST_CASE("a costume the game has no words for in this language is named by the shared word and its number, never its text id")
+{
+	const std::string costume = sf4e::loc::T("selection.costume");
+	CHECK(ShownCostumeName("Story", 0) == "Story");
+	CHECK(ShownCostumeName("Battle Costume", 3) == "Battle Costume");
+	CHECK(ShownCostumeName("ID_SYS_BSet_0224", 24) == costume + " 24");
+	CHECK(ShownCostumeName("", 7) == costume + " 7");
+	// A name that only starts like an id is a name.
+	CHECK(ShownCostumeName("ID_ Story", 1) == "ID_ Story");
+	// Every place a costume is named reads it so: the costume cards among them.
+	FillTestCatalog();
+	CHECK(RowOf(SfvSelectionScreen::CostumeCards(PlayerPickOf(kRyu, kOneOne), true), "costume-1").label == costume + " 1");
+	CHECK(CostumeName(kRyu, 1) == costume + " 1");
+}

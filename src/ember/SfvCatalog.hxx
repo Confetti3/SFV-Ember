@@ -210,10 +210,17 @@ void FitToSpec(sf4e::selection::Pick& pick);
 // fitting alone. The pick screen's preview of a fighter or costume
 // (SfvSelectionScreen's Previewed) is so what choosing it stores.
 void FitLookWithin(sf4e::selection::Pick& pick);
-// A costume as the game names it, in its language (its number where the
-// game gave no name), and a colour as the game's costume menu labels it
-// ("01", "EX01").
+// A costume as the game names it, in its language (ShownCostumeName: the
+// shared word for a costume and its number where the game gave no name), and
+// a colour as the game's costume menu labels it ("01", "EX01"). Every screen
+// names a costume so: the pick screen's rows, pane and cards, and the shared
+// screens' labels (SfvSelection's CostumeLabel: the room's seats and cards).
 std::string CostumeName(std::int64_t fighter, int costume);
+// The costume's name as shown, from the game's (`gameName`): that name; or,
+// where the game gave none, or gave its text's id because it has no words
+// for it in this language ("ID_SYS_BSet_0224"), the shared "Costume"
+// (selection.costume) and the game's costume number ("Costume 24").
+std::string ShownCostumeName(const std::string& gameName, int costume);
 std::string ColourName(int colour);
 
 // How many choices the fighter has of a loadout part (1 or 2; 0 for a
