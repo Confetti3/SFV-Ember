@@ -320,6 +320,21 @@ def warm_share(rgb: np.ndarray, mask: np.ndarray) -> float:
     return float(((px[:, 0] > px[:, 2] + 20) & (px[:, 0] >= px[:, 1])).mean())
 
 
+def untextured(rgb: np.ndarray, mask: np.ndarray) -> bool:
+    """The fighter in `mask` is drawn without its textures: nearly all of it the light, unsaturated
+    cyan-grey of the bare model and no warm pixel at all (skin and hair are warm in every costume).
+    Measured on the 2026-11-12 capture: the bare models 0.61-0.69 grey and 0.00 warm, every
+    light costume (white gi, silver armour, white dress) 0.08 warm or more. These looks render
+    the same every time on that copy of the game: their texture data is missing there."""
+    if not mask.any():
+        return False
+    px = rgb[mask].astype(np.int32)
+    mx, mn = px.max(axis=1), px.min(axis=1)
+    sat = (mx - mn) / np.maximum(mx, 1)
+    tint = float(((px[:, 2] >= px[:, 0]) & (px[:, 1] >= px[:, 0] - 4) & (sat < 0.35) & (mx > 110)).mean())
+    return tint >= UNTEXTURED_TINT and warm_share(rgb, mask) <= UNTEXTURED_WARM
+
+
 def check_pair(a_path: Path | str, b_path: Path | str, reference: Path | None) -> tuple[dict, str | None]:
     """Grab A (fighters) against grab B (the plate) of one held frame, before masters are made.
     Outside the fighters (the depth difference, widened) A must be B; B must be the stage as the
@@ -373,8 +388,8 @@ def master_suspect(path: Path | str) -> list[str]:
         return ["almost empty"]
     rgb = rgba[..., :3]
     why = []
-    if warm_share(rgb, mask) < SUSPECT_WARM:
-        why.append("grey (not loaded?)")
+    if untextured(rgb, mask):
+        why.append("untextured (grey all over)")
     g = rgb.astype(np.float32).mean(axis=2)
     edge = (np.abs(np.diff(g, axis=0)) > 24) & mask[1:] & mask[:-1]
     width = max(1, int(mask.any(axis=0).sum()))
@@ -391,7 +406,8 @@ def master_suspect(path: Path | str) -> list[str]:
     return why
 
 
-SUSPECT_WARM = 0.06        # a master with fewer warm pixels (skin, red, yellow) than this is flagged grey
+UNTEXTURED_TINT = 0.55     # a fighter this much light cyan-grey...
+UNTEXTURED_WARM = 0.01     # ...with no more warm pixels than this is drawn without its textures
 SUSPECT_LINE = 0.18        # a row with a straight edge across this share of the fighter's width...
 SUSPECT_LINES = 3          # ...this many times is flagged
 
@@ -488,6 +504,9 @@ def make_masters(a_path: Path | str, b_path: Path | str, looks: list[tuple[str, 
         code, costume, colour = looks[i]  # type: ignore[misc]
         try:
             check_fraction(sides[i], f"{code} costume {costume} colour {colour}")
+            if untextured(rgb, sides[i]):
+                raise BoothError(f"{code} costume {costume} colour {colour} is drawn without its textures "
+                                 "(grey all over, no warm pixel: this copy of the game lacks them?)")
             cutout = to_rgba(rgb, sides[i])
             if i == 1:
                 cutout = cutout.transpose(Image.Transpose.FLIP_LEFT_RIGHT)  # P2 faces left on screen
@@ -927,10 +946,13 @@ def selftest() -> int:
     return 1 if failures else 0
 
 
-def check_masters(store: Path, space: dict, out: Path, unchecked: bool) -> int:
+def check_masters(store: Path, space: dict, out: Path, unchecked: bool, quarantine: bool = False) -> int:
     """Every look's master checked (master_suspect, and with `unchecked` the masters whose sidecar
-    has no grab checks); the ones to capture again written to `out`."""
+    has no grab checks); the ones to capture again written to `out`. With `quarantine`, a master
+    drawn without its textures is set aside (renamed *.untextured.png) and logged as a failed look,
+    so the pack leaves it out (--except-failed) instead of shipping a grey fighter."""
     redo: list[str] = []
+    log_lines: list[str] = []
     counts = collections.Counter()
     for code, fighter in space["fighters"].items():
         for costume, colours in fighter["costumes"].items():
@@ -948,9 +970,22 @@ def check_masters(store: Path, space: dict, out: Path, unchecked: bool) -> int:
                     why.append("captured before the grab checks")
                 for w in why:
                     counts[w.split(" (")[0].split(" straight")[0] if "straight" not in w else "menu over it"] += 1
+                if quarantine and any(w.startswith("untextured") for w in why):
+                    for suffix in (".png", ".json"):
+                        src = master.with_suffix(suffix)
+                        if src.is_file():
+                            os.replace(src, master.with_name(master.stem + ".untextured" + suffix))
+                    log_lines.append(json.dumps({"time": time.strftime("%Y-%m-%dT%H:%M:%S"), "copy": -1, "phase": "looks",
+                                                 "look": {"fighter": code, "costume": int(costume), "colour": int(colour)},
+                                                 "reason": "drawn without its textures (this copy of the game lacks them?)",
+                                                 "stage": meta.get("stage", "")}))
+                    counts["set aside"] += 1
                 if why:
                     redo.append(f"{code}:{costume}:{colour}")
                     print(f"{code}:{costume}:{colour}  " + "; ".join(why))
+    if log_lines:
+        with open(store / "capture-log.jsonl", "a", encoding="utf-8") as f:
+            f.write("".join(line + chr(10) for line in log_lines))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(redo) + ("\n" if redo else ""), encoding="utf-8")
     print(f"{len(redo)} of {counts['masters']} masters to capture again -> {out}  ({dict(counts)})")
@@ -979,6 +1014,8 @@ def main(argv: list[str]) -> int:
                                          "(for runbooth.py --looks-file); default <store>\\recheck.txt")
             s.add_argument("--unchecked", action="store_true",
                            help="also list masters captured before the grab checks (their sidecar has no checks)")
+            s.add_argument("--quarantine-untextured", action="store_true",
+                           help="set aside masters drawn without their textures and log them as failed looks")
     a = p.parse_args(argv)
     if a.selftest:
         return selftest()
@@ -987,7 +1024,7 @@ def main(argv: list[str]) -> int:
     space = load_space(a.pick_space)
     store = Path(a.store)
     if a.cmd == "check":
-        return check_masters(store, space, Path(a.out) if a.out else store / "recheck.txt", a.unchecked)
+        return check_masters(store, space, Path(a.out) if a.out else store / "recheck.txt", a.unchecked, a.quarantine_untextured)
     try:
         if a.cmd == "pack":
             manifest = build_pack(store, space, a.mod_revision, a.except_failed, a.frame, a.stage, a.jobs, a.force)
