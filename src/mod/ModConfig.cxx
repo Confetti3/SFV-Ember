@@ -192,6 +192,18 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.script.from = (int)options.Number(L"sfve_mash_from", 0);
 	c.script.padBefore = options.Number(L"sfve_mash_pad", 0) != 0;
 	c.script.script = options.Number(L"sfve_moves", 0) != 0 ? input::Script::Moves : input::Script::Buttons;
+	wchar_t moveSet[24];
+	if (options.Find(L"sfve_moveset", moveSet, 24)) {
+		if (!_wcsicmp(moveSet, L"supers")) c.script.moveSet = input::MoveSet::Supers;
+		else if (!_wcsicmp(moveSet, L"cody")) c.script.moveSet = input::MoveSet::Cody;
+		else if (!_wcsicmp(moveSet, L"projectiles")) c.script.moveSet = input::MoveSet::Projectiles;
+		if (c.script.moveSet != input::MoveSet::System) c.script.script = input::Script::Moves;
+	}
+	const long idle = options.Number(L"sfve_idle", -1);
+	c.script.idle = idle == 0 || idle == 1 ? (int)idle : -1;
+	c.testTiny = (uint32_t)options.Number(L"sfve_tiny", 0) & 3u;
+	c.socketLog = options.Number(L"sfve_socket_log", 0) != 0;
+	c.replayAnyBuild = options.Number(L"sfve_replay_any_build", 0) != 0;
 	c.practiceGauges = options.Number(L"sfve_practice", 0) != 0;
 	c.distance = (int)options.Number(L"sfve_distance", 7);
 	c.backgroundPlay = options.Number(L"sfve_background", 0) != 0;

@@ -26,6 +26,7 @@
 #include <stdint.h>
 
 #include <array>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -58,6 +59,10 @@ public:
 	uint8_t* BattleFrame() const { return battleFrame_; }
 	// The battle's match data (rounds, results); null until bound.
 	const uint8_t* BattleData() const { return battleData_; }
+	// The fighter of `side` (0 P1, 1 P2) faces right: the fight does not mirror
+	// its x (sfv::fighter::kMirrored). None while the battle's fighters cannot
+	// be found or read.
+	std::optional<bool> FacingRight(int side) const;
 	// A Practice room's game (sfv::practice): both players' vital, EX and
 	// V-gauges refill and nobody is knocked out, set as Training's menu sets
 	// them, in the battle data's tables and each fighter's copy. Once bound,
@@ -152,6 +157,9 @@ private:
 	bool AddGameRegions(uint8_t* manager);
 	void CollectPostRestore(uint8_t* manager);
 	void RunUpdate();
+	// Both fighters' CharaVisualParts, in the battle's order (null where
+	// there is none).
+	void FighterVisualParts(uint8_t* parts[kPlayers]) const;
 
 	BattleIdentity identity_;
 	uint8_t* battleFrame_ = nullptr;
@@ -174,6 +182,7 @@ private:
 	uint32_t ticksInLastUpdate_ = 0;
 	uint8_t* (*gameInstance_)() = nullptr; // sfv::kGameInstance
 	uint32_t ticksThisUpdate_ = 0;
+	bool replaying_ = false; // the update Advance runs replays a frame (SocketProbe)
 	FlowRollback flow_;
 };
 

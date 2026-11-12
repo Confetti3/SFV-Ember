@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '')
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [string]$moveset = '', [int]$idle = -1, [switch]$socketLog)
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -34,6 +34,11 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # (SFVE_RES for that copy's launch), as two players' screens differ.
 # -moves: each copy mashes the game's system moves (input::Moves: V-Skill,
 # V-Trigger, V-Reversal, Critical Art motions, EX, throws).
+# -moveset supers|cody|projectiles: one set of moves instead (input::MoveSet;
+# implies -moves). -idle 0|1: that side's player stands still, and the other
+# walks forward at the start of each block of moves. Every block faces the
+# way its fighter does. -socketLog: each copy logs the fight's reads of the
+# fighters' models (SocketProbe); the lines are printed per copy at the end.
 # -practice: both copies' fighters get Training's refilling gauges from the
 # first frame (as a Practice room's), so every V-Trigger and Critical Art plays.
 # -unowned0 / -unowned1 give copy 0 / copy 1 a -sfve_unowned list
@@ -138,6 +143,9 @@ foreach ($i in $copies) {
   if ($unowned[$i]) { $marks += "-sfve_unowned=$($unowned[$i])" }
   if ($gateOff[$i]) { $marks += '-sfve_ownership=0' }
   if ($uninstalled[$i]) { $marks += "-sfve_uninstalled=$($uninstalled[$i])" }
+  if ($moveset) { $marks += "-sfve_moveset=$moveset" }
+  if ($idle -ge 0) { $marks += "-sfve_idle=$idle" }
+  if ($socketLog) { $marks += '-sfve_socket_log=1' }
   $resOf = @($res0, $res1, '')
   $priorRes = $env:SFVE_RES
   if ($resOf[$i]) { $env:SFVE_RES = $resOf[$i] }
@@ -425,6 +433,11 @@ if ($watchers) {
   "watcher checkpoints: $($watchedKeys.Count) compared with the fighters', $($watcherDiffering.Count) differing (games watched: $(($watchedGames | ForEach-Object { $_ + 1 }) -join ', '))"
   $desyncs += (Count 2 'desync|mismatch') + $watcherDiffering.Count
   if (-not $failure -and -not $watchedKeys.Count) { $failure = "no watcher checkpoint could be compared" }
+}
+if ($socketLog) {
+  foreach ($i in $copies) {
+    if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern 'socket: frame' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
+  }
 }
 $played = if ($rematches -ge 0) { $rematches + 1 } else { $games }
 $passed = Write-Verdict $failure $desyncs $checkpoints.Compared "$played game(s), no desync"

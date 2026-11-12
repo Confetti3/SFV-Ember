@@ -25,7 +25,7 @@ namespace {
 constexpr const wchar_t* kTestLine =
 	L"StreetFighterV.exe -sfve_instance=1 -sfve_ownership=0 -sfve_mash=7 -sfve_mash_pad=1 -sfve_perturb=1 -sfve_lag=60 "
 	L"-sfve_crash_command=1 -sfve_unowned=RYU -sfve_uninstalled=S01 -sfve_pads=0,1 -sfve_background=1 -sfve_port=7100 "
-	L"-sfve_grant_all=0 "
+	L"-sfve_grant_all=0 -sfve_moveset=cody -sfve_idle=1 -sfve_tiny=2 -sfve_socket_log=1 -sfve_replay_any_build=1 "
 	L"-sfve_loader=launcher -sfve_mode=netplay -sfve_room=1 -sfve_dump_channel=1a4:1b0:2c8";
 
 } // namespace
@@ -50,9 +50,15 @@ TEST_CASE("a player build reads only its launcher's options")
 	CHECK(player.virtualPadMask == 0);
 	CHECK_FALSE(player.backgroundPlay);
 	CHECK(player.port == 7000);
+	CHECK(player.script.moveSet == sfve::mod::input::MoveSet::System);
+	CHECK(player.script.idle == -1);
+	CHECK(player.testTiny == 0);
+	CHECK_FALSE(player.socketLog);
+	CHECK_FALSE(player.replayAnyBuild);
 	const std::string& ignored = sfve::mod::PlayerBuildIgnored();
 	for (const char* option :
-		{"-sfve_instance", "-sfve_ownership", "-sfve_mash", "-sfve_lag", "-sfve_crash_command", "-sfve_pads", "-sfve_grant_all"}) {
+		{"-sfve_instance", "-sfve_ownership", "-sfve_mash", "-sfve_lag", "-sfve_crash_command", "-sfve_pads", "-sfve_grant_all",
+			"-sfve_moveset", "-sfve_idle", "-sfve_tiny", "-sfve_socket_log", "-sfve_replay_any_build"}) {
 		CHECK(ignored.find(option) != std::string::npos);
 	}
 	CHECK(ignored.find("-sfve_mode") == std::string::npos);
@@ -69,6 +75,13 @@ TEST_CASE("a player build reads only its launcher's options")
 	CHECK(development.unowned.size() == 1);
 	CHECK(development.virtualPadMask == 3);
 	CHECK(development.port == 7100);
+	// A move set other than the system moves plays moves.
+	CHECK(development.script.script == sfve::mod::input::Script::Moves);
+	CHECK(development.script.moveSet == sfve::mod::input::MoveSet::Cody);
+	CHECK(development.script.idle == 1);
+	CHECK(development.testTiny == 2);
+	CHECK(development.socketLog);
+	CHECK(development.replayAnyBuild);
 	CHECK(sfve::mod::PlayerBuildIgnored().empty());
 
 	// The launcher's mode is netplay; any other is a test's.

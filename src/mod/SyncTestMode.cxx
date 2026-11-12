@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 namespace sfve::mod {
@@ -21,9 +22,14 @@ void SyncTestMode::NewBattle(SfvAdapter& adapter)
 	scripts_[1] = input::ScriptedInput(config_.script, 1);
 	char schedule[48] = "";
 	if (config_.scheduleSeed) snprintf(schedule, sizeof(schedule), ", random schedule %u", config_.scheduleSeed);
-	Log("synctest: started, %zu bytes of state, rollback distance %d%s%s%s%s", adapter.Layout().TotalSize(), config_.distance,
+	Log("synctest: started, %zu bytes of state, rollback distance %d%s%s%s%s%s", adapter.Layout().TotalSize(), config_.distance,
 		config_.learn ? ", learning" : "", config_.perturb ? ", perturbed replays" : "", schedule,
-		config_.script.script == input::Script::Moves ? ", system moves" : "");
+		config_.script.script != input::Script::Moves             ? ""
+			: config_.script.moveSet == input::MoveSet::Supers      ? ", Critical Arts"
+			: config_.script.moveSet == input::MoveSet::Cody        ? ", Z29's items"
+			: config_.script.moveSet == input::MoveSet::Projectiles ? ", projectiles"
+																	: ", system moves",
+		config_.script.idle == 0 ? ", P1 idle" : config_.script.idle == 1 ? ", P2 idle" : "");
 	// Training's refilling gauges before anything is simulated, as a Practice
 	// room's match sets them (NetplayMode), so the mash's V-Triggers and
 	// Critical Arts are played rather than refused for want of meter.
@@ -52,7 +58,11 @@ void SyncTestMode::Frame(SfvAdapter& adapter)
 FrameInputs SyncTestMode::Inputs(SfvAdapter& adapter)
 {
 	const int frame = tester_->Report().framesRun;
-	return FrameInputs{{scripts_[0].At(frame).value_or(adapter.Sampled(0)), scripts_[1].At(frame).value_or(adapter.Sampled(1))}};
+	// The facing each fighter has now, after the last frame: a block of moves
+	// that starts here plays its motions toward it.
+	const auto facing = [&](int side) { return config_.script.seed ? adapter.FacingRight(side) : std::nullopt; };
+	return FrameInputs{{scripts_[0].At(frame, facing(0)).value_or(adapter.Sampled(0)),
+		scripts_[1].At(frame, facing(1)).value_or(adapter.Sampled(1))}};
 }
 
 void SyncTestMode::LogFailure() const

@@ -5,6 +5,7 @@
 #include "mod/ControlPipe.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
+#include "mod/ModConfig.hxx"
 #include "mod/VersusLaunch.hxx"
 #include "mod/XInputHooks.hxx"
 
@@ -449,7 +450,7 @@ private:
 			why = "not a file in the replay folder that can be read";
 		} else if (!replay::Decode(bytes->data(), bytes->size(), loaded.get(), &why)) {
 			// why says it
-		} else if (loaded->header.build != MatchBuildId()) {
+		} else if (loaded->header.build != MatchBuildId() && !mod::Config().replayAnyBuild) {
 			why = "made with build " + loaded->header.build + ", this copy is " + MatchBuildId();
 		} else if (loaded->frames.empty()) {
 			why = "it holds no frame";
@@ -460,6 +461,12 @@ private:
 			Log("replays: %ls cannot be watched: %s", path.filename().c_str(), why.c_str());
 			Notice("inputs.unreadable_detail", true);
 			return;
+		}
+		if (loaded->header.build != MatchBuildId()) {
+			// Development diagnostics only (a player build never reads the option).
+			Log("replays: %ls was made with build %s, this copy is %s; played anyway (-sfve_replay_any_build), so its "
+				"checkpoints are a comparison, not a verdict", path.filename().c_str(), loaded->header.build.c_str(),
+				MatchBuildId().c_str());
 		}
 		Log("replays: watching %ls: %s vs %s on %s, %zu frame(s), %zu game(s), %zu checkpoint(s)", path.filename().c_str(),
 			loaded->header.players[0].code.c_str(), loaded->header.players[1].code.c_str(), loaded->header.stageCode.c_str(),
