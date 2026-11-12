@@ -719,3 +719,99 @@ TEST_CASE("the board places the shipped table's tiles where the game's own selec
 		CHECK(std::abs(place(expected.first) - expected.second) <= 4.f);
 	}
 }
+
+TEST_CASE("the pad crosses the Random tile as the game's cursor does: Left and Right from the tiles beside it, both rows")
+{
+	FillTestCatalog();
+	// Random in the first row's middle, a tile in its column on the second
+	// row (as the game's second row has one more on the left): RYU | Random |
+	// KEN over CNL CMY | BSN.
+	grid::SelectGrid table;
+	std::string error;
+	REQUIRE(grid::ParseSelectGrid(R"({"columns": 3, "rowOffsets": [0, -0.54],
+		"fighters": [{"code": "RYU", "column": 0, "row": 0}, {"code": "KEN", "column": 2, "row": 0},
+			{"code": "CNL", "column": 0, "row": 1}, {"code": "CMY", "column": 1, "row": 1}, {"code": "BSN", "column": 2, "row": 1}],
+		"random": {"column": 1, "row": 0}})",
+		table, error));
+	std::vector<MenuEntry> rows = SfvSelectionScreen::BoardRows(PlayerPickOf(kRyu, kOneOne), false, true, false, true);
+	SfvSelectionScreen::LinkRandom(rows, table);
+	CHECK(RowOf(rows, "random-fighter").left == "fighter-0");
+	CHECK(RowOf(rows, "random-fighter").right == "fighter-2");
+	CHECK(RowOf(rows, "fighter-0").right == "random-fighter");
+	CHECK(RowOf(rows, "fighter-2").left == "random-fighter");
+	CHECK(RowOf(rows, "fighter-3").right == "random-fighter"); // CMY, at Random's foot on the left
+	CHECK(RowOf(rows, "fighter-4").left == "random-fighter");  // BSN, at its foot on the right
+	CHECK(RowOf(rows, "fighter-1").left.empty());
+	CHECK(RowOf(rows, "fighter-1").right.empty());
+	CHECK(RowOf(rows, "fighter-0").up.empty());
+	CHECK(RowOf(rows, "fighter-0").down.empty());
+	// The pad: Left from KEN lands on Random, then on RYU; Right from RYU
+	// on Random, then on KEN; Right from CMY and Left from BSN on Random.
+	sf4e::ui::MenuNavigation nav;
+	double now = 0;
+	const auto press = [&](unsigned button) {
+		nav.Update({0, now += 1}, rows);
+		nav.Update({button, now += 1}, rows);
+		nav.Update({0, now += 1}, rows);
+		return nav.Focus();
+	};
+	using Button = sf4e::ui::MenuInput;
+	nav.Focus("fighter-2", rows);
+	CHECK(press(Button::Left) == "random-fighter");
+	CHECK(press(Button::Left) == "fighter-0");
+	CHECK(press(Button::Right) == "random-fighter");
+	CHECK(press(Button::Right) == "fighter-2");
+	nav.Focus("fighter-3", rows);
+	CHECK(press(Button::Right) == "random-fighter");
+	nav.Focus("fighter-4", rows);
+	CHECK(press(Button::Left) == "random-fighter");
+	// The dummy's board has no Random card: nothing points at one.
+	std::vector<MenuEntry> dummy = SfvSelectionScreen::BoardRows(PlayerPickOf(kRyu, kOneOne), false, true, false, false);
+	SfvSelectionScreen::LinkRandom(dummy, table);
+	for (const MenuEntry& row : dummy) {
+		CAPTURE(row.id);
+		CHECK(row.left.empty());
+		CHECK(row.right.empty());
+	}
+}
+
+TEST_CASE("a dimmed card is reached by the pad like any other, so the pane says why, and Select on it does nothing")
+{
+	FillTestCatalog();
+	// RYU's Nostalgia: colours 01 and 02 are this player's, EX01 and EX02 not.
+	const std::vector<MenuEntry> rows = SfvSelectionScreen::ColourCards(PlayerPickOf(kRyu, kOneOne), 4, true);
+	REQUIRE_FALSE(RowOf(rows, "color-100").enabled);
+	sf4e::ui::MenuNavigation nav;
+	double now = 0;
+	const auto press = [&](unsigned button) {
+		sf4e::ui::MenuAction last;
+		nav.Update({0, now += 1}, rows);
+		last = nav.Update({button, now += 1}, rows);
+		nav.Update({0, now += 1}, rows);
+		return last;
+	};
+	using Button = sf4e::ui::MenuInput;
+	nav.Focus("color-1", rows);
+	press(Button::Down);
+	CHECK(nav.Focus() == "color-100");
+	press(Button::Down);
+	CHECK(nav.Focus() == "color-101");
+	// Select on it: no action, the focus stays.
+	CHECK(press(Button::Select).kind == MenuAction::None);
+	CHECK(nav.Focus() == "color-101");
+	// Back up to the colours this player can ready, and Select stores one.
+	press(Button::Up);
+	press(Button::Up);
+	CHECK(nav.Focus() == "color-1");
+	const MenuAction chosen = press(Button::Select);
+	CHECK(chosen.kind == MenuAction::Activate);
+	CHECK(chosen.id == "color-1");
+	// The same on the board: KEN's tile (not this player's) is focused, and
+	// Select on it does nothing.
+	const std::vector<MenuEntry> board = SfvSelectionScreen::BoardRows(PlayerPickOf(kRyu, kOneOne), false, true, false, true);
+	sf4e::ui::MenuNavigation boardNav;
+	boardNav.Focus("fighter-2", board);
+	CHECK(boardNav.Focus() == "fighter-2");
+	boardNav.Update({0, now += 1}, board);
+	CHECK(boardNav.Update({Button::Select, now += 1}, board).kind == MenuAction::None);
+}
