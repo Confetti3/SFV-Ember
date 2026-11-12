@@ -211,9 +211,8 @@ def room_of_two(shots: Path | None) -> None:
 
 def wait_in_training(index: int) -> None:
     # The room's action bar (options, Training, the copy buttons, More...)
-    # is walked with Left and Right.
-    seek(index, "copy", ["DOWN"], 30)
-    seek(index, "room-training", ["LEFT"], 6)
+    # is walked with Left and Right (runshell's seek_bar).
+    shell_steps.seek_bar(index, "room-training")
     press(index, "A")
     wait_for(f"copy {index} in Training", 60,
              lambda: scene(index) == TRAINING_SCENE and training(index)["available"])

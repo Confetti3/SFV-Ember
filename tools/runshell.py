@@ -140,12 +140,30 @@ def create_room(shots: Path | None) -> None:
     wait_for("copy 0's room", 60, lambda: status(0)["room"]["room"] == "joined" and shell(0)["screen"] == "room")
 
 
+# The room's action bar under its tables, in its order: Table options and
+# Training (both while the room is open), the two invitation copies, More...
+# and Leave room. One line, or two where a language's labels are longer
+# (Russian); which of them is under a table depends on the window's width.
+ROOM_BAR = ("options", "room-training", "copy", "copy-short", "room-more", "leave")
+
+
+def seek_bar(index: int, target: str) -> None:
+    """Down from the tables onto the room's action bar, then along it (and
+    onto its other line, if it has two) to `target`."""
+    seek(index, ROOM_BAR, ["DOWN"], 30)
+    for moves in (["RIGHT"] * 6, ["LEFT"] * 6, ["DOWN"] + ["RIGHT"] * 6, ["LEFT"] * 6,
+                  ["UP"] + ["RIGHT"] * 6, ["LEFT"] * 6):
+        for move in moves:
+            if shell(index)["focus"] == target:
+                return
+            press(index, move)
+        if shell(index)["focus"] == target:
+            return
+    raise lib.SfveError(f"copy {index}: could not reach {target} on the room's bar (at {shell(index)['focus']})")
+
+
 def copy_invitation(shots: Path | None) -> None:
-    # The room's bar (copy, copy-short, room-more, leave) is below its tables:
-    # one row, or two where a language's labels are longer (Russian). Copy is
-    # its first: left along the row, then up a row and left again.
-    seek(0, ("copy", "copy-short", "room-more", "leave"), ["DOWN"], 20)
-    seek(0, "copy", ["LEFT", "LEFT", "LEFT", "UP", "LEFT", "LEFT", "LEFT"], 7)
+    seek_bar(0, "copy")
     press(0, "A")
     shot(shots, "3-room-invitation", 0)
 
