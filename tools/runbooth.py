@@ -318,6 +318,10 @@ class Copy:
                     time.sleep(self.args.stagger)
                 lib.boot_to_menu(self.index, timeout=BOOT_TIMEOUT_S, bring_to_front=False)
                 self.since_boot = 0
+                if not self.args.show_hud:
+                    # The game's own switch for its HUD (each HUD part's movies hidden, as a
+                    # cinematic hides them): kept by the mod for every battle from now on.
+                    self.cmd("booth hudhide on")
                 return
             except (lib.SfveError, TimeoutError, OSError) as e:
                 last = e
@@ -327,6 +331,10 @@ class Copy:
 
     def to_menu(self) -> None:
         self.wait_for(lambda s: s.get("scene") == MAIN_MENU_SCENE, LEAVE_TIMEOUT_S, "the main menu")
+        # The stage just left is still being unloaded: a launch on the same stage straight away
+        # never finishes loading (the laptop pilot 2026-11-12: 1-2 s after the leave it hung,
+        # 4 s and 8 s after it loaded three in a row).
+        time.sleep(self.args.menu_settle)
 
     def recover(self) -> None:
         """After a failed load: `booth leave` and the menu, else kill and relaunch this copy."""
@@ -342,15 +350,26 @@ class Copy:
     # --- steps of a load ---
 
     def start_battle(self, p1: str, p2: str) -> None:
-        b0 = self.booth(self.status()).get("battle", 0)
-        self.cmd(f"launch {self.args.target} {p1} {p2} {self.args.stage} 1 inf")
+        for attempt in (1, 2):
+            b0 = self.booth(self.status()).get("battle", 0)
+            self.cmd(f"launch {self.args.target} {p1} {p2} {self.args.stage} 1 inf")
 
-        def settled(s: dict) -> bool:
-            launch = s.get("launch") or {}
-            loaded = launch.get("loaded") and self.booth(s).get("battle", 0) != b0
-            return bool(loaded or launch.get("failure") or launch.get("state") == "failed")
+            def settled(s: dict) -> bool:
+                launch = s.get("launch") or {}
+                loaded = launch.get("loaded") and self.booth(s).get("battle", 0) != b0
+                return bool(loaded or launch.get("failure") or launch.get("state") == "failed")
 
-        status = self.wait_for(settled, LOADED_TIMEOUT_S, "the launch to load")
+            try:
+                status = self.wait_for(settled, self.args.load_stuck, "the launch to load")
+                break
+            except CaptureError:
+                # A load of the stage just left, while the game still unloads it, never
+                # finishes (laptop 2026-11-12, more often with several copies): this copy is
+                # started again and the load tried once more.
+                if attempt == 2:
+                    raise
+                self.log.say(f"copy {self.index}: the load of {p1} / {p2} is stuck; relaunching this copy and trying again")
+                self.boot()
         launch = status.get("launch") or {}
         if (launch.get("failure") or launch.get("state") == "failed") and not launch.get("loaded"):
             raise CaptureError(f"launch failed: {launch.get('failure') or 'no reason given'}")
@@ -381,6 +400,23 @@ class Copy:
                 break
             if "not known yet" not in reply and "did not answer" not in reply or time.monotonic() > deadline:
                 raise CaptureError(f"booth scale: {reply[:200]}")
+            time.sleep(0.5)
+        self.wait_presents(SETTLE_PRESENTS)
+
+    def hide(self, p1: bool, p2: bool) -> None:
+        """Hides (or shows) each side's whole fighter actor (`booth hide`): meshes, cloth and
+        shadow, where a scale to 0.001 leaves the cloth on the floor. A mod without the command
+        falls back to the scale."""
+        deadline = time.monotonic() + 15.0
+        while True:
+            reply = self.cmd_raw(f"booth hide {int(p1)} {int(p2)}")
+            if reply.startswith("ok"):
+                break
+            if "no booth command" in reply:
+                self.scale(0.001 if p1 else 1.0, 0.001 if p2 else 1.0)
+                return
+            if "not known yet" not in reply and "did not answer" not in reply or time.monotonic() > deadline:
+                raise CaptureError(f"booth hide: {reply[:200]}")
             time.sleep(0.5)
         self.wait_presents(SETTLE_PRESENTS)
 
@@ -453,11 +489,11 @@ class Copy:
         camera = self.camera_check()
         sides = [(0, p1), (1, p2)] if p2 else [(0, p1)]
         if len(sides) == 1:
-            self.scale(1.0, 0.001)  # the opponent out of the picture, so the mask is one fighter
+            self.hide(False, True)  # the opponent out of the picture, so the mask is one fighter
         a_path, b_path = raw / "a.bmp", raw / "b.bmp"
         frame = self.grab(a_path, True)
         depth_state = self.booth(self.status()).get("lastGrab", {}).get("depth", "")
-        self.scale(0.001, 0.001)
+        self.hide(True, True)  # the plate: the same frozen frame without the fighters
         self.grab(b_path, True)
         self.cmd("booth leave")
         meta = {"frame": frame, "stage": stage, "load": key, "camera": " ".join(camera), "depth": depth_state}
@@ -509,12 +545,17 @@ class Copy:
             vs = min(side + 1, max(fighter["vs"], 1))
             vt = min(side + 1, max(fighter["vt"], 1))
             picks.append(f"{code}:{costume}:{colour}:{vs}:{vt}")
-        self.start_battle(picks[0], picks[1])
-        self.hold_at(cfg["start"])
-        self.wait_presents(SETTLE_PRESENTS)
         raw_root = self.store / "raw" / f"loadout-{code}"
-        for side in sorted({t[0] for t in todo}):
-            self.scale(*((1.0, 0.001) if side == 0 else (0.001, 1.0)))
+        for n_side, side in enumerate(sorted({t[0] for t in todo})):
+            # A battle per side: the other side's actor is hidden for good (showing a hidden side
+            # again would show a partner the game keeps hidden, R. Mika's).
+            if n_side:
+                self.cmd("booth leave")
+                self.to_menu()
+            self.start_battle(picks[0], picks[1])
+            self.hold_at(cfg["start"])
+            self.wait_presents(SETTLE_PRESENTS)
+            self.hide(side != 0, side != 1)  # the opponent's whole actor away
             steps = [t for t in todo if t[0] == side]
             steps.sort(key=lambda t: t[1] != "vs")  # V-Skill first, then V-Trigger
             for n, (_, prefix, choice) in enumerate(steps):
@@ -533,10 +574,13 @@ class Copy:
                     frame = self.grab(path, False)
                     frames.append((k, path, frame))
                     if k == after:
-                        self.scale(0.001, 0.001)
+                        # The fighter scaled away for the crop's plate (the opponent stays hidden):
+                        # a hidden side is never shown again, since showing it would show a partner
+                        # the game keeps hidden (R. Mika's).
+                        self.scale(0.001 if side == 0 else 1.0, 0.001 if side == 1 else 1.0)
                         b_path = raw_root / f"{prefix}{choice}-away.bmp"
                         self.grab(b_path, False)
-                        self.scale(*((1.0, 0.001) if side == 0 else (0.001, 1.0)))
+                        self.scale(1.0, 1.0)
                 self.post.submit(self.save_loadout, code, prefix, choice, side, frames, after, raw_root / f"{prefix}{choice}-away.bmp")
                 if n + 1 < len(steps):
                     self.advance(f"booth run {cfg['gap']}", cfg["gap"])
@@ -557,17 +601,29 @@ class Copy:
                 mask = bp._keep_components(bp.colour_mask(a, b))  # noqa: SLF001
                 height_px, width_px = a.shape[:2]
                 cols = np.nonzero(mask.any(axis=0))[0]
-                centre = (cols.min() + cols.max()) / 2 if cols.size else width_px * (0.42 if side == 0 else 0.58)
-                crop_h = round(height_px * self.cfg["crop"]["height_fraction"])
-                crop_w = min(width_px, round(crop_h * 16 / 9))
+                rows = np.nonzero(mask.any(axis=1))[0]
+                if cols.size:
+                    x_lo, x_hi, y_lo, y_hi = cols.min(), cols.max(), rows.min(), rows.max()
+                else:  # nothing found: where the side stands
+                    cx = width_px * (0.42 if side == 0 else 0.58)
+                    x_lo, x_hi, y_lo, y_hi = cx - width_px * 0.1, cx + width_px * 0.1, height_px * 0.4, height_px * 0.95
+                # The whole fighter and what the move throws out, with a margin, in a 16:9 window
+                # at least `height_fraction` of the frame high, centred on them (the HUD is hidden,
+                # so nothing has to stay above a gauge line).
+                margin = self.cfg["crop"].get("margin", 0.12)
+                crop_h = max((y_hi - y_lo) * (1 + 2 * margin), (x_hi - x_lo) * (1 + 2 * margin) * 9 / 16,
+                             height_px * self.cfg["crop"]["height_fraction"])
+                crop_h = min(crop_h, height_px, width_px * 9 / 16)
+                crop_w = round(crop_h * 16 / 9)
                 crop_h = round(crop_w * 9 / 16)
-                x0 = int(min(max(centre - crop_w / 2, 0), width_px - crop_w))
-                picture = image.crop((x0, 0, x0 + crop_w, crop_h))
+                x0 = int(min(max((x_lo + x_hi) / 2 - crop_w / 2, 0), width_px - crop_w))
+                y0 = int(min(max((y_lo + y_hi) / 2 - crop_h / 2, 0), height_px - crop_h))
+                picture = image.crop((x0, y0, x0 + crop_w, y0 + crop_h))
                 if k == chosen:
                     target = bp.loadout_master_path(self.store, code, prefix, choice)
                     target.parent.mkdir(parents=True, exist_ok=True)
                     picture.save(target)
-                    target.with_suffix(".json").write_text(json.dumps({"frame": frame, "stage": stage, "crop": [x0, 0, crop_w, crop_h]}),
+                    target.with_suffix(".json").write_text(json.dumps({"frame": frame, "stage": stage, "crop": [x0, y0, crop_w, crop_h]}),
                                                            encoding="utf-8")
                 if self.args.burst:
                     burst = self.store / "burst" / code
@@ -680,6 +736,11 @@ def main(argv: list[str]) -> int:
     p.add_argument("--keep-raw", action="store_true", help="keep the raw grabs (about 30 MB a load) instead of deleting them once the masters exist")
     p.add_argument("--relaunch-every", type=int, default=200, help="restart a copy's game after this many loads")
     p.add_argument("--stagger", type=float, default=6.0, help="seconds between copy starts")
+    p.add_argument("--load-stuck", type=float, default=25.0,
+                   help="seconds a launch may take to load before the copy is relaunched and the load tried again (a load takes 2-7 s)")
+    p.add_argument("--menu-settle", type=float, default=4.0,
+                   help="seconds on the main menu after a leave before the next launch (default 4: less hangs the next load of the same stage)")
+    p.add_argument("--show-hud", action="store_true", help="leave the HUD on screen (by default `booth hudhide on` hides it for every grab)")
     p.add_argument("--hud-hide", action="append", help='a `booth hud` argument ("<method> <number> [text]") sent after each load, to hide the HUD')
     p.add_argument("--game-option", action="append", help="extra game option for every copy")
     p.add_argument("--plan", action="store_true", help="print the worklist size and the time estimate; start nothing")
