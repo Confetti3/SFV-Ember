@@ -124,8 +124,16 @@ public:
 	struct Costs {
 		uint64_t saves = 0, loads = 0, hashes = 0;
 		int64_t saveTicks = 0, loadTicks = 0, hashTicks = 0;
+		// Counted by the rollback session, which knows why
+		// (docs/design/beta8/perf.md): saves that kept no copy, as no load can
+		// reach them; frames hashed once final, after their save; and saves a
+		// rollback replaced before they were final, never hashed.
+		uint64_t skippedSaves = 0, confirmedHashes = 0, droppedHashes = 0;
 	};
 	Costs TakeCosts() const;
+	void CountSkippedSave() const { costs_.skippedSaves++; }
+	void CountConfirmedHash() const { costs_.confirmedHashes++; }
+	void CountDroppedHash() const { costs_.droppedHashes++; }
 
 private:
 	bool Hashed(const StateRegion& r, HashScope scope) const

@@ -38,6 +38,24 @@ private:
 	RollbackSession* previous_;
 };
 
+// Hashes the saves a session call made final (HashConfirmed), however the
+// call returns: GGPO confirms frames inside ggpo_idle and ggpo_advance_frame,
+// and the caller may read HashAt or record a checkpoint right after.
+class RollbackSession::ConfirmedOnReturn {
+public:
+	explicit ConfirmedOnReturn(RollbackSession& s) : s_(s) {}
+	~ConfirmedOnReturn()
+	{
+		s_.rollingBack_ = false; // a GGPO call returns only once its rollbacks are done
+		s_.HashConfirmed();
+	}
+	ConfirmedOnReturn(const ConfirmedOnReturn&) = delete;
+	ConfirmedOnReturn& operator=(const ConfirmedOnReturn&) = delete;
+
+private:
+	RollbackSession& s_;
+};
+
 RollbackSession::RollbackSession(GameAdapter& game) : game_(game)
 {
 	gate_.Reset();
@@ -46,6 +64,9 @@ RollbackSession::RollbackSession(GameAdapter& game) : game_(game)
 
 RollbackSession::~RollbackSession()
 {
+	// The game and the owners of the callbacks may be gone already: nothing
+	// more is hashed or reported.
+	tearingDown_ = true;
 	Close();
 }
 
@@ -62,6 +83,7 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	}
 	if (game_.Layout().Empty()) return refuse("the game has no rollback state yet");
 	if (config.hashEveryFrames < 1) return refuse("hashEveryFrames must be at least 1");
+	if (config.verifyLoadsEvery < 0) return refuse("verifyLoadsEvery must not be negative");
 
 	config_ = config;
 	config_.watching = watches;
@@ -83,6 +105,11 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	// A watcher keeps no saves: one buffer holds the state it hashes.
 	pool_.assign(watches ? 1 : kPoolSlots, Slot{});
 	for (Slot& s : pool_) s.bytes.resize(game_.Layout().TotalSize());
+	confirmed_ = -1;
+	rollingBack_ = false;
+	rollbackFrom_ = rollbackEnd_ = -1;
+	closing_ = false;
+	loads_ = 0;
 	policy_.Start(GetTickCount64(), {}, config.watcherSyncDeadlineMs);
 	links_.Start();
 	watcherHandles_.clear();
@@ -222,6 +249,12 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	CoreLog("session: started as P%d, port %u -> %s:%u, delay %d, %zu watcher(s), state %zu bytes in %zu regions",
 		config.localPlayer + 1, config.localPort, config.remoteIp.c_str(), config.remotePort, config.inputDelay,
 		watching.size(), game_.Layout().TotalSize(), game_.Layout().Regions().size());
+	char verified[48] = "never";
+	if (config.verifyLoads) snprintf(verified, sizeof(verified), "every one");
+	else if (config.verifyLoadsEvery > 0) snprintf(verified, sizeof(verified), "one in %d", config.verifyLoadsEvery);
+	CoreLog("session: a save no load can reach %s; frames hashed %s; restores re-hashed: %s",
+		config.skipUnloadableSaves ? "keeps no copy" : "is copied all the same",
+		config.hashOnConfirm ? "once final" : "on every save", verified);
 	return true;
 }
 
@@ -230,6 +263,7 @@ RollbackSession::StepResult RollbackSession::Step(PackedInput localInput)
 	if (!Live()) return failed_ ? StepResult::Failed : StepResult::NoSession;
 	if (config_.watching) return StepWatched(nullptr);
 	ActiveScope active(this);
+	ConfirmedOnReturn confirmed(*this);
 
 	ggpo_idle(session_, 0);
 	if (DrainPendingAbort()) return StepResult::Failed;
@@ -269,6 +303,7 @@ RollbackSession::StepResult RollbackSession::StepHeld(PackedInput localInput,
 	if (!Live()) return failed_ ? StepResult::Failed : StepResult::NoSession;
 	if (config_.watching) return StepWatched(&onInputs);
 	ActiveScope active(this);
+	ConfirmedOnReturn confirmed(*this);
 
 	ggpo_idle(session_, 0);
 	if (DrainPendingAbort()) return StepResult::Failed;
@@ -307,6 +342,7 @@ void RollbackSession::Poll()
 {
 	if (!session_) return;
 	ActiveScope active(this);
+	ConfirmedOnReturn confirmed(*this);
 	ggpo_idle(session_, 0);
 	if (DrainPendingAbort()) return;
 	PollWatchers();
@@ -460,7 +496,8 @@ void RollbackSession::HashLagged()
 		}
 		slot.frame = frame;
 		slot.used = true;
-		RecordHash(slot, frame, 0);
+		slot.copied = true;
+		RecordHash(frame, slot.bytes.data(), 0);
 	}
 	if (lagged_->ConfirmedThrough() > laggedHashed_) laggedHashed_ = lagged_->ConfirmedThrough();
 }
@@ -497,8 +534,9 @@ void RollbackSession::HashWatched(int frame)
 	QueryPerformanceCounter(&copied);
 	slot.frame = frame;
 	slot.used = true; // SavedState answers it (a dump)
+	slot.copied = true;
 	// A scratch copy, never a save GGPO holds.
-	RecordHash(slot, frame, copied.QuadPart - started.QuadPart);
+	RecordHash(frame, slot.bytes.data(), copied.QuadPart - started.QuadPart);
 }
 
 int RollbackSession::WatchedBacklog() const
@@ -595,7 +633,19 @@ void RollbackSession::CloseNow()
 {
 	if (session_) {
 		ActiveScope active(this);
+		if (!config_.watching) {
+			// The frames final by now are hashed before GGPO lets their saves go.
+			if (!tearingDown_) HashConfirmed();
+			const Stats& s = stats_;
+			CoreLog("session costs: %llu frame(s) played, %llu replayed in %llu rollback(s); %llu save(s) kept no copy; "
+				"%llu frame(s) hashed once final, %llu save(s) replaced before final; %llu restore(s) re-hashed, %llu "
+				"differed", (unsigned long long)s.framesAdvanced, (unsigned long long)s.resimulatedFrames,
+				(unsigned long long)s.rollbacks, (unsigned long long)s.savesSkipped, (unsigned long long)s.hashesOnConfirm,
+				(unsigned long long)s.hashesDropped, (unsigned long long)s.loadsVerified, (unsigned long long)s.loadMismatches);
+		}
+		closing_ = true;
 		ggpo_close_session(session_);
+		closing_ = false;
 		session_ = nullptr;
 	}
 	replaying_ = false;
@@ -611,7 +661,7 @@ void RollbackSession::CloseNow()
 	}
 	localHandle_ = remoteHandle_ = -1;
 	gate_.OnSessionClosed();
-	for (Slot& s : pool_) s.used = false;
+	for (Slot& s : pool_) s.used = s.pending = s.copied = false;
 	// No watcher is served any more. A drop not yet handed to the room was
 	// this session's, and the room ends this match's links itself (SF4's
 	// RetireGgpoSession forgets it the same way).
@@ -697,7 +747,7 @@ bool RollbackSession::HashAt(int frame, uint64_t* out) const
 const uint8_t* RollbackSession::SavedState(int frame) const
 {
 	for (const Slot& s : pool_) {
-		if (s.used && s.frame == frame) return s.bytes.data();
+		if (s.used && s.copied && s.frame == frame) return s.bytes.data();
 	}
 	return nullptr;
 }
@@ -766,6 +816,15 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 	// (or while a held frame changed it) ends the session, before a state it
 	// can no longer restore is kept.
 	if (FailedByGame()) return false;
+	// Nor after any other failure inside this call (a load that could not
+	// restore): the live state is no frame's state any more.
+	if (failed_) return false;
+	// The last frame a rollback replays: every save it left on the guessed
+	// timeline has been replaced (GGPO freed this frame's old one first).
+	if (rollingBack_ && frame >= rollbackEnd_) rollingBack_ = false;
+	// The frames the last GGPO call confirmed are hashed first, so frames are
+	// hashed in order, and confirmed_ is current for this save.
+	HashConfirmed();
 	Slot* slot = nullptr;
 	for (Slot& s : pool_) {
 		if (!s.used) {
@@ -777,13 +836,36 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 		Fail("save pool exhausted");
 		return false;
 	}
-	LARGE_INTEGER started, copied;
-	QueryPerformanceCounter(&started);
-	game_.Layout().SaveTo(slot->bytes.data());
-	QueryPerformanceCounter(&copied);
+	StateLayout& layout = game_.Layout();
 	slot->used = true;
 	slot->frame = frame;
-	RecordHash(*slot, frame, copied.QuadPart - started.QuadPart);
+	slot->pending = false;
+	slot->copyTicks = 0;
+	// GGPO loads the save of frame F only for a rollback to F, which starts
+	// at the first frame whose inputs it guessed wrong, a frame after the
+	// last confirmed one; or when a fighter disconnects, at that fighter's
+	// last frame received, never before the last confirmed one. So once the
+	// inputs of frame F + 1 are confirmed, no load reaches F's save
+	// (docs/design/beta8/perf.md), and its copy is skipped.
+	slot->copied = !config_.skipUnloadableSaves || frame == keepSave_ || confirmed_ < frame + 1;
+	if (slot->copied) {
+		LARGE_INTEGER started, copied;
+		QueryPerformanceCounter(&started);
+		layout.SaveTo(slot->bytes.data());
+		QueryPerformanceCounter(&copied);
+		slot->copyTicks = copied.QuadPart - started.QuadPart;
+	} else {
+		stats_.savesSkipped++;
+		layout.CountSkippedSave();
+		if (config_.onSaveSkipped) config_.onSaveSkipped(frame);
+	}
+	if (HashedFrame(frame)) {
+		// A save with no copy is final (its inputs are confirmed past it), and
+		// the live state is its state: hashed now, from memory.
+		if (!slot->copied) RecordHash(frame, nullptr, 0);
+		else if (!config_.hashOnConfirm || Final(frame)) RecordHash(frame, slot->bytes.data(), slot->copyTicks);
+		else slot->pending = true;
+	}
 	frame_ = frame;
 
 	*buffer = reinterpret_cast<unsigned char*>(slot);
@@ -792,38 +874,86 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 	return true;
 }
 
-void RollbackSession::RecordHash(Slot& slot, int frame, long long copyTicks)
+bool RollbackSession::HashedFrame(int frame) const
+{
+	return frame % kCheckpointInterval == 0 || config_.verifyLoads || frame % config_.hashEveryFrames == 0;
+}
+
+void RollbackSession::HashConfirmed()
+{
+	if (!session_ || config_.watching) return;
+	// The confirmed frame as of now, the local input added since GGPO's last
+	// poll included (the GGPO port's confirmed-input-frame.patch): with the
+	// last poll's number, a step's save would always be judged a frame late,
+	// and with an input delay of 2 no save would ever be skipped.
+	int confirmed = -1;
+	if (ggpo_get_confirmed_input_frame(session_, &confirmed) == GGPO_OK ||
+		ggpo_get_last_confirmed_frame(session_, &confirmed) == GGPO_OK) {
+		if (confirmed > confirmed_) confirmed_ = confirmed;
+	}
+	if (!config_.hashOnConfirm) return;
+	// Oldest first: the checkpoints kept (CheckpointState) are the latest two.
+	for (;;) {
+		Slot* next = nullptr;
+		for (Slot& s : pool_) {
+			if (!s.used || !s.pending || !Final(s.frame) || Replaced(s.frame)) continue;
+			if (!next || s.frame < next->frame) next = &s;
+		}
+		if (!next) return;
+		HashPending(*next);
+	}
+}
+
+void RollbackSession::HashPending(Slot& slot)
+{
+	slot.pending = false;
+	stats_.hashesOnConfirm++;
+	game_.Layout().CountConfirmedHash();
+	RecordHash(slot.frame, slot.bytes.data(), slot.copyTicks);
+}
+
+void RollbackSession::RecordHash(int frame, const uint8_t* bytes, long long copyTicks)
 {
 	StateLayout& layout = game_.Layout();
-	LARGE_INTEGER started, hashed, perSecond;
-	QueryPerformanceCounter(&started);
 	const bool checkpoint = frame % kCheckpointInterval == 0;
-	slot.hashed = checkpoint || config_.verifyLoads || frame % config_.hashEveryFrames == 0;
-	slot.hash = slot.hashed ? layout.HashSaved(slot.bytes.data(), HashScope::Peers) : 0;
-	slot.localHash = config_.verifyLoads ? layout.HashSaved(slot.bytes.data()) : 0;
-	QueryPerformanceCounter(&hashed);
-	if (slot.hashed) {
-		history_[frame % kHistory] = {frame, slot.hash};
-		if (config_.keepAllHashes) {
-			if ((size_t)frame >= allHashes_.size()) allHashes_.resize((size_t)frame + 1);
-			allHashes_[frame] = {frame, slot.hash};
-		}
-	}
+	// A checkpoint's bytes are kept (CheckpointState), in the older of the
+	// two kept unless this frame's own (saved again after a rollback) is
+	// there. A save with no copy has its state copied there, its one copy.
 	if (checkpoint) {
-		layout.PeerRegionHashesSaved(slot.bytes.data(), checkpoints_[frame]); // a replay overwrites it
-		// Its bytes too, in the older of the two kept unless this frame's
-		// own (saved again after a rollback) is there.
 		KeptState* keep = &checkpointStates_[0];
 		if (checkpointStates_[1].frame == frame || (checkpointStates_[0].frame != frame &&
 				checkpointStates_[1].frame < checkpointStates_[0].frame)) {
 			keep = &checkpointStates_[1];
 		}
 		keep->frame = frame;
-		keep->bytes.assign(slot.bytes.begin(), slot.bytes.end());
-		if (config_.onCheckpoint) config_.onCheckpoint(frame, slot.hash); // RegionHashesAt(frame) answers
+		if (bytes) {
+			keep->bytes.assign(bytes, bytes + layout.TotalSize());
+		} else {
+			LARGE_INTEGER from, copied;
+			QueryPerformanceCounter(&from);
+			keep->bytes.resize(layout.TotalSize());
+			layout.SaveTo(keep->bytes.data());
+			QueryPerformanceCounter(&copied);
+			copyTicks = copied.QuadPart - from.QuadPart;
+		}
+		bytes = keep->bytes.data();
+	}
+	LARGE_INTEGER started, hashed, perSecond;
+	QueryPerformanceCounter(&started);
+	// The live state and its copy hash alike (StateLayout::HashLive).
+	const uint64_t hash = bytes ? layout.HashSaved(bytes, HashScope::Peers) : layout.HashLive(HashScope::Peers);
+	QueryPerformanceCounter(&hashed);
+	history_[frame % kHistory] = {frame, hash};
+	if (config_.keepAllHashes) {
+		if ((size_t)frame >= allHashes_.size()) allHashes_.resize((size_t)frame + 1);
+		allHashes_[frame] = {frame, hash};
+	}
+	if (checkpoint) {
+		layout.PeerRegionHashesSaved(bytes, checkpoints_[frame]); // a replay overwrites it
+		if (config_.onCheckpoint) config_.onCheckpoint(frame, hash); // RegionHashesAt(frame) answers
 		QueryPerformanceFrequency(&perSecond);
 		const auto us = [&](long long ticks) { return ticks * 1000000 / perSecond.QuadPart; };
-		CoreLog("checkpoint: frame %d hash %016llx (copy %lld us, hash %lld us)", frame, (unsigned long long)slot.hash,
+		CoreLog("checkpoint: frame %d hash %016llx (copy %lld us, hash %lld us)", frame, (unsigned long long)hash,
 			us(copyTicks), us(hashed.QuadPart - started.QuadPart));
 		while (checkpoints_.size() > kCheckpointsKept) checkpoints_.erase(checkpoints_.begin());
 	}
@@ -837,6 +967,20 @@ bool RollbackSession::Load(unsigned char* buffer)
 		Fail("load of a freed state");
 		return false;
 	}
+	// GGPO replays from here back to the current frame, saving each again.
+	rollingBack_ = true;
+	rollbackFrom_ = slot->frame;
+	rollbackEnd_ = frame_;
+	if (!slot->copied) {
+		// Never expected (Save's rule): a load the rule says cannot come. The
+		// state is not restored, and the session ends rather than play on
+		// from the wrong one.
+		stats_.skippedLoads++;
+		CoreLog("session: GGPO loads frame %d, whose save kept no copy (the session at frame %d, confirmed through %d)",
+			slot->frame, frame_, confirmed_);
+		Fail("load of a save that kept no copy");
+		return false;
+	}
 	StateLayout& layout = game_.Layout();
 	layout.LoadFrom(slot->bytes.data());
 	game_.AfterLoad();
@@ -848,9 +992,15 @@ bool RollbackSession::Load(unsigned char* buffer)
 	frame_ = slot->frame;
 	rollbackHud_.Begin(GetTickCount64());
 
-	if (config_.verifyLoads && layout.HashLive() != slot->localHash) {
-		stats_.loadMismatches++;
-		CoreLog("session: frame %d restored with a different hash", slot->frame);
+	// The save's bytes are as Save wrote them (nothing writes a slot in use),
+	// so their hash now is the save's hash.
+	loads_++;
+	if (config_.verifyLoads || (config_.verifyLoadsEvery > 0 && loads_ % (uint64_t)config_.verifyLoadsEvery == 0)) {
+		stats_.loadsVerified++;
+		if (layout.HashLive() != layout.HashSaved(slot->bytes.data())) {
+			stats_.loadMismatches++;
+			CoreLog("session: frame %d restored with a different hash", slot->frame);
+		}
 	}
 	return true;
 }
@@ -858,7 +1008,23 @@ bool RollbackSession::Load(unsigned char* buffer)
 void RollbackSession::Free(void* buffer)
 {
 	Slot* slot = static_cast<Slot*>(buffer);
-	if (slot) slot->used = false;
+	if (!slot) return;
+	// A save GGPO lets go of before its frame was hashed. HashConfirmed runs
+	// after every GGPO call that confirms frames, so one that is final now
+	// was hashed already, but for certain it is hashed here. One a rollback
+	// replaces (GGPO keeps one save a frame, and a rollback saves each frame
+	// after the one it loads again) held the guessed timeline: the new save
+	// is hashed instead. As GGPO closes, the frames still not final are left
+	// unhashed: no peer compares a frame before it is confirmed.
+	if (slot->pending && !closing_) {
+		if (!Replaced(slot->frame) && Final(slot->frame)) {
+			HashPending(*slot);
+		} else {
+			stats_.hashesDropped++;
+			game_.Layout().CountDroppedHash();
+		}
+	}
+	slot->used = slot->pending = slot->copied = false;
 }
 
 // The frame about to be advanced: when the game ignores its inputs, GGPO is
