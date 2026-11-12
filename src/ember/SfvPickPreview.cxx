@@ -112,16 +112,30 @@ bool FitIn(ImDrawList* draw, const SelectionImage& image, v2::Box box, float alp
 	return true;
 }
 
-// The captured cutout of the look (the package's), through the menu's art:
-// SelectionArt::Character with its fallbacks to the costume's first colour
-// and the fighter's first look, or with `exact` SelectionArt::Appearance,
-// that look alone. Missing without the art.
-SelectionImage Cutout(const sf4e::selection::Pick& look, float drawnHeight, bool exact)
+// The package's picture of the look as ChooseLookPicture picks it: the
+// look's own (SelectionArt::Appearance), else its costume's in the first
+// colour, through the menu's art; missing, and to be marked, where the
+// package has neither. The costume's is asked for only once the look's own
+// is known to be missing.
+struct LookPicture {
+	SelectionImage image;
+	bool marksColour = false;
+};
+LookPicture PackagedPicture(const sf4e::selection::Pick& look)
 {
 	sf4e::ui::SelectionArt* art = sf4e::ui::MenuArt();
-	if (!art || !ember::ValidFighter(look.fighter)) return Missing();
-	if (exact) return art->Appearance(look.fighter, look.costume, look.color);
-	return art->CharacterFor(look.fighter, look.costume, look.color, drawnHeight);
+	if (!art || !ember::ValidFighter(look.fighter)) return {Missing(), true};
+	const int first = PictureColour(look.fighter, look.costume);
+	const SelectionImage own = art->Appearance(look.fighter, look.costume, look.color);
+	const SelectionImage costume = own.missing && first >= 0 && first != look.color ?
+		art->Appearance(look.fighter, look.costume, first) : Missing();
+	const LookPictureChoice choice = ChooseLookPicture(!own.missing, !costume.missing, look.color == first);
+	switch (choice.source) {
+	case LookSource::Own: return {own, choice.marksColour};
+	case LookSource::Costume: return {costume, choice.marksColour};
+	case LookSource::Fighter: break;
+	}
+	return {Missing(), choice.marksColour};
 }
 
 bool Locked(const sf4e::selection::Pick& look)
@@ -130,21 +144,29 @@ bool Locked(const sf4e::selection::Pick& look)
 		ColourNotOwned(look.fighter, look.costume, look.color);
 }
 
-// The look's picture: the cutout, the shop's picture of the costume where
-// SfvPictureSpec allows it and the shop has one, the large HUD figure, or
-// the banner, the first the game or the package has; dimmed where this
-// player does not own the look (NOT OWNED).
+// The look's picture: the package's (PackagedPicture), the shop's picture
+// of the costume where SfvPictureSpec allows it and the shop has one, the
+// large HUD figure, or the banner, the first the game or the package has;
+// dimmed where this player does not own the look (NOT OWNED). A picture not
+// of the look's own colour carries the colour's tag at its foot.
 float DrawLookPicture(ImDrawList* draw, const PlayerPick& shown, ImVec2 at, float width, float tallest)
 {
 	const int fighter = shown.pick.fighter;
 	const float alpha = Locked(shown.pick) ? kLocked : 1.f;
-	const SelectionImage cutout = Cutout(shown.pick, tallest, false);
-	if (!cutout.missing) return DrawPicture(draw, cutout, at, width, kFigureShape, tallest, alpha);
-	const SelectionImage costume = CostumeImage(fighter, shown.pick.costume);
-	if (!costume.missing) return DrawPicture(draw, costume, at, width, kShopCostumeShape, tallest, alpha);
-	const SelectionImage large = FighterImage(fighter, FighterPicture::Large);
-	if (!large.missing) return DrawPicture(draw, large, at, width, kFigureShape, tallest, alpha);
-	return DrawPicture(draw, FighterImage(fighter, FighterPicture::Banner), at, width, kBannerShape, tallest, alpha);
+	v2::Box drawn{};
+	float height = 0;
+	const LookPicture packaged = PackagedPicture(shown.pick);
+	if (!packaged.image.missing) {
+		height = DrawPicture(draw, packaged.image, at, width, kFigureShape, tallest, alpha, &drawn);
+	} else if (const SelectionImage costume = CostumeImage(fighter, shown.pick.costume); !costume.missing) {
+		height = DrawPicture(draw, costume, at, width, kShopCostumeShape, tallest, alpha, &drawn);
+	} else if (const SelectionImage large = FighterImage(fighter, FighterPicture::Large); !large.missing) {
+		height = DrawPicture(draw, large, at, width, kFigureShape, tallest, alpha, &drawn);
+	} else {
+		height = DrawPicture(draw, FighterImage(fighter, FighterPicture::Banner), at, width, kBannerShape, tallest, alpha, &drawn);
+	}
+	if (packaged.marksColour && height > 0) DrawColourTag(draw, shown.pick, drawn);
+	return height;
 }
 
 // The game's EX colours' prefix ("EX01"), as ColourName writes it.
@@ -338,13 +360,42 @@ bool DrawFitted(ImDrawList* draw, const SelectionImage& image, v2::Box box, floa
 	return FitIn(draw, image, box, alpha, bottom);
 }
 
-bool DrawFigure(ImDrawList* draw, const sf4e::selection::Pick& look, v2::Box box, float alpha, bool exact)
+LookPictureChoice ChooseLookPicture(bool ownAvailable, bool costumeAvailable, bool firstColour)
 {
-	if (exact) return FitIn(draw, Cutout(look, box.H(), true), box, alpha, true);
-	const SelectionImage cutout = Cutout(look, box.H(), false);
-	if (!cutout.missing) return FitIn(draw, cutout, box, alpha, true);
-	if (FitIn(draw, FighterImage(look.fighter, FighterPicture::Large), box, alpha, true)) return true;
-	return FitIn(draw, FighterImage(look.fighter, FighterPicture::Banner), box, alpha, false);
+	if (ownAvailable) return {LookSource::Own, false};
+	if (costumeAvailable) return {LookSource::Costume, !firstColour};
+	return {LookSource::Fighter, true};
+}
+
+int PictureColour(int fighter, int costume)
+{
+	const std::vector<int> colours = ColourIds(fighter, costume);
+	return colours.empty() ? -1 : colours.front();
+}
+
+bool DrawFigure(ImDrawList* draw, const sf4e::selection::Pick& look, v2::Box box, float alpha, bool tagColour)
+{
+	const LookPicture packaged = PackagedPicture(look);
+	const bool drawn = FitIn(draw, packaged.image, box, alpha, true) ||
+		FitIn(draw, FighterImage(look.fighter, FighterPicture::Large), box, alpha, true) ||
+		FitIn(draw, FighterImage(look.fighter, FighterPicture::Banner), box, alpha, false);
+	if (drawn && tagColour && packaged.marksColour) DrawColourTag(draw, look, box);
+	return drawn;
+}
+
+void DrawColourTag(ImDrawList* draw, const sf4e::selection::Pick& look, v2::Box picture)
+{
+	const auto& colors = v2::Colors();
+	const float s = sf4e::ui::Scale(), pad = Whole(4 * s), chip = Whole(ImGui::GetTextLineHeight());
+	const std::string label = ColourName(look.color);
+	const float wide = pad + chip + pad + ImGui::CalcTextSize(label.c_str()).x + pad, tall = chip + 2 * pad;
+	if (wide > picture.W() || tall > picture.H()) return;
+	const ImVec2 plate(Whole(picture.min.x + pad), Whole(picture.max.y - pad - tall));
+	draw->AddRectFilled(plate, ImVec2(plate.x + wide, plate.y + tall), v2::color::Alpha(colors.ink, .85f));
+	const v2::Box swatch{ImVec2(plate.x + pad, plate.y + pad), ImVec2(plate.x + pad + chip, plate.y + pad + chip)};
+	DrawSwatch(draw, look.fighter, look.costume, look.color, swatch, 1.f);
+	draw->AddRect(swatch.min, swatch.max, colors.text, 0, 0, (std::max)(1.f, s));
+	draw->AddText(ImVec2(swatch.max.x + pad, Whole(plate.y + (tall - ImGui::GetTextLineHeight()) * .5f)), colors.text, label.c_str());
 }
 
 bool DrawSwatch(ImDrawList* draw, int fighter, int costume, int colour, v2::Box box, float alpha)

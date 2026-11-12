@@ -6,9 +6,13 @@
 // beta.8 pages, docs/design/beta8/select.md.
 // - The look (the board's fighters, the look page's Fighter, Costume and
 //   Colour rows, the costume and colour cards): the fighter in that look,
-//   the captured cutout where the package has it (SelectionArt::Character),
-//   else the fighter's large HUD figure (PartCharacter), else the banner,
-//   or the shop's picture of the costume where SfvPictureSpec allows it; the
+//   its captured picture where the package has it (SelectionArt::Appearance),
+//   else its costume's picture (the package holds each costume in its first
+//   colour), else the fighter's large HUD figure (PartCharacter), else the
+//   banner, or the shop's picture of the costume where SfvPictureSpec allows
+//   it. A picture that is not of the look's own colour carries the colour's
+//   tag (its swatch chip and number) at its foot, so it never passes for that
+//   colour (ChooseLookPicture); the
 //   fighter's and the costume's names; every colour of the costume as
 //   two-tone chips (SfvSwatchStrip), EX colours on their own row, the chosen
 //   one with the gold bar under it; and the colour's label. A look this
@@ -85,16 +89,36 @@ float PictureRoom(float room, float words, float gap);
 // whole in `box` at its own shape, centred, at `alpha`; while it loads, the
 // box's edge alone.
 //
+// Which picture shows a look (a fighter in a costume and colour), as the
+// pane and the cards choose it: the look's own picture where the package has
+// it (or it is still loading); else its costume's picture, which is of the
+// costume's first colour; else the game's own figure of the fighter. Any
+// picture but the look's own is marked with the look's colour (its swatch
+// chip and number), unless the look is the costume's first colour, which is
+// what the costume's picture shows.
+enum class LookSource { Own, Costume, Fighter };
+struct LookPictureChoice {
+	LookSource source = LookSource::Own;
+	bool marksColour = false;
+	bool operator==(const LookPictureChoice&) const = default;
+};
+LookPictureChoice ChooseLookPicture(bool ownAvailable, bool costumeAvailable, bool firstColour);
+// The colour a costume's picture is of: its first colour in the game's
+// order; -1 for a costume the catalog does not have.
+int PictureColour(int fighter, int costume);
+
 // Any picture so, standing on the box's foot with `bottom` (a figure). False,
 // drawing nothing, where the game or the package has none.
 bool DrawFitted(ImDrawList* draw, const sf4e::ui::SelectionImage& image, sf4e::ui::v2::Box box, float alpha, bool bottom);
-// The fighter in a look: the captured cutout (SelectionArt::Character,
-// through the menu's art), else the large HUD figure (PartCharacter), else
-// the banner. `exact`: only the cutout of exactly this look
-// (SelectionArt::Appearance), and false, drawing nothing, where the package
-// lacks it (the colour cards then show the colour's swatch). True when it
-// drew a picture or its frame.
-bool DrawFigure(ImDrawList* draw, const sf4e::selection::Pick& look, sf4e::ui::v2::Box box, float alpha, bool exact = false);
+// The fighter in a look, as ChooseLookPicture picks the picture (through
+// the menu's art), then the large HUD figure (PartCharacter), then the
+// banner; with `tagColour`, a picture not of the look's colour carries its
+// tag (DrawColourTag) at its foot. True when it drew a picture or its frame.
+bool DrawFigure(ImDrawList* draw, const sf4e::selection::Pick& look, sf4e::ui::v2::Box box, float alpha, bool tagColour = false);
+// The colour's tag over a picture's foot, at its left: the colour's swatch
+// chip (its edge alone where the game has none) and its number ("05",
+// "EX01") on a dark plate, inside `picture`.
+void DrawColourTag(ImDrawList* draw, const sf4e::selection::Pick& look, sf4e::ui::v2::Box picture);
 // The colour's two-tone swatch (SfvArt's CostumeSwatches) filling `box`, the
 // first colour on top as the game's costume menu splits it. False, drawing
 // nothing, while the swatches load or where the game has none for it.

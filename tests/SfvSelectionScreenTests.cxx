@@ -835,3 +835,31 @@ TEST_CASE("a dimmed card is reached by the pad like any other, so the pane says 
 	boardNav.Update({0, now += 1}, board);
 	CHECK(boardNav.Update({Button::Select, now += 1}, board).kind == MenuAction::None);
 }
+
+TEST_CASE("a look whose own colour has no picture shows its costume's picture, tagged with the look's colour")
+{
+	FillTestCatalog();
+	// The package holds each costume in its first colour: that is the colour
+	// a costume's picture is of.
+	CHECK(PictureColour(kRyu, 4) == 0);
+	CHECK(PictureColour(kCnl, 0) == 0);
+	CHECK(PictureColour(kRyu, 99) == -1);
+	// The look's own picture: shown as it is, untagged (loading counts: the
+	// pane shows its frame until it is known).
+	CHECK(ChooseLookPicture(true, false, false) == LookPictureChoice{LookSource::Own, false});
+	CHECK(ChooseLookPicture(true, true, true) == LookPictureChoice{LookSource::Own, false});
+	// Colour 05 of a costume pictured in colour 01: the costume's picture,
+	// tagged with colour 05, never passed off as it.
+	CHECK(ChooseLookPicture(false, true, false) == LookPictureChoice{LookSource::Costume, true});
+	// The costume's first colour itself: its picture is that colour.
+	CHECK(ChooseLookPicture(false, true, true) == LookPictureChoice{LookSource::Costume, false});
+	// Neither in the package: the game's own figure of the fighter, tagged.
+	CHECK(ChooseLookPicture(false, false, false) == LookPictureChoice{LookSource::Fighter, true});
+	CHECK(ChooseLookPicture(false, false, true) == LookPictureChoice{LookSource::Fighter, true});
+	// The colour cards are the costume's colours, every one, named as the
+	// game's costume menu names them; Select stores the colour as before.
+	PlayerPick ryu = PlayerPickOf(kRyu, kOneOne);
+	const std::vector<MenuEntry> colours = SfvSelectionScreen::ColourCards(ryu, 4, true);
+	CHECK(IdsOf(colours) == std::vector<std::string>{"color-0", "color-1", "color-100", "color-101"});
+	CHECK(RowOf(colours, "color-101").label == "EX02");
+}

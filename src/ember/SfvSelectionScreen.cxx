@@ -113,6 +113,8 @@ constexpr float kLocked = .4f;
 // The stage cards (StageSelectIcon_l, 674x238): their picture's height over
 // width, and the narrowest and widest they go (unscaled).
 constexpr sf4e::ui::CardShape kStageCardShape{238.f / 674.f, 120, 340};
+// The colour cards: each the colour's swatch chip, square, as many as fit.
+constexpr sf4e::ui::CardShape kColourCardShape{1.f, 48, 110};
 // The lines of a loadout card's note: its 140 characters at the card's
 // narrowest.
 constexpr int kNoteLines = 3;
@@ -1155,12 +1157,14 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 		rows = costumes ? CostumeCards(pick, editable) : ColourCards(pick, costume_, editable);
 		if (editable && costumes) status = "selection.status_browse";
 		const int fighter = pick.pick.fighter, costume = costume_;
-		CardGrid cards{costumes ? kCostumes : kColours, sf4e::ui::FigureCard, {}, {}, {}};
+		CardGrid cards{costumes ? kCostumes : kColours, costumes ? sf4e::ui::FigureCard : kColourCardShape, {}, {}, {}};
 		if (costumes) {
+			// Each costume in the colour its picture is of (the package holds
+			// each costume in its first colour), named by the costume alone.
 			cards.picture = [&pick](ImDrawList* draw, const MenuEntry& e, v2::Box box, float alpha) {
 				sf4e::selection::Pick look = pick.pick;
 				look.costume = (int)e.key;
-				look.color = CardColour(pick.pick, look.costume);
+				look.color = PictureColour(look.fighter, look.costume);
 				DrawFigure(draw, look, box, alpha);
 			};
 			cards.saved = [&pick](const MenuEntry& e) { return (int)e.key == pick.pick.costume; };
@@ -1171,18 +1175,22 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 				return preview;
 			};
 		} else {
-			cards.picture = [&pick, fighter, costume](ImDrawList* draw, const MenuEntry& e, v2::Box box, float alpha) {
+			// Each colour as the game's costume menu shows it: its two-tone
+			// swatch chip, as large a square as the card holds (its edge
+			// alone while the swatches load); one this player cannot ready
+			// dimmed and struck through, as the pane's chips are. The pane
+			// beside the cards shows the costume in its picture's colour,
+			// tagged with the focused colour.
+			cards.picture = [fighter, costume](ImDrawList* draw, const MenuEntry& e, v2::Box box, float alpha) {
 				if (!sf4e::ui::HasPrefix(e.id, kColourCard)) return;
-				sf4e::selection::Pick look = pick.pick;
-				look.costume = costume;
-				look.color = (int)e.key;
-				// The look's own cutout, else the colour's swatch, as large a
-				// square as the card holds, else the fighter in the costume.
-				if (DrawFigure(draw, look, box, alpha, true)) return;
-				const float side = std::floor((std::min)(box.W(), box.H()) * .7f);
+				const auto& colors = v2::Colors();
+				const float s = sf4e::ui::Scale();
+				const float side = std::floor((std::min)(box.W(), box.H()) * .8f);
 				const ImVec2 corner(std::floor(box.min.x + (box.W() - side) * .5f), std::floor(box.min.y + (box.H() - side) * .5f));
-				if (DrawSwatch(draw, fighter, costume, look.color, {corner, ImVec2(corner.x + side, corner.y + side)}, alpha)) return;
-				DrawFigure(draw, look, box, alpha);
+				const v2::Box chip{corner, ImVec2(corner.x + side, corner.y + side)};
+				DrawSwatch(draw, fighter, costume, (int)e.key, chip, alpha);
+				draw->AddRect(chip.min, chip.max, v2::color::Alpha(colors.border, alpha), 0, 0, (std::max)(1.f, s));
+				if (!e.enabled) draw->AddLine(ImVec2(chip.min.x + s, chip.max.y - s), ImVec2(chip.max.x - s, chip.min.y + s), colors.muted, s);
 			};
 			cards.saved = [&pick, costume](const MenuEntry& e) {
 				return sf4e::ui::HasPrefix(e.id, kColourCard) && costume == pick.pick.costume && (int)e.key == pick.pick.color;
