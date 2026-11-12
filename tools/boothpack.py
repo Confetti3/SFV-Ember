@@ -171,6 +171,20 @@ def read_depth(path: Path | str) -> np.ndarray | None:
     return words.astype(np.float32) / float(0xFFFFFFFF)
 
 
+def depth_target_id(path: Path | str) -> int | None:
+    """The texture (its address, the mod's `id`) the grab's `<path>.depth` was copied from; None
+    for a sidecar that does not say (an older mod)."""
+    try:
+        info = json.loads(Path(str(path) + ".json").read_text(encoding="utf-8"))
+        index = int(info["index"])
+        for target in info["depthTargets"]["targets"]:
+            if int(target["index"]) == index and "id" in target:
+                return int(target["id"])
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
 # --- the mask ---------------------------------------------------------------------------
 
 def _filter(mask: np.ndarray, kind: str, size: int) -> np.ndarray:
@@ -252,6 +266,10 @@ def compute_mask(a_path: Path | str, b_path: Path | str, method: str = "depth") 
     mask = colour
     if method == "depth":
         da, db = read_depth(a_path), read_depth(b_path)
+        ida, idb = depth_target_id(a_path), depth_target_id(b_path)
+        if ida is not None and idb is not None and ida != idb:
+            # The two grabs copied different depth textures: no difference of them means anything.
+            da = db = None
         if da is not None and db is not None:
             dm = depth_mask(da, db, a.shape[:2])
             if dm.mean() >= MIN_MASK_FRACTION:  # a depth target with no fighters in it shows no difference
