@@ -101,6 +101,12 @@ PlayerPick SetDummy(const PlayerPick& dummy)
 	return *s_dummy;
 }
 
+void ForgetDummyForTest()
+{
+	std::lock_guard lock(s_mutex);
+	s_dummy.reset();
+}
+
 void ToWire(sf4e::selection::Pick pick, bool roomAllowsTiny, sf4e::wire::ConfirmedCharaConditions& out)
 {
 	// The player's own voice for the fighter goes with the pick, so the
