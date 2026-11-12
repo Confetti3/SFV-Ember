@@ -169,8 +169,12 @@ give the real counts.
 ## Tests (`sfve_tests`)
 
 `tests/RollbackCostTests.cxx`, over `tests/LossyLink.hxx` (a relay between a `LoopbackPair`'s
-two sessions: 2 to 16 ms on the way in order, 5% lost, both peers stepping a frame every 4 ms
-with a delay of 3):
+two sessions: 2 to 16 ms on the way in order, 5% lost once both sessions run, both peers
+stepping a frame every 4 ms with a delay of 3). Nothing is lost during GGPO's handshake: it
+sends a lost handshake datagram again only after 0.5 s (first round) or 2 s (later rounds), past
+the pair's one-second disconnect timeout. The laptop's first run lost one there (seed 31): one
+peer ran, the other never synchronized, and the running one failed for the drop after a second
+with nothing restored; the savings were not involved.
 
 - a save no load can reach keeps no copy, and no load ever reaches one (the frames each
   session skipped, from `onSaveSkipped`, against every rollback's target, `RollbackTargets`;
