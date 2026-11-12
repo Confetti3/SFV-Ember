@@ -2,6 +2,7 @@
 
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
+#include "mod/RngAudit.hxx"
 #include "mod/SfvLayoutRules.hxx"
 #include "mod/SfvOffsets.hxx"
 #include "mod/SocketReads.hxx"
@@ -29,6 +30,17 @@ constexpr size_t kMaxRegions = 4096;
 
 // How often the socket reads' counts and the keys' cost are logged.
 constexpr uint64_t kSocketSummaryUpdates = 1800;
+
+// How often the costs of the session's work are logged: every this many
+// updates played forward (rollbacks' replays not counted).
+constexpr uint64_t kCostAdvances = 600;
+
+int64_t Ticks()
+{
+	LARGE_INTEGER t;
+	QueryPerformanceCounter(&t);
+	return t.QuadPart;
+}
 
 // The CharaUnit index a region's name starts with ("CharaUnit[1].CharaActionPart+0xD8"
 // is 1), or -1.
@@ -77,6 +89,9 @@ void SfvAdapter::Forget()
 	for (std::vector<size_t>& regions : fighterRegions_) regions.clear();
 	for (uint8_t*& part : fighterVisualParts_) part = nullptr;
 	ForgetSocketReads();
+	RngAuditForget();
+	costs_ = {};
+	layout_.TakeCosts(); // the next battle's are its own
 	scenesSkip_ = nullptr;
 	scenesIdleState_ = scenesIdlePhase_ = -1;
 	decidedTicks_ = -1;
@@ -141,6 +156,22 @@ bool SfvAdapter::Bind()
 	battleData_ = battleData;
 	bound_ = true;
 	FighterVisualParts(fighterVisualParts_);
+	RngAuditBind(layout_, base);
+	// A value the input unit takes from the match data as a round starts
+	// (sfv::inputunit::kRoundStartValue), said to differ between machines:
+	// logged on every copy, so two copies' lines compare.
+	{
+		namespace iu = sfv::inputunit;
+		int32_t value = 0, overridden = 0, source = 0;
+		const bool read = TryRead(inputUnit_ + iu::kRoundStartValue, &value) &&
+			TryRead(inputUnit_ + iu::kRoundStartOverride, &overridden) && TryRead(battleData + iu::kRoundStartSource, &source);
+		if (read) {
+			Log("adapter: input unit +0x%X = %d at bind (its +0x%X %d; the battle data's +%u %d)", iu::kRoundStartValue, value,
+				iu::kRoundStartOverride, overridden, iu::kRoundStartSource, source);
+		} else {
+			Log("adapter: input unit +0x%X could not be read at bind", iu::kRoundStartValue);
+		}
+	}
 	Log("adapter: bound: %zu game regions + %zu outside the game's snapshot, %zu bytes; intros %s, input source %d",
 		gameRegions_, layout_.Regions().size() - gameRegions_, layout_.TotalSize(),
 		Field<int32_t>(battleData, sfv::battledata::kIntroSkippable) ? "skippable" : "not skippable",
@@ -447,7 +478,9 @@ void SfvAdapter::RunUpdate()
 		keyedUpdates_++;
 	}
 	NoteSocketUpdate(sockets);
+	RngAuditUpdate(bound_, Fighting());
 	original_(battleFrame_);
+	RngAuditUpdate(false, false);
 	poseFresh_ = false; // the state moved on; the models show it after the engine's next frame
 	EndFightUpdate(visualParts);
 	if (bound_ && keyedUpdates_ % kSocketSummaryUpdates == 0) {
@@ -500,11 +533,39 @@ void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)
 	// the state at its start (IntroSkip.hxx). The phases it runs hear the
 	// session's inputs too, should they ask the pads.
 	if (InjectedAny(intro_skip::kSkipBit) && MatchDecided()) EndScenes();
+	const int64_t from = Ticks();
 	RunUpdate();
+	const int64_t took = Ticks() - from;
 	replaying_ = false;
 	padSource_ = input::PadSource::Pads;
 	resimulating_ = false;
 	NoteDecidedTicks();
+	if (resimulating) {
+		costs_.replayed++;
+		costs_.replayedTicks += took;
+		return;
+	}
+	costs_.ticks++;
+	costs_.tickTicks += took;
+	if (costs_.ticks >= kCostAdvances) LogCosts();
+}
+
+void SfvAdapter::LogCosts()
+{
+	const StateLayout::Costs layout = layout_.TakeCosts();
+	LARGE_INTEGER frequency{};
+	QueryPerformanceFrequency(&frequency);
+	// Average microseconds per call, and the calls.
+	const auto us = [&](int64_t ticks, uint64_t calls) {
+		return calls && frequency.QuadPart ? 1e6 * (double)ticks / (double)frequency.QuadPart / (double)calls : 0.0;
+	};
+	Log("costs: the last %llu updates: tick %.0f us; replayed tick %.0f us (%llu); save %.0f us (%llu), load %.0f us (%llu), "
+		"hash %.0f us (%llu), the restore's callbacks %.0f us (%llu)",
+		(unsigned long long)costs_.ticks, us(costs_.tickTicks, costs_.ticks), us(costs_.replayedTicks, costs_.replayed),
+		(unsigned long long)costs_.replayed, us(layout.saveTicks, layout.saves), (unsigned long long)layout.saves,
+		us(layout.loadTicks, layout.loads), (unsigned long long)layout.loads, us(layout.hashTicks, layout.hashes),
+		(unsigned long long)layout.hashes, us(costs_.callbackTicks, costs_.callbacks), (unsigned long long)costs_.callbacks);
+	costs_ = {};
 }
 
 int SfvAdapter::ReseedRandom(uint32_t seed)
@@ -543,6 +604,7 @@ void SfvAdapter::SetStartTime(uint32_t value)
 
 void SfvAdapter::AfterLoad()
 {
+	const int64_t from = Ticks();
 	poseFresh_ = false; // a restored state: the models show another one (SocketReads)
 	// The callbacks take the restored state's frame id, as the game's own load
 	// passes it (rva 0x48A310); the sound callbacks drop what was played after
@@ -554,6 +616,8 @@ void SfvAdapter::AfterLoad()
 	if (uint8_t* instance = gameInstance_()) Field<int32_t>(instance, iu::kInstanceInputFrame) = inputFrame;
 	flow_.Apply();
 	flow_.Capture(); // what the restore left in the game, so a load check sees it
+	costs_.callbacks++;
+	costs_.callbackTicks += Ticks() - from;
 }
 
 std::string SfvAdapter::BuildId() const

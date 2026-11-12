@@ -84,9 +84,16 @@ std::string Title(bool watcher, std::string_view buildId)
 		std::string(buildId.substr(0, 12));
 }
 
+std::string StartRepairTitle(bool watcher, std::string_view buildId)
+{
+	return std::string(watcher ? "SFV start state repaired for a watcher: build " : "SFV start state repaired: build ") +
+		std::string(buildId.substr(0, 12));
+}
+
 std::string Comment(const Facts& facts, std::string_view buildId)
 {
-	std::string text = Title(facts.watcher, buildId) + "\n";
+	const bool repair = !facts.startRepair.empty();
+	std::string text = (repair ? StartRepairTitle(facts.watcher, buildId) : Title(facts.watcher, buildId)) + "\n";
 	if (facts.roomEpoch) {
 		text += "Room " + Hex16(facts.roomEpoch) + ", table " + std::to_string(facts.table) + ", match " +
 			std::to_string(facts.generation);
@@ -96,7 +103,7 @@ std::string Comment(const Facts& facts, std::string_view buildId)
 	text += "; games ended in this battle: " + std::to_string(facts.gamesEnded) + "\n";
 	if (facts.watcher) {
 		text += "This copy: a watcher (match slot " + std::to_string(facts.slot) +
-			"); its mismatch is a diagnostic only, the fight went on\n";
+			(repair ? ")\n" : "); its mismatch is a diagnostic only, the fight went on\n");
 	} else if (facts.slot == 0 || facts.slot == 1) {
 		text += std::string("This copy: ") + (facts.slot == 0 ? "P1" : "P2") + " (match slot " +
 			std::to_string(facts.slot) + ")\n";
@@ -109,9 +116,14 @@ std::string Comment(const Facts& facts, std::string_view buildId)
 		text += "Picks not known\n";
 	}
 	text += "Stage: " + (facts.stage.empty() ? std::string("not known") : facts.stage) + "\n";
-	text += "Checkpoint " + std::to_string(facts.frame) + ": " + Hex16(facts.local) + " here, " + Hex16(facts.remote) +
-		(facts.watcher ? " at a fighter" : " at the other player") + "; confirmed to " +
-		std::to_string(facts.confirmed) + "\n";
+	if (repair) {
+		text += "Start state before frame 0: " + Hex16(facts.local) + " here, " + Hex16(facts.remote) + " at P1. " +
+			facts.startRepair + "\n";
+	} else {
+		text += "Checkpoint " + std::to_string(facts.frame) + ": " + Hex16(facts.local) + " here, " + Hex16(facts.remote) +
+			(facts.watcher ? " at a fighter" : " at the other player") + "; confirmed to " +
+			std::to_string(facts.confirmed) + "\n";
+	}
 	text += "Input delay " + std::to_string(facts.delay) + "; " + std::to_string(facts.rollbacks) +
 		" rollbacks, the longest " + std::to_string(facts.longestRollback) + " frames\n";
 	text += "Layout " + Hex16(facts.layoutId) + ", " + std::to_string(facts.regions.size()) +

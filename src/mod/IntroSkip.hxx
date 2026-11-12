@@ -37,6 +37,13 @@
 // after it saw the match decided, so a button still down from the last hit,
 // or mashed through the KO, skips nothing.
 //
+// With the room's Skip winner scenes rule on (the default,
+// docs/design/beta8/autoskip.md) a fighter's copy asks on its own
+// as soon as that guard is over, the same request a press makes, so the
+// scenes end without anyone pressing; a press then only asks no sooner than
+// the guard lets it. Watchers and a replay's playback do not ask: they follow
+// the fighters' confirmed skip frames, as for a press.
+//
 // Once the match is decided the game asks the pads themselves for the skip
 // bit (sfv::kPadsAny), so each copy heard only its own player; while a
 // session's inputs are injected that question is answered from the battle's
@@ -146,17 +153,25 @@ public:
 		clock_.Note(scenes, frame);
 		const bool guarded = scenes && clock_.Shown(frame) < kScenesGuardFrames;
 		const PackedInput down = local & kPressBits;
-		const bool pressed = (down & ~down_) != 0 && !guarded;
+		// With the room's rule on, the scenes themselves ask once the guard is
+		// over, as a press would; the intro still needs a press.
+		const bool pressed = ((down & ~down_) != 0 || (autoScenes_ && scenes)) && !guarded;
 		requested_ = Skippable(flowState, decided) && (requested_ || pressed);
 		down_ = down;
 		return (local & ~kSkipBit) | (requested_ ? kSkipBit : 0);
 	}
 	bool Requested() const { return requested_; }
+	// The room's Skip winner scenes rule for this copy's battle: on, a decided
+	// match's scenes ask by themselves after the guard (Next). Set before the
+	// session's first frame; a fighter's copy only.
+	void SetAutoScenes(bool on) { autoScenes_ = on; }
+	bool AutoScenes() const { return autoScenes_; }
 	// The frame this copy first saw the decided match's scenes; -1 outside them.
 	int ScenesFrom() const { return clock_.From(); }
 
 private:
 	bool requested_ = false;
+	bool autoScenes_ = false;
 	PackedInput down_ = kPressBits; // as if all down: nothing held before the first call is a press
 	ScenesClock clock_;
 };

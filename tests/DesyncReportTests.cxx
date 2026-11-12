@@ -93,6 +93,26 @@ TEST_CASE("a desync's comment names the match, this copy, both picks and the che
 	CHECK(Characters(comment) <= kCommentCharacters);
 }
 
+TEST_CASE("a start state's repair is reported under a title of its own, with both hashes and what was taken")
+{
+	CHECK(StartRepairTitle(false, kBuild) == "SFV start state repaired: build 0123456789ab");
+	CHECK(StartRepairTitle(true, kBuild) == "SFV start state repaired for a watcher: build 0123456789ab");
+	Facts facts = SampleFacts();
+	facts.frame = 0;
+	facts.confirmed = -1;
+	facts.startRepair = "1 region(s) differed from P1's: 2 dword(s) taken from P1.";
+	const std::string comment = Comment(facts, kBuild);
+	CHECK(comment.rfind("SFV start state repaired: build 0123456789ab\n", 0) == 0);
+	CHECK(comment.find("Start state before frame 0: 0000000000000abc here, 0000000000000def at P1. 1 region(s) differed") !=
+		std::string::npos);
+	CHECK(comment.find("Checkpoint ") == std::string::npos);
+	CHECK(RegionLines(facts).find("desync: checkpoint 0 region CharaUnit[0].CharaStatusPart+0x238, 64 bytes") == 0);
+	facts.watcher = true;
+	const std::string watched = Comment(facts, kBuild);
+	CHECK(watched.rfind("SFV start state repaired for a watcher: build", 0) == 0);
+	CHECK(watched.find("diagnostic only") == std::string::npos);
+}
+
 TEST_CASE("a watcher's comment says its mismatch is a diagnostic; what is not known says so")
 {
 	Facts facts;

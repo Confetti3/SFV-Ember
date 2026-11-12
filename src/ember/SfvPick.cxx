@@ -19,6 +19,9 @@ PlayerPick s_pick;
 std::optional<PlayerPick> s_dummy; // none until the player picks one
 // Random on the board, and the look last stored for each fighter (SetPick).
 bool s_random = false;
+// Eleven, which is Random's rolled fighter in the Eleven look (s_random is
+// then on as well).
+bool s_eleven = false;
 std::array<std::optional<sf4e::selection::Pick>, ember::MaxFighters> s_looks;
 
 bool InRoster(int fighter)
@@ -76,7 +79,8 @@ PlayerPick SetPick(const PlayerPick& pick)
 	std::lock_guard lock(s_mutex);
 	s_pick = Fitted(pick);
 	LogRefitted("asked for", pick, s_pick);
-	if (InRoster(s_pick.pick.fighter)) s_looks[(size_t)s_pick.pick.fighter] = s_pick.pick;
+	// Eleven's looks belong to Eleven, not to the fighters it rolled.
+	if (InRoster(s_pick.pick.fighter) && !s_eleven) s_looks[(size_t)s_pick.pick.fighter] = s_pick.pick;
 	return s_pick;
 }
 
@@ -128,8 +132,23 @@ bool PickRandom()
 void SetPickRandom(bool random)
 {
 	std::lock_guard lock(s_mutex);
-	if (s_random != random) mod::Log("pick: Random %s", random ? "on" : "off");
+	if (s_random != random || s_eleven) mod::Log("pick: Random %s", random ? "on" : "off");
 	s_random = random;
+	s_eleven = false;
+}
+
+bool PickEleven()
+{
+	std::lock_guard lock(s_mutex);
+	return s_eleven;
+}
+
+void SetPickEleven(bool eleven)
+{
+	std::lock_guard lock(s_mutex);
+	if (s_eleven != eleven) mod::Log("pick: Eleven %s", eleven ? "on" : "off");
+	s_eleven = eleven;
+	s_random = eleven;
 }
 
 std::optional<sf4e::selection::Pick> RememberedLook(int fighter)

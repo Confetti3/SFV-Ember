@@ -684,6 +684,20 @@ void NotePlaybackCheckpoint(int frame, std::uint64_t hash)
 	}
 }
 
+void NotePlaybackStart(std::uint64_t recorded, std::uint64_t played)
+{
+	PlaybackState& p = s_playback;
+	if (!p.playing || !recorded) return;
+	p.compared++;
+	if (recorded == played) {
+		Log("replays: the playback starts from the recording's start state (%016llx)", (unsigned long long)played);
+		return;
+	}
+	p.differing++;
+	Log("replays: desync: the playback starts from state %016llx, P1's recorded battle from %016llx; its frames may play "
+		"another fight", (unsigned long long)played, (unsigned long long)recorded);
+}
+
 void EndPlayback(const std::string& why)
 {
 	PlaybackState& p = s_playback;

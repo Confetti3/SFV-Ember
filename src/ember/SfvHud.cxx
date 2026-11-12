@@ -2,6 +2,7 @@
 
 #include "ember/EmberHost.hxx"
 #include "ember/SfvFrameMeter.hxx"
+#include "ember/SfvHitboxes.hxx"
 #include "ember/SfvTraining.hxx"
 #include "mod/HudText.hxx"
 #include "mod/Log.hxx"
@@ -196,6 +197,10 @@ void DrawSfvTraining(const facade::PresentationSnapshot& frame, bool shellShown,
 	if (!shellShown && !paused && inRoom && !called) {
 		DrawRoomLine(sf4e::ui::DescribeTrainingRoom(snapshot.Room(), unread));
 	}
+	// The fighters' boxes (docs/design/beta8/hitboxes.md) behind every
+	// window, Ember's menu included, as SF4 Ember's lab draws them; never
+	// over the game's pause menu.
+	if (!paused) DrawSfvHitboxes();
 	// Ember's frame meter (section 39), as SF4 Ember's Training HUD draws it,
 	// under neither the shell nor the game's pause menu.
 	if (!shellShown && !paused) DrawSfvFrameMeter();

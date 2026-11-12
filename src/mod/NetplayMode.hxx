@@ -19,6 +19,12 @@
 //   recorded room battle back as a watcher plays one, from the recording's
 //   frames (section 26).
 //
+// Before a session's first frame every copy of the match (P2 and each
+// watcher against P1) checks that it starts from P1's state, and takes P1's
+// bytes where it does not (core/StartAgreement.hxx), over the session's own
+// ports before GGPO binds them; the battle stands still meanwhile. A replay
+// compares its start with the one its header records.
+//
 // Every room battle this copy fights or watches is recorded: the frames its
 // session played, kept as they become final, and saved as a replay with the
 // battle's launch and seed when the battle closes (section 26).
@@ -54,6 +60,7 @@
 
 #include "core/ReplayRecorder.hxx"
 #include "core/RollbackSession.hxx"
+#include "core/StartAgreement.hxx"
 #include "ember/RoomBattle.hxx"
 #include "mod/BattleMode.hxx"
 #include "mod/FramePacer.hxx"
@@ -92,8 +99,26 @@ private:
 	// Back to the main menu; the battle stands still meanwhile. A leave the
 	// scene manager cannot take yet is asked again on the next frame.
 	void Leave();
-	// Starts the session once the match is known; false while it is not.
+	// Starts the session once the match is known and the copies agree on
+	// their start state; false while the battle waits for either.
 	bool StartSession(SfvAdapter& adapter);
+	// The session's settings once the match is known, the start state made
+	// (reseeded, a Practice room's gauges) and its agreement begun: Waiting
+	// while the match is not known, NoSession when this battle has none.
+	enum class Prepared { Waiting, NoSession, Ready };
+	Prepared PrepareStart(SfvAdapter& adapter);
+	// The start state's agreement (core/StartAgreement.hxx) over the
+	// session's own ports, before GGPO takes them: P1 is the reference, P2
+	// and every watcher follow it. A replay has none; it compares its start
+	// with its header's (adapter::NotePlaybackStart).
+	void BeginStartAgreement(SfvAdapter& adapter);
+	// True once it has finished (a repair is reported then) and its port is
+	// free for GGPO.
+	bool AgreeStart(SfvAdapter& adapter);
+	void EndStartAgreement();
+	// -sfve_start_perturb (development): one dword of this copy's start state
+	// changed before the agreement, which then repairs it.
+	void PerturbStart(SfvAdapter& adapter);
 	// A watcher's frame (EMBER_LIBRARY.md section 25): the next frame P1
 	// streamed and, while this copy is behind, a few more (SF4's
 	// SpectatorCatchUp), each through the decisions a fighter's frame takes.
@@ -140,6 +165,20 @@ private:
 	std::unique_ptr<RollbackSession> drain_;
 	adapter::RoomBattle room_; // what the room hears of its battle
 	bool started_ = false;
+	// Between PrepareStart and the session's start: its settings, and the
+	// start state's agreement with its socket on the session's local port.
+	bool prepared_ = false;
+	struct PendingStart {
+		RollbackSession::Config config;
+		uint32_t seed = 0;
+		bool practice = false;
+	};
+	PendingStart pending_;
+	std::unique_ptr<UdpStartChannel> startChannel_;
+	std::unique_ptr<StartAgreement> startAgreement_;
+	// P1's peers' hash of the start state as agreed (this copy's own when P1's
+	// is not known), for the replay's header.
+	uint64_t startHash_ = 0;
 	uint32_t seed_ = kSessionSeed; // the session's: a rematch in place reseeds from it
 	uint32_t startTime_ = 0;       // the match's start time, kept the session's (Frame)
 	bool leaveWanted_ = false; // the battle goes back to the main menu

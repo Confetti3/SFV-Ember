@@ -19,9 +19,10 @@
 //                                         // widths (fractions allowed); a row
 //                                         // past the list has offset 0
 //     "fighters": [ {"code": "RYU", "column": 0, "row": 0}, ... ],
-//     "random":   {"column": 13, "row": 2}   // Random's cell, optional
+//     "random":   {"column": 13, "row": 2},  // Random's cell, optional
+//     "eleven":   {"column": 23, "row": 1}   // the game's ELEVEN's cell, optional
 //   }
-// One cell per code, and no two entries (fighters or Random) in one cell; a
+// One cell per code, and no two entries (fighters, Random or ELEVEN) in one cell; a
 // document that breaks either rule, names a column outside 0..columns-1 or a
 // negative row, or is not this shape does not parse.
 //
@@ -55,11 +56,14 @@ struct SelectGrid {
 	std::vector<float> rowOffsets;   // per row, in cell widths; empty is all 0
 	std::vector<Entry> fighters;     // in the table's order
 	std::optional<Cell> random;      // Random's cell, if the table gives one
+	std::optional<Cell> eleven;      // ELEVEN's cell, if the table gives one (the board's Eleven card)
 };
 
 // What CodeAt answers for Random's cell. Not a fighter code (those are three
 // characters).
 inline constexpr std::string_view kRandomCellCode = "RANDOM";
+// And for ELEVEN's cell: not a fighter code either, and not Random's.
+inline constexpr std::string_view kElevenCellCode = "ELEVEN";
 
 // Parses the document above into `grid`. False, with the reason in `error`
 // and `grid` left as it was, for text that is not that document or breaks one
@@ -74,7 +78,7 @@ const SelectGrid& EmbeddedSelectGrid();
 // The fighter's cell; none for a code the table does not have.
 std::optional<Cell> CellOf(const SelectGrid& grid, std::string_view code);
 // The other way: the code of the fighter in `cell`, kRandomCellCode for
-// Random's cell; none for an empty cell.
+// Random's cell, kElevenCellCode for ELEVEN's; none for an empty cell.
 std::optional<std::string> CodeAt(const SelectGrid& grid, Cell cell);
 // The grid's rows: one past the highest row any entry stands in; 0 for none.
 int RowCount(const SelectGrid& grid);
@@ -84,7 +88,7 @@ float RowOffset(const SelectGrid& grid, int row);
 // Brings the table to the roster: every code of `roster` (the catalog's
 // fighters, in the catalog's order) the grid lacks is added in the first free
 // cells after the last occupied one in row order (left to right, then the
-// next row), Random's cell left where it is. Entries for codes the roster
+// next row), Random's and ELEVEN's cells left where they are. Entries for codes the roster
 // lacks stay in the table and are simply never looked up. Returns the codes
 // it added, in the order added, for the log; empty when none, and for a grid
 // with no columns (which cannot hold them).

@@ -72,6 +72,7 @@ Pending s_pending;
 // battle has not bound yet (TakeLinkedBattle).
 bool s_linkedLoading = false;
 bool s_linkedPractice = false; // ...and it was a Practice room's
+bool s_linkedSkipScenes = false; // ...and its room's Skip winner scenes rule was on
 // The same for a replay's launch (TakeReplayBattle).
 bool s_replayLoading = false;
 // The sides that launch draws small (MatchPicks::players' tiny), kept until
@@ -453,6 +454,7 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	s_linkedLoading = picks.linked;
 	s_replayLoading = picks.replay;
 	s_linkedPractice = picks.linked && picks.practice;
+	s_linkedSkipScenes = picks.linked && picks.skipScenes;
 	// The sides drawn small: a room's or a replay's battle only, from the
 	// moment it loads; any other launch (the pipe's, Training) is normal, but
 	// for a test's -sfve_tiny (development: a synctest's battle with a small
@@ -771,11 +773,12 @@ void LaunchOnMainMenu(const MatchPicks& picks, std::function<bool()> stillWanted
 	});
 }
 
-bool TakeLinkedBattle(bool* practice)
+bool TakeLinkedBattle(bool* practice, bool* skipScenes)
 {
 	const bool linked = s_linkedLoading;
 	if (practice) *practice = linked && s_linkedPractice;
-	s_linkedLoading = s_linkedPractice = false;
+	if (skipScenes) *skipScenes = linked && s_linkedSkipScenes;
+	s_linkedLoading = s_linkedPractice = s_linkedSkipScenes = false;
 	// A battle that is no room's and no replay's (a native menu's, Training)
 	// draws every fighter normal; a room's draws the sides its launch said.
 	if (linked) SetTinyFighters(s_loadingTiny[0], s_loadingTiny[1], false);

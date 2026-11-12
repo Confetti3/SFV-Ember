@@ -66,14 +66,15 @@ std::optional<std::string> SetRounds(sf4e::netplay::PlayerPreferences& preferenc
 
 std::string Host(const std::string& args)
 {
-	int rounds = 3, seconds = 99, rematch = 0, firstTo = 0, tiny = 0;
+	int rounds = 3, seconds = 99, rematch = 0, firstTo = 0, tiny = 0, skipScenes = 1;
 	std::istringstream in(args);
-	const char* usage = "error usage: room [rounds] [seconds] [instant rematch 0|1] [first to N, 0 unlimited] [tiny fighters 0|1]";
+	const char* usage = "error usage: room [rounds] [seconds] [instant rematch 0|1] [first to N, 0 unlimited] [tiny fighters 0|1] [skip winner scenes 0|1]";
 	if (!args.empty() && !(in >> rounds >> seconds)) return usage;
 	if (!in.eof() && !(in >> rematch)) return usage;
 	if (!in.eof() && !(in >> firstTo)) return usage;
 	if (!in.eof() && !(in >> tiny)) return usage;
-	if (rematch < 0 || rematch > 1 || tiny < 0 || tiny > 1) return usage;
+	if (!in.eof() && !(in >> skipScenes)) return usage;
+	if (rematch < 0 || rematch > 1 || tiny < 0 || tiny > 1 || skipScenes < 0 || skipScenes > 1) return usage;
 	if (!sf4e::room::ValidSetFormat(firstTo)) return "error the set is first to 1-10 games, or 0 for unlimited";
 	facade::RuntimeCommand command = CommandFor(CommandKind::HostRoom);
 	command.preferences = facade::GetRuntimeSnapshotShared()->preferences;
@@ -85,6 +86,8 @@ std::string Host(const std::string& args)
 	// Tiny fighters allowed (EMBER_LIBRARY.md section 59): a private room's rule,
 	// as Create's row sets it.
 	command.tinyFighters = tiny != 0;
+	// Skip winner scenes (docs/design/beta8/autoskip.md): on unless a test turns it off.
+	command.skipScenes = skipScenes != 0;
 	if (!command.preferences.Valid()) return "error the room's settings are not valid";
 	return Submit(std::move(command));
 }

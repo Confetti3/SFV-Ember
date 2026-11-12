@@ -11,6 +11,7 @@
 
 #include <windows.h>
 
+#include <functional>
 #include <string>
 
 namespace sfve::testbed {
@@ -31,9 +32,16 @@ struct LoopbackPair {
 	MockFighter gameA, gameB;
 	RollbackSession a{gameA}, b{gameB};
 
-	LoopbackPair(unsigned bugs, int delay, bool keepAllHashes = false) : gameA(bugs), gameB(bugs)
+	// Runs before either session starts, with each peer's game and port (A's
+	// is P1's): what a copy does between its battle's bind and its session's
+	// start (the start state's agreement, StartAgreementTests).
+	using BeforeStart = std::function<void(MockFighter& a, MockFighter& b, uint16_t portA, uint16_t portB)>;
+
+	LoopbackPair(unsigned bugs, int delay, bool keepAllHashes = false, const BeforeStart& beforeStart = {})
+		: gameA(bugs), gameB(bugs)
 	{
 		const uint16_t base = LoopbackPortBase();
+		if (beforeStart) beforeStart(gameA, gameB, base, (uint16_t)(base + 1));
 		RollbackSession::Config ca, cb;
 		ca.localPlayer = 0;
 		ca.localPort = base;
