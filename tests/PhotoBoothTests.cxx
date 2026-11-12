@@ -149,6 +149,11 @@ TEST_CASE("booth commands as the protocol writes them")
 	CHECK(c->on);
 	REQUIRE((c = Parse("hudlog off")));
 	CHECK_FALSE(c->on);
+	REQUIRE((c = Parse("hide 1 1")));
+	CHECK(c->verb == booth::Verb::Hide);
+	CHECK(c->side == 3);
+	REQUIRE((c = Parse("hide 0 1")));
+	CHECK(c->side == 2);
 	REQUIRE((c = Parse("hudhide on")));
 	CHECK(c->verb == booth::Verb::HudHide);
 	CHECK(c->on);
@@ -197,7 +202,7 @@ TEST_CASE("a malformed booth command is refused with a reason")
 	for (const char* bad : {"", "   ", "freeze 3", "Hold 3", "hold", "hold -1", "hold x", "hold 3 4", "hold 1.5", "run 0", "run",
 			 "play 2 MP", "play 0", "play 0 MP extra", "play x MP", "scale 1", "scale 0 1", "scale -1 1", "scale 1 inf",
 			 "scale nan 1", "scale 1 1 1", "depth now", "leave now", "hudlog", "hudlog yes", "hud", "hud SetWins",
-			 "hud SetWins x", "hud Set-Wins 1", "hud SetWins nan", "hudhide", "hudhide 1", "hudhide on off"}) {
+			 "hud SetWins x", "hud Set-Wins 1", "hud SetWins nan", "hudhide", "hudhide 1", "hudhide on off", "hide", "hide 1", "hide 2 0", "hide 1 1 1"}) {
 		CAPTURE(bad);
 		CHECK_FALSE(Parse(bad));
 	}

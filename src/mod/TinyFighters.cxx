@@ -245,6 +245,32 @@ bool ApplyFighterScaleNow(float p1, float p2)
 	return both;
 }
 
+bool SetFightersHiddenNow(bool p1, bool p2)
+{
+	if (!s_boothAllowed.load() || !s_hooked.load()) return false;
+	if (!GameThreadId() || GetCurrentThreadId() != GameThreadId()) {
+		Log("tiny: the booth's hide was asked off the game thread; refused");
+		return false;
+	}
+	uint8_t* actors[2] = {};
+	for (int i = 0; i < 2; i++) {
+		const uint8_t* part = s_boothPart[i].load();
+		// The part's side is read again: a part remembered for a side is that side's.
+		if (!part || tiny::ApplyToPart(part, TinySides{}, s_setScale).side != i) return false;
+		if (!TryRead(part + visual::kActor, &actors[i]) || !actors[i]) return false;
+		uintptr_t vtable = 0;
+		if (!TryRead(actors[i], &vtable) || !vtable) return false;
+	}
+	using SetHiddenFn = void (*)(uint8_t* actor, bool hidden);
+	const bool hidden[2] = {p1, p2};
+	for (int i = 0; i < 2; i++) {
+		const auto set = *reinterpret_cast<SetHiddenFn*>(*reinterpret_cast<uintptr_t*>(actors[i]) + visual::kActorSetHiddenInGame);
+		set(actors[i], hidden[i]);
+	}
+	Log("tiny: booth hide P1 %s, P2 %s", p1 ? "hidden" : "shown", p2 ? "hidden" : "shown");
+	return true;
+}
+
 void SetFighterScaleAllowed(bool on)
 {
 	s_boothAllowed.store(on);

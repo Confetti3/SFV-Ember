@@ -76,6 +76,14 @@ TinySides TinyFightersNow();
 // never called with true, which only BoothMode does) and off the game thread.
 bool ApplyFighterScaleNow(float p1, float p2);
 
+// The photo booth's plate (`booth hide`): each side's fighter actor hidden
+// (true) or shown (false) at once, the whole actor as UE4's
+// SetActorHiddenInGame hides it (sfv::visual::kActorSetHiddenInGame): every
+// mesh, the cloth and the shadow go, where a scale leaves the cloth behind.
+// Same rules as ApplyFighterScaleNow: the booth only, the game thread, both
+// sides' parts known; false otherwise or when an actor cannot be read.
+bool SetFightersHiddenNow(bool p1, bool p2);
+
 // The booth's install (BoothMode::Install, development builds): the
 // per-frame hook remembers each side's part, and ApplyFighterScaleNow works.
 // Off (the default, every other mode): neither. Any thread.

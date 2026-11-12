@@ -62,7 +62,7 @@ int StepFrames(const std::vector<Step>& steps);
 // StepFrames on, or for a negative frame.
 std::optional<PackedInput> StepAt(const std::vector<Step>& steps, int frame);
 
-enum class Verb { Hold, Run, Play, Scale, Grab, Depth, Hud, HudLog, Leave, HudHide };
+enum class Verb { Hold, Run, Play, Scale, Grab, Depth, Hud, HudLog, Leave, HudHide, Hide };
 
 // One `booth ...` pipe command, parsed. Which fields a verb uses:
 //   Hold   frame (the fight frame to hold at)
@@ -75,6 +75,7 @@ enum class Verb { Hold, Run, Play, Scale, Grab, Depth, Hud, HudLog, Leave, HudHi
 //   HudLog on
 //   Leave  nothing
 //   HudHide on (the HUD hidden for every grab from now on, or shown again)
+//   Hide   side (bit 0 P1, bit 1 P2: the fighters hidden; 0 shows both)
 struct Command {
 	Verb verb = Verb::Hold;
 	int frame = 0;

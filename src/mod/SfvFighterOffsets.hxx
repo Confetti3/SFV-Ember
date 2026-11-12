@@ -125,6 +125,12 @@ constexpr uint32_t kActor = 0xA90;          // AActor* the part updates
 constexpr uint32_t kControlUseCount = 8;
 // AActor: the mesh component the game scales itself.
 constexpr uint32_t kActorMesh = 0x3A8;
+// AActor's vtable: SetActorHiddenInGame(bool hidden), at +0x220: the
+// function the reflection registers as "SetActorHiddenInGame" (rva
+// 0x1F57822) is the exec thunk rva 0x20A8010, which reads the bool and calls
+// the actor's virtual +0x220 with it. Hides every component of the actor
+// (meshes, cloth, its shadow).
+constexpr uint32_t kActorSetHiddenInGame = 0x220;
 // The fighter actor's other skeletal mesh components: a second one (rva
 // 0xE5D300 and 0xE5D880 work on it) and the layers the visual task sets a
 // motion and time on, an array of pointers and its count (rva 0xE5F7D0).

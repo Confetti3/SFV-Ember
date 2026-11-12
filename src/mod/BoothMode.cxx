@@ -258,6 +258,14 @@ std::optional<Command> ParseCommand(std::string_view args, std::string& error)
 		return c;
 	}
 	if (verb == "leave") return none(Verb::Leave);
+	if (verb == "hide") {
+		const std::optional<int> p1 = Integer(NextWord(rest), 0, 1);
+		const std::optional<int> p2 = Integer(NextWord(rest), 0, 1);
+		if (!p1 || !p2 || !OnlySpaces(rest)) return error = "usage: booth hide <0|1> <0|1>", std::nullopt;
+		c.verb = Verb::Hide;
+		c.side = *p1 | (*p2 << 1);
+		return c;
+	}
 	if (verb == "hudhide") {
 		const std::string_view state = NextWord(rest);
 		if ((state != "on" && state != "off") || !OnlySpaces(rest)) return error = "usage: booth hudhide on|off", std::nullopt;
@@ -469,6 +477,18 @@ std::string BoothMode::Command(const std::string& args)
 			"hud");
 	}
 	case booth::Verb::HudLog: SetHudCallLog(c.on); return "ok";
+	case booth::Verb::Hide: {
+		const bool p1 = (c.side & 1) != 0, p2 = (c.side & 2) != 0;
+		return AskGameThread(
+			[this, p1, p2] {
+				{
+					std::lock_guard lock(mutex_);
+					if (!InBattle()) return std::string("error hide: no battle");
+				}
+				return SetFightersHiddenNow(p1, p2) ? std::string("ok") : std::string("error hide: a side's fighter is not known yet");
+			},
+			"hide");
+	}
 	case booth::Verb::HudHide: {
 		const bool hidden = c.on;
 		return AskGameThread(
