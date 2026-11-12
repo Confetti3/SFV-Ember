@@ -87,10 +87,21 @@ phase 3 about 20-25 min more.
 it). `launch versus A B TRN 1 inf` -> wait `launch.loaded` and `booth.battle` changed (mismatch or
 failure = failed load; still loading after `--load-stuck` 25 s = stuck: the copy is relaunched and
 the load tried once more) -> optional walk-in -> `booth hold F` (`--frame`, default 60) -> 12
-presents -> camera peek (`CameraUnit[0]+0x450`, same twice) -> grab A (depth auto) -> `booth hide 1
-1` (both fighters' actors hidden, cloth and shadow too) -> 12 presents -> grab B -> `booth leave` ->
-main menu -> 4 s (`--menu-settle`: a launch of the same stage sooner never finishes loading). Every
-wait has a timeout; on a timeout the copy
+presents -> camera peek (`CameraUnit[0]+0x450`, same twice) -> wait until SFV reports nothing
+loading for 60 battle frames (`booth.loading`, `loadedFrames`) -> grab A (depth auto) -> 20
+presents -> grab A again (the held frame must be the same picture within 1 %, else A is taken again,
+up to 5 times) -> `booth hide 1 1` (both fighters' actors hidden, cloth and shadow too) -> 12
+presents -> grab B -> checks (boothpack `check_pair`: outside the fighters, i.e. the depth
+difference widened, grab A must be the plate within 1 %, a pixel only darker in A being the
+fighters' shadow; the plate must be the stage as `<store>\reference\plate-<stage>-<frame>.png`
+shows it within 15 %, that file written from the first plate that passes) -> `booth leave` -> main
+menu -> 4 s (`--menu-settle`: a launch of the same stage sooner never finishes loading). A load
+whose grabs fail a check is loaded again once; then its looks fail with the reason. Every grab is
+taken with `ui=off` (the colour from before the frame's first interface draw: no HUD gauges, no
+menu left over, no overlay toast). A side drawn without its textures (boothpack `untextured`:
+nearly all light cyan-grey and no warm pixel) fails as a look: on the laptop some costumes render
+so every time, their texture data missing there. Each master's sidecar keeps `checks` (`outside`,
+`plate`, `stable`, `warm`). Every wait has a timeout; on a timeout the copy
 tries `booth leave`, else it is killed and relaunched (only that copy); every 200 loads a copy is
 relaunched. P1 and P2 come from one grab pair: the combined mask is split at the widest empty
 column run between the fighters (or at the emptiest central column when fewer than 4 % of the rows
@@ -106,15 +117,17 @@ Mika's). Hold at `start` (150); per move: the plate (the fighter scaled to 0.001
 back), 20 frames for the cloth, the standing grab, `booth play <side> MP+MK:4` (or `HP+HK:4`), then a
 burst: `booth run 4` and a grab, up to 120 frames after the press (`auto` in
 `tools/booth/loadout-frames.json`); `booth run 150` before the side's next move. The picture is
-chosen from the burst by `tools/boothburst.py` (no one picks frames): each grab's camera pan against
-the standing grab is lined up (phase correlation); a grab whose background still differs (zoom, a
-dimmed or covered stage) or whose brightness jumps (a flash) is not used; the score is the share of
-the fighter's widened region that changed; the first grab whose stable score (the least of it and
-its two neighbours) reaches 80 % of the best is the picture. Nothing usable or nothing moving: the
-grab nearest `default` (V-Skill 20, V-Trigger 45 frames after the press). `fighters` in the JSON
-holds exact frames as overrides only, for a move the chooser gets wrong. The 16:9 crop is the window
-around the fighter, its new pose and its effects (where the chosen grab differs from the standing
-grab, and where the fighter stood), 12 % margin, at least 60 % of the frame high. The master's
+chosen from the burst by `tools/boothburst.py` (no one picks frames): the camera and flashes are
+judged on the top fifth of the frame only, above the fighters (each grab's pan against the standing
+grab lined up by phase correlation; a band that still differs by more than 5 %, or whose brightness
+jumps, makes the grab unusable); the score is what changed below that band against the fighter's
+own size; no grab before 12 frames after the press is chosen; of the rest the peak, the first grab
+whose stable score (the least of it and its two neighbours) reaches 95 % of the best. Nothing usable
+or nothing moving: the grab nearest `default` (V-Skill 20, V-Trigger 45 frames after the press).
+`fighters` in the JSON holds exact frames as overrides only, for a move the chooser gets wrong. The
+picture is framed as SF4 Ember's Ultra pictures: a 16:9 window centred on the fighter and its
+effects (where the chosen grab differs from the plate, the outermost 1 % of those pixels left out),
+the subject filling 85 % of its height, kept inside the frame. The master's
 sidecar keeps the frame, how it was chosen (`auto`, `override`, `default`) and every grab's score.
 `--burst` writes every grab, scored (`<move>-t<frames>-s<score x 1000>[-chosen|-unused].jpg`), to
 `<store>\burst\<CODE>` for review. `boothsheet.py` writes `contact\loadout.png`: a row per fighter
@@ -125,6 +138,18 @@ Loadout time: per fighter two battles (about 15 s each with the leave) and four 
 fighter on one copy; 45 fighters about 70 copy-minutes, about 20-25 minutes on 4 copies with the
 copies sharing the GPU. While a move's grabs wait to be chosen they take about 270 MB of raw BMPs
 (deleted once its picture is saved); `--keep-raw` keeps them all, about 48 GB for the 180 moves.
+
+## Checking and re-capturing masters
+
+`python -I tools\boothpack.py check [--store S] [--out F] [--unchecked] [--quarantine-untextured]`
+lists the masters that look wrong by their pixels (untextured: nearly all light cyan-grey and no
+warm pixel; three or more rows with a straight edge across 18 % of the fighter's width: a menu
+over it), with `--unchecked` also those captured before the grab checks, and writes them one
+`CODE:costume:colour` a line to F (default `<store>\recheck.txt`). `--quarantine-untextured`
+renames untextured masters `*.untextured.png` and logs them as failed looks (so `pack
+--except-failed` leaves them out) and does not list them (capturing them again on the same copy
+draws them the same). Capture the listed looks again with
+`python -I tools\runbooth.py --looks-file F --force --copies 4`.
 
 ## What to check on the contact sheet
 
