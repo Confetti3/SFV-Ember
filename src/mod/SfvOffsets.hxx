@@ -253,6 +253,15 @@ constexpr CodeSite kShowResult{"ShowResult", 0x66A0D0,
 constexpr CodeSite kRestartBattle{"RestartBattle", 0x684760,
 	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x41}};
 
+// The PauseUnit's PreUpdate task (sfv::pause, SfvResultFlow.hxx): reads each
+// local pad's Start from the pad manager (rva 0x4CF800, 0x4CEF40) and sends
+// the battle a PauseControlEvent that pauses its frame. Registered by rva
+// 0x46B8F0 ("PauseUnit", order 0x1020000, phase 1, the battle's thread); its
+// one caller is that task's closure. Hooked: it does not run in a battle a
+// session plays (GameHooks).
+constexpr CodeSite kPauseUnitPreUpdate{"PauseUnitPreUpdate", 0x46E110,
+	{0x48, 0x8B, 0xC4, 0x48, 0x89, 0x48, 0x08, 0x55, 0x53, 0x57, 0x48, 0x8D, 0x68, 0xA1, 0x48, 0x81}};
+
 // Ending the decided match's scenes (SfvResultFlow.hxx, IntroSkip.hxx,
 // docs/design/beta8/skip.md); called between two battle updates, on a frame
 // both copies step confirmed.
@@ -603,6 +612,7 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumePackage, kShowResult, kRestartBattle, kFlowRequest, kSetFlowPhase, kMarkResultSkipped,
+	kPauseUnitPreUpdate,
 	kSpecData, kMainMenuClass,
 	kSetPlayerParam, kRequestExit, kStageName, kSpecReady, kFindSpecFighter, kFindSpecFighterStep, kFindSpecCostume,
 	kFindSpecCostumeStep, kFindSpecColour, kFindSpecColourStep, kCostumeName, kTextToString, kCreateText,

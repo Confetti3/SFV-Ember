@@ -29,6 +29,8 @@ public:
 	bool InjectedAny(uint32_t mask) const override { return adapter_.InjectedAny(mask); }
 	void OnRollbackUnitTick(uint8_t* rollbackUnit) override { adapter_.SeeRollbackUnit(rollbackUnit); }
 	void OnFlowState(int state) override { adapter_.SeeFlowState(state); }
+	// Not while a linked or replayed battle loads, nor where the mode says.
+	bool GamePauseAllowed() const override;
 
 	// The "battle" status field and the "restart" command (the mode's work
 	// starts over on the current battle, from the game thread's next frame).

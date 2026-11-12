@@ -25,6 +25,9 @@ public:
 	virtual void Restart() {}
 	// JSON value for the status report ("null" when there is nothing yet).
 	virtual std::string Describe() const = 0;
+	// Game thread, inside the battle's update: whether SFV's own pause may
+	// run (BattleListener::GamePauseAllowed). Offline battles keep it.
+	virtual bool GamePauseAllowed() const { return true; }
 };
 
 // The original battle, untouched (probe mode).

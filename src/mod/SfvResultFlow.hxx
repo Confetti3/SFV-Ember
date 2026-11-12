@@ -92,4 +92,47 @@ constexpr int kDrawResultPhase = 5;
 constexpr uint32_t kBattleKind = 0;
 constexpr int kKindSkippable = 1;
 
+// Between two rounds (a KO or time-over that does not decide the match): the
+// flow plays Finish (7), RoundOver (8), then RoundResultDemo (9, a winner) or
+// RoundDoubleKODemo (10, none), which ask the flow for RoundStart (4, rva
+// 0x40A9F0); RoundStart and Ready (5) are the next round's call ("ROUND 2",
+// "FIGHT"), which the skip never cuts. RoundOver takes the round demos only
+// while the match data's kDecided is 0 (rva 0x40AA70).
+constexpr int kRoundResultDemo = 9;
+constexpr int kRoundDoubleKODemo = 10;
+constexpr int kRoundStart = 4;
+// RoundResultDemo (constructor rva 0x41DBB0, phases bound at rva 0x3EFD50)
+// and RoundDoubleKODemo (constructor rva 0x41D930, rva 0x3EFBD0): phase 0
+// (rva 0x409720 / 0x4096F0) marks phase 3 as the state's skip target (rva
+// 0x3EC380, with the match data's kIntroSkippable); phase 1 (rva 0x409C60:
+// up to 300 ticks or the round demo's end, rva 0x2FB570; the double KO's rva
+// 0x409BA0: 120 ticks) asks the battle's input for the skip bit (rva 0x2F2D40: before the
+// decision that is the input the battle reads, the session's) and on it goes
+// to the marked phase (vtable +56, rva 0x445040); 3 (rva 0x40B720) and 4
+// (15 ticks) lead to 5, which asks for RoundStart. So these two end on the
+// confirmed skip bit by themselves.
+constexpr uint32_t kRoundResultDemoVtable = 0x2C6A7A8;
+constexpr uint32_t kRoundDoubleKODemoVtable = 0x2C6A810;
+
 } // namespace sfve::mod::sfv::resultflow
+
+// SFV's own pause in a battle (docs/design/beta8/skip.md). The PauseUnit's
+// PreUpdate task (rva 0x46E110, registered by rva 0x46B8F0 as "PauseUnit",
+// scheduler phase 1, so it runs in every battle update, ticking or not)
+// reads each local pad's Start from the pad manager itself (rva 0x4CF800
+// and 0x4CEF40, bit 0x4000 there), never from the session's inputs, while
+// the match data's +6352 has bit 4 (the flow allows a pause) and the battle
+// frame is not stopped by a KO (+0x190 bit 0x20). It then sends the battle a
+// PauseControlEvent (vtable rva 0x2C6DF18, type at rva 0x3A652B8), whose
+// receivers (rva 0x4639B0, 0x463E40) set the battle frame's pause bits
+// (rva 0x4D5DE0: +0x190 |= 2 << pad, and 1): that copy's battle stops ticking
+// and opens the pause menu, the other's goes on, and the battle frame's
+// state is in the rollback layout, so the next checkpoint differs. The same
+// task also sends a pause asked for by the game's menus (+248..+256, rva
+// 0x4709C0). The mod keeps the task from running in a linked battle.
+namespace sfve::mod::sfv::pause {
+// The battle frame's pause bits (battleframe::kState): the pause menu's (1)
+// and each player's (2 << pad, pads 0 and 1).
+constexpr uint32_t kBits = 0x7;
+
+} // namespace sfve::mod::sfv::pause

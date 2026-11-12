@@ -38,6 +38,10 @@ public:
 	virtual void OnRollbackUnitTick(uint8_t* rollbackUnit) = 0;
 	// The battle flow announced a new state (sfv::flow).
 	virtual void OnFlowState(int state) = 0;
+	// Whether SFV's own pause may run in the battle now (sfv::pause): never
+	// in a battle a session plays (a room's fighters, a watcher, a replay's
+	// playback, a linked test), whose pause would stop one copy alone.
+	virtual bool GamePauseAllowed() const = 0;
 };
 
 // The MinHook calls a HookTransaction makes: MinHook's own, unless a test
@@ -117,8 +121,8 @@ std::optional<HookFailure> CommitHookSet(HookTransaction& hooks, const char* set
 bool HookCodeSite(uintptr_t imageBase, const CodeSite& site, void* detour, void** original);
 
 // Adds the listener's hooks (the battle frame and its constructor, the input
-// record, the rollback unit, the battle flow and the allocator) to the
-// battle's set, which goes in whole or not at all (dllmain). The listener
+// record, the rollback unit, the battle flow, the allocator and SFV's own
+// pause, GamePauseAllowed) to the battle's set, which goes in whole or not at all (dllmain). The listener
 // must outlive the game.
 void AddGameHooks(HookTransaction& hooks, uintptr_t imageBase, BattleListener* listener);
 

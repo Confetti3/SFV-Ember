@@ -52,7 +52,9 @@ TEST_CASE("the intro reads the skip bit on one frame in 15, and nothing else doe
 		const bool skip = frame % intro_skip::kEvery == 0;
 		CHECK(intro_skip::SkipFrame(kIntro, frame) == skip);
 		CHECK(intro_skip::ConfirmedBits(kIntro, frame) == (skip ? kSkipBit : 0u));
-		for (const int other : {0, kMatchStart, 4, 5, kFight, 7, 21, 22, -1}) {
+		// Nor the next round's call, the fight, or a decided match's states
+		// before the decision (the scenes between rounds have their own case).
+		for (const int other : {0, kMatchStart, 4, 5, kFight, 11, 12, 13, 14, 17, 21, 22, -1}) {
 			CHECK_FALSE(intro_skip::SkipFrame(other, frame));
 			CHECK(intro_skip::ConfirmedBits(other, frame) == 0u);
 		}
@@ -127,8 +129,8 @@ TEST_CASE("a decided match's scenes read the skip bit like the intro, and its fi
 		// The deciding KO's last fight frames still read the pads' inputs.
 		CHECK_FALSE(intro_skip::SkipFrame(kFight, frame, true));
 		CHECK(intro_skip::ConfirmedBits(kFight, frame, true) == 0u);
-		// Between rounds nothing is decided: no frame reads the bit.
-		CHECK_FALSE(intro_skip::SkipFrame(kFinish, frame, false));
+		// Between two rounds Finish's skip frames read it too (RoundScenes).
+		CHECK(intro_skip::SkipFrame(kFinish, frame, false) == every);
 	}
 	CHECK(intro_skip::Skippable(kIntro, false));
 	CHECK_FALSE(intro_skip::Skippable(kFight, true));
@@ -158,9 +160,10 @@ TEST_CASE("after the deciding round a new press asks for the skip until the scen
 	CHECK(request.Next(kMatchStart, 0, false, kGuardEnds + 5) == 0u);
 	CHECK_FALSE(request.Requested());
 	CHECK(request.ScenesFrom() == -1);
-	// The same press between two rounds asks nothing.
+	// The same press at a later round's end falls inside that round's own guard.
 	CHECK(request.Next(kFinish, input::kMP, false, kGuardEnds + 6) == input::kMP);
 	CHECK_FALSE(request.Requested());
+	CHECK(request.ScenesFrom() == kGuardEnds + 6);
 }
 
 TEST_CASE("a press in the scenes' first second asks nothing, then or later")
@@ -282,7 +285,8 @@ TEST_CASE("the scenes' clock starts at the first frame seen decided and starts o
 	clock.Note(intro_skip::Scenes(kFinish, true), 140);
 	CHECK(clock.From() == 140);
 	CHECK_FALSE(intro_skip::Scenes(kIntro, false));
-	CHECK_FALSE(intro_skip::Scenes(kFinish, false));
+	CHECK(intro_skip::Scenes(kFinish, false)); // a round's end that decides nothing
+	CHECK_FALSE(intro_skip::Scenes(4, false)); // the next round's call
 }
 
 TEST_CASE("a script's skip press comes the given number of frames into the scenes, for a few frames")
@@ -380,4 +384,88 @@ TEST_CASE("the scenes' ids are the flow's, apart from the fight's and the intro'
 		CHECK(intro_skip::Skippable(state, true));
 		CHECK(intro_skip::Scenes(state, true));
 	}
+}
+
+TEST_CASE("the scenes between two rounds: Finish, RoundOver and the round demos, not the next round's call")
+{
+	namespace rf = sfve::mod::sfv::resultflow;
+	for (const int state : {rf::kFinish, rf::kRoundOver, rf::kRoundResultDemo, rf::kRoundDoubleKODemo}) {
+		INFO("state " << state);
+		CHECK(intro_skip::RoundScenes(state));
+		CHECK(intro_skip::Skippable(state, false));
+		CHECK(intro_skip::Scenes(state, false));
+		CHECK(intro_skip::ConfirmedBits(state, 30, false) == kSkipBit);
+		CHECK(intro_skip::ConfirmedBits(state, 31, false) == 0u);
+	}
+	// RoundStart and Ready are the next round's call ("ROUND 2", "FIGHT"),
+	// RoundJump goes straight to it; none is skipped, nor the fight.
+	for (const int state : {rf::kRoundStart, 5, 17, kFight, kIntro, kMatchStart, rf::kMatchResultDemo, rf::kMatchOver}) {
+		INFO("state " << state);
+		CHECK_FALSE(intro_skip::RoundScenes(state));
+		CHECK_FALSE(intro_skip::Scenes(state, false));
+		CHECK(intro_skip::ConfirmedBits(state, 30, false) == (state == kIntro ? kSkipBit : 0u));
+	}
+}
+
+TEST_CASE("between two rounds a fresh press after the guard asks, and the next round's call clears it")
+{
+	namespace rf = sfve::mod::sfv::resultflow;
+	constexpr int kRoundOverAt = 2000;
+	constexpr int kGuardEnds = kRoundOverAt + intro_skip::kScenesGuardFrames;
+	intro_skip::Request request;
+	int frame = kRoundOverAt - 1;
+	// The button that landed the KO is still down; the match is not decided.
+	CHECK(request.Next(kFight, input::kMK, false, frame++) == input::kMK);
+	for (; frame < kGuardEnds; frame++) {
+		INFO("frame " << frame);
+		const PackedInput mash = (frame % 5 == 0) ? input::kLP : 0;
+		CHECK(request.Next(rf::kFinish, mash, false, frame) == mash);
+		CHECK_FALSE(request.Requested());
+	}
+	CHECK(request.ScenesFrom() == kRoundOverAt);
+	CHECK(request.Next(rf::kFinish, input::kHP, false, frame++) == (kSkipBit | input::kHP));
+	CHECK(request.Next(rf::kRoundOver, 0, false, frame++) == kSkipBit);
+	CHECK(request.Next(rf::kRoundResultDemo, 0, false, frame++) == kSkipBit);
+	// The next round's call: nothing asked, nothing kept for the next round.
+	CHECK(request.Next(rf::kRoundStart, input::kHP, false, frame++) == input::kHP);
+	CHECK_FALSE(request.Requested());
+	CHECK(request.ScenesFrom() == -1);
+	CHECK(request.Next(5, 0, false, frame++) == 0u);
+	CHECK(request.Next(kFight, 0, false, frame++) == 0u);
+	CHECK_FALSE(request.Requested());
+}
+
+TEST_CASE("with the room's rule on, the scenes between two rounds ask by themselves after the guard")
+{
+	namespace rf = sfve::mod::sfv::resultflow;
+	intro_skip::Request request;
+	request.SetAutoScenes(true);
+	int frame = 500;
+	CHECK(request.Next(kFight, 0, false, frame++) == 0u);
+	const int from = frame;
+	for (; frame < from + intro_skip::kScenesGuardFrames; frame++) CHECK(request.Next(rf::kFinish, 0, false, frame) == 0u);
+	CHECK(request.Next(rf::kFinish, 0, false, frame++) == kSkipBit);
+	CHECK(request.Next(rf::kRoundDoubleKODemo, 0, false, frame++) == kSkipBit);
+	// Never into the next round's call or its fight.
+	CHECK(request.Next(rf::kRoundStart, 0, false, frame++) == 0u);
+	CHECK(request.Next(5, 0, false, frame++) == 0u);
+	CHECK(request.Next(kFight, 0, false, frame++) == 0u);
+}
+
+TEST_CASE("the skip ends Finish between two rounds as at the match's end, and leaves the round demos to the game")
+{
+	namespace rf = sfve::mod::sfv::resultflow;
+	using intro_skip::ScenesAction;
+	using intro_skip::ScenesStep;
+	using intro_skip::ScenesStepFor;
+	// Finish is the same state whether or not the round decides the match.
+	CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, 12) == ScenesStep{ScenesAction::RequestNext, -1});
+	// The round demos end on the confirmed skip bit by themselves.
+	for (int phase = 0; phase <= 5; phase++) {
+		INFO("phase " << phase);
+		CHECK(ScenesStepFor(rf::kRoundResultDemo, rf::kRoundResultDemoVtable, phase) == ScenesStep{});
+		CHECK(ScenesStepFor(rf::kRoundDoubleKODemo, rf::kRoundDoubleKODemoVtable, phase) == ScenesStep{});
+	}
+	// The any-button answer stays a decided match's (the results screens').
+	CHECK_FALSE(intro_skip::PadsHear(kSkipBit, 0xFFFFBFF0u, false));
 }

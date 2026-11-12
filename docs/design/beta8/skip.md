@@ -301,6 +301,147 @@ each page turns within about 30 frames: two pages and their fades, instead of 12
 - The page code that hears the press is the code the game runs on an offline press: sound 200,
   then the next page.
 
+## Between rounds, and SFV's own pause (2026-11-12)
+
+**What the owner saw.** "In between rounds I can't figure out how to skip the after scene, and
+sometimes that will open the pause menu and instantly desync the game."
+
+### SFV's pause opens on one copy only
+
+From IDA:
+
+- **The detector.** The battle's `PauseUnit` registers a PreUpdate task, rva `0x46E110`.
+  Registration is at rva `0x46B8F0`: name "PauseUnit", order 0x1020000, scheduler phase 1, the
+  battle's thread. Phase 1 runs in every battle update (`BattleFrameUpdate`, rva `0x4DC6A0`),
+  paused or not.
+- **What it reads.** For each local player record of the match data (+540 == 0, pad at +544),
+  then pad 0, it reads the pad manager directly: rva `0x4CF800` (this frame) and rva `0x4CEF40`
+  (held), bit 0x4000 in the pad manager's bits (Start). These are the PC's own pads. The
+  session's inputs never come into it.
+- **When it may pause.** Only while the match data's +6352 has bit 4 (the flow allows a pause;
+  the owner hit it between rounds) and the battle frame is not stopped by a KO (+0x190 bit 0x20).
+- **What it does.**
+  - It sends the battle a `PauseControlEvent` (vtable rva `0x2C6DF18`, type registered at rva
+    `0x13BD00`).
+  - The receivers, rva `0x4639B0` and `0x463E40`, set the battle frame's pause bits through rva
+    `0x4D5DE0` (+0x190 |= 1, 2 << pad).
+  - `BattleFrameUpdate` then skips the ticks on that copy, and the pause menu units open.
+  - The other copy plays on. +0x190 is in the hashed `battleframe` region, so the next checkpoint
+    differs: the reported instant desync.
+  - The same task also sends a pause the game's menus asked for (+248..+256, set by rva
+    `0x4709C0`).
+- **Other senders of the event** (rva `0x461850` and `0x461B10`..`0x462F80`, the pause menus'
+  commands, `0x481620`, `0x4F92F0`, `0x501650`) act from within an open pause menu or from UI.
+  None reads a pad. The test mode's `TestModePauseUnit` (rva `0x46F0E0`) is not in a versus
+  battle.
+- **Who sets the pause bits.** The bits are +0x190's 1, 2 and 4, and only the event's receivers
+  set them (rva `0x4D5DE0`'s other callers pass 0x10, the KO's 0x20 and the replay control's
+  0x80).
+- **Ember's own Start.** In a room fight Ember's shell is kept away (the library's
+  `FightKeepsMenuAway`), so Start went to the game. In a Practice match or a watched game, Start
+  opens Ember's menu first.
+
+**The fix.** `GameHooks` hooks rva `0x46E110` (`sfv::kPauseUnitPreUpdate`, added to `kSites`).
+The task runs only when `BattleListener::GamePauseAllowed()` says so:
+
+- `BattleDriver`: not while a linked or replayed battle loads (`LaunchedBattleLoading`).
+  Otherwise the mode decides.
+- `NetplayMode`: never while a room is active (fighters, watchers, a replay's playback) or a
+  session is live (linked tests).
+- Every other mode, and offline battles, Training and offline versus: allowed. They keep SFV's
+  pause.
+
+Start therefore does nothing in a room battle, and no copy can set the pause bits, the only pause
+state in the rollback layout. Ember's shell is untouched: its Start is read in the XInput hook
+before the game and behaves as before. The hooks log `SFV's own pause is off: a session plays
+this battle` on each change. After every session update the adapter logs `the game's pause bits
+are N` whenever those bits change, so a pause from any other path would show.
+
+### The scenes between two rounds
+
+The flow after a KO or time-over that does not decide the match (IDA):
+
+1. **Finish (7)**: the same class as at the match's end (`0x2C6A668`).
+2. **RoundOver (8)**. With the match data's `kDecided` 0 (rva `0x40AA70`) it asks for one of:
+   - **RoundResultDemo (9)**: class `0x2C6A7A8`, phases bound at rva `0x3EFD50`;
+   - **RoundDoubleKODemo (10)**: class `0x2C6A810`, phases bound at rva `0x3EFBD0`.
+3. The demo's phase 5 (rva `0x40A9F0`) asks for **RoundStart (4)**, then comes **Ready (5)**:
+   the next round's "ROUND 2", "FIGHT".
+
+How each round demo runs:
+
+- Phase 0 (rva `0x409720` / `0x4096F0`) marks phase 3 as the state's skip target (rva
+  `0x3EC380`).
+- Phase 1 runs for up to 300 ticks or until the demo ends (rva `0x409C60`, `0x2FB570`). In the
+  double-KO demo it is up to 120 ticks (rva `0x409BA0`).
+- Phase 1 asks the battle's input for 0x4000 (rva `0x2F2D40`). Before the decision that is the
+  input the battle reads: the session's given inputs.
+- On the bit it goes to the marked phase (vtable +56, rva `0x445040`), then phase 4 (15 ticks)
+  and the request for RoundStart.
+
+So the round demos end on the skip bit by themselves. Until now the bit never reached them,
+because frames between rounds were not skip frames.
+
+**The fix.** `intro_skip::RoundScenes` (states 7, 8, 9, 10) is now part of `Skippable` and
+`Scenes`:
+
+- Their skip frames read the bit confirmed, as the intro's and the match's do.
+- `Request` asks from a fresh press after the same 60-frame guard. With the room's rule on, it
+  asks by itself after the guard (`SetAutoScenes`).
+- The request clears at RoundStart.
+- `SfvAdapter::Advance` ends Finish on the confirmed skip frame exactly as at the match's end
+  (Request(RoundOver), `ScenesStepFor`). RoundOver leaves on its first tick, and the round demo
+  takes the next skip frame's bit itself.
+- RoundStart and Ready (the round call, "FIGHT") are never skippable.
+
+It is safe for the same reasons as the match's end: confirmed frames, a move that depends on the
+state at the frame's start and its given inputs, flow state in the rollback record. The demo's
+own read is of the battle's input record, which is rollback state.
+
+The guard also absorbs the button that landed the KO, as at the match's end. The any-button
+answer (`PadsHear`) stays a decided match's: between rounds nothing asks for any button.
+
+**Logs.**
+
+- `netplay: a round is over at frame D ...; its scenes play to the next round's call`
+- `netplay: the round's scenes took N frame(s), from the round's end at frame D to the next round
+  at frame R, flow state S (K skip(s) applied)`
+- `netplay: the round's end seen at frame D was taken back by a rollback at frame F`, for a guessed
+  KO that a rollback took back
+- the `scenes skipped at frame` lines, as at the match's end.
+
+**Tests** (`IntroSkipTests`):
+
+- the round states are skippable and are scenes, and the round call, RoundJump and the fight are
+  not;
+- a press inside the guard asks nothing, and a fresh press after it asks until RoundStart;
+- the rule asks by itself after the guard and never into the round call;
+- Finish between rounds takes the same step, and the round demos are left to the game;
+- the cases whose meaning changed (Finish undecided is now a skip frame).
+
+**runroom.**
+
+- `-rounds 2` (or more) prints and checks every round's scenes with `CheckRounds`: the same
+  next-round frame and the same skips on both copies, skipped with `-skipAfter N` (N >= 60) or
+  `-autoSkip`, and no skip otherwise.
+- `-pressStart` makes copy `-skipCopy` press Start half a second into every round's end and every
+  match's decision.
+- At the end of every run, any copy whose battle frame was paused fails it. With `-pressStart`,
+  both fighters must have logged the game's pause off.
+
+**What the laptop run must check.**
+
+1. `runroom.ps1 -games 1 -rounds 3 -lag 30 -pressStart`: Start pressed between rounds and in the
+   match's scenes on copy 1. No pause on any copy, 0 differing checkpoints, the rounds' scenes
+   whole (no skip), the game's pause logged off on both.
+2. `-games 2 -rounds 3 -lag 30 -skipAfter 90`: every round's scenes skipped on the same frames on
+   both copies. On screen, the next round's "ROUND n / FIGHT" call plays in full. 0 differing.
+3. `-games 2 -rounds 3 -lag 30 -autoSkip -watchers 1`: the same without a press. The watcher's
+   checkpoints match.
+4. Offline (not a room): SFV's own pause still opens with Start in Training and in a local versus
+   battle (`hooks: SFV's own pause is on`), and Ember's Start over a Practice match still opens
+   Ember.
+
 ## Compatibility (must go with this change)
 
 The skip bit now changes the simulation where beta.7 ignored it. beta.7 already sends it after

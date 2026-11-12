@@ -105,6 +105,7 @@ void SfvAdapter::Forget()
 	scenesSkip_ = nullptr;
 	scenesIdleState_ = scenesIdlePhase_ = -1;
 	decidedTicks_ = -1;
+	pausedBits_ = 0;
 }
 
 bool SfvAdapter::Bind()
@@ -540,9 +541,10 @@ void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)
 	// of a decided match's scenes, which every session path steps confirmed
 	// and gives alike (GivenInputs; a fight frame never carries it). In the
 	// scenes the game does not end anything on it, so the frame does, from
-	// the state at its start (IntroSkip.hxx). The phases it runs hear the
-	// session's inputs too, should they ask the pads.
-	if (InjectedAny(intro_skip::kSkipBit) && MatchDecided()) EndScenes();
+	// the state at its start (IntroSkip.hxx), at the match's end and between
+	// two rounds. The phases it runs hear the session's inputs too, should
+	// they ask the pads.
+	if (InjectedAny(intro_skip::kSkipBit) && intro_skip::Scenes(FlowState(), MatchDecided())) EndScenes();
 	const int64_t from = Ticks();
 	RunUpdate();
 	const int64_t took = Ticks() - from;
@@ -550,6 +552,7 @@ void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)
 	padSource_ = input::PadSource::Pads;
 	resimulating_ = false;
 	NoteDecidedTicks();
+	NotePause();
 	if (resimulating) {
 		costs_.replayed++;
 		costs_.replayedTicks += took;
@@ -558,6 +561,18 @@ void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)
 	costs_.ticks++;
 	costs_.tickTicks += took;
 	if (costs_.ticks >= kCostAdvances) LogCosts();
+}
+
+void SfvAdapter::NotePause()
+{
+	// SFV's own pause never runs in a session's battle (GameHooks keeps the
+	// PauseUnit's task from it, sfv::pause); a pause bit here would be one
+	// copy's alone. Logged on each change.
+	const uint32_t bits = Field<uint32_t>(battleFrame_, sfv::battleframe::kState) & sfv::pause::kBits;
+	if (bits == pausedBits_) return;
+	Log("adapter: the game's pause bits are %x in a session's battle (were %x; flow state %d)", bits, pausedBits_,
+		flow_.Announced());
+	pausedBits_ = bits;
 }
 
 void SfvAdapter::LogCosts()

@@ -71,6 +71,11 @@ void BattleDriver::OnBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 	if (frames_ % kStatusEveryFrames == 0) PublishStatus();
 }
 
+bool BattleDriver::GamePauseAllowed() const
+{
+	return !LaunchedBattleLoading() && mode_->GamePauseAllowed();
+}
+
 void BattleDriver::LogInventory() const
 {
 	const StateLayout& layout = adapter_.Layout();

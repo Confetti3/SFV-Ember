@@ -29,10 +29,13 @@ using GameLookupFn = GameSharedPtr* (*)(uint8_t* owner, GameSharedPtr* out, cons
 using GetBattleDataFn = uint8_t* (*)(uint8_t* context);
 using GameAllocFn = void* (*)(size_t size);
 using BattleFrameCtorFn = uint8_t* (*)(uint8_t* battleFrame);
+using PauseUnitTaskFn = uint64_t (*)(uint8_t* pauseUnit);
 
 BattleListener* s_listener;
 BattleFrameFn o_battleFrame;
 BattleFrameCtorFn o_battleFrameCtor;
+PauseUnitTaskFn o_pauseUnitPreUpdate;
+int s_pauseAllowed = -1; // what h_PauseUnitPreUpdate last found (logged on each change); game thread
 InputRecordFn o_inputRecord;
 InputAnyFn o_padsAny;
 UnitTickFn o_unitTick;
@@ -126,6 +129,22 @@ uint64_t h_PadsAny(uint8_t* unitContext, uint32_t mask)
 	const bool yes = injected ? s_listener->InjectedAny(mask) : o_padsAny(unitContext, mask) != 0;
 	TallyPadsAny(mask, injected, yes);
 	return yes ? 1 : 0;
+}
+
+// SFV's own pause (sfv::pause): the PauseUnit's PreUpdate reads each local
+// pad's Start from the pad manager, outside any session's inputs, and pauses
+// that copy's battle frame alone. In a battle a session plays it does not
+// run at all: Start does nothing there (Ember's own Start is read before the
+// game, in the XInput hook, and is untouched), and the pause a game menu
+// asks for is never sent either. Training and offline battles keep it.
+uint64_t h_PauseUnitPreUpdate(uint8_t* pauseUnit)
+{
+	const bool allowed = s_listener->GamePauseAllowed();
+	if ((int)allowed != s_pauseAllowed) {
+		s_pauseAllowed = allowed;
+		Log("hooks: SFV's own pause is %s", allowed ? "on (an offline battle)" : "off: a session plays this battle");
+	}
+	return allowed ? o_pauseUnitPreUpdate(pauseUnit) : 0;
 }
 
 void h_UnitTick(uint8_t* rollbackUnit)
@@ -265,6 +284,7 @@ void AddGameHooks(HookTransaction& hooks, uintptr_t base, BattleListener* listen
 	hooks.Add(base, sfv::kBattleFrameCtor, (void*)h_BattleFrameCtor, (void**)&o_battleFrameCtor);
 	hooks.Add(base, sfv::kFlowMessage, (void*)h_FlowMessage, (void**)&o_flowMessage);
 	hooks.Add(base, sfv::kGameAlloc, (void*)h_GameAlloc, (void**)&o_gameAlloc);
+	hooks.Add(base, sfv::kPauseUnitPreUpdate, (void*)h_PauseUnitPreUpdate, (void**)&o_pauseUnitPreUpdate);
 	RegisterStatus("zeroedAllocs", [] {
 		char text[64];
 		snprintf(text, sizeof(text), "{\"count\":%llu,\"bytes\":%llu}",
