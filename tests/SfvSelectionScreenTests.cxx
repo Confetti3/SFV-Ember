@@ -5,16 +5,24 @@
 // value (StepTableSelection), which steps only the loadouts the fighter has.
 // Then the pick screen's stage row with a stage the opponent lacks and one
 // this player is not offered (section 41), and what its pane previews and
-// says (section 43). The fighters are CatalogFixture's: RYU two
-// of each, CNL two V-Skills and one V-Trigger, KEN one of each.
+// says (section 43). Then the beta.8 pages (docs/design/beta8/select.md):
+// the board's cards and the look its art pane shows, the look page's rows
+// that open pages, where each opening starts, the costume, colour, loadout
+// and stage cards and what Select on them stores or refuses, and Random,
+// which takes each roll into the player's pick and leaves the dummy alone.
+// The fighters are CatalogFixture's: RYU two of each, CNL two V-Skills and
+// one V-Trigger, KEN one of each and not this player's, CMY not installed.
 
 #include <doctest/doctest.h>
 
 #include "CatalogFixture.hxx"
 
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvLoadoutNotes.hxx"
+#include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPick.hxx"
 #include "ember/SfvPickSpace.hxx"
+#include "ember/SfvRandomFighter.hxx"
 #include "ember/SfvSelectionScreen.hxx"
 
 #include "common/Localization.hxx"
@@ -24,6 +32,7 @@
 #include <algorithm>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace sfve;
@@ -34,7 +43,7 @@ using sf4e::ui::MenuEntry;
 
 namespace {
 
-constexpr int kRyu = 0, kCnl = 1, kKen = 2;
+constexpr int kRyu = 0, kCnl = 1, kKen = 2, kBsn = 4;
 
 PlayerPick PlayerPickOf(int fighter, picks::Loadout loadout)
 {
@@ -376,4 +385,314 @@ TEST_CASE("the pane says why an option cannot be chosen, and that a stage shown 
 	preview = SfvSelectionScreen::PreviewOf(pick, "fighter", SfvSelectionScreen::OpenChoice{"costume", 99}, rows, stages);
 	CHECK(preview.pick.pick.costume == pick.pick.costume);
 	CHECK(preview.note.empty());
+}
+
+namespace {
+
+std::vector<std::string> IdsOf(const std::vector<MenuEntry>& rows)
+{
+	std::vector<std::string> ids;
+	for (const MenuEntry& row : rows) ids.push_back(row.id);
+	return ids;
+}
+
+bool SameLook(const sf4e::selection::Pick& a, const sf4e::selection::Pick& b)
+{
+	return a.fighter == b.fighter && a.costume == b.costume && a.color == b.color && picks::LoadoutOf(a) == picks::LoadoutOf(b);
+}
+
+using Pages = std::vector<std::pair<std::string, std::string>>;
+
+} // namespace
+
+TEST_CASE("the board has a card for every fighter in the roster's order, then Random; one this player cannot play keeps its place")
+{
+	FillTestCatalog();
+	const PlayerPick ryu = PlayerPickOf(kRyu, kOneOne);
+	const std::vector<MenuEntry> rows = SfvSelectionScreen::BoardRows(ryu, false, true, false, true);
+	CHECK(IdsOf(rows) ==
+		std::vector<std::string>{"fighter-0", "fighter-1", "fighter-2", "fighter-3", "fighter-4", "random-fighter"});
+	CHECK(RowOf(rows, "fighter-0").enabled);
+	CHECK(RowOf(rows, "fighter-0").label == "Ryu");
+	CHECK(RowOf(rows, "fighter-1").enabled);
+	CHECK(RowOf(rows, "fighter-4").enabled);
+	CHECK(RowOf(rows, "fighter-1").hint == sf4e::loc::T("menu.hint.save_fighter"));
+	// KEN is not this player's and CMY is not installed: shown, not chosen.
+	for (const char* id : {"fighter-2", "fighter-3"}) {
+		CAPTURE(id);
+		CHECK_FALSE(RowOf(rows, id).enabled);
+		CHECK(RowOf(rows, id).detail == sf4e::loc::T("selection.not_owned"));
+	}
+	CHECK(RowOf(rows, "random-fighter").enabled);
+	CHECK(RowOf(rows, "random-fighter").label == sf4e::loc::T("selection.random_card"));
+	// The dummy's board has no Random.
+	CHECK_FALSE(HasRow(SfvSelectionScreen::BoardRows(ryu, false, true, false, false), "random-fighter"));
+	// Locked: only the stored fighter, whose look page opens; Random only while it is the pick.
+	const std::vector<MenuEntry> locked = SfvSelectionScreen::BoardRows(ryu, false, false, false, true);
+	CHECK(RowOf(locked, "fighter-0").enabled);
+	CHECK_FALSE(RowOf(locked, "fighter-1").enabled);
+	CHECK_FALSE(RowOf(locked, "random-fighter").enabled);
+	CHECK(RowOf(SfvSelectionScreen::BoardRows(ryu, true, false, false, true), "random-fighter").enabled);
+	// A winner who keeps the fighter chooses no other, and not Random.
+	const std::vector<MenuEntry> kept = SfvSelectionScreen::BoardRows(ryu, false, true, true, true);
+	CHECK(RowOf(kept, "fighter-0").enabled);
+	CHECK_FALSE(RowOf(kept, "fighter-1").enabled);
+	CHECK(RowOf(kept, "fighter-1").detail == sf4e::loc::T("selection.winner_keeps_fighter"));
+	CHECK_FALSE(RowOf(kept, "random-fighter").enabled);
+}
+
+TEST_CASE("the board's art pane shows the look choosing the fighter stores: their remembered look on the player's screen")
+{
+	FillTestCatalog();
+	// RYU last stored in Nostalgia, colour 02, both II; then CNL.
+	PlayerPick ryu = PlayerPickOf(kRyu, kTwoTwo);
+	ryu.pick.costume = 4;
+	ryu.pick.color = 1;
+	ryu = SetPick(ryu);
+	PlayerPick cnl = PlayerPickOf(kCnl, kTwoOne);
+	cnl.pick.color = 1;
+	cnl = SetPick(cnl);
+	REQUIRE(RememberedLook(kRyu).has_value());
+	CHECK(SameLook(*RememberedLook(kRyu), ryu.pick));
+	// The player's screen: RYU as last stored.
+	PlayerPick shown = SfvSelectionScreen::BoardPick(cnl, "fighter-0", true);
+	CHECK(SameLook(shown.pick, ryu.pick));
+	CHECK(SameLook(LookFor(cnl.pick, kRyu, true), ryu.pick));
+	// The dummy's screen keeps no memory: CNL's look fitted to RYU.
+	shown = SfvSelectionScreen::BoardPick(cnl, "fighter-0", false);
+	CHECK(shown.pick.fighter == kRyu);
+	CHECK(shown.pick.costume == 0);
+	CHECK(shown.pick.color == 1);
+	CHECK(picks::LoadoutOf(shown.pick) == kTwoOne);
+	// A fighter this player cannot play, as the spec fits it.
+	shown = SfvSelectionScreen::BoardPick(cnl, "fighter-2", false);
+	CHECK(shown.pick.fighter == kKen);
+	CHECK(shown.pick.costume == 0);
+	CHECK(picks::LoadoutOf(shown.pick) == kOneOne);
+	// The stored fighter, Random's card and any other id: the pick itself.
+	for (const char* id : {"fighter-1", "random-fighter", "stage-2", "fighter-99"}) {
+		CAPTURE(id);
+		CHECK(SameLook(SfvSelectionScreen::BoardPick(cnl, id, true).pick, cnl.pick));
+	}
+	// The stage is never part of a fighter's look.
+	cnl.stage = 2;
+	CHECK(SfvSelectionScreen::BoardPick(cnl, "fighter-0", true).stage == 2);
+}
+
+TEST_CASE("the look page's rows open the board and the cards, and the costume code its choices")
+{
+	FillTestCatalog();
+	using sf4e::ui::MenuSelectOpens;
+	using sf4e::ui::SelectOpens;
+	const std::vector<StageOption> stages = StageOptions(MissingStages());
+	const std::vector<MenuEntry> rows = SfvSelectionScreen::LookRows(PlayerPickOf(kRyu, kOneOne), false, true, true, true, stages);
+	for (const char* id : {"fighter", "costume", "color", "vskill", "vtrigger", "stage"}) {
+		CAPTURE(id);
+		const MenuEntry& row = RowOf(rows, id);
+		CHECK(row.choices.empty());
+		CHECK(row.opens);
+		CHECK(row.adjustable);
+		CHECK(MenuSelectOpens(row) == SelectOpens::Activate);
+	}
+	CHECK(MenuSelectOpens(RowOf(rows, "costume-code")) == SelectOpens::Choice);
+	CHECK(MenuSelectOpens(RowOf(rows, "done")) == SelectOpens::Activate);
+	// KEN's single V-Skill and V-Trigger still open their cards, to read
+	// them, but do not step.
+	const std::vector<MenuEntry> ken = SfvSelectionScreen::LookRows(PlayerPickOf(kKen, kOneOne), false, true, true, true, stages);
+	for (const char* id : {"vskill", "vtrigger"}) {
+		CAPTURE(id);
+		CHECK(RowOf(ken, id).enabled);
+		CHECK_FALSE(RowOf(ken, id).adjustable);
+		CHECK(MenuSelectOpens(RowOf(ken, id)) == SelectOpens::Activate);
+	}
+	// P2: the stage row opens the stage cards, which say who chooses, and
+	// does not step.
+	const std::vector<MenuEntry> p2 = SfvSelectionScreen::LookRows(PlayerPickOf(kRyu, kOneOne), false, true, true, false, stages);
+	CHECK(RowOf(p2, "stage").enabled);
+	CHECK_FALSE(RowOf(p2, "stage").adjustable);
+	CHECK(RowOf(p2, "stage").detail == sf4e::loc::T("selection.only_p1_stage"));
+	// Locked: the look's rows do nothing; the loadout and the stage open to read.
+	const std::vector<MenuEntry> locked = SfvSelectionScreen::LookRows(PlayerPickOf(kRyu, kOneOne), false, false, true, true, stages);
+	CHECK(MenuSelectOpens(RowOf(locked, "costume")) == SelectOpens::Nothing);
+	CHECK(MenuSelectOpens(RowOf(locked, "vskill")) == SelectOpens::Activate);
+	CHECK_FALSE(RowOf(locked, "vskill").adjustable);
+	// Random: the fighter row names the roll as Random's.
+	const std::vector<MenuEntry> random = SfvSelectionScreen::LookRows(PlayerPickOf(kRyu, kOneOne), true, true, true, true, stages);
+	CHECK(RowOf(random, "fighter").value == sf4e::loc::Tf("selection.random_fighter", "Ryu"));
+	// The dummy's: no stage row.
+	CHECK_FALSE(HasRow(SfvSelectionScreen::LookRows(PlayerPickOf(kRyu, kOneOne), false, true, false, false, {}), "stage"));
+}
+
+TEST_CASE("each way the shell opens the screen starts on its page, and the room's one changes close it again")
+{
+	FillTestCatalog();
+	using sf4e::ui::SelectionStart;
+	PlayerPick pick = PlayerPickOf(kRyu, kTwoOne);
+	pick.pick.costume = 4;
+	pick.stage = 2;
+	const auto opening = [&pick](SelectionStart start, bool random = false, bool dummy = false) {
+		return SfvSelectionScreen::OpeningFor(start, pick, random, dummy);
+	};
+	CHECK(opening(SelectionStart::Board).pages == Pages{{"home", "fighter-0"}});
+	CHECK_FALSE(opening(SelectionStart::Board).closesOnChoice);
+	CHECK(opening(SelectionStart::Roster).pages == Pages{{"home", "fighter-0"}});
+	CHECK(opening(SelectionStart::Roster).closesOnChoice);
+	// Random's card is the stored one, on the player's screen only.
+	CHECK(opening(SelectionStart::Roster, true).pages == Pages{{"home", "random-fighter"}});
+	CHECK(opening(SelectionStart::Board, true, true).pages == Pages{{"home", "fighter-0"}});
+	CHECK(opening(SelectionStart::Costumes).pages == Pages{{"home", "fighter-0"}, {"look", "costume"}, {"costumes", "costume-4"}});
+	CHECK(opening(SelectionStart::Costumes).closesOnChoice);
+	CHECK(opening(SelectionStart::Ultras).pages == Pages{{"home", "fighter-0"}, {"look", "vskill"}, {"loadout", "vskill-1"}});
+	CHECK_FALSE(opening(SelectionStart::Ultras).closesOnChoice);
+	CHECK(opening(SelectionStart::LookUltra).pages == Pages{{"home", "fighter-0"}, {"look", "vskill"}});
+	CHECK_FALSE(opening(SelectionStart::LookUltra).closesOnChoice);
+	CHECK(opening(SelectionStart::Options).pages == Pages{{"home", "fighter-0"}, {"look", "costume"}});
+	CHECK(opening(SelectionStart::Stage).pages == Pages{{"home", "fighter-0"}, {"look", "stage"}, {"stage", "stage-2"}});
+	CHECK(opening(SelectionStart::Stage).closesOnChoice);
+	// The dummy's screen has no stage page.
+	CHECK(opening(SelectionStart::Stage, false, true).pages == Pages{{"home", "fighter-0"}});
+}
+
+TEST_CASE("the costume and colour cards list every look, and one this player cannot ready cannot be chosen")
+{
+	FillTestCatalog();
+	PlayerPick ryu = PlayerPickOf(kRyu, kOneOne);
+	const std::vector<MenuEntry> costumes = SfvSelectionScreen::CostumeCards(ryu, true);
+	CHECK(IdsOf(costumes) == std::vector<std::string>{"costume-0", "costume-1", "costume-4"});
+	CHECK(RowOf(costumes, "costume-0").enabled);
+	CHECK(RowOf(costumes, "costume-0").label == CostumeName(kRyu, 0));
+	CHECK(RowOf(costumes, "costume-4").enabled);
+	// RYU's costume 1: none of its colours is theirs.
+	CHECK_FALSE(RowOf(costumes, "costume-1").enabled);
+	CHECK(RowOf(costumes, "costume-1").detail == sf4e::loc::T("selection.not_owned"));
+	const std::vector<MenuEntry> colours = SfvSelectionScreen::ColourCards(ryu, 4, true);
+	CHECK(IdsOf(colours) == std::vector<std::string>{"color-0", "color-1", "color-100", "color-101"});
+	CHECK(RowOf(colours, "color-1").enabled);
+	CHECK(RowOf(colours, "color-1").label == ColourName(1));
+	CHECK(RowOf(colours, "color-1").hint == sf4e::loc::T("menu.hint.save_color"));
+	CHECK(RowOf(colours, "color-100").label == ColourName(100));
+	CHECK_FALSE(RowOf(colours, "color-100").enabled);
+	CHECK(RowOf(colours, "color-100").detail == sf4e::loc::T("selection.not_owned"));
+	// Locked: nothing can be chosen.
+	for (const MenuEntry& row : SfvSelectionScreen::CostumeCards(ryu, false)) CHECK_FALSE(row.enabled);
+	for (const MenuEntry& row : SfvSelectionScreen::ColourCards(ryu, 0, false)) CHECK_FALSE(row.enabled);
+	// A costume the fighter does not have: the one row that says so.
+	const std::vector<MenuEntry> none = SfvSelectionScreen::ColourCards(ryu, 99, true);
+	REQUIRE(none.size() == 1u);
+	CHECK_FALSE(none[0].enabled);
+	CHECK(none[0].label == sf4e::loc::T("selection.no_colors"));
+}
+
+TEST_CASE("the loadout cards are each choice the fighter has, with its note, and Select stores that choice")
+{
+	FillTestCatalog();
+	PlayerPick ryu = PlayerPickOf(kRyu, kOneOne);
+	const std::vector<MenuEntry> cards = SfvSelectionScreen::LoadoutCards(ryu, true);
+	CHECK(IdsOf(cards) == std::vector<std::string>{"vskill-0", "vskill-1", "vtrigger-0", "vtrigger-1"});
+	for (size_t i = 0; i < cards.size(); i++) {
+		CAPTURE(cards[i].id);
+		CHECK(cards[i].key == i); // the picture's number, part * 2 + choice
+		CHECK(cards[i].enabled);
+	}
+	CHECK(RowOf(cards, "vskill-1").label == ChoiceText(1, "Skill Two"));
+	CHECK(RowOf(cards, "vtrigger-0").detail == LoadoutNote(kRyu, picks::LoadoutPart::VTrigger, 0));
+	CHECK(IdsOf(SfvSelectionScreen::LoadoutCards(PlayerPickOf(kCnl, kOneOne), true)) ==
+		std::vector<std::string>{"vskill-0", "vskill-1", "vtrigger-0"});
+	for (const MenuEntry& card : SfvSelectionScreen::LoadoutCards(ryu, false)) CHECK_FALSE(card.enabled);
+	// Select stores the choice, and only a choice the fighter has.
+	CHECK(SfvSelectionScreen::ChooseLoadout("vtrigger-1", ryu));
+	CHECK(picks::LoadoutOf(ryu.pick) == kOneTwo);
+	CHECK_FALSE(SfvSelectionScreen::ChooseLoadout("vtrigger-1", ryu));
+	CHECK(SfvSelectionScreen::ChooseLoadout("vskill-1", ryu));
+	CHECK(picks::LoadoutOf(ryu.pick) == kTwoTwo);
+	PlayerPick cnl = PlayerPickOf(kCnl, kOneOne);
+	CHECK_FALSE(SfvSelectionScreen::ChooseLoadout("vtrigger-1", cnl));
+	CHECK_FALSE(SfvSelectionScreen::ChooseLoadout("vskill-2", cnl));
+	CHECK_FALSE(SfvSelectionScreen::ChooseLoadout("vskill", cnl));
+	CHECK(picks::LoadoutOf(cnl.pick) == kOneOne);
+}
+
+TEST_CASE("a stage card stores the stage; P2, a watcher and a stage the opponent lacks or this player is not offered are refused")
+{
+	FillTestCatalog();
+	using Answer = SfvSelectionScreen::StageAnswer;
+	// At a table whose opponent lacks S01 (id 0); this copy lacks S26, and
+	// the account's cache lacks S02 (id 1).
+	const std::vector<StageOption> stages = StageOptions({0, kUninstalledStage});
+	PlayerPick pick = PlayerPickOf(kRyu, kOneOne);
+	pick.stage = picks::kRandomStage;
+	const std::vector<MenuEntry> cards = SfvSelectionScreen::StageCards(pick, true, true, stages);
+	CHECK(IdsOf(cards) == std::vector<std::string>{"stage-255", "stage-0", "stage-2"});
+	CHECK(RowOf(cards, "stage-255").enabled);
+	CHECK(RowOf(cards, "stage-255").detail == sf4e::loc::T("selection.random_stage.detail"));
+	CHECK(RowOf(cards, "stage-2").enabled);
+	CHECK(RowOf(cards, "stage-2").hint == sf4e::loc::T("menu.hint.save_stage"));
+	CHECK_FALSE(RowOf(cards, "stage-0").enabled);
+	CHECK(RowOf(cards, "stage-0").detail == sf4e::loc::T("runtime.ready.stage_not_shared"));
+	// Select on a card stores its stage.
+	CHECK(SfvSelectionScreen::ChooseStage("stage-2", pick, true, true, stages) == Answer::Stored);
+	CHECK(pick.stage == 2);
+	CHECK(SfvSelectionScreen::ChooseStage("stage-2", pick, true, true, stages) == Answer::Unchanged);
+	// The opponent lacks S01; S02 and S26 are not this player's to offer.
+	CHECK(SfvSelectionScreen::ChooseStage("stage-0", pick, true, true, stages) == Answer::NotShared);
+	CHECK(SfvSelectionScreen::ChooseStage("stage-1", pick, true, true, stages) == Answer::NotOffered);
+	CHECK(SfvSelectionScreen::ChooseStage("stage-3", pick, true, true, stages) == Answer::NotOffered);
+	CHECK(SfvSelectionScreen::ChooseStage("stage-x", pick, true, true, stages) == Answer::NotOffered);
+	CHECK(pick.stage == 2);
+	CHECK(SfvSelectionScreen::ChooseStage("stage-255", pick, true, true, stages) == Answer::Stored);
+	CHECK(pick.stage == picks::kRandomStage);
+	// P2: every card shown, none chosen, each saying only P1 chooses.
+	const std::vector<MenuEntry> p2 = SfvSelectionScreen::StageCards(pick, true, false, stages);
+	CHECK(IdsOf(p2) == IdsOf(cards));
+	CHECK_FALSE(RowOf(p2, "stage-2").enabled);
+	CHECK(RowOf(p2, "stage-2").detail == sf4e::loc::T("selection.only_p1_stage"));
+	CHECK(SfvSelectionScreen::ChooseStage("stage-2", pick, true, false, stages) == Answer::OnlyP1);
+	// A watcher's (or anyone's locked) screen.
+	CHECK(SfvSelectionScreen::ChooseStage("stage-2", pick, false, false, stages) == Answer::Locked);
+	CHECK(pick.stage == picks::kRandomStage);
+}
+
+TEST_CASE("Random takes each roll once into the player's pick, in the fighter's remembered look, and leaves the dummy alone")
+{
+	FillTestCatalog();
+	// RYU last stored in Nostalgia, colour 02; the pick is now CNL; the
+	// dummy is BSN.
+	PlayerPick ryu = PlayerPickOf(kRyu, kTwoTwo);
+	ryu.pick.costume = 4;
+	ryu.pick.color = 1;
+	ryu = SetPick(ryu);
+	SetPick(PlayerPickOf(kCnl, kOneOne));
+	const PlayerPick dummy = SetDummy(PlayerPickOf(kBsn, kOneOne));
+	sf4e::NetplayFacade::RuntimeSnapshot snapshot{};
+	snapshot.randomFighter = kRyu;
+	snapshot.randomRoll = 0xB8000001;
+	// Not Random: nothing taken.
+	SetPickRandom(false);
+	FollowRandomFighter(snapshot);
+	CHECK(CurrentPick().pick.fighter == kCnl);
+	// Random: the roll, once, in RYU's remembered look.
+	SetPickRandom(true);
+	REQUIRE(PickRandom());
+	FollowRandomFighter(snapshot);
+	CHECK(SameLook(CurrentPick().pick, ryu.pick));
+	PlayerPick edited = CurrentPick();
+	edited.pick.color = 0;
+	SetPick(edited);
+	FollowRandomFighter(snapshot);
+	CHECK(CurrentPick().pick.color == 0);
+	// The next roll, to CNL: taken; the dummy is untouched throughout.
+	snapshot.randomFighter = kCnl;
+	snapshot.randomRoll++;
+	FollowRandomFighter(snapshot);
+	CHECK(CurrentPick().pick.fighter == kCnl);
+	CHECK(SameLook(CurrentDummy().pick, dummy.pick));
+	// A roll to no fighter of the catalog is never taken.
+	snapshot.randomFighter = 99;
+	snapshot.randomRoll++;
+	FollowRandomFighter(snapshot);
+	CHECK(CurrentPick().pick.fighter == kCnl);
+	SetPickRandom(false);
+	CHECK_FALSE(PickRandom());
+	// The dummy's screen has no Random card.
+	CHECK_FALSE(HasRow(SfvSelectionScreen::BoardRows(CurrentDummy(), false, true, false, false), "random-fighter"));
 }
