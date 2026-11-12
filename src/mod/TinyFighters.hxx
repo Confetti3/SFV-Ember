@@ -81,7 +81,9 @@ bool ApplyFighterScaleNow(float p1, float p2);
 // SetActorHiddenInGame hides it (sfv::visual::kActorSetHiddenInGame): every
 // mesh, the cloth and the shadow go, where a scale leaves the cloth behind.
 // Same rules as ApplyFighterScaleNow: the booth only, the game thread, both
-// sides' parts known; false otherwise or when an actor cannot be read.
+// sides' parts known; false otherwise or when an actor cannot be read. The
+// battle's updates show an actor again, so a hidden side is hidden again
+// after each per-frame update until it is shown or ForgetFighterScale.
 bool SetFightersHiddenNow(bool p1, bool p2);
 
 // The booth's install (BoothMode::Install, development builds): the

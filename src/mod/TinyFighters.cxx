@@ -43,6 +43,24 @@ std::atomic<bool> s_fightUpdate;
 std::atomic<bool> s_boothAllowed;
 std::atomic<float> s_boothFactor[2];
 std::atomic<uint8_t*> s_boothPart[2];
+// Each side the booth hid (booth hide): hidden again after each per-frame
+// update, as the battle's updates show the actor again.
+std::atomic<bool> s_boothHidden[2];
+
+using SetHiddenFn = void (*)(uint8_t* actor, bool hidden);
+
+// The part's actor hidden or shown (sfv::visual::kActorSetHiddenInGame);
+// false when the actor or its vtable cannot be read.
+bool SetPartActorHidden(const uint8_t* part, bool hidden)
+{
+	uint8_t* actor = nullptr;
+	uintptr_t vtable = 0;
+	if (!part || !TryRead(part + visual::kActor, &actor) || !actor || !TryRead(actor, &vtable) || !vtable) return false;
+	SetHiddenFn set = nullptr;
+	if (!TryRead(reinterpret_cast<const void*>(vtable + visual::kActorSetHiddenInGame), &set) || !set) return false;
+	set(actor, hidden);
+	return true;
+}
 
 void NoteScaled(const tiny::PartResult& result)
 {
@@ -50,11 +68,13 @@ void NoteScaled(const tiny::PartResult& result)
 }
 
 // The booth's memory of each side's part: the part's side read as
-// ApplyToPart reads it, with no side to scale (nothing is called).
-void RememberPart(uint8_t* part)
+// ApplyToPart reads it, with no side to scale (nothing is called). The side,
+// or -1.
+int RememberPart(uint8_t* part)
 {
 	const int side = tiny::ApplyToPart(part, TinySides{}, s_setScale).side;
 	if (side >= 0) s_boothPart[side].store(part);
+	return side;
 }
 
 void h_VisualUpdate(uint8_t* part)
@@ -62,7 +82,10 @@ void h_VisualUpdate(uint8_t* part)
 	o_visualUpdate(part);
 	// Remembered whether or not a battle update runs: the per-frame update
 	// may be the fight's own.
-	if (s_boothAllowed.load()) RememberPart(part);
+	if (s_boothAllowed.load()) {
+		const int side = RememberPart(part);
+		if (side >= 0 && s_boothHidden[side].load()) SetPartActorHidden(part, true);
+	}
 	const TinySides sides = TinyFightersNow();
 	if (!sides.Any() || s_fightUpdate.load()) return;
 	NoteScaled(tiny::ApplyToPart(part, sides, s_setScale));
@@ -252,23 +275,22 @@ bool SetFightersHiddenNow(bool p1, bool p2)
 		Log("tiny: the booth's hide was asked off the game thread; refused");
 		return false;
 	}
-	uint8_t* actors[2] = {};
+	const uint8_t* parts[2] = {};
 	for (int i = 0; i < 2; i++) {
-		const uint8_t* part = s_boothPart[i].load();
+		parts[i] = s_boothPart[i].load();
 		// The part's side is read again: a part remembered for a side is that side's.
-		if (!part || tiny::ApplyToPart(part, TinySides{}, s_setScale).side != i) return false;
-		if (!TryRead(part + visual::kActor, &actors[i]) || !actors[i]) return false;
-		uintptr_t vtable = 0;
-		if (!TryRead(actors[i], &vtable) || !vtable) return false;
+		if (!parts[i] || tiny::ApplyToPart(parts[i], TinySides{}, s_setScale).side != i) return false;
 	}
-	using SetHiddenFn = void (*)(uint8_t* actor, bool hidden);
 	const bool hidden[2] = {p1, p2};
+	bool both = true;
 	for (int i = 0; i < 2; i++) {
-		const auto set = *reinterpret_cast<SetHiddenFn*>(*reinterpret_cast<uintptr_t*>(actors[i]) + visual::kActorSetHiddenInGame);
-		set(actors[i], hidden[i]);
+		// Kept: the per-frame hook hides the side again after each update.
+		s_boothHidden[i].store(hidden[i]);
+		both = SetPartActorHidden(parts[i], hidden[i]) && both;
 	}
+	if (!both) Log("tiny: booth hide: a side's actor could not be read");
 	Log("tiny: booth hide P1 %s, P2 %s", p1 ? "hidden" : "shown", p2 ? "hidden" : "shown");
-	return true;
+	return both;
 }
 
 void SetFighterScaleAllowed(bool on)
@@ -280,6 +302,7 @@ void ForgetFighterScale()
 {
 	for (int i = 0; i < 2; i++) {
 		const bool booth = s_boothFactor[i].exchange(0.0f) > 0.0f;
+		s_boothHidden[i].store(false);
 		s_boothPart[i].store(nullptr);
 		if (booth && !s_tiny[i].load()) s_actor[i].store(nullptr);
 	}
