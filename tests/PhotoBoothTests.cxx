@@ -193,7 +193,7 @@ TEST_CASE("a grab: its path, how many presents later, and which depth")
 	CHECK(c->grab.path == "C:/my renders/a b.bmp");
 	CHECK(c->grab.depth.mode == grab::DepthMode::Auto);
 
-	for (const char* bad : {"grab", "grab a.bmp after=", "grab a.bmp after=-1", "grab a.bmp after=x", "grab a.bmp depth=all",
+	for (const char* bad : {"grab", "grab a.bmp after=", "grab a.bmp after=-1", "grab a.bmp after=x", "grab a.bmp depth=every",
 			 "grab a.bmp depth=-2", "grab a.bmp size=2", "grab \"a.bmp", "grab \"\"", "grab \"a\"b"}) {
 		CAPTURE(bad);
 		CHECK_FALSE(Parse(bad));
