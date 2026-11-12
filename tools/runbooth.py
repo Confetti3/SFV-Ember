@@ -539,7 +539,7 @@ class Copy:
         self.wait_presents(SETTLE_PRESENTS)
         raw_root = self.store / "raw" / f"loadout-{code}"
         for side in sorted({t[0] for t in todo}):
-            self.scale(*((1.0, 0.001) if side == 0 else (0.001, 1.0)))
+            self.hide(side != 0, side != 1)  # the opponent's whole actor away
             steps = [t for t in todo if t[0] == side]
             steps.sort(key=lambda t: t[1] != "vs")  # V-Skill first, then V-Trigger
             for n, (_, prefix, choice) in enumerate(steps):
@@ -558,10 +558,10 @@ class Copy:
                     frame = self.grab(path, False)
                     frames.append((k, path, frame))
                     if k == after:
-                        self.scale(0.001, 0.001)
+                        self.hide(True, True)
                         b_path = raw_root / f"{prefix}{choice}-away.bmp"
                         self.grab(b_path, False)
-                        self.scale(*((1.0, 0.001) if side == 0 else (0.001, 1.0)))
+                        self.hide(side != 0, side != 1)
                 self.post.submit(self.save_loadout, code, prefix, choice, side, frames, after, raw_root / f"{prefix}{choice}-away.bmp")
                 if n + 1 < len(steps):
                     self.advance(f"booth run {cfg['gap']}", cfg["gap"])
