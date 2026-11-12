@@ -73,27 +73,54 @@ current step. Progress lines (per copy: loads, failures, loads/min, ETA) every 3
 Run the pilot, read each copy's `loads/min`, and compute `3258 / (copies x loads_per_min_per_copy)`
 minutes. Measure again with 4 copies at once: the copies share the GPU, so per-copy speed drops;
 raise `--copies` until the total stops growing. `--plan --secs-per-load S` prints the same sum.
+Measured on the laptop (2026-11-12, fight frame 60): 4 copies 14-15 look loads/min together
+(28-30 looks/min), so the 3,213 look loads take about 3.5-4 h; phase 1 (875 looks) about 30 min;
+phase 3 about 20-25 min more.
 
 ## Per load (as DESIGN.md)
 
-`launch versus A B TRN 1 inf` -> wait `launch.loaded` and `booth.battle` changed (mismatch or
-failure = failed load) -> optional walk-in -> `booth hold F` -> 12 presents -> camera peek
-(`CameraUnit[0]+0x450`, same twice) -> grab A (depth auto) -> `booth scale 0.001 0.001` -> 12
-presents -> grab B -> `booth leave` -> main menu. Every wait has a timeout; on a timeout the copy
+`booth hudhide on` once after each boot (the HUD stays hidden for every battle; `--show-hud` keeps
+it). `launch versus A B TRN 1 inf` -> wait `launch.loaded` and `booth.battle` changed (mismatch or
+failure = failed load; still loading after `--load-stuck` 25 s = stuck: the copy is relaunched and
+the load tried once more) -> optional walk-in -> `booth hold F` (`--frame`, default 60) -> 12
+presents -> camera peek (`CameraUnit[0]+0x450`, same twice) -> grab A (depth auto) -> `booth hide 1
+1` (both fighters' actors hidden, cloth and shadow too) -> 12 presents -> grab B -> `booth leave` ->
+main menu -> 4 s (`--menu-settle`: a launch of the same stage sooner never finishes loading). Every
+wait has a timeout; on a timeout the copy
 tries `booth leave`, else it is killed and relaunched (only that copy); every 200 loads a copy is
 relaunched. P1 and P2 come from one grab pair: the combined mask is split at the widest empty
-column run between the fighters (a pair whose fighters touch fails); an odd last look is loaded
-alone with P2 scaled away. The mask is the depth difference (changed, not near/far) when both
-depth sidecars exist and show something, else the colour difference; specks are dropped, the mask
+column run between the fighters (or at the emptiest central column when fewer than 4 % of the rows
+cross it; more fails); an odd last look is loaded alone with P2 hidden. The mask is the depth
+difference (changed, not near/far) when both depth sidecars exist, name the same texture and show
+something, else the colour difference; specks are dropped, the mask
 eroded 1 px, cropped to the alpha box, P2 flipped, fitted 512x768 with a 32 px margin.
 
 Loadout pictures (phase 3): P1 = costume 0, first colour, V-Skill I / V-Trigger I; P2 = II / II
-(P2 only for choices the fighter has). The other side is scaled away. Hold at `start` (150),
-`booth play <side> MP+MK:4`, `booth run N`, grab; `booth run 150`; `HP+HK:4`, `booth run N`, grab.
-N is in `tools/booth/loadout-frames.json` (default V-Skill 20, V-Trigger 45; per-fighter overrides in
-`fighters`). A second grab with the fighters scaled away finds the fighter, and the 16:9 crop (height
-85% of the frame, above the gauge line, centred on the fighter) is saved. `--burst` also writes the
-frames N-2..N+2 as JPEGs to `<store>\burst\<CODE>` to choose N by eye.
+(P2 only for choices the fighter has), each side in a battle of its own with the other side's actor
+hidden (a hidden side is never shown again: that would show a partner the game keeps hidden, R.
+Mika's). Hold at `start` (150); per move: the plate (the fighter scaled to 0.001, grabbed, scaled
+back), 20 frames for the cloth, the standing grab, `booth play <side> MP+MK:4` (or `HP+HK:4`), then a
+burst: `booth run 4` and a grab, up to 120 frames after the press (`auto` in
+`tools/booth/loadout-frames.json`); `booth run 150` before the side's next move. The picture is
+chosen from the burst by `tools/boothburst.py` (no one picks frames): each grab's camera pan against
+the standing grab is lined up (phase correlation); a grab whose background still differs (zoom, a
+dimmed or covered stage) or whose brightness jumps (a flash) is not used; the score is the share of
+the fighter's widened region that changed; the first grab whose stable score (the least of it and
+its two neighbours) reaches 80 % of the best is the picture. Nothing usable or nothing moving: the
+grab nearest `default` (V-Skill 20, V-Trigger 45 frames after the press). `fighters` in the JSON
+holds exact frames as overrides only, for a move the chooser gets wrong. The 16:9 crop is the window
+around the fighter, its new pose and its effects (where the chosen grab differs from the standing
+grab, and where the fighter stood), 12 % margin, at least 60 % of the frame high. The master's
+sidecar keeps the frame, how it was chosen (`auto`, `override`, `default`) and every grab's score.
+`--burst` writes every grab, scored (`<move>-t<frames>-s<score x 1000>[-chosen|-unused].jpg`), to
+`<store>\burst\<CODE>` for review. `boothsheet.py` writes `contact\loadout.png`: a row per fighter
+with its four pictures, each labelled with how its frame was chosen.
+
+Loadout time: per fighter two battles (about 15 s each with the leave) and four moves of about 15 s
+(plate and standing grab 3 s, 30 burst grabs at about 0.35 s, the 150-frame gap 3 s), about 90 s a
+fighter on one copy; 45 fighters about 70 copy-minutes, about 20-25 minutes on 4 copies with the
+copies sharing the GPU. While a move's grabs wait to be chosen they take about 270 MB of raw BMPs
+(deleted once its picture is saved); `--keep-raw` keeps them all, about 48 GB for the 180 moves.
 
 ## What to check on the contact sheet
 

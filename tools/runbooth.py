@@ -34,6 +34,7 @@ import sfvelib as lib  # noqa: E402
 try:
     import numpy as np
     from PIL import Image
+    import boothburst as bb
     import boothpack as bp
 except ImportError as e:  # pragma: no cover
     sys.exit(f"runbooth needs Pillow and numpy ({e}): python -m pip install -r tools/booth-requirements.txt (in a venv)")
@@ -53,6 +54,8 @@ GRAB_TIMEOUT_S = 30.0
 PRESENTS_TIMEOUT_S = 30.0
 LEAVE_TIMEOUT_S = 60.0
 SETTLE_PRESENTS = 12          # protocol: wait 12 presents after a hold and after a scale
+BURST_AFTER_PRESENTS = 3      # a burst grab of a frame just held: a few presents later, the frame drawn
+BURST_POLL_S = 0.05           # the burst's waits poll the pipe this often
 CAMERA_PEEK = "peek CameraUnit[0]+0x450 0 16"
 
 PHASE_NAMES = {"1": "colour 1 of every costume", "2": "the other colours", "3": "loadout pictures"}
@@ -175,18 +178,27 @@ def load_loadout_config(path: Path = LOADOUT_FRAMES) -> dict:
     cfg.setdefault("gap", 150)
     cfg.setdefault("default", {"vskill": 20, "vtrigger": 45})
     cfg.setdefault("crop", {}).setdefault("height_fraction", 0.85)
-    cfg.setdefault("burst", {}).setdefault("around", 2)
+    auto = cfg.setdefault("auto", {})
+    auto.setdefault("step", 4)
+    auto.setdefault("span", 120)
+    auto.setdefault("settle_frames", 20)
     cfg.setdefault("fighters", {})
     return cfg
 
 
-def frames_after_press(cfg: dict, code: str, prefix: str, choice: int) -> int:
-    """Fight frames to run after the press before the grab: the fighter's override, else the default."""
+def override_after_press(cfg: dict, code: str, prefix: str, choice: int) -> int | None:
+    """The fight frames after the press whose grab is the picture, where loadout-frames.json's
+    `fighters` gives one for this move (an override of the automatic choice); else None."""
     key = bp.PART_NAMES[prefix]
-    value = cfg["fighters"].get(code, {}).get(key, cfg["default"][key])
+    value = cfg["fighters"].get(code, {}).get(key)
     if isinstance(value, dict):
-        value = value.get(str(choice), cfg["default"][key])
-    return int(value)
+        value = value.get(str(choice))
+    return int(value) if value else None
+
+
+def default_after_press(cfg: dict, prefix: str) -> int:
+    """The frames after the press taken when the burst shows nothing the chooser can use."""
+    return int(cfg["default"][bp.PART_NAMES[prefix]])
 
 
 # --- locks, copies ----------------------------------------------------------------------------------
@@ -383,12 +395,12 @@ class Copy:
         self.wait_for(lambda s: self.booth(s).get("held") and self.booth(s).get("fightFrame", -1) >= frame,
                       90.0 + frame / 30.0, f"the hold at fight frame {frame}")
 
-    def advance(self, line: str, frames: int) -> int:
+    def advance(self, line: str, frames: int, poll_s: float = 0.25) -> int:
         """`booth play`/`booth run` for `frames` fight frames, then the hold; returns the fight frame."""
         before = self.booth(self.status()).get("fightFrame", 0)
         self.cmd(line)
         status = self.wait_for(lambda s: self.booth(s).get("held") and self.booth(s).get("fightFrame", -1) >= before + frames,
-                               60.0 + frames / 20.0, f"{line} ({frames} frames)")
+                               60.0 + frames / 20.0, f"{line} ({frames} frames)", poll_s=poll_s)
         return self.booth(status).get("fightFrame", -1)
 
     def scale(self, p1: float, p2: float) -> None:
@@ -445,11 +457,11 @@ class Copy:
     def cmd_raw(self, line: str) -> str:
         return lib.request(self.index, line)
 
-    def grab(self, path: Path, depth: bool) -> int:
+    def grab(self, path: Path, depth: bool, after: int = 0, poll_s: float = 0.25) -> int:
         path.parent.mkdir(parents=True, exist_ok=True)
         posix = path.as_posix()
         quoted = f'"{posix}"' if " " in posix else posix  # the mod wants a path with spaces in double quotes
-        self.cmd(f"booth grab {quoted}" + ("" if depth else " depth=off"))
+        self.cmd(f"booth grab {quoted}" + ("" if depth else " depth=off") + (f" after={after}" if after else ""))
         want = posix.lower()
 
         def taken(s: dict) -> bool:
@@ -457,7 +469,7 @@ class Copy:
             last = b.get("lastGrab") or {}
             return not b.get("pending") and str(last.get("path", "")).replace("\\", "/").lower() == want
 
-        status = self.wait_for(taken, GRAB_TIMEOUT_S, f"the grab {path.name}")
+        status = self.wait_for(taken, GRAB_TIMEOUT_S, f"the grab {path.name}", poll_s=poll_s)
         last = self.booth(status)["lastGrab"]
         if not last.get("ok"):
             raise CaptureError(f"grab failed: {last.get('error') or 'no reason given'}")
@@ -531,6 +543,11 @@ class Copy:
                 pass
 
     def capture_loadout(self, load: dict) -> None:
+        """The fighter's V-Skill and V-Trigger pictures. A battle per side (the other side's actor
+        hidden for good: showing a hidden side again would show a partner the game keeps hidden,
+        R. Mika's). For each move: the plate (the fighter scaled away), the fighter standing (pre),
+        the press, then a burst of grabs every `auto.step` fight frames up to `auto.span`; the
+        picture is chosen from the burst afterwards (save_loadout, tools/boothburst.py)."""
         code = load["fighter"]
         fighter = self.space["fighters"][code]
         costume = next(iter(fighter["costumes"]))
@@ -540,6 +557,7 @@ class Copy:
         if not todo:
             return
         cfg = self.cfg
+        auto = cfg["auto"]
         picks = []
         for side in (0, 1):
             vs = min(side + 1, max(fighter["vs"], 1))
@@ -547,8 +565,6 @@ class Copy:
             picks.append(f"{code}:{costume}:{colour}:{vs}:{vt}")
         raw_root = self.store / "raw" / f"loadout-{code}"
         for n_side, side in enumerate(sorted({t[0] for t in todo})):
-            # A battle per side: the other side's actor is hidden for good (showing a hidden side
-            # again would show a partner the game keeps hidden, R. Mika's).
             if n_side:
                 self.cmd("booth leave")
                 self.to_menu()
@@ -559,83 +575,105 @@ class Copy:
             steps = [t for t in todo if t[0] == side]
             steps.sort(key=lambda t: t[1] != "vs")  # V-Skill first, then V-Trigger
             for n, (_, prefix, choice) in enumerate(steps):
+                stem = f"{prefix}{choice}"
+                # The stage behind the fighter (scaled away; never hidden, see above), then the
+                # fighter standing again once its cloth has settled.
+                self.scale(0.001 if side == 0 else 1.0, 0.001 if side == 1 else 1.0)
+                plate = raw_root / f"{stem}-plate.bmp"
+                self.grab(plate, False)
+                self.scale(1.0, 1.0)
+                self.advance(f"booth run {auto['settle_frames']}", auto["settle_frames"])
+                pre = raw_root / f"{stem}-pre.bmp"
+                self.grab(pre, False)
                 buttons = "MP+MK" if prefix == "vs" else "HP+HK"
                 self.advance(f"booth play {side} {buttons}:{cfg['press']}", cfg["press"])
-                after = frames_after_press(cfg, code, prefix, choice)
-                around = cfg["burst"]["around"] if self.args.burst else 0
-                first = max(1, after - around)
-                self.advance(f"booth run {first}", first)
-                frames = []
-                for k in range(first, after + around + 1):
-                    if k > first:
-                        self.advance("booth run 1", 1)
-                    self.wait_presents(SETTLE_PRESENTS)
-                    path = raw_root / f"{prefix}{choice}-{k}.bmp"
-                    frame = self.grab(path, False)
-                    frames.append((k, path, frame))
-                    if k == after:
-                        # The fighter scaled away for the crop's plate (the opponent stays hidden):
-                        # a hidden side is never shown again, since showing it would show a partner
-                        # the game keeps hidden (R. Mika's).
-                        self.scale(0.001 if side == 0 else 1.0, 0.001 if side == 1 else 1.0)
-                        b_path = raw_root / f"{prefix}{choice}-away.bmp"
-                        self.grab(b_path, False)
-                        self.scale(1.0, 1.0)
-                self.post.submit(self.save_loadout, code, prefix, choice, side, frames, after, raw_root / f"{prefix}{choice}-away.bmp")
+                override = override_after_press(cfg, code, prefix, choice)
+                after = sorted(set(range(auto["step"], auto["span"] + 1, auto["step"])) | ({override} if override else set()))
+                burst, now = [], 0
+                for t in after:
+                    self.advance(f"booth run {t - now}", t - now, poll_s=BURST_POLL_S)
+                    now = t
+                    path = raw_root / f"{stem}-{t:03d}.bmp"
+                    burst.append((t, path, self.grab(path, False, after=BURST_AFTER_PRESENTS, poll_s=BURST_POLL_S)))
+                self.post.submit(self.save_loadout, code, prefix, choice, side, pre, plate, burst, override)
                 if n + 1 < len(steps):
                     self.advance(f"booth run {cfg['gap']}", cfg["gap"])
         self.cmd("booth leave")
         self.to_menu()
 
-    def save_loadout(self, code: str, prefix: str, choice: int, side: int, frames: list, chosen: int, away: Path) -> None:
-        """The 16:9 crop above the gauge line, centred on the fighter (found against the grab with
-        the fighters scaled away), lossless; burst frames go to <store>\\burst as JPEGs."""
+    def crop_window(self, mask: np.ndarray, side: int) -> tuple[int, int, int, int]:
+        """(x0, y0, width, height): the 16:9 window around what `mask` holds (the fighter and what
+        the move throws out), with a margin, at least `crop.height_fraction` of the frame high."""
+        height_px, width_px = mask.shape
+        cols = np.nonzero(mask.any(axis=0))[0]
+        rows = np.nonzero(mask.any(axis=1))[0]
+        if cols.size:
+            x_lo, x_hi, y_lo, y_hi = cols.min(), cols.max(), rows.min(), rows.max()
+        else:  # nothing found: where the side stands
+            cx = width_px * (0.42 if side == 0 else 0.58)
+            x_lo, x_hi, y_lo, y_hi = cx - width_px * 0.1, cx + width_px * 0.1, height_px * 0.4, height_px * 0.95
+        margin = self.cfg["crop"].get("margin", 0.12)
+        crop_h = max((y_hi - y_lo) * (1 + 2 * margin), (x_hi - x_lo) * (1 + 2 * margin) * 9 / 16,
+                     height_px * self.cfg["crop"]["height_fraction"])
+        crop_h = min(crop_h, height_px, width_px * 9 / 16)
+        crop_w = round(crop_h * 16 / 9)
+        crop_h = round(crop_w * 9 / 16)
+        x0 = int(min(max((x_lo + x_hi) / 2 - crop_w / 2, 0), width_px - crop_w))
+        y0 = int(min(max((y_lo + y_hi) / 2 - crop_h / 2, 0), height_px - crop_h))
+        return x0, y0, crop_w, crop_h
+
+    def save_loadout(self, code: str, prefix: str, choice: int, side: int, pre_path: Path, plate_path: Path,
+                     burst: list, override: int | None) -> None:
+        """Chooses the burst's grab (an override's frame where loadout-frames.json gives one, else
+        boothburst's choice, else the grab nearest the default frame), and saves its 16:9 crop
+        lossless with what was chosen and why; --burst also writes every grab, scored, to
+        <store>\\burst\\<CODE> for review."""
         stage = self.args.stage
+        part = bp.PART_NAMES[prefix]
         try:
-            with Image.open(away) as im:
-                b = np.asarray(im.convert("RGB"))
-            for k, path, frame in frames:
+            def read(path: Path) -> np.ndarray:
                 with Image.open(path) as im:
-                    image = im.convert("RGB")
-                a = np.asarray(image)
-                mask = bp._keep_components(bp.colour_mask(a, b))  # noqa: SLF001
-                height_px, width_px = a.shape[:2]
-                cols = np.nonzero(mask.any(axis=0))[0]
-                rows = np.nonzero(mask.any(axis=1))[0]
-                if cols.size:
-                    x_lo, x_hi, y_lo, y_hi = cols.min(), cols.max(), rows.min(), rows.max()
-                else:  # nothing found: where the side stands
-                    cx = width_px * (0.42 if side == 0 else 0.58)
-                    x_lo, x_hi, y_lo, y_hi = cx - width_px * 0.1, cx + width_px * 0.1, height_px * 0.4, height_px * 0.95
-                # The whole fighter and what the move throws out, with a margin, in a 16:9 window
-                # at least `height_fraction` of the frame high, centred on them (the HUD is hidden,
-                # so nothing has to stay above a gauge line).
-                margin = self.cfg["crop"].get("margin", 0.12)
-                crop_h = max((y_hi - y_lo) * (1 + 2 * margin), (x_hi - x_lo) * (1 + 2 * margin) * 9 / 16,
-                             height_px * self.cfg["crop"]["height_fraction"])
-                crop_h = min(crop_h, height_px, width_px * 9 / 16)
-                crop_w = round(crop_h * 16 / 9)
-                crop_h = round(crop_w * 9 / 16)
-                x0 = int(min(max((x_lo + x_hi) / 2 - crop_w / 2, 0), width_px - crop_w))
-                y0 = int(min(max((y_lo + y_hi) / 2 - crop_h / 2, 0), height_px - crop_h))
-                picture = image.crop((x0, y0, x0 + crop_w, y0 + crop_h))
-                if k == chosen:
-                    target = bp.loadout_master_path(self.store, code, prefix, choice)
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    picture.save(target)
-                    target.with_suffix(".json").write_text(json.dumps({"frame": frame, "stage": stage, "crop": [x0, y0, crop_w, crop_h]}),
-                                                           encoding="utf-8")
-                if self.args.burst:
-                    burst = self.store / "burst" / code
-                    burst.mkdir(parents=True, exist_ok=True)
-                    picture.resize((960, 540), Image.Resampling.LANCZOS).save(burst / f"{prefix}{choice}-f{frame}.jpg", quality=85)
+                    return np.asarray(im.convert("RGB"))
+
+            pre, plate = read(pre_path), read(plate_path)
+            small = [bb.shrink(read(path)) for _, path, _ in burst]
+            scores = bb.score_shrunk(bb.shrink(pre), bb.shrink(plate), small)
+            times = [t for t, _, _ in burst]
+            if override:
+                index, method = times.index(override), "override"
+            else:
+                index = bb.choose(scores)
+                method = "auto"
+                if index is None:
+                    wanted = default_after_press(self.cfg, prefix)
+                    index, method = min(range(len(times)), key=lambda i: abs(times[i] - wanted)), "default"
+            t, path, frame = burst[index]
+            grab = read(path)
+            x0, y0, crop_w, crop_h = self.crop_window(bb.change_mask(pre, plate, grab, scores[index]), side)
+            picture = Image.fromarray(grab).crop((x0, y0, x0 + crop_w, y0 + crop_h))
+            target = bp.loadout_master_path(self.store, code, prefix, choice)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            picture.save(target)
+            meta = {"frame": frame, "afterPress": t, "method": method, "stage": stage, "crop": [x0, y0, crop_w, crop_h],
+                    "scores": [[tt, round(g.score, 4), g.usable] for tt, g in zip(times, scores)]}
+            target.with_suffix(".json").write_text(json.dumps(meta), encoding="utf-8")
+            if method != "auto":
+                self.log.say(f"copy {self.index}: {code} {prefix}{choice}: {method} frame {t} after the press")
+            if self.args.burst:
+                out = self.store / "burst" / code
+                out.mkdir(parents=True, exist_ok=True)
+                for i, ((tt, p, _), g) in enumerate(zip(burst, scores)):
+                    thumb = Image.fromarray(read(p)).resize((480, 270), Image.Resampling.BILINEAR)
+                    mark = "-chosen" if i == index else ("" if g.usable else "-unused")
+                    thumb.save(out / f"{prefix}{choice}-t{tt:03d}-s{round(g.score * 1000):03d}{mark}.jpg", quality=80)
             if not self.args.keep_raw:
-                for k, path, frame in frames:
-                    path.unlink(missing_ok=True)
-                away.unlink(missing_ok=True)
+                for _, p, _ in burst:
+                    p.unlink(missing_ok=True)
+                pre_path.unlink(missing_ok=True)
+                plate_path.unlink(missing_ok=True)
         except Exception as e:  # noqa: BLE001
             self.failed += 1
-            self.log.failure(self.index, "loadout", {"fighter": code, "part": bp.PART_NAMES[prefix], "choice": choice},
+            self.log.failure(self.index, "loadout", {"fighter": code, "part": part, "choice": choice},
                              f"loadout picture: {e!r}", stage)
 
     # --- the copy's run ---
@@ -720,7 +758,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--store", default=bp.DEFAULT_STORE)
     p.add_argument("--pick-space", default=str(bp.DEFAULT_PICK_SPACE))
     p.add_argument("--stage", default="TRN")
-    p.add_argument("--frame", type=int, default=300, help="fight frame the battle is held at for the grabs")
+    p.add_argument("--frame", type=int, default=60, help="fight frame the battle is held at for the grabs (default 60)")
     p.add_argument("--sides", type=int, choices=[1, 2], default=2, help="2: a look per side (default); 1: P1 only, P2 scaled away")
     p.add_argument("--mask", choices=["depth", "colour"], default="depth")
     p.add_argument("--walk", action="store_true", help="walk the fighters in (P1 right, P2 left) before the hold")
@@ -732,7 +770,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--per-fighter", type=int, default=0, help="at most N looks per fighter")
     p.add_argument("--retry-failed", action="store_true", help="the looks the capture log lists as failed and that still have no master")
     p.add_argument("--force", action="store_true", help="capture again even where a master exists")
-    p.add_argument("--burst", action="store_true", help="phase 3: also grab frames either side of each chosen one, to <store>\\burst for review")
+    p.add_argument("--burst", action="store_true", help="phase 3: also write every burst grab, scored, to <store>\\burst for review")
     p.add_argument("--keep-raw", action="store_true", help="keep the raw grabs (about 30 MB a load) instead of deleting them once the masters exist")
     p.add_argument("--relaunch-every", type=int, default=200, help="restart a copy's game after this many loads")
     p.add_argument("--stagger", type=float, default=6.0, help="seconds between copy starts")
