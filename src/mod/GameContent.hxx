@@ -227,6 +227,21 @@ struct ContentLists {
 // kContentOwnership's (ApplyContentOwnership).
 ContentLists ReadContentLists();
 
+// The battle setup asset's select-grid list (its +48, the fighters
+// sfv::kOwnedFighters starts from when the asset's +96 is clear): a
+// TArray<FString> of fighter codes, read by rva 0x55A9B0, whose copy (rva
+// 0x5156A0 through 0x4E1F30) copies 16-byte {data, count, capacity}
+// elements, so an entry holds a code and nothing else: no slot, row or
+// column. In the asset's order, for comparing with the game's own select
+// screen (development: the pipe's `content`). Game thread, at the main menu
+// (it may load the asset, as ReadContentLists does). Empty with `error` when
+// the asset is not there or the list cannot be read.
+struct SelectGridList {
+	std::vector<std::string> codes;
+	std::string error;
+};
+SelectGridList ReadSelectGridList();
+
 // Makes `owned` what the game's answer would be from the account's own
 // cache: SFV now grants every player everything (EntitlementGrant), so the
 // game's lists (ReadOwnership) offer everything installed, and Ember's gate,

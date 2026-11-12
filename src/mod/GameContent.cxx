@@ -637,6 +637,34 @@ LookLoad LookLoadState(std::wstring_view code, int costume, int colour)
 	return LookLoad::Loadable;
 }
 
+SelectGridList ReadSelectGridList()
+{
+	// UKWBattleSetupDataAsset +48: TArray<FString> {data, int32 count, int32
+	// capacity} (rva 0x55A9B0 hands it to the array copy rva 0x5156A0, whose
+	// element copy rva 0x4E1F30 walks 16-byte FStrings). A count past
+	// kMaxEntries, or a code longer than kMaxCode, reads as not this list.
+	constexpr uint32_t kSelectGridList = 48;
+	constexpr int kMaxEntries = 512;
+	constexpr int kMaxCode = 16;
+	SelectGridList list;
+	uint8_t* setup = BattleSetup();
+	if (!setup) return list.error = "the battle setup asset is not there", list;
+	GameArray<GameString> codes{};
+	if (!TryRead(setup + kSelectGridList, &codes)) return list.error = "the asset's +48 cannot be read", list;
+	if (codes.count < 0 || codes.count > kMaxEntries || (codes.count > 0 && !codes.data)) {
+		return list.error = "the asset's +48 holds " + std::to_string(codes.count) + " entries, not a list Ember reads", list;
+	}
+	for (int i = 0; i < codes.count; i++) {
+		GameString code{};
+		if (!TryRead(codes.data + i, &code) || code.count < 0 || code.count > kMaxCode) {
+			list.codes.clear();
+			return list.error = "entry " + std::to_string(i) + " of the asset's +48 is not a fighter code", list;
+		}
+		list.codes.push_back(Narrow(code));
+	}
+	return list;
+}
+
 ContentLists ReadContentLists()
 {
 	// The waits first, cheapest first: until all of them are over nothing

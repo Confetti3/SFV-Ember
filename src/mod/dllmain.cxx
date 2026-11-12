@@ -343,6 +343,15 @@ extern "C" int SfveStart(int beforeGameCode)
 			Log("content: not owned: %d fighters, %d costumes, %d colours, %d stages; %d stages installed but not in the "
 				"account cache", counts.fightersNotOwned, counts.costumesNotOwned, counts.coloursNotOwned, counts.stagesNotOwned,
 				counts.stagesNotEntitled);
+			// Development: the battle setup asset's select-grid list in its own
+			// order (GameContent's ReadSelectGridList), to compare with the
+			// game's select screen. Its entries are codes only.
+			if constexpr (sfve::kBuildKind == sfve::BuildKind::Development) {
+				const SelectGridList grid = ReadSelectGridList();
+				if (!grid.error.empty()) Log("content: select-grid list: none: %s", grid.error.c_str());
+				else Log("content: select-grid list (setup asset +48): %zu entries", grid.codes.size());
+				for (size_t i = 0; i < grid.codes.size(); i++) Log("content:   select-grid %zu %s", i, grid.codes[i].c_str());
+			}
 		});
 		return std::string("ok queued (see the log)");
 	});
