@@ -350,15 +350,26 @@ class Copy:
     # --- steps of a load ---
 
     def start_battle(self, p1: str, p2: str) -> None:
-        b0 = self.booth(self.status()).get("battle", 0)
-        self.cmd(f"launch {self.args.target} {p1} {p2} {self.args.stage} 1 inf")
+        for attempt in (1, 2):
+            b0 = self.booth(self.status()).get("battle", 0)
+            self.cmd(f"launch {self.args.target} {p1} {p2} {self.args.stage} 1 inf")
 
-        def settled(s: dict) -> bool:
-            launch = s.get("launch") or {}
-            loaded = launch.get("loaded") and self.booth(s).get("battle", 0) != b0
-            return bool(loaded or launch.get("failure") or launch.get("state") == "failed")
+            def settled(s: dict) -> bool:
+                launch = s.get("launch") or {}
+                loaded = launch.get("loaded") and self.booth(s).get("battle", 0) != b0
+                return bool(loaded or launch.get("failure") or launch.get("state") == "failed")
 
-        status = self.wait_for(settled, LOADED_TIMEOUT_S, "the launch to load")
+            try:
+                status = self.wait_for(settled, self.args.load_stuck, "the launch to load")
+                break
+            except CaptureError:
+                # A load of the stage just left, while the game still unloads it, never
+                # finishes (laptop 2026-11-12, more often with several copies): this copy is
+                # started again and the load tried once more.
+                if attempt == 2:
+                    raise
+                self.log.say(f"copy {self.index}: the load of {p1} / {p2} is stuck; relaunching this copy and trying again")
+                self.boot()
         launch = status.get("launch") or {}
         if (launch.get("failure") or launch.get("state") == "failed") and not launch.get("loaded"):
             raise CaptureError(f"launch failed: {launch.get('failure') or 'no reason given'}")
@@ -705,6 +716,8 @@ def main(argv: list[str]) -> int:
     p.add_argument("--keep-raw", action="store_true", help="keep the raw grabs (about 30 MB a load) instead of deleting them once the masters exist")
     p.add_argument("--relaunch-every", type=int, default=200, help="restart a copy's game after this many loads")
     p.add_argument("--stagger", type=float, default=6.0, help="seconds between copy starts")
+    p.add_argument("--load-stuck", type=float, default=25.0,
+                   help="seconds a launch may take to load before the copy is relaunched and the load tried again (a load takes 2-7 s)")
     p.add_argument("--menu-settle", type=float, default=4.0,
                    help="seconds on the main menu after a leave before the next launch (default 4: less hangs the next load of the same stage)")
     p.add_argument("--show-hud", action="store_true", help="leave the HUD on screen (by default `booth hudhide on` hides it for every grab)")
