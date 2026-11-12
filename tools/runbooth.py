@@ -545,11 +545,16 @@ class Copy:
             vs = min(side + 1, max(fighter["vs"], 1))
             vt = min(side + 1, max(fighter["vt"], 1))
             picks.append(f"{code}:{costume}:{colour}:{vs}:{vt}")
-        self.start_battle(picks[0], picks[1])
-        self.hold_at(cfg["start"])
-        self.wait_presents(SETTLE_PRESENTS)
         raw_root = self.store / "raw" / f"loadout-{code}"
-        for side in sorted({t[0] for t in todo}):
+        for n_side, side in enumerate(sorted({t[0] for t in todo})):
+            # A battle per side: the other side's actor is hidden for good (showing a hidden side
+            # again would show a partner the game keeps hidden, R. Mika's).
+            if n_side:
+                self.cmd("booth leave")
+                self.to_menu()
+            self.start_battle(picks[0], picks[1])
+            self.hold_at(cfg["start"])
+            self.wait_presents(SETTLE_PRESENTS)
             self.hide(side != 0, side != 1)  # the opponent's whole actor away
             steps = [t for t in todo if t[0] == side]
             steps.sort(key=lambda t: t[1] != "vs")  # V-Skill first, then V-Trigger
