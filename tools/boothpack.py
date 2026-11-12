@@ -981,8 +981,10 @@ def check_masters(store: Path, space: dict, out: Path, unchecked: bool, quaranti
                                                  "stage": meta.get("stage", "")}))
                     counts["set aside"] += 1
                 if why:
-                    redo.append(f"{code}:{costume}:{colour}")
                     print(f"{code}:{costume}:{colour}  " + "; ".join(why))
+                    # Set aside as untextured: capturing it again on this copy draws it the same.
+                    if not (quarantine and any(w.startswith("untextured") for w in why)):
+                        redo.append(f"{code}:{costume}:{colour}")
     if log_lines:
         with open(store / "capture-log.jsonl", "a", encoding="utf-8") as f:
             f.write("".join(line + chr(10) for line in log_lines))
