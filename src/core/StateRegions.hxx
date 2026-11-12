@@ -70,7 +70,14 @@ using AddressTest = bool (*)(uint64_t value);
 class StateLayout {
 public:
 	void Clear();
-	void SetAddressTest(AddressTest test) { addressTest_ = test; }
+	// `mapped` (optional): the value is an address of this process's memory
+	// (committed), asked only where two overlapping 8-byte windows both pass
+	// `test` (AddressAt).
+	void SetAddressTest(AddressTest test, AddressTest mapped = nullptr)
+	{
+		addressTest_ = test;
+		addressMapped_ = mapped;
+	}
 	size_t Add(std::string name, void* ptr, size_t size, bool checked = true);
 	// Marks the 8-byte word holding `offset` in region `region` as not hashed.
 	void IgnoreWord(size_t region, size_t offset);
@@ -146,12 +153,19 @@ private:
 	struct AddressScan {
 		size_t next = 0;     // the next 4-byte boundary to test
 		size_t zeroedTo = 0; // the end of the last address found, which may lie past its window
+		uintptr_t base = 0;  // the region's real address
 	};
-	void ZeroAddresses(uint8_t* window, size_t at, size_t n, AddressScan& scan) const;
+	// Tests the 8-byte windows that start in [at, at + chunk) of a window of
+	// `read` region bytes from `at`, zeroing each address.
+	void ZeroAddresses(uint8_t* window, size_t at, size_t chunk, size_t read, AddressScan& scan) const;
+	// The 8-byte window at `word` (real address `address`, `after` readable
+	// bytes past its end) holds an address (see the .cxx).
+	bool AddressAt(const uint8_t* word, uintptr_t address, size_t after) const;
 
 	std::vector<StateRegion> regions_;
 	size_t totalSize_ = 0;
 	AddressTest addressTest_ = nullptr;
+	AddressTest addressMapped_ = nullptr;
 	mutable Costs costs_; // TakeCosts; the game thread's
 };
 

@@ -315,6 +315,67 @@ misprediction changed (F5's copy 1: 22 in some 11,000 updates). Closing them exa
 pose evaluated for the replayed state, which the component tick cannot give safely (above);
 the count in the `sockets:` lines is the measure of the risk left.
 
+## A pointer's high half in the hash (2026-11-12, S6b)
+
+**What the run showed.** A plain room run (RYU against CNL, a watcher, 30 ms lag; the first
+battle of the run) desynced at checkpoint 60 with no rollback, and the start agreement had
+seen it at frame 0: P2's start state differed from P1's in one region,
+`CharaUnit[1].CharaActionPart->0x3EC8+0x30`, with "4 differing left as they are (addresses,
+masked words)" and the hash still apart after the repair. At 60, `diffstate.py` named the same
+region alone: run +0x10 and +0x50 `a 0000013d00000000 b 0000000000000000`.
+
+**The fields** (IDA: SetScript rva 0x307840, SetScriptFrame rva 0x3099E0; the timeline object
+from +0x30). Run +0x10 is the object's +0x40, **the script header pointer** (into the loaded
+script data, looked up by rva 0x2E9110), and run +0x50 (+0x80) holds the same pointer again.
++0x48 the script number, +0x4C the frame and +0x50 the frame before it (16.16), +0x54..+0x60
+the end, the attack frames and the interrupt, +0x6C the phase bits; +0x70, +0x74 and +0x78 are
+cleared by SetScript, +0x74 set to 1 (16 with its flag). The words at run +0x38..+0x48 that
+changed between P2's frame 0 and frame 60 are those phase bits and flags moving with the
+script; at 60 they equal P1's and the watcher's.
+
+**The cause.** The three copies' pointers are their own heap addresses: P2 0x0000013D000042D0,
+P1 0x00000217806F42D0, the watcher 0x000001E5AF0F42D0; every other word of the region is
+equal. The hash zeroes addresses by testing 8-byte windows every 4 bytes and resuming after
+each address it zeroes. P2's script data lies just past a 4 GB boundary (0x13D00000000), so
+the pointer's low half is small, and the window 4 bytes before it, a zero dword then
+0x000042D0, reads 0x000042D000000000: an address to the value test. Zeroing that window and
+resuming 4 bytes later left the pointer's high half, 0x13D, in P2's hash; P1's window there
+reads 0x806F42D000000000, no address, so its pointer was zeroed whole. Nothing of the fight
+differed (the only other difference at 60, `inputunit.counters` +0xA4, is the sync clock the
+peers' hash already leaves out), and nothing is stale from an earlier battle: it is the hash's
+reading of one heap layout. A block placed at a 4 GB boundary gives every pointer into its
+first 32 KB a small low half, so a process whose heap lays out that way meets it again and
+again; the earlier action-part and timeline desyncs (section 56) are worth re-reading with
+the new masking once the friend's files arrive.
+
+**The fix** (`StateLayout::AddressAt`, used by the hash's scan and by `AddressUnits`, the start
+agreement's view of addresses). Where a window 4 bytes off an 8-byte boundary of the real
+address and the aligned window right after it both pass the value test, the layout asks a
+second test, whether each is an address of this process's committed memory (the mod passes
+`VirtualQuery` as `CommittedAddress`), and the mapped one is the address. Both or neither, or
+no second test: the first window, as before, so a pointer packed 4 bytes off a boundary and
+followed by a small value is still zeroed whole. The second test runs only on such overlaps,
+which are rare. The scan now tests only windows that start in the chunk it is reading and
+reads 11 bytes past the chunk (was 7), so the aligned window after any tested window is always
+there. A real pointer is mapped in its own process and the bogus window (an address above
+64 TB here) in none, so every copy now zeroes the same bytes. Zeroing the pointer at bind
+instead is not possible: the fight reads the script header through it.
+
+`tools/diffstate.py` and `tools/stateregion.py --against` mask the same way; for a file of
+another process they stand in "within 64 GB of one of its regions, or in the game's image" for
+the committed-memory test. With it, S6b's P2 and P1 states at 60 differ in no named fight
+region. `tools/stateregion.py` now runs under `python -I`.
+
+*Tests* (`StateRegionsTests`): the S6b pointers hash equal, and `AddressUnits` marks the
+pointer's two dwords and not the window before it; without the second test the old reading
+(the copies apart); a pointer packed 4 bytes off a boundary with a small value after it is
+still zeroed when it is the mapped one, the value after it still counts, and with neither
+mapped the first window is taken as before.
+
+**To run:** the S6b room run again (`runroom.ps1 -rematches 1 -padAnswers -skipAfter 90 -lag 30
+-watchers 1`, RYU against CNL): the start agreement reports the same start state on all three
+copies, and every checkpoint compares equal.
+
 ## Ranked hypotheses
 
 1. **Projectiles placed at a socket on a replayed tick: shown by D5, fixed above** (3360 and

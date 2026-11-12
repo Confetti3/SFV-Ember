@@ -45,13 +45,42 @@ def looks_like_address(v: int) -> bool:
     return (1 << 40) <= v <= 0x00007FFFFFFFFFFF and v & 3 == 0
 
 
-def masked(address: int, b: bytes) -> bytearray:
-    """The state hash's masking: 8 bytes at each 4-byte-aligned address word
-    (not tested 4 bytes into one it found)."""
+# How near one of a file's own regions an address must be for masked() to
+# count it as that process's memory (its heap), standing in for the mod's
+# committed-memory test, which a file cannot answer for another process.
+NEAR = 64 << 30
+
+
+def mapped_test(regions) -> "callable":
+    """The tie-break masked() uses for one file: near one of its regions, or
+    inside the game's image (found from the global random generator)."""
+    addresses = sorted(a for _, a, _, _ in regions)
+    image = next((a - 0x3966538 - 8 for _, a, _, n in regions if n == "global.rng"), None)
+
+    def mapped(v: int) -> bool:
+        if image is not None and image <= v < image + 0x6000000:
+            return True
+        return any(abs(v - a) < NEAR for a in addresses)
+
+    return mapped
+
+
+def masked(address: int, b: bytes, mapped=None) -> bytearray:
+    """The state hash's masking (StateLayout::ZeroAddresses and AddressAt): 8
+    bytes at each 4-byte-aligned address word, not tested 4 bytes into one it
+    found; where a window 4 bytes off an 8-byte boundary and the aligned one
+    after it both look like addresses, the one `mapped` says is memory wins
+    (else the first)."""
     m = bytearray(b)
     off = (4 - (address & 3)) & 3
     while off + 8 <= len(b):
-        if looks_like_address(int.from_bytes(b[off:off + 8], "little")):
+        value = int.from_bytes(b[off:off + 8], "little")
+        address_here = looks_like_address(value)
+        if address_here and mapped and (address + off) & 7 == 4 and off + 12 <= len(b):
+            aligned = int.from_bytes(b[off + 4:off + 12], "little")
+            if looks_like_address(aligned) and mapped(aligned) and not mapped(value):
+                address_here = False
+        if address_here:
             m[off:off + 8] = bytes(8)
             off += 4
         off += 4
@@ -77,8 +106,10 @@ def show(label: str, ba: bytes, bb: bytes, words: int) -> bool:
 
 
 def main(pa: str, pb: str) -> None:
-    ra = [(s, a, masked(a, b), n) for s, a, b, n in read(pa)]
-    rb = [(s, a, masked(a, b), n) for s, a, b, n in read(pb)]
+    raw_a, raw_b = read(pa), read(pb)
+    mapped_a, mapped_b = mapped_test(raw_a), mapped_test(raw_b)
+    ra = [(s, a, masked(a, b, mapped_a), n) for s, a, b, n in raw_a]
+    rb = [(s, a, masked(a, b, mapped_b), n) for s, a, b, n in raw_b]
     differing = 0
     if all(r[3] for r in ra) and all(r[3] for r in rb):
         # Two state files: the same names, compared as such.

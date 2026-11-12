@@ -26,11 +26,15 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import re
 import struct
 import sys
 
-import diffstate
+# diffstate.py lies beside this script; `python -I` leaves the script's
+# folder out of the import path.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import diffstate  # noqa: E402
 
 # SfvBattleLayouts.hxx: rng::kGlobal (the global generator object) and
 # rng::kState (its uint32 state, the region the layout registers).
@@ -200,7 +204,8 @@ def show_against(regions, other, name: str) -> None:
         sys.exit(f"{name!r} is not in both files")
     _, addr_a, a, _ = mine[name]
     _, addr_b, b, _ = theirs[name]
-    ma, mb = diffstate.masked(addr_a, a), diffstate.masked(addr_b, b)
+    ma = diffstate.masked(addr_a, a, diffstate.mapped_test(regions))
+    mb = diffstate.masked(addr_b, b, diffstate.mapped_test(other))
     image_a, image_b = image_base(regions), image_base(other)
     start, fields = owner_fields(name)
     count = 0
