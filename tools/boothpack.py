@@ -54,6 +54,7 @@ COLOUR_DIFF_THRESHOLD = 10  # per-channel difference between grab A and grab B
 DEPTH_DIFF_EPS = 1e-5       # depth difference between the two grabs
 MIN_MASK_FRACTION = 0.0005  # a side's cutout smaller than this share of the frame is a failure
 MAX_MASK_FRACTION = 0.5
+SPLIT_TOUCH_SHARE = 0.04    # fighters touching across fewer rows than this share are cut apart there
 
 PART_NAMES = {"vs": "vskill", "vt": "vtrigger"}
 
@@ -275,7 +276,13 @@ def split_sides(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
                 best = (run_start, x)
             run_start = None
     if best is None:
-        raise BoothError("the two fighters touch in the mask (no empty column between them)")
+        # They touch (a foot, a fist): the emptiest column of the central half, when hardly
+        # anything crosses it (SPLIT_TOUCH_SHARE of the frame's height).
+        counts = mask[:, lo:hi].sum(axis=0)
+        x = int(np.argmin(counts))
+        if counts[x] > SPLIT_TOUCH_SHARE * h:
+            raise BoothError("the two fighters touch in the mask (no empty column between them)")
+        best = (lo + x, lo + x + 1)
     cut = (best[0] + best[1]) // 2
     left, right = mask.copy(), mask.copy()
     left[:, cut:] = False

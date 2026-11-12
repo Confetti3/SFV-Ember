@@ -318,6 +318,10 @@ class Copy:
                     time.sleep(self.args.stagger)
                 lib.boot_to_menu(self.index, timeout=BOOT_TIMEOUT_S, bring_to_front=False)
                 self.since_boot = 0
+                if not self.args.show_hud:
+                    # The game's own switch for its HUD (each HUD part's movies hidden, as a
+                    # cinematic hides them): kept by the mod for every battle from now on.
+                    self.cmd("booth hudhide on")
                 return
             except (lib.SfveError, TimeoutError, OSError) as e:
                 last = e
@@ -381,6 +385,23 @@ class Copy:
                 break
             if "not known yet" not in reply and "did not answer" not in reply or time.monotonic() > deadline:
                 raise CaptureError(f"booth scale: {reply[:200]}")
+            time.sleep(0.5)
+        self.wait_presents(SETTLE_PRESENTS)
+
+    def hide(self, p1: bool, p2: bool) -> None:
+        """Hides (or shows) each side's whole fighter actor (`booth hide`): meshes, cloth and
+        shadow, where a scale to 0.001 leaves the cloth on the floor. A mod without the command
+        falls back to the scale."""
+        deadline = time.monotonic() + 15.0
+        while True:
+            reply = self.cmd_raw(f"booth hide {int(p1)} {int(p2)}")
+            if reply.startswith("ok"):
+                break
+            if "no booth command" in reply:
+                self.scale(0.001 if p1 else 1.0, 0.001 if p2 else 1.0)
+                return
+            if "not known yet" not in reply and "did not answer" not in reply or time.monotonic() > deadline:
+                raise CaptureError(f"booth hide: {reply[:200]}")
             time.sleep(0.5)
         self.wait_presents(SETTLE_PRESENTS)
 
@@ -453,11 +474,11 @@ class Copy:
         camera = self.camera_check()
         sides = [(0, p1), (1, p2)] if p2 else [(0, p1)]
         if len(sides) == 1:
-            self.scale(1.0, 0.001)  # the opponent out of the picture, so the mask is one fighter
+            self.hide(False, True)  # the opponent out of the picture, so the mask is one fighter
         a_path, b_path = raw / "a.bmp", raw / "b.bmp"
         frame = self.grab(a_path, True)
         depth_state = self.booth(self.status()).get("lastGrab", {}).get("depth", "")
-        self.scale(0.001, 0.001)
+        self.hide(True, True)  # the plate: the same frozen frame without the fighters
         self.grab(b_path, True)
         self.cmd("booth leave")
         meta = {"frame": frame, "stage": stage, "load": key, "camera": " ".join(camera), "depth": depth_state}
@@ -680,6 +701,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--keep-raw", action="store_true", help="keep the raw grabs (about 30 MB a load) instead of deleting them once the masters exist")
     p.add_argument("--relaunch-every", type=int, default=200, help="restart a copy's game after this many loads")
     p.add_argument("--stagger", type=float, default=6.0, help="seconds between copy starts")
+    p.add_argument("--show-hud", action="store_true", help="leave the HUD on screen (by default `booth hudhide on` hides it for every grab)")
     p.add_argument("--hud-hide", action="append", help='a `booth hud` argument ("<method> <number> [text]") sent after each load, to hide the HUD')
     p.add_argument("--game-option", action="append", help="extra game option for every copy")
     p.add_argument("--plan", action="store_true", help="print the worklist size and the time estimate; start nothing")
