@@ -258,6 +258,13 @@ std::optional<Command> ParseCommand(std::string_view args, std::string& error)
 		return c;
 	}
 	if (verb == "leave") return none(Verb::Leave);
+	if (verb == "hudhide") {
+		const std::string_view state = NextWord(rest);
+		if ((state != "on" && state != "off") || !OnlySpaces(rest)) return error = "usage: booth hudhide on|off", std::nullopt;
+		c.verb = Verb::HudHide;
+		c.on = state == "on";
+		return c;
+	}
 	return error = "no booth command \"" + std::string(verb) + "\"", std::nullopt;
 }
 
@@ -320,6 +327,7 @@ void BoothMode::Install()
 	// grab at Present (the overlay draws nothing here: no interface is set in
 	// this mode, overlay/Overlay.cxx's Draw), and the depth targets' counts.
 	SetFighterScaleAllowed(true);
+	InstallHudHide(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)));
 	overlay::SetPresentTap([](void* swapChain) { overlay::grab::OnPresent(swapChain); });
 	overlay::grab::InstallDepthProbe();
 	RegisterCommand("booth", [this](const std::string& args) { return Command(args); });
@@ -333,6 +341,7 @@ void BoothMode::NewBattle(SfvAdapter& adapter)
 	// A battle the booth did not leave (it ended its own way): the last
 	// battle's HUD movie is gone with it. One the booth left forgot it then.
 	if (battle_ != 0 && !leaveWanted_) ForgetHudMovie();
+	ForgetHudParts(); // the hidden switch stays: this battle's parts hide as they update
 	battle_ = adapter.Battle();
 	flow_ = adapter.FlowState();
 	fightFrame_ = -1;
@@ -363,6 +372,7 @@ void BoothMode::Frame(SfvAdapter& adapter)
 			if (!leaving_) {
 				ForgetFighterScale();
 				ForgetHudMovie();
+				ForgetHudParts();
 				leaving_ = LeaveBattle();
 				if (!leaving_) Log("booth: could not leave the battle yet (no scene manager); asking again next frame");
 			}
@@ -459,6 +469,16 @@ std::string BoothMode::Command(const std::string& args)
 			"hud");
 	}
 	case booth::Verb::HudLog: SetHudCallLog(c.on); return "ok";
+	case booth::Verb::HudHide: {
+		const bool hidden = c.on;
+		return AskGameThread(
+			[hidden] {
+				const int parts = SetHudHidden(hidden);
+				if (parts < 0) return std::string("error hudhide: the HUD parts' update is not hooked");
+				return "ok " + std::to_string(parts);
+			},
+			"hudhide");
+	}
 	case booth::Verb::Grab:
 		if (!overlay::grab::QueueGrab(c.grab, error)) return "error " + error;
 		return "ok";
@@ -476,7 +496,8 @@ std::string BoothMode::Describe() const
 		",\"fightFrame\":" + std::to_string(fightFrame_) + ",\"held\":" + (held_ ? "true" : "false") +
 		",\"holdAt\":" + std::to_string(holdAt_) + ",\"playing\":" + (steps_.empty() ? "false" : "true") +
 		",\"leaving\":" + (leaveWanted_ ? "true" : "false") + ",\"gauges\":" + (gauges_ ? "true" : "false") +
-		",\"hudMovie\":" + (HudMovieKnown() ? "true" : "false") + ",\"presents\":" + std::to_string(grab.presents) +
+		",\"hudMovie\":" + (HudMovieKnown() ? "true" : "false") + ",\"hudHidden\":" + (HudHidden() ? "true" : "false") +
+		",\"hudParts\":" + std::to_string(HudPartsKnown()) + ",\"presents\":" + std::to_string(grab.presents) +
 		",\"pending\":" + (grab.pending ? "true" : "false") + ",\"depthProbe\":" + (grab.depthProbe ? "true" : "false") +
 		",\"lastGrab\":";
 	if (grab.lastPath.empty()) return json + "null}";

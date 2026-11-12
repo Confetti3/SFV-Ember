@@ -484,6 +484,29 @@ constexpr CodeSite kColourSwatch{"ColourSwatch", 0x554750,
 // as the number. Nothing else calls these methods.
 constexpr CodeSite kHudInvoke{"HudInvoke", 0x73D600,
 	{0x48, 0x85, 0xC9, 0x74, 0x15, 0x48, 0x8B, 0x89, 0x18, 0x03, 0x00, 0x00, 0x48, 0x85, 0xC9, 0x74}};
+// How the battle shows and hides its HUD (the photo booth's `booth hudhide`,
+// HudText). void HudPartPostUpdate(HudBasePart*): each HUD part's
+// "HudBasePart PostUpdate" task (registered by rva 0x407DA0). It works out
+// whether the part is shown: its id (virtual +8) set in both of the two
+// masks at +0x18 of what rva 0x2F7730 returns for the part's +0xB0, and its
+// enabled flag at +0x108 set; when that differs from the part's last answer
+// (+0x10C, 1 shown) it gives each of the part's movies (a vector of movie
+// pointers at +0xC0..+0xC8) the new answer through MovieSetVisible on the
+// movie's player (+0x318), and keeps it at +0x10C. This is how the HUD
+// leaves the screen for a cinematic.
+constexpr CodeSite kHudPartPostUpdate{"HudPartPostUpdate", 0x41A910,
+	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0x01, 0x48, 0x8B, 0xF9}};
+// void MovieSetVisible(MoviePlayer*, bool visible): the player's +0x30 ->
+// its movie view -> that view's virtual +0x48 (Scaleform's SetVisible): a
+// hidden movie is not drawn. 13 bytes, then the padding.
+constexpr CodeSite kMovieSetVisible{"MovieSetVisible", 0xEEE8C0,
+	{0x48, 0x8B, 0x41, 0x30, 0x48, 0x8B, 0x08, 0x48, 0x8B, 0x01, 0x48, 0xFF, 0x60, 0x48, 0xCC, 0xCC}};
+namespace hudpart {
+constexpr uint32_t kMoviesBegin = 0xC0; // HudMovie** (std::vector)
+constexpr uint32_t kMoviesEnd = 0xC8;
+constexpr uint32_t kShown = 0x10C;      // int: 1 while the part is shown
+constexpr uint32_t kMoviePlayer = 0x318; // HudMovie: its player, as kHudInvoke reads it
+} // namespace hudpart
 
 // What the game lets this copy's player pick (GameContent). The menus and
 // the battle jump's check (rva 0x5E2D10) ask the battle setup data asset
@@ -573,7 +596,8 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kSpecData, kMainMenuClass,
 	kSetPlayerParam, kRequestExit, kStageName, kSpecReady, kFindSpecFighter, kFindSpecFighterStep, kFindSpecCostume,
 	kFindSpecCostumeStep, kFindSpecColour, kFindSpecColourStep, kCostumeName, kTextToString, kCreateText,
-	kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke, kBattleSetupClass, kOwnedFighters, kOwnedCostumes,
+	kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke, kHudPartPostUpdate, kMovieSetVisible, kBattleSetupClass,
+	kOwnedFighters, kOwnedCostumes,
 	kOwnedColours, kLoggedIn, kVersionDataClass, kSystemSave, kCharaVoiceLanguage,
 	// The spec's code cache and its grant pass (EntitlementGrant).
 	kSpecGrantPass, kSpecGrantWrite, kSpecCodesBucketCount, kSpecCodesBuckets, kSpecCodesPairs, kSpecCodesNext,

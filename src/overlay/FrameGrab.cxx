@@ -177,6 +177,12 @@ constexpr int kOMSetRenderTargetsAndUavsSlot = 34;
 constexpr int kDrawAutoSlot = 38;
 constexpr int kDrawIndexedInstancedIndirectSlot = 39;
 constexpr int kDrawInstancedIndirectSlot = 40;
+// ... Dispatch 41, DispatchIndirect 42, RSSetState 43, RSSetViewports 44,
+// RSSetScissorRects 45, CopySubresourceRegion 46, CopyResource 47,
+// UpdateSubresource 48, CopyStructureCount 49, ClearRenderTargetView 50,
+// ClearUnorderedAccessViewUint 51, ClearUnorderedAccessViewFloat 52,
+// ClearDepthStencilView 53.
+constexpr int kClearDepthStencilViewSlot = 53;
 
 // Depth targets counted in one frame: past this many, the rest are not.
 constexpr size_t kMaxTargets = 64;
@@ -226,24 +232,23 @@ std::vector<DepthCandidate> Infos(const std::vector<Tracked>& targets)
 	return out;
 }
 
-void NoteDepthTarget(ID3D11DepthStencilView* view)
+std::uint32_t s_drawNumber = 0; // the frame's draws so far (under s_depthMutex)
+
+// Under s_depthMutex: the frame's target for `view`'s texture, added at its
+// first use; -1 for none (no view, not a 2D texture, or the list is full).
+int TargetOf(ID3D11DepthStencilView* view)
 {
-	std::lock_guard lock(s_depthMutex);
-	s_bound = -1;
-	if (!view) return;
+	if (!view) return -1;
 	ComPtr<ID3D11Resource> resource;
 	view->GetResource(&resource);
-	if (!resource) return;
+	if (!resource) return -1;
 	for (size_t i = 0; i < s_frame.size(); i++) {
-		if (s_frame[i].texture.Get() == resource.Get()) {
-			s_bound = (int)i;
-			return;
-		}
+		if (s_frame[i].texture.Get() == resource.Get()) return (int)i;
 	}
 	// QueryInterface rather than a cast: a view of a 1D or 3D texture (none
 	// is expected) is not counted.
 	Tracked t;
-	if (s_frame.size() >= kMaxTargets || FAILED(resource.As(&t.texture))) return;
+	if (s_frame.size() >= kMaxTargets || FAILED(resource.As(&t.texture))) return -1;
 	D3D11_TEXTURE2D_DESC desc{};
 	t.texture->GetDesc(&desc);
 	t.format = desc.Format;
@@ -252,15 +257,44 @@ void NoteDepthTarget(ID3D11DepthStencilView* view)
 	t.info.width = (int)desc.Width;
 	t.info.height = (int)desc.Height;
 	t.info.samples = (int)desc.SampleDesc.Count;
+	t.info.id = (std::uint64_t)(uintptr_t)t.texture.Get();
 	s_frame.push_back(std::move(t));
-	s_bound = (int)s_frame.size() - 1;
+	return (int)s_frame.size() - 1;
+}
+
+void NoteDepthTarget(ID3D11DepthStencilView* view)
+{
+	std::lock_guard lock(s_depthMutex);
+	s_bound = TargetOf(view);
 }
 
 void CountDraw(ID3D11DeviceContext* context)
 {
 	if (context != s_immediate.load()) return;
 	std::lock_guard lock(s_depthMutex);
-	if (s_bound >= 0) s_frame[(size_t)s_bound].info.draws++;
+	++s_drawNumber;
+	if (s_bound < 0) return;
+	DepthCandidate& info = s_frame[(size_t)s_bound].info;
+	if (!info.draws++) info.firstDraw = s_drawNumber;
+	info.lastDraw = s_drawNumber;
+}
+
+using ClearDepthStencilViewFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11DepthStencilView*, UINT, FLOAT, UINT8);
+ClearDepthStencilViewFn o_clearDepthStencilView;
+
+void STDMETHODCALLTYPE h_ClearDepthStencilView(ID3D11DeviceContext* context, ID3D11DepthStencilView* view, UINT flags,
+	FLOAT depth, UINT8 stencil)
+{
+	if (context == s_immediate.load()) {
+		std::lock_guard lock(s_depthMutex);
+		const int target = TargetOf(view);
+		if (target >= 0) {
+			DepthCandidate& info = s_frame[(size_t)target].info;
+			info.clears++;
+			if (flags & D3D11_CLEAR_DEPTH) info.clearDepth = depth;
+		}
+	}
+	o_clearDepthStencilView(context, view, flags, depth, stencil);
 }
 
 void STDMETHODCALLTYPE h_OMSetRenderTargets(ID3D11DeviceContext* context, UINT count, ID3D11RenderTargetView* const* views,
@@ -329,10 +363,12 @@ std::vector<Tracked> FinishDepthFrame()
 	std::lock_guard lock(s_depthMutex);
 	s_last = std::move(s_frame);
 	s_frame.clear();
+	s_drawNumber = 0;
 	if (s_bound >= 0) {
 		Tracked kept = s_last[(size_t)s_bound];
-		kept.info.index = 0;
-		kept.info.draws = 0;
+		const std::uint64_t id = kept.info.id;
+		kept.info = DepthCandidate{0, kept.info.format, kept.info.width, kept.info.height, kept.info.samples};
+		kept.info.id = id;
 		s_frame.push_back(std::move(kept));
 		s_bound = 0;
 	}
@@ -430,7 +466,28 @@ struct Taken {
 	unsigned depthFormat = 0;
 	int depthIndex = -1;
 	std::vector<DepthCandidate> targets;
+	// depth=all: every target that could be read, by its index.
+	struct Extra {
+		int index = -1;
+		unsigned format = 0;
+		Readback texels;
+	};
+	std::vector<Extra> all;
 };
+
+// Writes one depth readback as <path><suffix>: one uint32 per texel; the
+// values' kind, or empty when the format cannot be read.
+std::string WriteDepthWords(const std::string& path, const Readback& texels, unsigned format, std::string& error)
+{
+	std::vector<std::uint32_t> words;
+	std::string kind;
+	if (!DepthWords(texels.bytes.data(), texels.width, texels.height, texels.rowPitch, DepthFamily(format), words, kind)) {
+		error = "the depth target's format " + FormatText(format) + " cannot be read";
+		return {};
+	}
+	error = WriteFileBytes(path, words.data(), words.size() * sizeof(std::uint32_t));
+	return error.empty() ? kind : std::string();
+}
 
 void Finish(const Taken& taken, const std::string& error, const std::string& depth)
 {
@@ -455,21 +512,27 @@ void WriteGrab(const Taken& taken)
 	}
 	std::string depth = taken.depthNote;
 	if (error.empty() && depth.empty()) {
-		std::vector<std::uint32_t> words;
-		std::string kind;
-		if (!DepthWords(taken.depth.bytes.data(), taken.depth.width, taken.depth.height, taken.depth.rowPitch,
-				DepthFamily(taken.depthFormat), words, kind)) {
-			depth = "the depth target's format " + FormatText(taken.depthFormat) + " cannot be read";
-		} else {
-			depth = WriteFileBytes(taken.request.path + ".depth", words.data(), words.size() * sizeof(std::uint32_t));
+		const std::string kind = WriteDepthWords(taken.request.path + ".depth", taken.depth, taken.depthFormat, depth);
+		// depth=all: every other target beside it, <path>.depth.<index>.
+		std::string all = "[";
+		for (const Taken::Extra& extra : taken.all) {
+			std::string why;
+			const std::string extraKind =
+				WriteDepthWords(taken.request.path + ".depth." + std::to_string(extra.index), extra.texels, extra.format, why);
+			all += (all.size() > 1 ? ",{" : "{") + std::string("\"index\":") + std::to_string(extra.index) +
+				",\"width\":" + std::to_string(extra.texels.width) + ",\"height\":" + std::to_string(extra.texels.height) +
+				",\"format\":" + mod::JsonString(FormatText(extra.format)) + ",\"values\":" + mod::JsonString(extraKind) +
+				",\"error\":" + mod::JsonString(why) + "}";
 		}
+		all += "]";
 		if (depth.empty()) {
 			const std::string json = "{\"width\":" + std::to_string(taken.depth.width) + ",\"height\":" +
 				std::to_string(taken.depth.height) + ",\"format\":" + mod::JsonString(FormatText(taken.depthFormat)) +
 				",\"values\":" + mod::JsonString(kind) + ",\"rowPitch\":" + std::to_string(taken.depth.width * 4) +
 				",\"present\":" + std::to_string(taken.present) + ",\"index\":" + std::to_string(taken.depthIndex) +
 				",\"colour\":{\"width\":" + std::to_string(taken.colour.width) + ",\"height\":" +
-				std::to_string(taken.colour.height) + "},\"depthTargets\":" + DepthTargetsJson(taken.targets) + "}";
+				std::to_string(taken.colour.height) + "},\"depthTargets\":" + DepthTargetsJson(taken.targets) +
+				",\"all\":" + all + "}";
 			depth = WriteFileBytes(taken.request.path + ".json", json.data(), json.size());
 		}
 		if (depth.empty()) depth = "ok";
@@ -517,6 +580,18 @@ void Take(IDXGISwapChain* swap, Request request, std::uint64_t present, const st
 					if (!why.empty()) taken->depthNote = "the depth target: " + why;
 				}
 			}
+			if (choice.mode == DepthMode::All && taken->depthNote.empty()) {
+				for (size_t i = 0; i < frame.size(); i++) {
+					const DXGI_FORMAT family = DepthFamily(frame[i].format);
+					if (family == DXGI_FORMAT_UNKNOWN) continue;
+					std::string why;
+					Taken::Extra extra;
+					extra.index = (int)i;
+					extra.format = frame[i].format;
+					extra.texels = ReadTexture(frame[i].texture.Get(), family, DepthTexelBytes(family), why);
+					if (why.empty()) taken->all.push_back(std::move(extra));
+				}
+			}
 		}
 	}
 	// The files are written away from the render thread.
@@ -529,6 +604,7 @@ bool ParseDepthChoice(const std::string& text, DepthChoice& choice)
 {
 	if (text == "auto") return choice = DepthChoice{DepthMode::Auto, 0}, true;
 	if (text == "off") return choice = DepthChoice{DepthMode::Off, 0}, true;
+	if (text == "all") return choice = DepthChoice{DepthMode::All, 0}, true;
 	int index = 0;
 	const char* end = text.data() + text.size();
 	if (text.empty() || text.size() > 4 || text[0] == '-' || text[0] == '+') return false;
@@ -622,7 +698,8 @@ int ChooseDepthTarget(const std::vector<DepthCandidate>& candidates, const Depth
 	switch (choice.mode) {
 	case DepthMode::Off: return -1;
 	case DepthMode::Index: return choice.index >= 0 && (size_t)choice.index < candidates.size() ? choice.index : -1;
-	case DepthMode::Auto: break;
+	case DepthMode::Auto:
+	case DepthMode::All: break;
 	}
 	const auto best = [&](bool sized) {
 		int found = -1;
@@ -645,7 +722,10 @@ std::string DepthTargetsJson(const std::vector<DepthCandidate>& candidates)
 		const DepthCandidate& c = candidates[i];
 		json += (i ? ",{" : "{") + std::string("\"index\":") + std::to_string(c.index) + ",\"format\":" + mod::JsonString(c.format) +
 			",\"width\":" + std::to_string(c.width) + ",\"height\":" + std::to_string(c.height) +
-			",\"samples\":" + std::to_string(c.samples) + ",\"draws\":" + std::to_string(c.draws) + "}";
+			",\"samples\":" + std::to_string(c.samples) + ",\"draws\":" + std::to_string(c.draws) +
+			",\"id\":" + std::to_string(c.id) + ",\"firstDraw\":" + std::to_string(c.firstDraw) +
+			",\"lastDraw\":" + std::to_string(c.lastDraw) + ",\"clears\":" + std::to_string(c.clears) +
+			",\"clearDepth\":" + std::to_string(c.clearDepth) + "}";
 	}
 	return json + "]}";
 }
@@ -757,6 +837,8 @@ bool InstallDepthProbe()
 			(void*)&h_DrawIndexedInstancedIndirect, (void**)&o_drawIndexedInstancedIndirect},
 		{"ID3D11DeviceContext::DrawInstancedIndirect", kDrawInstancedIndirectSlot, (void*)&h_DrawInstancedIndirect,
 			(void**)&o_drawInstancedIndirect},
+		{"ID3D11DeviceContext::ClearDepthStencilView", kClearDepthStencilViewSlot, (void*)&h_ClearDepthStencilView,
+			(void**)&o_clearDepthStencilView},
 	};
 	// Two slots sharing one function could not both be hooked, and the set
 	// would fail: the set refuses that instead, with the slots named.

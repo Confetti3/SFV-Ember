@@ -40,14 +40,17 @@ namespace sfve::overlay::grab {
 enum class PixelFormat { Unsupported, R8G8B8A8, B8G8R8A8, R10G10B10A2 };
 
 // Which depth target a grab copies.
-enum class DepthMode { Auto, Index, Off };
+// All: the chosen target (as Auto) to <path>.depth as usual, and every
+// target of the frame to <path>.depth.<index>, for finding which is the
+// scene's (development: the booth pilot).
+enum class DepthMode { Auto, Index, Off, All };
 struct DepthChoice {
 	DepthMode mode = DepthMode::Auto;
 	int index = 0; // Index's target, from 0 by first use in the frame
 };
 
-// "auto", "off", or a number from 0: the booth command's `depth=` value. False
-// (and `choice` untouched) for any other text.
+// "auto", "off", "all", or a number from 0: the booth command's `depth=`
+// value. False (and `choice` untouched) for any other text.
 bool ParseDepthChoice(const std::string& text, DepthChoice& choice);
 
 // Pure. The layout a DXGI_FORMAT (its number) is encoded from: the 8-bit
@@ -66,6 +69,18 @@ struct DepthCandidate {
 	int height = 0;
 	int samples = 1;
 	std::uint32_t draws = 0;
+	// The texture's address, the same from frame to frame while the game
+	// keeps the texture: what pairs one grab's targets with another's when
+	// the order of first use differs.
+	std::uint64_t id = 0;
+	// The frame's draws are numbered from 1 in order: the first and the last
+	// one made into this target (0: none).
+	std::uint32_t firstDraw = 0;
+	std::uint32_t lastDraw = 0;
+	// ClearDepthStencilView calls on it in the frame, and the depth the last
+	// one cleared to (-1: none cleared the depth); 0 for a reversed-Z far.
+	std::uint32_t clears = 0;
+	float clearDepth = -1.0f;
 };
 
 // Pure. The candidate a grab's depth choice takes, by its index in

@@ -8,10 +8,12 @@
 
 #include "mod/BoothMode.hxx"
 #include "mod/GameInput.hxx"
+#include "mod/SfvOffsets.hxx"
 #include "overlay/FrameGrab.hxx"
 
 #include <dxgiformat.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <optional>
@@ -147,6 +149,11 @@ TEST_CASE("booth commands as the protocol writes them")
 	CHECK(c->on);
 	REQUIRE((c = Parse("hudlog off")));
 	CHECK_FALSE(c->on);
+	REQUIRE((c = Parse("hudhide on")));
+	CHECK(c->verb == booth::Verb::HudHide);
+	CHECK(c->on);
+	REQUIRE((c = Parse("hudhide off")));
+	CHECK_FALSE(c->on);
 	REQUIRE((c = Parse("hud SetVisiblePlayerInfo 0")));
 	CHECK(c->verb == booth::Verb::Hud);
 	CHECK(c->method == "SetVisiblePlayerInfo");
@@ -190,7 +197,7 @@ TEST_CASE("a malformed booth command is refused with a reason")
 	for (const char* bad : {"", "   ", "freeze 3", "Hold 3", "hold", "hold -1", "hold x", "hold 3 4", "hold 1.5", "run 0", "run",
 			 "play 2 MP", "play 0", "play 0 MP extra", "play x MP", "scale 1", "scale 0 1", "scale -1 1", "scale 1 inf",
 			 "scale nan 1", "scale 1 1 1", "depth now", "leave now", "hudlog", "hudlog yes", "hud", "hud SetWins",
-			 "hud SetWins x", "hud Set-Wins 1", "hud SetWins nan"}) {
+			 "hud SetWins x", "hud Set-Wins 1", "hud SetWins nan", "hudhide", "hudhide 1", "hudhide on off"}) {
 		CAPTURE(bad);
 		CHECK_FALSE(Parse(bad));
 	}
@@ -203,6 +210,8 @@ TEST_CASE("a depth choice is auto, off or a target's number")
 	CHECK(choice.mode == grab::DepthMode::Auto);
 	CHECK(grab::ParseDepthChoice("off", choice));
 	CHECK(choice.mode == grab::DepthMode::Off);
+	CHECK(grab::ParseDepthChoice("all", choice));
+	CHECK(choice.mode == grab::DepthMode::All);
 	CHECK(grab::ParseDepthChoice("0", choice));
 	CHECK(choice.mode == grab::DepthMode::Index);
 	CHECK(choice.index == 0);
@@ -321,7 +330,7 @@ TEST_CASE("the depth target a grab copies")
 
 	const std::string json = grab::DepthTargetsJson({Candidate(0, 1920, 1080, 123)});
 	CHECK(json == "{\"targets\":[{\"index\":0,\"format\":\"R24G8_TYPELESS\",\"width\":1920,\"height\":1080,\"samples\":1,"
-				  "\"draws\":123}]}");
+				  "\"draws\":123,\"id\":0,\"firstDraw\":0,\"lastDraw\":0,\"clears\":0,\"clearDepth\":-1.000000}]}");
 	CHECK(grab::DepthTargetsJson({}) == "{\"targets\":[]}");
 }
 
@@ -376,4 +385,15 @@ TEST_CASE("a grab needs a path, and one waits at a time")
 	CHECK_FALSE(grab::QueueGrab(request, error));
 	CHECK(error == "grab pending");
 	CHECK(grab::DepthReport() == "{\"targets\":[]}");
+}
+
+TEST_CASE("the HUD switch's sites are the ones the exe was read for, and in the build table")
+{
+	CHECK(sfv::kHudPartPostUpdate.rva == 0x41A910);
+	CHECK(sfv::kMovieSetVisible.rva == 0xEEE8C0);
+	CHECK(sfv::hudpart::kMoviePlayer == 0x318);
+	const GameBuild* build = sfv::VerifiedBuild();
+	for (const CodeSite* site : {&sfv::kHudPartPostUpdate, &sfv::kMovieSetVisible}) {
+		CHECK(std::any_of(build->sites, build->sites + build->siteCount, [site](const CodeSite& listed) { return listed.rva == site->rva; }));
+	}
 }
