@@ -44,6 +44,11 @@ enum class FighterPicture {
 	Tile,   // the select grid's slanted native tile, whole (CharaSelectIconLeft)
 	Large,  // the fighter's large HUD figure, whole (PartCharacter)
 };
+// Face and Tile are one game texture cut two ways: two pictures to the loader
+// (its key is the path and the cut), each loading the object by path, which
+// the game keeps once and returns again, and each taking its own reference
+// and view of the same Direct3D texture. Asking for both is harmless; only
+// Face reads the texture's alpha, once, to find the head's square.
 
 // Render thread. Not missing and no texture while it loads; missing when the
 // game has none.

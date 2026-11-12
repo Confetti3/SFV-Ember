@@ -26,6 +26,28 @@ TEST_CASE("a fighter's pictures are its HUD's, by the game's object path")
 	CHECK(ObjectPath(L"Chara", L"").empty());
 }
 
+TEST_CASE("the native tile and the large figure are whole HUD pictures of the fighter")
+{
+	// The select grid's slanted tile, as the game draws it: the same texture
+	// as the face, uncut (the face is its head's square).
+	const Spec tile = FighterTile("RYU");
+	CHECK(tile.path == L"/Game/Chara/RYU/Hud/CharaSelectIconLeft.CharaSelectIconLeft");
+	CHECK(tile.framing == Framing::Whole);
+	CHECK(tile.path == FighterFace("RYU").path);
+	// Cut differently, so SfvArt keeps them as two pictures of one texture.
+	CHECK(tile != FighterFace("RYU"));
+	// The large HUD figure, the pane's fallback where there is no cutout.
+	const Spec large = FighterLarge("RYU");
+	CHECK(large.path == L"/Game/Chara/RYU/Hud/PartCharacter.PartCharacter");
+	CHECK(large.framing == Framing::Whole);
+	CHECK(FighterLarge("Z29").path == L"/Game/Chara/Z29/Hud/PartCharacter.PartCharacter");
+	CHECK(large != tile);
+	CHECK(large != FighterBanner("RYU"));
+	// No code, nothing asked of the game.
+	CHECK(FighterTile("").path.empty());
+	CHECK(FighterLarge("").path.empty());
+}
+
 TEST_CASE("a stage's card is its large select icon, Random has its own, and the background cut to its shape stands in")
 {
 	const Spec s01 = StageCard("S01");

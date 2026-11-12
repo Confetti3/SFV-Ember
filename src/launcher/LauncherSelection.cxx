@@ -2,8 +2,10 @@
 // selection files (src/ember/SfvSelection.cxx), which read the running
 // game's textures and lists: outside the game there are none. The recovery
 // window draws Ember's own art (its ground and button prompts) and no
-// fighter; an update package may carry no selection files, as the mod's
-// definition says too.
+// fighter. The selection files an update package may carry are the mod's
+// rules (SfvSelectionAssetPath), the same library every program links.
+
+#include "ember/SfvSelectionAssetPath.hxx"
 
 #include "common/SelectionAssetPath.hxx"
 #include "ui/SelectionArt.hxx"
@@ -13,9 +15,9 @@
 
 namespace sf4e::selection {
 
-bool IsSelectionAssetPath(const std::wstring&)
+bool IsSelectionAssetPath(const std::wstring& path)
 {
-	return false;
+	return sfve::assets::IsSfvSelectionAssetPath(path);
 }
 
 } // namespace sf4e::selection
