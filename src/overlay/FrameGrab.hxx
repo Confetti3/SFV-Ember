@@ -50,6 +50,46 @@ struct DepthChoice {
 // (and `choice` untouched) for any other text.
 bool ParseDepthChoice(const std::string& text, DepthChoice& choice);
 
+// Pure. The layout a DXGI_FORMAT (its number) is encoded from: the 8-bit
+// RGBA and BGRA formats with their sRGB and typeless forms, and
+// R10G10B10A2 (UNORM, UINT, typeless); Unsupported for any other.
+PixelFormat PixelFormatOf(unsigned dxgiFormat);
+
+// One depth-stencil target as the probe counted it in a frame: `index` by
+// first use in the frame, its texture's DXGI format (by name: D32_FLOAT,
+// R24G8_TYPELESS...), size, sample count and the draws made while it was
+// bound.
+struct DepthCandidate {
+	int index = 0;
+	std::string format;
+	int width = 0;
+	int height = 0;
+	int samples = 1;
+	std::uint32_t draws = 0;
+};
+
+// Pure. The candidate a grab's depth choice takes, by its index in
+// `candidates`; -1 for none (Off, an index past the list, or no candidate
+// with a draw). Auto: the target with the most draws among those of the back
+// buffer's size (`backWidth` x `backHeight`), single-sampled; when none is,
+// the one with the most draws of all (a shadow map can have more draws than
+// the scene, so the size comes first). Ties go to the first used.
+int ChooseDepthTarget(const std::vector<DepthCandidate>& candidates, const DepthChoice& choice, int backWidth, int backHeight);
+
+// Pure. `{"targets":[...]}` for DepthReport and the depth sidecar.
+std::string DepthTargetsJson(const std::vector<DepthCandidate>& candidates);
+
+// Pure. A depth texture's texels (`pixels`, rows `rowPitch` bytes apart, of
+// the typeless or depth DXGI format `dxgiFormat`) as one 32-bit word per
+// texel, rows packed: R32 / D32_FLOAT as they are (float bits); R24G8 /
+// D24_UNORM_S8_UINT as they are (depth in the low 24 bits, stencil in the
+// top 8); R32G8X24 / D32_FLOAT_S8X24_UINT the float depth (the texel's first
+// 4 bytes); R16 / D16_UNORM zero-extended. `kind` names which ("float32",
+// "unorm24_stencil8", "unorm16"). False (nothing written) for any other
+// format, a size that is not positive or a pitch shorter than a row.
+bool DepthWords(const std::uint8_t* pixels, int width, int height, int rowPitch, unsigned dxgiFormat,
+	std::vector<std::uint32_t>& out, std::string& kind);
+
 // Pure. A 32-bit top-down BMP file (BITMAPV4HEADER, alpha kept) of a
 // `width` by `height` picture of `format` pixels whose rows are `rowPitch`
 // bytes apart. Empty for a size that is not positive, a pitch shorter than a
@@ -75,6 +115,10 @@ struct Status {
 	std::string lastPath;       // the last grab's BMP path ("" before the first)
 	bool lastOk = false;
 	std::string lastError;      // why the last grab failed ("" when it did not)
+	std::uint64_t lastPresent = 0; // the present the last grab was taken at
+	// The last grab's depth: "off" (not asked), "ok" (written), or why not.
+	std::string lastDepth;
+	bool depthProbe = false;    // InstallDepthProbe hooked the context
 };
 Status CurrentStatus();
 
