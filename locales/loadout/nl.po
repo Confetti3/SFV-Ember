@@ -1,0 +1,16 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: nl\n"
+
+#. Placeholder entry (step 0 stub): stream D replaces this file with all 180 notes.
+msgid "RYU.vs1"
+msgstr "Stub note for Ryu's first V-Skill."
+
+#. Placeholder entry (step 0 stub).
+msgid "RYU.vs2"
+msgstr "Stub note for Ryu's second V-Skill."
+
+#. Placeholder entry (step 0 stub).
+msgid "RYU.vt1"
+msgstr "Stub note for Ryu's first V-Trigger."
