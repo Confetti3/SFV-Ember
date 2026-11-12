@@ -326,7 +326,7 @@ BodyArea LayOutBody(float height, bool withPane)
 // focused card (BoardPick, or Random's own words). The pad moves by where
 // each tile is drawn (PressEntry places it).
 struct BoardFrame {
-	const grid::SelectGrid& grid;
+	const grid::SelectGrid& table; // the grid table, fitted to the roster
 	const PlayerPick& pick;
 	bool random = false;     // Random is the stored pick
 	bool remembered = false; // the player's screen: fighters in their remembered looks
@@ -364,15 +364,15 @@ void DrawBoard(const std::vector<MenuEntry>& entries, MenuNavigation& nav, MenuA
 {
 	const float s = sf4e::ui::Scale();
 	const BodyArea area = LayOutBody(height, true);
-	const grid::SelectGrid& grid = frame.grid;
+	const grid::SelectGrid& table = frame.table;
 	ImDrawList* draw = ImGui::GetWindowDrawList();
 	// The tiles as large as the area lets every row and column be, at their
 	// own shape; each row shifted by its offset, the whole board centred.
-	const int columns = (std::max)(1, grid.columns), rows = (std::max)(1, grid::RowCount(grid));
+	const int columns = (std::max)(1, table.columns), rows = (std::max)(1, grid::RowCount(table));
 	float least = 0, most = 0;
 	for (int row = 0; row < rows; row++) {
-		least = (std::min)(least, grid::RowOffset(grid, row));
-		most = (std::max)(most, grid::RowOffset(grid, row));
+		least = (std::min)(least, grid::RowOffset(table, row));
+		most = (std::max)(most, grid::RowOffset(table, row));
 	}
 	const float span = (float)columns + (most - least), gap = std::floor(kTileGap * s);
 	const float byWidth = (area.cards.W() - gap * (span - 1)) / span;
@@ -385,10 +385,10 @@ void DrawBoard(const std::vector<MenuEntry>& entries, MenuNavigation& nav, MenuA
 		const bool randomCard = e.id == kRandomCard;
 		const std::optional<int> fighter = sf4e::ui::RowKey<int>(e.id, kFighterCard);
 		std::optional<grid::Cell> cell;
-		if (randomCard) cell = grid.random;
-		else if (fighter) cell = grid::CellOf(grid, FighterCode(*fighter));
+		if (randomCard) cell = table.random;
+		else if (fighter) cell = grid::CellOf(table, FighterCode(*fighter));
 		if (!cell) continue;
-		const float x = corner.x + std::floor(((float)cell->column + grid::RowOffset(grid, cell->row) - least) * (tile + gap));
+		const float x = corner.x + std::floor(((float)cell->column + grid::RowOffset(table, cell->row) - least) * (tile + gap));
 		const float y = corner.y + (float)cell->row * (tall + gap);
 		const v2::Box b{ImVec2(x, y), ImVec2(x + tile, y + tall)};
 		const bool hovered = sf4e::ui::PressEntry(nav, entries, e, b, action).hovered, focused = e.id == nav.Focus();
