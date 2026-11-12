@@ -234,6 +234,56 @@ std::vector<DepthCandidate> Infos(const std::vector<Tracked>& targets)
 
 std::uint32_t s_drawNumber = 0; // the frame's draws so far (under s_depthMutex)
 
+// The user interface (Request::beforeUi). Under s_depthMutex: the back
+// buffer (by address, from the swap chain at each present; not held), whether
+// the render target bound now is it, the frame's draws into it (all, and with
+// a depth-stencil target bound: the UI's), the last frame's, and the copy of
+// the back buffer made before the frame's first UI draw when a grab wants it.
+const void* s_backBuffer = nullptr;
+bool s_targetIsBack = false;
+std::uint32_t s_backDraws = 0, s_backUiDraws = 0;
+std::uint32_t s_lastBackDraws = 0, s_lastBackUiDraws = 0;
+std::atomic<bool> s_preUiWanted;
+ComPtr<ID3D11Texture2D> s_preUi;
+bool s_preUiTaken = false;
+
+// Under s_depthMutex, before the frame's first UI draw: the back buffer
+// copied (GPU side) into s_preUi.
+void CopyBeforeUi(ID3D11DeviceContext* context)
+{
+	ComPtr<ID3D11RenderTargetView> view;
+	context->OMGetRenderTargets(1, view.GetAddressOf(), nullptr);
+	ComPtr<ID3D11Resource> resource;
+	if (view) view->GetResource(&resource);
+	ComPtr<ID3D11Texture2D> back;
+	if (!resource || FAILED(resource.As(&back))) return;
+	D3D11_TEXTURE2D_DESC desc{};
+	back->GetDesc(&desc);
+	D3D11_TEXTURE2D_DESC have{};
+	if (s_preUi) s_preUi->GetDesc(&have);
+	if (!s_preUi || have.Width != desc.Width || have.Height != desc.Height || have.Format != desc.Format) {
+		desc.Usage = D3D11_USAGE_DEFAULT;
+		desc.BindFlags = 0;
+		desc.CPUAccessFlags = 0;
+		desc.MiscFlags = 0;
+		ComPtr<ID3D11Device> device;
+		context->GetDevice(&device);
+		s_preUi.Reset();
+		if (FAILED(device->CreateTexture2D(&desc, nullptr, &s_preUi))) return;
+	}
+	context->CopyResource(s_preUi.Get(), back.Get());
+	s_preUiTaken = true;
+}
+
+// Under s_depthMutex: whether `view` is a view of the back buffer.
+bool IsBackBuffer(ID3D11RenderTargetView* view)
+{
+	if (!view || !s_backBuffer) return false;
+	ComPtr<ID3D11Resource> resource;
+	view->GetResource(&resource);
+	return resource.Get() == s_backBuffer;
+}
+
 // Under s_depthMutex: the frame's target for `view`'s texture, added at its
 // first use; -1 for none (no view, not a 2D texture, or the list is full).
 int TargetOf(ID3D11DepthStencilView* view)
@@ -262,10 +312,11 @@ int TargetOf(ID3D11DepthStencilView* view)
 	return (int)s_frame.size() - 1;
 }
 
-void NoteDepthTarget(ID3D11DepthStencilView* view)
+void NoteDepthTarget(ID3D11DepthStencilView* view, ID3D11RenderTargetView* const* targets, UINT count)
 {
 	std::lock_guard lock(s_depthMutex);
 	s_bound = TargetOf(view);
+	s_targetIsBack = count > 0 && targets && IsBackBuffer(targets[0]);
 }
 
 void CountDraw(ID3D11DeviceContext* context)
@@ -273,6 +324,13 @@ void CountDraw(ID3D11DeviceContext* context)
 	if (context != s_immediate.load()) return;
 	std::lock_guard lock(s_depthMutex);
 	++s_drawNumber;
+	if (s_targetIsBack) {
+		s_backDraws++;
+		if (s_bound >= 0) {
+			// The frame's first UI draw: the back buffer as the scene left it.
+			if (!s_backUiDraws++ && s_preUiWanted.load() && !s_preUiTaken) CopyBeforeUi(context);
+		}
+	}
 	if (s_bound < 0) return;
 	DepthCandidate& info = s_frame[(size_t)s_bound].info;
 	if (!info.draws++) info.firstDraw = s_drawNumber;
@@ -300,7 +358,7 @@ void STDMETHODCALLTYPE h_ClearDepthStencilView(ID3D11DeviceContext* context, ID3
 void STDMETHODCALLTYPE h_OMSetRenderTargets(ID3D11DeviceContext* context, UINT count, ID3D11RenderTargetView* const* views,
 	ID3D11DepthStencilView* depth)
 {
-	if (context == s_immediate.load()) NoteDepthTarget(depth);
+	if (context == s_immediate.load()) NoteDepthTarget(depth, views, count);
 	o_omSetRenderTargets(context, count, views, depth);
 }
 
@@ -309,7 +367,7 @@ void STDMETHODCALLTYPE h_OMSetRenderTargetsAndUavs(ID3D11DeviceContext* context,
 	ID3D11UnorderedAccessView* const* uavs, const UINT* initialCounts)
 {
 	// D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL leaves the targets as they are.
-	if (context == s_immediate.load() && count != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL) NoteDepthTarget(depth);
+	if (context == s_immediate.load() && count != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL) NoteDepthTarget(depth, views, count);
 	o_omSetRenderTargetsAndUavs(context, count, views, depth, uavStart, uavCount, uavs, initialCounts);
 }
 
@@ -364,6 +422,9 @@ std::vector<Tracked> FinishDepthFrame()
 	s_last = std::move(s_frame);
 	s_frame.clear();
 	s_drawNumber = 0;
+	s_lastBackDraws = s_backDraws;
+	s_lastBackUiDraws = s_backUiDraws;
+	s_backDraws = s_backUiDraws = 0;
 	if (s_bound >= 0) {
 		Tracked kept = s_last[(size_t)s_bound];
 		const std::uint64_t id = kept.info.id;
@@ -458,6 +519,7 @@ Readback ReadTexture(ID3D11Texture2D* texture, DXGI_FORMAT format, int texelByte
 struct Taken {
 	Request request;
 	std::uint64_t present = 0;
+	std::string ui;         // Status::lastUi
 	std::string error;      // the colour could not be taken
 	Readback colour;
 	PixelFormat format = PixelFormat::Unsupported;
@@ -499,6 +561,7 @@ void Finish(const Taken& taken, const std::string& error, const std::string& dep
 	s_status.lastError = error;
 	s_status.lastPresent = taken.present;
 	s_status.lastDepth = depth;
+	s_status.lastUi = taken.ui;
 }
 
 // The files of a grab: the BMP, then the depth's raw words and its sidecar.
@@ -544,11 +607,12 @@ void WriteGrab(const Taken& taken)
 }
 
 // Render thread: the queued grab, due now.
-void Take(IDXGISwapChain* swap, Request request, std::uint64_t present, const std::vector<Tracked>& frame)
+void Take(IDXGISwapChain* swap, Request request, std::uint64_t present, const std::vector<Tracked>& frame, ID3D11Texture2D* beforeUi)
 {
 	auto taken = std::make_shared<Taken>();
 	taken->request = std::move(request);
 	taken->present = present;
+	taken->ui = !taken->request.beforeUi ? "ui kept" : beforeUi ? "before ui" : "no ui draw";
 	ComPtr<ID3D11Texture2D> back;
 	if (FAILED(swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(back.GetAddressOf()))) || !back) {
 		taken->error = "the back buffer is not a Direct3D 11 texture";
@@ -559,7 +623,7 @@ void Take(IDXGISwapChain* swap, Request request, std::uint64_t present, const st
 		if (taken->format == PixelFormat::Unsupported) {
 			taken->error = "the back buffer's format " + FormatText(desc.Format) + " is not one a grab encodes";
 		} else {
-			taken->colour = ReadTexture(back.Get(), desc.Format, 4, taken->error);
+			taken->colour = ReadTexture(beforeUi ? beforeUi : back.Get(), desc.Format, 4, taken->error);
 		}
 		if (taken->error.empty()) {
 			taken->targets = Infos(frame);
@@ -760,6 +824,7 @@ bool QueueGrab(const Request& request, std::string& error)
 	s_request = request;
 	s_dueAt = s_presents.load() + 1 + (std::uint64_t)request.afterPresents;
 	s_status.pending = true;
+	if (request.beforeUi && request.afterPresents == 0) s_preUiWanted.store(true);
 	return true;
 }
 
@@ -775,7 +840,10 @@ Status CurrentStatus()
 std::string DepthReport()
 {
 	std::lock_guard lock(s_depthMutex);
-	return DepthTargetsJson(Infos(s_last));
+	std::string json = DepthTargetsJson(Infos(s_last));
+	json.pop_back(); // the closing brace: the back buffer's draws follow
+	return json + ",\"backBuffer\":{\"draws\":" + std::to_string(s_lastBackDraws) + ",\"uiDraws\":" +
+		std::to_string(s_lastBackUiDraws) + "}}";
 }
 
 void OnPresent(void* swapChain)
@@ -784,9 +852,18 @@ void OnPresent(void* swapChain)
 	DXGI_SWAP_CHAIN_DESC desc{};
 	if (!swap || FAILED(swap->GetDesc(&desc)) || !IsGameWindow(desc.OutputWindow)) return;
 	NoteContext(swap);
+	{
+		// The back buffer the next frame draws into, by address (not held,
+		// so a ResizeBuffers is never blocked by the grab).
+		ComPtr<ID3D11Resource> back;
+		swap->GetBuffer(0, __uuidof(ID3D11Resource), reinterpret_cast<void**>(back.GetAddressOf()));
+		std::lock_guard lock(s_depthMutex);
+		s_backBuffer = back.Get();
+	}
 	const std::uint64_t present = ++s_presents;
 	std::vector<Tracked> frame = FinishDepthFrame();
 	std::optional<Request> due;
+	bool wantNext = false;
 	{
 		std::lock_guard lock(s_mutex);
 		if (s_request && present >= s_dueAt) {
@@ -794,8 +871,20 @@ void OnPresent(void* swapChain)
 			s_request.reset();
 			s_busy = true;
 		}
+		// The next frame is a ui=off grab's: copy it before its UI.
+		wantNext = s_request && s_request->beforeUi && present + 1 >= s_dueAt;
 	}
-	if (due) Take(swap, std::move(*due), present, frame);
+	ComPtr<ID3D11Texture2D> beforeUi;
+	{
+		std::lock_guard lock(s_depthMutex);
+		if (s_preUiTaken) beforeUi = s_preUi;
+		s_preUiTaken = false;
+	}
+	if (due) {
+		ID3D11Texture2D* colour = due->beforeUi ? beforeUi.Get() : nullptr;
+		Take(swap, std::move(*due), present, frame, colour);
+	}
+	s_preUiWanted.store(wantNext);
 }
 
 bool InstallDepthProbe()
