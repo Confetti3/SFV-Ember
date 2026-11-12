@@ -142,7 +142,7 @@ def solo(shots: Path | None) -> None:
     if shots:
         # The look page's Costume row opens the costume cards, its V-Skill
         # row the V-Skill and V-Trigger cards; Back returns to the look page.
-        seek_pick(0, "costume", ["UP", "DOWN"], 4)
+        seek_pick(0, "costume", ["DOWN"], 12)
         press(0, "A")
         expect_pick(0, "costumes")
         time.sleep(1)

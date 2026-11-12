@@ -341,7 +341,7 @@ def select_shots(shots: Path | None) -> None:
     press(0, "B")
     expect(0, "room-table")
     # The V-Skill and V-Trigger cards (the table page's V-Skill and V-Trigger row).
-    seek(0, "ultra", ["UP", "DOWN"], 20)
+    seek(0, "ultra", ["DOWN"], 30)
     press(0, "A")
     expect_pick(0, "loadout")
     time.sleep(1)
@@ -353,7 +353,7 @@ def select_shots(shots: Path | None) -> None:
     expect(0, "room-table")
     # The stage cards (the table page's Stage): Right and Select store the
     # next stage and close the screen.
-    seek(0, "stage", ["DOWN", "UP"], 20)
+    seek(0, "stage", ["DOWN"], 30)
     press(0, "A")
     expect_pick(0, "stage")
     time.sleep(1)
