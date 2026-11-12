@@ -120,13 +120,17 @@ burst: `booth run 4` and a grab, up to 120 frames after the press (`auto` in
 chosen from the burst by `tools/boothburst.py` (no one picks frames): the camera and flashes are
 judged on the top fifth of the frame only, above the fighters (each grab's pan against the standing
 grab lined up by phase correlation; a band that still differs by more than 5 %, or whose brightness
-jumps, makes the grab unusable); the score is what changed below that band against the fighter's
-own size; no grab before 12 frames after the press is chosen; of the rest the peak, the first grab
+jumps, makes the grab unusable); the score is the move, not the place: the fighter and its
+effects in the grab (where it differs from the plate, specks and lines left out) moved so its feet
+stand where they stood in the standing grab (within 2 shrunk pixels, the best placing), and the
+share of the two fighters' pixels that then differ, against the fighter's own size (a dash that
+ends standing as before scores nothing, a pose or an aura scores); no grab before 12 frames after the press is chosen; of the rest the peak, the first grab
 whose stable score (the least of it and its two neighbours) reaches 95 % of the best. Nothing usable
 or nothing moving: the grab nearest `default` (V-Skill 20, V-Trigger 45 frames after the press).
 `fighters` in the JSON holds exact frames as overrides only, for a move the chooser gets wrong. The
 picture is framed as SF4 Ember's Ultra pictures: a 16:9 window centred on the fighter and its
-effects (where the chosen grab differs from the plate, the outermost 1 % of those pixels left out),
+effects (where the chosen grab differs from the plate, specks and lines left out, the outermost 1 %
+of those pixels left out),
 the subject filling 85 % of its height, kept inside the frame. The master's
 sidecar keeps the frame, how it was chosen (`auto`, `override`, `default`) and every grab's score.
 `--burst` writes every grab, scored (`<move>-t<frames>-s<score x 1000>[-chosen|-unused].jpg`), to

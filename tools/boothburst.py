@@ -46,6 +46,7 @@ MIN_AFTER = 12            # fight frames after the press before a grab may be ch
 BOX_TRIM = 0.01           # the subject box leaves out this share of its pixels on each side
 FILL = 0.85               # the subject fills this share of the picture's height (SF4's Ultra pictures)
 MIN_HEIGHT = 0.3          # the window is at least this share of the frame high
+FEET_SEARCH = 2            # the feet lined up within this many (shrunk) pixels either way
 
 
 @dataclass
@@ -102,8 +103,35 @@ def differs(a: np.ndarray, b: np.ndarray, threshold: float = DIFF) -> np.ndarray
     return np.abs(a - b).max(axis=-1) > threshold
 
 
-def score_grab(pre: np.ndarray, grab: np.ndarray, area: int) -> Grab:
-    """One shrunk burst grab against the shrunk pre grab; `area` the fighter's pixels in pre."""
+def clean(mask: np.ndarray) -> np.ndarray:
+    """`mask` without its thin specks and lines (one erosion, then one dilation, 3x3): a plate a
+    pixel off after the camera's pan leaves the stage's grid lines in a difference."""
+    m = mask.copy()
+    er = m.copy()
+    er[1:-1, 1:-1] = (m[1:-1, 1:-1] & m[:-2, 1:-1] & m[2:, 1:-1] & m[1:-1, :-2] & m[1:-1, 2:])
+    er[0, :] = er[-1, :] = False
+    er[:, 0] = er[:, -1] = False
+    di = er.copy()
+    di[1:, :] |= er[:-1, :]
+    di[:-1, :] |= er[1:, :]
+    di[:, 1:] |= er[:, :-1]
+    di[:, :-1] |= er[:, 1:]
+    return di
+
+
+def feet(mask: np.ndarray) -> tuple[int, int] | None:
+    """(y, x) of a subject's feet: the bottom of its box and the middle of its lowest rows."""
+    ys, xs = np.nonzero(mask)
+    if ys.size < 20:
+        return None
+    bottom = int(np.quantile(ys, 0.99))
+    low = xs[ys >= bottom - max(2, (bottom - ys.min()) // 10)]
+    return bottom, int(np.median(low))
+
+
+def score_grab(pre: np.ndarray, plate: np.ndarray, grab: np.ndarray, fighter: np.ndarray, area: int) -> Grab:
+    """One shrunk burst grab against the shrunk pre grab and plate; `fighter` where the fighter
+    stands in pre (pre against the plate), `area` its pixels."""
     h, w = pre.shape[:2]
     band = max(8, int(h * BAND))
     # The camera and a flash are judged on the band at the top of the frame, above the fighters:
@@ -111,21 +139,39 @@ def score_grab(pre: np.ndarray, grab: np.ndarray, area: int) -> Grab:
     dy, dx = phase_shift(luma(pre[:band]), luma(grab[:band]))
     g = Grab(dy=dy, dx=dx)
     aligned, valid = moved(pre, dy, dx)
-    change = differs(grab, aligned) & valid
     top = valid[:band]
-    g.camera = float(change[:band][top].mean()) if top.any() else 1.0
+    g.camera = float((differs(grab, aligned) & valid)[:band][top].mean()) if top.any() else 1.0
     lum = luma(grab[:band])[top].mean() - luma(aligned[:band])[top].mean() if top.any() else 0.0
     g.flash = abs(float(lum)) > FLASH_LUMA
-    # The move: what changed below the band, against the fighter's own size (pose, aura, effects).
-    g.score = float(change[band:].sum()) / max(area, 1)
+    # The move, not the place: the subject in this grab (against the plate, lined up with the
+    # camera) moved so its feet stand where the fighter's stood in pre, then compared with pre.
+    # A dash that ends standing as before scores nothing; a pose, an aura, an effect score.
+    plate_now, plate_valid = moved(plate, dy, dx)
+    subject = clean(differs(grab, plate_now) & plate_valid)
+    a_feet, b_feet = feet(fighter), feet(subject)
+    if a_feet is None or b_feet is None:
+        g.score = 0.0
+    else:
+        # The feet found to a pixel or two: the best of the nearby placings counts.
+        best = None
+        for ey in range(-FEET_SEARCH, FEET_SEARCH + 1):
+            for ex in range(-FEET_SEARCH, FEET_SEARCH + 1):
+                sy, sx = a_feet[0] - b_feet[0] + ey, a_feet[1] - b_feet[1] + ex
+                grab_at, grab_valid = moved(grab, sy, sx)
+                subject_at, _ = moved(subject, sy, sx)
+                union = (fighter | subject_at) & grab_valid
+                score = float((differs(grab_at, pre) & union).sum()) / max(area, 1)
+                best = score if best is None else min(best, score)
+        g.score = best
     g.usable = (not g.flash and g.camera <= CAMERA_MAX and abs(dy) <= SHIFT_MAX * h and abs(dx) <= SHIFT_MAX * w)
     return g
 
 
 def score_shrunk(pre: np.ndarray, plate: np.ndarray, grabs: list[np.ndarray]) -> list[Grab]:
     """Every burst grab scored, all pictures already shrunk (`shrink`)."""
-    area = int(differs(pre, plate).sum())
-    return [score_grab(pre, g, area) for g in grabs]
+    fighter = clean(differs(pre, plate))
+    area = int(fighter.sum())
+    return [score_grab(pre, plate, g, fighter, area) for g in grabs]
 
 
 def score_burst(pre: np.ndarray, plate: np.ndarray, grabs: list[np.ndarray]) -> list[Grab]:
@@ -166,7 +212,7 @@ def subject_box(plate: np.ndarray, grab: np.ndarray, g: Grab, trim: float = BOX_
     stretch the box). None when nothing differs."""
     dy, dx = g.dy * DOWN, g.dx * DOWN  # the pan was measured shrunk
     aligned, valid = moved(plate.astype(np.int16), dy, dx)
-    mask = differs(grab.astype(np.int16), aligned) & valid
+    mask = clean(differs(grab.astype(np.int16), aligned) & valid)
     ys, xs = np.nonzero(mask)
     if ys.size < 50:
         return None
@@ -261,6 +307,13 @@ def selftest() -> int:
     zoom = np.asarray(_stage_zoom(stage, 1.15))
     g = score_burst(pre, plate, [_fighter(zoom, 500, 40)])[0]
     check(not g.usable, f"a camera zoom is not used (camera {g.camera:.3f})")
+
+    # A fighter that only changed place (a dash that ends standing as before) scores almost
+    # nothing; the same fighter with an aura at its new place scores.
+    moved_only = _fighter(stage, 900, 0)
+    with_aura = _fighter(stage, 900, 60)
+    sc = score_burst(pre, plate, [moved_only, with_aura])
+    check(sc[0].score < 0.1 and sc[1].score > 0.5, f"a change of place scores little, a pose or aura a lot ({sc[0].score:.2f}, {sc[1].score:.2f})")
 
     # A grab before MIN_AFTER is never chosen, however much it changed.
     early = [_fighter(stage, 500, 120)] + [_fighter(stage, 500, 40)] * 4
