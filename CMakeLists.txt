@@ -68,6 +68,7 @@ add_library(sfve_core STATIC
     src/core/StateRegions.cxx
     src/core/ReplayFile.cxx
     src/core/RollbackSession.cxx
+    src/core/StartAgreement.cxx
     src/core/SyncTest.cxx
     src/core/NetPolicy.cxx)
 # Ember's GGPO gate, pacing, state hash and helper client come from the
@@ -83,6 +84,7 @@ add_executable(sfve_tests
     tests/StateRegionsTests.cxx
     tests/SyncTestTests.cxx
     tests/RollbackSessionTests.cxx
+    tests/StartAgreementTests.cxx
     tests/NetPolicyTests.cxx
     tests/MatchResultTests.cxx
     tests/RematchDecisionTests.cxx
@@ -271,7 +273,7 @@ add_library(sfve_ember_test_mod OBJECT
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx src/mod/TinyFighters.cxx
     src/mod/ModConfig.cxx src/mod/PadLayer.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx
-    src/mod/SfvRegionNames.cxx src/mod/SocketReads.cxx src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx src/mod/XInputHooks.cxx)
+    src/mod/SfvRegionNames.cxx src/mod/RngAudit.cxx src/mod/SocketReads.cxx src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx src/mod/XInputHooks.cxx)
 target_link_libraries(sfve_ember_test_mod PUBLIC sfve_ember minhook::minhook)
 # The runtime under SFV's definitions, with nothing of SF4's roster, stages
 # or custom content: SFV's catalog (SfvCatalog.cxx) answers every pick check.
@@ -316,6 +318,7 @@ add_executable(sfve_ember_tests
     tests/BuildKindTests.cxx
     tests/GameInputTests.cxx
     tests/SocketReadsTests.cxx
+    tests/RngAuditTests.cxx
     tests/RecordedInputTests.cxx
     tests/ExecutableBuildTests.cxx
     tests/PlayerNameTests.cxx
@@ -392,6 +395,7 @@ add_library(sfv_ember SHARED
     src/mod/FighterReader.cxx
     src/mod/TinyFighters.cxx
     src/mod/SocketReads.cxx
+    src/mod/RngAudit.cxx
     src/mod/HudText.cxx)
 target_link_libraries(sfv_ember PRIVATE sfve_ember dbghelp ember_sdl_pads_x64 SDL3::SDL3-static)
 target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")

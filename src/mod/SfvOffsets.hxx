@@ -565,6 +565,15 @@ constexpr CodeSite kLoggedIn{"LoggedIn", 0x742A20,
 constexpr CodeSite kSetPlayerParam{"SetPlayerParam", 0x309330,
 	{0x4C, 0x8B, 0xC9, 0x83, 0xFA, 0x29, 0x77, 0x49, 0x48, 0x63, 0xCA, 0x41, 0x83, 0xF8, 0xFE, 0x74}};
 
+// uint32_t RandomDraw(Generator*): the battle's random generators' draw, the
+// generator class's virtual +24 (its vtable sfv::rng::kVtable, slot 3; its
+// only reference): state = state * 1664525 + 1013904223 at +8, and the state
+// rotated by 16 returned. 19 bytes; slot 4 (rva 0x32B280, a float in [0, 1))
+// and slot 5 (rva 0x32A830, a coin) draw through it. Hooked only by the
+// development audit (RngAudit, -sfve_rng_audit=1); checked always.
+constexpr CodeSite kRandomDraw{"RandomDraw", 0x32B2B0,
+	{0x69, 0x41, 0x08, 0x0D, 0x66, 0x19, 0x00, 0x05, 0x5F, 0xF3, 0x6E, 0x3C, 0x89, 0x41, 0x08, 0xC1}};
+
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecord, kPadsAny, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kFindPart, kProjectileReleasable, kAddBattleTask, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
@@ -583,7 +592,9 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kScriptPosture, kStartAction, kProjectileDie, kDamage,
 	// The fighter's picture, for Tiny fighters (TinyFighters), and the fight's
 	// reads of its model (SocketReads).
-	kCharaVisualUpdate, kSetWorldScale3D, kActorSetMeshTransform, kSocketWorldPosition};
+	kCharaVisualUpdate, kSetWorldScale3D, kActorSetMeshTransform, kSocketWorldPosition,
+	// The random generators' draw, for the development audit (RngAudit).
+	kRandomDraw};
 
 } // namespace sfve::mod::sfv
 

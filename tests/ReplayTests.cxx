@@ -203,6 +203,24 @@ TEST_CASE("a replay's header keeps each side's costume code, and one written wit
 	CHECK(back.header.players[1].loadCode == -1);
 }
 
+TEST_CASE("a replay's header keeps P1's start state hash, and one written without it reads 0")
+{
+	replay::Replay r = SampleReplay();
+	r.header.startHash = 0x0123456789ABCDEFull;
+	std::vector<uint8_t> bytes = replay::Encode(r);
+	const std::string text(bytes.begin(), bytes.end());
+	CHECK(text.find("\"startHash\":\"0123456789abcdef\"") != std::string::npos);
+	replay::Replay back;
+	std::string error;
+	REQUIRE_MESSAGE(replay::Decode(bytes.data(), bytes.size(), &back, &error), error);
+	CHECK(back.header.startHash == 0x0123456789ABCDEFull);
+	// Not known: not written, and a header without it reads 0.
+	bytes = replay::Encode(SampleReplay());
+	CHECK(std::string(bytes.begin(), bytes.end()).find("startHash") == std::string::npos);
+	REQUIRE_MESSAGE(replay::Decode(bytes.data(), bytes.size(), &back, &error), error);
+	CHECK(back.header.startHash == 0);
+}
+
 TEST_CASE("the recorder keeps a frame's last report, and only frames made final")
 {
 	replay::Recorder rec;

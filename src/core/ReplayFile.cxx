@@ -4,6 +4,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <limits>
@@ -86,11 +88,18 @@ json HeaderJson(const Header& h)
 		games.push_back({{"decided", g.decided}, {"winner", g.winner}, {"wins", {g.wins[0], g.wins[1]}}, {"rounds", g.rounds},
 			{"bestOf", g.bestOf}, {"endFrame", g.endFrame}});
 	}
-	return {{"product", h.product}, {"build", h.build}, {"startedAt", h.startedAt}, {"slot", h.slot},
+	json j = {{"product", h.product}, {"build", h.build}, {"startedAt", h.startedAt}, {"slot", h.slot},
 		{"players", {PlayerJson(h.players[0]), PlayerJson(h.players[1])}}, {"stage", h.stage}, {"stageCode", h.stageCode},
 		{"rounds", h.rounds}, {"roundSeconds", h.roundSeconds}, {"timeFrames", h.timeFrames}, {"seed", h.seed},
 		{"inputDelay", h.inputDelay}, {"games", games}, {"complete", h.complete}, {"fightFrames", h.fightFrames},
 		{"fightStretches", h.fightStretches}};
+	// Only a header that knows it writes it, so every other is what it was.
+	if (h.startHash) {
+		char hex[17];
+		snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)h.startHash);
+		j["startHash"] = hex;
+	}
+	return j;
 }
 
 // Each field must be there and of its type (nlohmann's get<> throws, which
@@ -126,6 +135,15 @@ template <class T>
 T FieldOr(const json& object, const char* name, T absent)
 {
 	return object.contains(name) ? Field<T>(object, name) : absent;
+}
+
+// The start state's hash: 16 hex digits, or 0 for anything else (a header
+// without the field).
+uint64_t ReadStartHash(const json& j)
+{
+	const std::string text = FieldOr<std::string>(j, "startHash", "");
+	if (text.size() != 16 || text.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos) return 0;
+	return strtoull(text.c_str(), nullptr, 16);
 }
 
 Player ReadPlayer(const json& j)
@@ -167,6 +185,7 @@ bool ReadHeader(const uint8_t* text, size_t size, Header* out, std::string* erro
 		h.roundSeconds = Field<int>(j, "roundSeconds");
 		h.timeFrames = Field<int>(j, "timeFrames");
 		h.seed = Field<uint32_t>(j, "seed");
+		h.startHash = ReadStartHash(j);
 		h.inputDelay = Field<int>(j, "inputDelay");
 		const json& games = j.at("games");
 		if (!games.is_array() || games.size() > 1000) throw std::runtime_error("games is not a list of games");
