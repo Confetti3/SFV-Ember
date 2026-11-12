@@ -50,4 +50,12 @@ bool HudCall(const std::wstring& method, float number, const std::wstring& text 
 // and the text. Any thread.
 void SetHudCallLog(bool on);
 
+// The movie HudCall calls is the one that last named a side's plate or
+// marker (SetPilotName, SetCursorText): the HUD's own, named again at each
+// round's start. A battle left, or a new one (BoothMode), forgets it, so no
+// call reaches the last battle's movie. Any thread.
+void ForgetHudMovie();
+// A movie is known for HudCall. Any thread.
+bool HudMovieKnown();
+
 } // namespace sfve::mod
