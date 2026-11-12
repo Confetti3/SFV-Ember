@@ -468,6 +468,9 @@ Capabilities SfvCapabilities()
 	caps.training = true;
 	// A private room's host may allow tiny fighters (TinyFighters, EMBER_LIBRARY.md section 59).
 	caps.tinyFighters = true;
+	// Ember's hitbox viewer over SFV's Training, switched from Training select
+	// (SfvHitboxes, docs/design/beta8/hitboxes.md).
+	caps.hitboxes = true;
 	caps.settingsFeatures.shortcutHint = true;
 	return caps;
 }
