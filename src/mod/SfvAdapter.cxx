@@ -51,6 +51,9 @@ void SfvAdapter::Forget()
 	waitingFor_ = nullptr;
 	for (PackedInput& bits : neutralised_) bits = 0;
 	flow_.Forget();
+	scenesSkip_ = nullptr;
+	scenesIdleState_ = scenesIdlePhase_ = -1;
+	decidedTicks_ = -1;
 }
 
 bool SfvAdapter::Bind()
@@ -79,6 +82,10 @@ bool SfvAdapter::Bind()
 		}
 	}
 	gameInstance_ = reinterpret_cast<uint8_t* (*)()>(base + sfv::kGameInstance.rva);
+	imageBase_ = base;
+	flowRequest_ = reinterpret_cast<decltype(flowRequest_)>(base + sfv::kFlowRequest.rva);
+	setFlowPhase_ = reinterpret_cast<decltype(setFlowPhase_)>(base + sfv::kSetFlowPhase.rva);
+	markResultSkipped_ = reinterpret_cast<decltype(markResultSkipped_)>(base + sfv::kMarkResultSkipped.rva);
 	if (!flow_.Bind(flowUnit, base)) {
 		WaitingToBind("a flow it can record");
 		return false;
@@ -102,6 +109,10 @@ bool SfvAdapter::Bind()
 		gameRegions_, layout_.Regions().size() - gameRegions_, layout_.TotalSize(),
 		Field<int32_t>(battleData, sfv::battledata::kIntroSkippable) ? "skippable" : "not skippable",
 		Field<int32_t>(battleData, sfv::battledata::kInputSource));
+	// Whether the winner's demo would take the skip bit by itself (its gate,
+	// rva 0x3F0020, wants this kind); the mod ends the scenes either way.
+	Log("adapter: battle kind %d (the winner's demo opens its own skip for kind %d only)",
+		Field<int32_t>(battleData, sfv::resultflow::kBattleKind), sfv::resultflow::kKindSkippable);
 	return true;
 }
 
@@ -250,6 +261,99 @@ bool SfvAdapter::MatchDecided() const
 	return battleData_ && Field<int32_t>(battleData_, sfv::battledata::kDecided) != 0;
 }
 
+void SfvAdapter::SeeFlowState(int state)
+{
+	const int before = flow_.Announced();
+	flow_.Announce(state);
+	if (state == before || !MatchDecided()) return;
+	// Which states the decided match's scenes pass through, and whether the
+	// battle still ticks there (docs/design/beta8/skip.md).
+	Log("flow: state %d -> %d with the match decided (%u input tick(s) so far in this update%s)", before, state,
+		ticksThisUpdate_, resimulating_ ? ", a frame replayed after a rollback" : "");
+}
+
+bool SfvAdapter::LocalPadsAny(uint32_t mask) const
+{
+	uint8_t* flow = flow_.Unit();
+	return bound_ && flow && GameLocalPadsAny(flow + sfv::unit::kContext, mask);
+}
+
+void SfvAdapter::EndScenes()
+{
+	namespace rf = sfv::resultflow;
+	using intro_skip::ScenesAction;
+	uint8_t* flow = flow_.Unit();
+	uint8_t* state = flow ? Field<GameSharedPtr>(flow, sfv::flowunit::kCurrent).object : nullptr;
+	if (!state || !flowRequest_ || !setFlowPhase_ || !markResultSkipped_) return;
+	const int32_t id = Field<int32_t>(state, rf::kStateId);
+	const uint32_t vtable = (uint32_t)(Field<uintptr_t>(state, 0) - imageBase_);
+	const int32_t phase = Field<int32_t>(state, sfv::flowstate::kPhase);
+	const intro_skip::ScenesStep step = intro_skip::ScenesStepFor(id, vtable, phase);
+	// Finish's last phase asks for the state the constructor gave it; the
+	// skip asks for that one only when it is RoundOver, as the versus flow's.
+	const bool unexpectedNext = step.action == ScenesAction::RequestNext && Field<int32_t>(state, rf::kNextState) != rf::kRoundOver;
+	if (step.action == ScenesAction::None || unexpectedNext) {
+		// Logged once per state and phase: the skip frames come every 15.
+		if (id != scenesIdleState_ || phase != scenesIdlePhase_) {
+			scenesIdleState_ = id;
+			scenesIdlePhase_ = phase;
+			if (unexpectedNext) {
+				Log("scene skip: Finish asks for flow state %d next, not RoundOver (%d); it plays on",
+					Field<int32_t>(state, rf::kNextState), rf::kRoundOver);
+			} else {
+				Log("scene skip: the skip bit in flow state %d (class rva 0x%X) phase %d ends nothing yet", id, vtable, phase);
+			}
+		}
+		return;
+	}
+	scenesIdleState_ = scenesIdlePhase_ = -1;
+	bool done = false;
+	switch (step.action) {
+	case ScenesAction::RequestNext:
+		// What Finish's last phase does (rva 0x40EBE0): the flow switches to
+		// RoundOver on this frame's update, which asks for the demo on its
+		// first tick.
+		done = flowRequest_(flow, Field<int32_t>(state, rf::kNextState), (uint8_t)Field<int32_t>(state, rf::kNextFlags),
+				   Field<int32_t>(state, sfv::flowstate::kArg)) != 0;
+		snprintf(scenesSkipText_, sizeof(scenesSkipText_), "Finish ends in its phase %d: the flow %s RoundOver", phase,
+			done ? "asked for" : "refused");
+		break;
+	case ScenesAction::ResultSkip: {
+		// What phase 3 (rva 0x409930) does on the skip bit when its gate is
+		// open, here whatever the gate says: the skip's mark, skipped, phase 4,
+		// which runs on at once to the results' event and the wait for them.
+		const int32_t gate = Field<int32_t>(state, rf::kResultSkipGate);
+		markResultSkipped_(flow + sfv::unit::kContext);
+		Field<int32_t>(state, rf::kResultSkipped) = 1;
+		done = setFlowPhase_(state, step.phase) != 0;
+		snprintf(scenesSkipText_, sizeof(scenesSkipText_),
+			"the winner's demo skipped from phase %d to %d (its own gate %d)%s, now in phase %d", phase, step.phase, gate,
+			done ? "" : ": the phase was refused", Field<int32_t>(state, sfv::flowstate::kPhase));
+		break;
+	}
+	case ScenesAction::SetPhase:
+		done = setFlowPhase_(state, step.phase) != 0;
+		snprintf(scenesSkipText_, sizeof(scenesSkipText_), "flow state %d moved from phase %d to %d%s, now in phase %d",
+			id, phase, step.phase, done ? "" : ": the phase was refused", Field<int32_t>(state, sfv::flowstate::kPhase));
+		break;
+	case ScenesAction::None: break;
+	}
+	Log("scene skip: %s", scenesSkipText_);
+	scenesSkip_ = scenesSkipText_;
+}
+
+void SfvAdapter::NoteDecidedTicks()
+{
+	if (!MatchDecided()) {
+		decidedTicks_ = -1;
+		return;
+	}
+	if (decidedTicks_ == (int64_t)ticksInLastUpdate_) return;
+	Log("adapter: %u input tick(s) in this update with the match decided (flow state %d; before, %lld)", ticksInLastUpdate_,
+		flow_.Announced(), (long long)decidedTicks_);
+	decidedTicks_ = ticksInLastUpdate_;
+}
+
 void SfvAdapter::RunUpdate()
 {
 	ticksThisUpdate_ = 0;
@@ -281,15 +385,25 @@ void SfvAdapter::PresetHeldAtLoad(const std::array<PackedInput, kPlayers>& codes
 		wasTaken ? "was taken" : "was not taken yet", before[0], before[1]);
 }
 
-void SfvAdapter::Advance(const FrameInputs& inputs, bool)
+void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)
 {
 	// One GGPO frame is one update: the game's own replay mechanism (extra
 	// ticks) is not used, rollbacks call Advance once per frame instead.
 	Field<uint32_t>(battleFrame_, sfv::battleframe::kExtraTicks) = 0;
 	pending_ = inputs;
+	resimulating_ = resimulating;
 	padSource_ = input::PadSource::Session;
+	// The skip bit reaches the game only on the skip frames of the intro and
+	// of a decided match's scenes, which every session path steps confirmed
+	// and gives alike (GivenInputs; a fight frame never carries it). In the
+	// scenes the game does not end anything on it, so the frame does, from
+	// the state at its start (IntroSkip.hxx). The phases it runs hear the
+	// session's inputs too, should they ask the pads.
+	if (InjectedAny(intro_skip::kSkipBit) && MatchDecided()) EndScenes();
 	RunUpdate();
 	padSource_ = input::PadSource::Pads;
+	resimulating_ = false;
+	NoteDecidedTicks();
 }
 
 int SfvAdapter::ReseedRandom(uint32_t seed)

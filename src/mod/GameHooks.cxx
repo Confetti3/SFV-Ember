@@ -65,6 +65,54 @@ uint64_t h_InputRecord(uint8_t* inputUnit, uint32_t predictRemote)
 	return o_inputRecord(inputUnit, predictRemote);
 }
 
+// What the pads were asked since the last flow state change, by mask, for
+// the log (docs/design/beta8/skip.md): which of the decided match's scenes
+// ask at all, and what they hear. Game thread.
+struct PadsAnyTally {
+	uint32_t mask;
+	uint32_t calls;
+	uint32_t yes;
+	uint32_t injected; // answered from the session's inputs
+};
+constexpr size_t kTallies = 8;
+PadsAnyTally s_padsTally[kTallies];
+size_t s_padsTallies;
+uint64_t s_padsCalls; // since the process started
+
+void TallyPadsAny(uint32_t mask, bool injected, bool yes)
+{
+	s_padsCalls++;
+	// Every yes from a session's inputs is logged: that is a skip frame's
+	// bit, one frame in 15 at most. The pads' own (offline) only counted.
+	if (yes && injected) {
+		Log("hooks: the battle asked the pads for %04x and heard yes from the session's inputs (call %llu)", mask,
+			(unsigned long long)s_padsCalls);
+	}
+	PadsAnyTally* tally = nullptr;
+	for (size_t i = 0; i < s_padsTallies && !tally; i++) {
+		if (s_padsTally[i].mask == mask) tally = &s_padsTally[i];
+	}
+	if (!tally && s_padsTallies < kTallies) {
+		tally = &s_padsTally[s_padsTallies++];
+		*tally = {mask, 0, 0, 0};
+	}
+	if (!tally) return;
+	tally->calls++;
+	tally->yes += yes ? 1 : 0;
+	tally->injected += injected ? 1 : 0;
+}
+
+// Logs and clears the tallies, before a flow state change.
+void LogPadsAnyTallies(int nextState)
+{
+	for (size_t i = 0; i < s_padsTallies; i++) {
+		const PadsAnyTally& t = s_padsTally[i];
+		Log("hooks: before flow state %d the battle asked the pads for %04x %u time(s) (%u from the session's inputs), "
+			"%u yes", nextState, t.mask, t.calls, t.injected, t.yes);
+	}
+	s_padsTallies = 0;
+}
+
 // Once the match is decided the battle asks the pads themselves (kPadsAny):
 // each copy would hear its own player, and a press that skips the winner's
 // scenes would move one copy's flow alone. A tick that runs on a session's
@@ -74,8 +122,10 @@ uint64_t h_InputRecord(uint8_t* inputUnit, uint32_t predictRemote)
 // decided match no longer feeds it, so it never held the bit there.
 uint64_t h_PadsAny(uint8_t* unitContext, uint32_t mask)
 {
-	if (s_listener->InjectingInputs()) return s_listener->InjectedAny(mask) ? 1 : 0;
-	return o_padsAny(unitContext, mask);
+	const bool injected = s_listener->InjectingInputs();
+	const bool yes = injected ? s_listener->InjectedAny(mask) : o_padsAny(unitContext, mask) != 0;
+	TallyPadsAny(mask, injected, yes);
+	return yes ? 1 : 0;
 }
 
 void h_UnitTick(uint8_t* rollbackUnit)
@@ -90,7 +140,9 @@ uint64_t h_FlowMessage(uint8_t* receiver, uint8_t* message)
 	using TypeFn = uintptr_t (*)(uint8_t*);
 	const TypeFn type = **reinterpret_cast<TypeFn**>(message);
 	if (type(message) == s_stateMessageType) {
-		s_listener->OnFlowState(*reinterpret_cast<int*>(message + sfv::flow::kStateIndex));
+		const int state = *reinterpret_cast<int*>(message + sfv::flow::kStateIndex);
+		if (s_padsTallies) LogPadsAnyTallies(state);
+		s_listener->OnFlowState(state);
 	}
 	return o_flowMessage(receiver, message);
 }
@@ -251,6 +303,13 @@ uint8_t* GameFindPart(uint8_t* unit, uint32_t typeRva, uint32_t index)
 uint8_t* GameGetManager(uint8_t* rollbackUnit)
 {
 	return s_getManager(rollbackUnit + sfv::rollbackunit::kManagerContext);
+}
+
+bool GameLocalPadsAny(uint8_t* unitContext, uint32_t mask)
+{
+	// The trampoline once the battle's set is in (AddGameHooks), so the
+	// session's answer (h_PadsAny) is not the one heard here.
+	return o_padsAny && unitContext && o_padsAny(unitContext, mask) != 0;
 }
 
 uint8_t* GameGetBattleData(uint8_t* anyUnit)

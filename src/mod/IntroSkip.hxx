@@ -19,19 +19,32 @@
 // cost: at most one frame in kEvery waits for the other copy's input, and a
 // skip comes within kEvery frames of the press reaching both copies.
 //
-// The scenes after a decided match (the last KO's finish, the winner's pose)
-// take the same press, and need the same care for another reason: once a
-// side has the wins the match needs, the game asks the pads themselves for
-// the skip bit (sfv::kPadsAny), so each copy heard only its own player and a
-// press moved one copy's flow alone: the copies' flow, mode and rule state
-// then differed at the next checkpoint with both fighters equal. While a
+// The scenes after a decided match (the last KO's finish, the winner's demo,
+// the way to the results) take the same press on the same skip frames
+// (section 52). Unlike the intro, the game itself does not end them on the
+// bit: of those flow states only the winner's demo asks for it, behind a gate
+// a room's battle keeps shut (docs/design/beta8/skip.md, SfvResultFlow.hxx).
+// So the adapter ends them itself (SfvAdapter::Advance): on a frame whose
+// given inputs carry the bit, before the frame's update, it moves the current
+// state on the way the game's own phases do (ScenesStepFor). The frame is
+// confirmed and the move a function of the state at its start and of those
+// inputs, so the fighters, the watchers and a replay make it on the same
+// frame; the flow is in the rollback state. Either player's press skips for
+// both. A copy asks only for a new press made at least kScenesGuardFrames
+// after it saw the match decided, so a button still down from the last hit,
+// or mashed through the KO, skips nothing.
+//
+// Once the match is decided the game asks the pads themselves for the skip
+// bit (sfv::kPadsAny), so each copy heard only its own player; while a
 // session's inputs are injected that question is answered from the battle's
-// input (GameHooks), and the frames outside the fight of a decided match
-// are skip frames like the intro's, with the request sent the same way.
+// input (GameHooks).
 
 #include "core/GameAdapter.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/SfvBattleLayouts.hxx"
+#include "mod/SfvResultFlow.hxx"
+
+#include <stdint.h>
 
 namespace sfve::mod::intro_skip {
 
@@ -46,6 +59,10 @@ constexpr PackedInput kPressBits =
 // One session frame in this many reads the skip bit while in the intro.
 constexpr int kEvery = 15;
 
+// Session frames of a decided match's scenes a copy shows before its
+// player's press there asks for the skip: about a second of the KO.
+constexpr int kScenesGuardFrames = 60;
+
 // A press skips what flow state `flowState` (the one the flow last
 // announced) shows: the intro, or with the match decided
 // (sfv::battledata::kDecided) anything but the fight. Both are part of the
@@ -53,6 +70,12 @@ constexpr int kEvery = 15;
 constexpr bool Skippable(int flowState, bool decided)
 {
 	return flowState == sfv::flow::kIntroDemo || (decided && flowState != sfv::flow::kFight);
+}
+
+// The decided match's scenes: anything but the fight once it is decided.
+constexpr bool Scenes(int flowState, bool decided)
+{
+	return decided && flowState != sfv::flow::kFight;
 }
 
 // Session frame `frame`, starting from that state, reads the skip bit.
@@ -67,26 +90,105 @@ constexpr PackedInput ConfirmedBits(int flowState, int frame, bool decided = fal
 	return SkipFrame(flowState, frame, decided) ? kSkipBit : 0;
 }
 
+// The session frame a copy first saw the decided match's scenes, from the
+// frames it steps (or watches); -1 outside them. A rollback that takes the
+// deciding hit back shows the fight again, which starts the count over.
+class ScenesClock {
+public:
+	void Note(bool scenes, int frame)
+	{
+		if (!scenes) from_ = -1;
+		else if (from_ < 0) from_ = frame;
+	}
+	int From() const { return from_; }
+	// Session frames shown of them by `frame`; 0 outside them.
+	int Shown(int frame) const { return from_ < 0 ? 0 : frame - from_; }
+
+private:
+	int from_ = -1;
+};
+
 // This copy's skip request: what it sends for each frame it steps.
 class Request {
 public:
-	// `local` (the player's input for the next frame, the game's value of
-	// the pad or a test's script) with the skip bit set from the first new
-	// press in the intro (or in a decided match's scenes) to its end, and
-	// clear otherwise. A button already down as it starts (the one that
-	// landed the last hit, say) is not a press until it is released.
-	PackedInput Next(int flowState, PackedInput local, bool decided = false)
+	// `local` (the player's input for session frame `frame`, the game's value
+	// of the pad or a test's script) with the skip bit set from the first new
+	// press in the intro (or in a decided match's scenes, once they have
+	// shown kScenesGuardFrames) to its end, and clear otherwise. A button
+	// already down as it starts (the one that landed the last hit, say) is not
+	// a press until it is released; a press in the scenes' first frames asks
+	// nothing, and is not taken up later.
+	PackedInput Next(int flowState, PackedInput local, bool decided = false, int frame = 0)
 	{
+		const bool scenes = Scenes(flowState, decided);
+		clock_.Note(scenes, frame);
+		const bool guarded = scenes && clock_.Shown(frame) < kScenesGuardFrames;
 		const PackedInput down = local & kPressBits;
-		requested_ = Skippable(flowState, decided) && (requested_ || (down & ~down_) != 0);
+		const bool pressed = (down & ~down_) != 0 && !guarded;
+		requested_ = Skippable(flowState, decided) && (requested_ || pressed);
 		down_ = down;
 		return (local & ~kSkipBit) | (requested_ ? kSkipBit : 0);
 	}
 	bool Requested() const { return requested_; }
+	// The frame this copy first saw the decided match's scenes; -1 outside them.
+	int ScenesFrom() const { return clock_.From(); }
 
 private:
 	bool requested_ = false;
 	PackedInput down_ = kPressBits; // as if all down: nothing held before the first call is a press
+	ScenesClock clock_;
 };
+
+// A test's scripted skip press (the pipe's "skipafter <n>", runroom's
+// -skipAfter): the frames from `after` frames into the scenes, for
+// kScriptedPressFrames, press an attack. `after` < 0: never.
+constexpr int kScriptedPressFrames = 6;
+constexpr bool ScriptedPress(int scenesFrom, int frame, int after)
+{
+	return after >= 0 && scenesFrom >= 0 && frame >= scenesFrom + after && frame < scenesFrom + after + kScriptedPressFrames;
+}
+
+// --- Ending the decided match's scenes (SfvAdapter::Advance).
+
+// What a frame carrying the skip bit does to the flow state it starts in.
+enum class ScenesAction {
+	None,        // nothing of this state is ended yet (a later skip frame may)
+	RequestNext, // Finish: ask the flow for the state its last phase asks for (RoundOver)
+	ResultSkip,  // MatchResultDemo's phase 3: what its own skip does, then `phase`
+	SetPhase,    // move the state to `phase`, as its own phases do
+};
+
+struct ScenesStep {
+	ScenesAction action = ScenesAction::None;
+	int phase = -1;
+	bool operator==(const ScenesStep&) const = default;
+};
+
+// The step for the current state: its id (resultflow::kStateId), its class
+// (its vtable's rva) and its phase (flowstate::kPhase). Only the classes the
+// versus flow builds for these ids are moved; anything else plays on.
+// - Finish: whatever it waits on (the KO's presentation), on to RoundOver,
+//   which asks for the winner's or the draw's demo on its first tick.
+// - MatchResultDemo: its 90-tick wait before the demo's setup ends at once
+//   (phase 2 is the same setup without the wait); in phase 3, the skip the
+//   game makes when its gate is open (phase 4, then the results' event and
+//   the wait for the results' unit, as unskipped). Phases 0 and 2 run at
+//   once, and from phase 4 on it is ending already.
+// - MatchDrawDemo: the wait for its demo ends (phase 3, which goes to 4 at
+//   once), and its 300-tick wait (phase 5, the results' event).
+constexpr ScenesStep ScenesStepFor(int stateId, uint32_t vtableRva, int phase)
+{
+	namespace rf = sfv::resultflow;
+	if (stateId == rf::kFinish && vtableRva == rf::kFinishVtable) return {ScenesAction::RequestNext, -1};
+	if (stateId == rf::kMatchResultDemo && vtableRva == rf::kMatchResultDemoVtable) {
+		if (phase == rf::kResultSetupWaitPhase) return {ScenesAction::SetPhase, rf::kResultSetupPhase};
+		if (phase == rf::kResultSkipPhase) return {ScenesAction::ResultSkip, rf::kResultSkippedPhase};
+	}
+	if (stateId == rf::kMatchDrawDemo && vtableRva == rf::kMatchDrawDemoVtable) {
+		if (phase == rf::kDrawDemoPhase) return {ScenesAction::SetPhase, rf::kDrawAfterDemoPhase};
+		if (phase == rf::kDrawWaitPhase) return {ScenesAction::SetPhase, rf::kDrawResultPhase};
+	}
+	return {};
+}
 
 } // namespace sfve::mod::intro_skip

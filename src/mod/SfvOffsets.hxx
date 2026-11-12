@@ -252,6 +252,32 @@ constexpr CodeSite kShowResult{"ShowResult", 0x66A0D0,
 constexpr CodeSite kRestartBattle{"RestartBattle", 0x684760,
 	{0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x41}};
 
+// Ending the decided match's scenes (SfvResultFlow.hxx, IntroSkip.hxx,
+// docs/design/beta8/skip.md); called between two battle updates, on a frame
+// both copies step confirmed.
+// bool FlowRequest(FlowUnit*, int state, char flags, int arg): FlowUnit's
+// vtable +16 (vtable rva 0x2C5F838): finds the state's index by its id (the
+// map at +272) and asks for it (flowunit::kRequestedIndex, kRequestArg; flags
+// bit 0 or the state table's 0x14 mark set kRequestFlag); false, asking
+// nothing, for a state this flow does not have. The next PreTick (rva
+// 0x3DD890) switches to it. The phases ask so (rva 0x40EBE0, 0x3DADB0), and so
+// does the flow's TransitionFlowEvent (rva 0x3D4500).
+constexpr CodeSite kFlowRequest{"FlowRequest", 0x3E40C0,
+	{0x4C, 0x8B, 0xD1, 0x41, 0xF6, 0xC0, 0x01, 0x74, 0x07, 0xC6, 0x81, 0x3C, 0x01, 0x00, 0x00, 0x01}};
+// bool SetFlowPhase(FlowState*, int phase): the state's phase (flowstate::
+// kPhase) and its delegate bound to that phase's function (rva 0x477FE0),
+// whose wait the sequencer starts over (rva 0x3E3130) and which runs at once
+// when it has none; false for a phase the state does not have. Every phase
+// moves on so.
+constexpr CodeSite kSetFlowPhase{"SetFlowPhase", 0x414670,
+	{0x48, 0x83, 0xEC, 0x28, 0x44, 0x8B, 0xCA, 0x4C, 0x8B, 0xD1, 0x39, 0x91, 0x88, 0x00, 0x00, 0x00}};
+// void MarkResultSkipped(void* unitContext): what MatchResultDemo's phase 3
+// (rva 0x409930) does first on its skip, with the flow unit's context: the
+// battle's unit found by rva 0x2E7900 gets +308 = 1, 2 or 3 by the match's
+// winner (side 0, side 1, none).
+constexpr CodeSite kMarkResultSkipped{"MarkResultSkipped", 0x2F3030,
+	{0x48, 0x85, 0xC9, 0x0F, 0x84, 0x96, 0x00, 0x00, 0x00, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x48, 0x8D}};
+
 // Content lists (GameContent): the singleton's spec data ("SpecDataAsset";
 // its pick-space map is namespace spec, in SfvMenuLayouts.hxx).
 //
@@ -543,7 +569,8 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kFindUnit, kFindPart, kProjectileReleasable, kAddBattleTask, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
 	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
-	kFighterInstalled, kCostumePackage, kShowResult, kRestartBattle, kSpecData, kMainMenuClass,
+	kFighterInstalled, kCostumePackage, kShowResult, kRestartBattle, kFlowRequest, kSetFlowPhase, kMarkResultSkipped,
+	kSpecData, kMainMenuClass,
 	kSetPlayerParam, kRequestExit, kStageName, kSpecReady, kFindSpecFighter, kFindSpecFighterStep, kFindSpecCostume,
 	kFindSpecCostumeStep, kFindSpecColour, kFindSpecColourStep, kCostumeName, kTextToString, kCreateText,
 	kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke, kBattleSetupClass, kOwnedFighters, kOwnedCostumes,

@@ -84,6 +84,8 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	started_ = leaveWanted_ = leaving_ = false;
 	exitAsked_ = false;
 	introSkip_ = {};
+	scenes_ = {};
+	scenesSkips_ = 0;
 	ForgetEndedVersusBattle();
 	pacer_.Reset();
 }
@@ -167,6 +169,9 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		DumpIfRequested();
 		if (decided == adapter::RoomBattle::Answer::Rematch) {
 			startTime_ = adapter.StartTime();
+			// The restart keeps the last match decided for a few frames: the
+			// answer's button, still down, is no press to skip anything.
+			introSkip_ = {};
 		} else if (decided == adapter::RoomBattle::Answer::Leave) {
 			recordingWhole_ = true;
 			exitAsked_ = false; // a runtime's exit the WIN carried is this leave
@@ -184,18 +189,23 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	}
 	if (session_->Running()) pacer_.Frame(*session_, last_ == RollbackSession::StepResult::PredictionStall);
 	const int frame = session_->Frame();
+	NoteScenes(adapter, frame);
 	// Sent as the player plays, with the skip request of the intro and of a
 	// decided match's scenes (IntroSkip.hxx); frames whose inputs the game
 	// ignores (outside the fight) get neutral ones in RollbackSession,
 	// whatever was sent, but for the request on the skip frames, which are
 	// stepped confirmed.
-	const PackedInput local = introSkip_.Next(adapter.FlowState(), script_.At(frame).value_or(adapter.Sampled(0)),
-		adapter.MatchDecided());
+	const bool asked = introSkip_.Requested();
+	const PackedInput local = introSkip_.Next(adapter.FlowState(), LocalInput(adapter, frame), adapter.MatchDecided(), frame);
+	if (!asked && introSkip_.Requested() && scenes_.From() >= 0) {
+		Log("netplay: this copy asks to skip the scenes from frame %d, %d frame(s) into them", frame, scenes_.Shown(frame));
+	}
 
 	// The game's judgement, the same on both copies (it is restored with the
 	// rest of the state on rollback): both copies hold the battle for the
 	// WIN's answers from this same confirmed frame.
 	if (endPending && room_.TakeEnd(adapter, *session_)) {
+		NoteScenesEnd();
 		NoteRecordedGame();
 		return;
 	}
@@ -209,8 +219,54 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		adapter.SetStartTime(startTime_);
 	}
 	last_ = session_->Step(local);
+	NoteScenesSkip(adapter);
 	DumpIfRequested();
 	PerturbIfDue();
+}
+
+PackedInput NetplayMode::LocalInput(SfvAdapter& adapter, int frame)
+{
+	if (!intro_skip::Scenes(adapter.FlowState(), adapter.MatchDecided())) return script_.At(frame).value_or(adapter.Sampled(0));
+	// The decided match's scenes read nothing but the skip request, so only a
+	// press counts here: the pad as the battle records it and, should that
+	// record stand still, as the game asks its pads itself (its own way after
+	// the decision, unhooked). A test's script presses only where "skipafter"
+	// says, so a scripted match plays its scenes whole unless asked.
+	PackedInput local = adapter.Sampled(0);
+	if (adapter.LocalPadsAny(intro_skip::kPressBits)) local |= intro_skip::kSkipBit;
+	if (intro_skip::ScriptedPress(scenes_.From(), frame, skipAfter_)) local |= input::kLP;
+	return local;
+}
+
+void NetplayMode::NoteScenes(SfvAdapter& adapter, int frame)
+{
+	const int before = scenes_.From();
+	scenes_.Note(intro_skip::Scenes(adapter.FlowState(), adapter.MatchDecided()), frame);
+	if (before < 0 && scenes_.From() >= 0) {
+		scenesSkips_ = 0;
+		Log("netplay: the match is decided at frame %d (flow state %d, %u input tick(s) in the last update); its scenes "
+			"play to the result", frame, adapter.FlowState(), adapter.TicksInLastUpdate());
+	} else if (before >= 0 && scenes_.From() < 0) {
+		Log("netplay: the match is no longer decided at frame %d (flow state %d): a rematch in place, or a rollback took "
+			"the deciding hit back", frame, adapter.FlowState());
+	}
+}
+
+void NetplayMode::NoteScenesSkip(SfvAdapter& adapter)
+{
+	const char* skipped = adapter.TakeScenesSkip();
+	if (!skipped) return;
+	scenesSkips_++;
+	// The frame just played (the session's next is one on).
+	Log("netplay: scenes skipped at frame %d: %s", session_->Frame() - 1, skipped);
+}
+
+void NetplayMode::NoteScenesEnd()
+{
+	if (scenes_.From() < 0) return;
+	const int frame = session_->Frame();
+	Log("netplay: the scenes took %d frame(s), from the decision at frame %d to the result at frame %d (%d skip(s) applied)",
+		scenes_.Shown(frame), scenes_.From(), frame, scenesSkips_);
 }
 
 void NetplayMode::WatchFrames(SfvAdapter& adapter)
@@ -254,7 +310,9 @@ bool NetplayMode::WatchFrame(SfvAdapter& adapter)
 	}
 	// Every frame a watcher has is confirmed, so the match's end is taken on
 	// the frame it is seen, the one the fighters take it on.
+	NoteScenes(adapter, session_->Frame());
 	if (room_.EndPending() && room_.TakeEnd(adapter, *session_)) {
+		NoteScenesEnd();
 		NoteRecordedGame();
 		return false;
 	}
@@ -264,6 +322,7 @@ bool NetplayMode::WatchFrame(SfvAdapter& adapter)
 		adapter.SetStartTime(startTime_);
 	}
 	last_ = session_->Step(0);
+	NoteScenesSkip(adapter);
 	const bool advanced = last_ == RollbackSession::StepResult::Advanced;
 	if (advanced && replay_) {
 		const int played = session_->Frame() - 1;
@@ -552,6 +611,13 @@ void NetplayMode::RegisterCommands()
 	RegisterCommand("riftgain", [this](const std::string& args) {
 		std::lock_guard lock(mutex_);
 		pacer_.SetRiftGain(atof(args.c_str()) / 120.0);
+		return std::string("ok");
+	});
+	// "skipafter <n>": this copy presses an attack n frames into each decided
+	// match's scenes (-1, or nothing given: never), for runroom's -skipAfter.
+	RegisterCommand("skipafter", [this](const std::string& args) {
+		std::lock_guard lock(mutex_);
+		skipAfter_ = args.empty() ? -1 : atoi(args.c_str());
 		return std::string("ok");
 	});
 	RegisterCommand("dump", [this](const std::string& args) {

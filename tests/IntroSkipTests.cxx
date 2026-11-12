@@ -1,5 +1,6 @@
 // The intro's skip (mod/IntroSkip.hxx): the bit both copies exchange, the
-// frames the game reads it on, and each copy's request.
+// frames the game reads it on, and each copy's request; and the decided
+// match's scenes: the request's guard, and how a skip frame ends each state.
 
 #include <doctest/doctest.h>
 
@@ -138,21 +139,158 @@ TEST_CASE("a decided match's scenes read the skip bit like the intro, and its fi
 TEST_CASE("after the deciding round a new press asks for the skip until the scenes end")
 {
 	constexpr int kFinish = 7;
+	constexpr int kDecidedAt = 1000;
+	constexpr int kGuardEnds = kDecidedAt + intro_skip::kScenesGuardFrames;
 	intro_skip::Request request;
 	// The button that landed the last hit is still down as the match is decided.
-	CHECK(request.Next(kFight, input::kHP) == input::kHP);
-	CHECK(request.Next(kFight, input::kHP, true) == input::kHP);
-	CHECK(request.Next(kFinish, input::kHP, true) == input::kHP);
+	CHECK(request.Next(kFight, input::kHP, false, kDecidedAt - 2) == input::kHP);
+	CHECK(request.Next(kFight, input::kHP, true, kDecidedAt - 1) == input::kHP);
+	CHECK(request.Next(kFinish, input::kHP, true, kDecidedAt) == input::kHP);
+	CHECK(request.ScenesFrom() == kDecidedAt);
+	CHECK(request.Next(kFinish, input::kHP, true, kGuardEnds) == input::kHP); // still held: no press
 	CHECK_FALSE(request.Requested());
-	CHECK(request.Next(kFinish, 0, true) == 0u);
-	CHECK(request.Next(kFinish, input::kLK, true) == (kSkipBit | input::kLK));
+	CHECK(request.Next(kFinish, 0, true, kGuardEnds + 1) == 0u);
+	CHECK(request.Next(kFinish, input::kLK, true, kGuardEnds + 2) == (kSkipBit | input::kLK));
 	CHECK(request.Requested());
-	CHECK(request.Next(kFinish, 0, true) == kSkipBit); // released: still asked
-	CHECK(request.Next(9, input::kLeft, true) == (kSkipBit | input::kLeft)); // through the next scene
+	CHECK(request.Next(kFinish, 0, true, kGuardEnds + 3) == kSkipBit); // released: still asked
+	CHECK(request.Next(11, input::kLeft, true, kGuardEnds + 4) == (kSkipBit | input::kLeft)); // through the next scene
 	// A rematch in place resets the match: nothing is decided, nothing asked.
-	CHECK(request.Next(kMatchStart, 0, false) == 0u);
+	CHECK(request.Next(kMatchStart, 0, false, kGuardEnds + 5) == 0u);
 	CHECK_FALSE(request.Requested());
+	CHECK(request.ScenesFrom() == -1);
 	// The same press between two rounds asks nothing.
-	CHECK(request.Next(kFinish, input::kMP, false) == input::kMP);
+	CHECK(request.Next(kFinish, input::kMP, false, kGuardEnds + 6) == input::kMP);
 	CHECK_FALSE(request.Requested());
+}
+
+TEST_CASE("a press in the scenes' first second asks nothing, then or later")
+{
+	constexpr int kFinish = 7;
+	constexpr int kDecidedAt = 500;
+	intro_skip::Request request;
+	CHECK(request.Next(kFight, 0, false, kDecidedAt - 1) == 0u);
+	int frame = kDecidedAt;
+	// Mashed through the KO: every press inside the guard is ignored...
+	for (; frame < kDecidedAt + intro_skip::kScenesGuardFrames; frame++) {
+		INFO("frame " << frame);
+		const PackedInput mash = (frame % 4 == 0) ? input::kMP : 0;
+		CHECK(request.Next(kFinish, mash, true, frame) == mash);
+		CHECK_FALSE(request.Requested());
+	}
+	// ...and not taken up once it is over: nothing new is down.
+	CHECK(request.Next(kFinish, 0, true, frame++) == 0u);
+	CHECK(request.Next(kFinish, 0, true, frame++) == 0u);
+	CHECK_FALSE(request.Requested());
+	// A press after it asks: here the game's own skip button.
+	CHECK(request.Next(kFinish, kSkipBit, true, frame++) == kSkipBit);
+	CHECK(request.Requested());
+}
+
+TEST_CASE("a button held through the guard counts only once released and pressed again")
+{
+	constexpr int kFinish = 7;
+	intro_skip::Request request;
+	int frame = 200;
+	CHECK(request.Next(kFight, input::kLK, true, frame++) == input::kLK);
+	for (int i = 0; i <= intro_skip::kScenesGuardFrames; i++) request.Next(kFinish, input::kLK, true, frame++);
+	CHECK_FALSE(request.Requested());
+	CHECK(request.Next(kFinish, input::kLK, true, frame++) == input::kLK);
+	CHECK(request.Next(kFinish, 0, true, frame++) == 0u);
+	CHECK(request.Next(kFinish, input::kLK, true, frame++) == (kSkipBit | input::kLK));
+}
+
+TEST_CASE("the scenes' clock starts at the first frame seen decided and starts over when the fight is back")
+{
+	constexpr int kFinish = 7;
+	intro_skip::ScenesClock clock;
+	CHECK(clock.From() == -1);
+	CHECK(clock.Shown(100) == 0);
+	clock.Note(intro_skip::Scenes(kFight, true), 99); // the deciding hit's frame is still the fight
+	CHECK(clock.From() == -1);
+	clock.Note(intro_skip::Scenes(kFinish, true), 100);
+	clock.Note(intro_skip::Scenes(kFinish, true), 130);
+	CHECK(clock.From() == 100);
+	CHECK(clock.Shown(130) == 30);
+	// A rollback took the hit back: the fight again, then a later decision.
+	clock.Note(intro_skip::Scenes(kFight, false), 131);
+	CHECK(clock.From() == -1);
+	clock.Note(intro_skip::Scenes(kFinish, true), 140);
+	CHECK(clock.From() == 140);
+	CHECK_FALSE(intro_skip::Scenes(kIntro, false));
+	CHECK_FALSE(intro_skip::Scenes(kFinish, false));
+}
+
+TEST_CASE("a script's skip press comes the given number of frames into the scenes, for a few frames")
+{
+	CHECK_FALSE(intro_skip::ScriptedPress(100, 150, -1)); // off
+	CHECK_FALSE(intro_skip::ScriptedPress(-1, 150, 0));   // outside the scenes
+	CHECK_FALSE(intro_skip::ScriptedPress(100, 189, 90));
+	for (int k = 0; k < intro_skip::kScriptedPressFrames; k++) CHECK(intro_skip::ScriptedPress(100, 190 + k, 90));
+	CHECK_FALSE(intro_skip::ScriptedPress(100, 190 + intro_skip::kScriptedPressFrames, 90));
+	// Pressed, released, pressed: a request when past the guard.
+	intro_skip::Request request;
+	int asked = -1;
+	for (int frame = 99; frame < 400 && asked < 0; frame++) {
+		const bool scenes = frame >= 100;
+		const PackedInput local = intro_skip::ScriptedPress(request.ScenesFrom(), frame, 90) ? input::kLP : 0;
+		request.Next(scenes ? 7 : kFight, local, scenes, frame);
+		if (request.Requested()) asked = frame;
+	}
+	CHECK(asked == 190);
+	// A press scheduled inside the guard is ignored, and nothing is asked.
+	intro_skip::Request early;
+	for (int frame = 99; frame < 400; frame++) {
+		const bool scenes = frame >= 100;
+		const PackedInput local = intro_skip::ScriptedPress(early.ScenesFrom(), frame, 10) ? input::kLP : 0;
+		early.Next(scenes ? 7 : kFight, local, scenes, frame);
+	}
+	CHECK_FALSE(early.Requested());
+}
+
+TEST_CASE("the skip ends Finish, the winner's demo and the draw's demo the way their own phases move on")
+{
+	namespace rf = sfve::mod::sfv::resultflow;
+	using intro_skip::ScenesAction;
+	using intro_skip::ScenesStep;
+	using intro_skip::ScenesStepFor;
+	// Finish: whichever phase it waits in, the flow asks for its next state.
+	for (int phase = 0; phase <= 17; phase++) {
+		CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, phase) == ScenesStep{ScenesAction::RequestNext, -1});
+	}
+	// The winner's demo: its 90-tick wait before the setup, then its skip phase.
+	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, 1) == ScenesStep{ScenesAction::SetPhase, 2});
+	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, 3) == ScenesStep{ScenesAction::ResultSkip, 4});
+	for (const int phase : {0, 2, 4, 5, 6, 7}) {
+		INFO("phase " << phase);
+		CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, phase) == ScenesStep{});
+	}
+	// The draw's demo: the wait for its demo, then its 300-tick wait.
+	CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, 2) == ScenesStep{ScenesAction::SetPhase, 3});
+	CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, 4) == ScenesStep{ScenesAction::SetPhase, 5});
+	for (const int phase : {1, 3, 5, 6, 7}) {
+		INFO("phase " << phase);
+		CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, phase) == ScenesStep{});
+	}
+	// The states that leave on their first tick, and the results' own, play on.
+	for (const int state : {rf::kRoundOver, rf::kMatchOver, rf::kMatchEnd, 9, 10, kFight, kIntro, kMatchStart}) {
+		INFO("state " << state);
+		for (int phase = 0; phase <= 7; phase++) CHECK(ScenesStepFor(state, rf::kFinishVtable, phase) == ScenesStep{});
+	}
+	// A state of another class (another flow's) is left alone.
+	CHECK(ScenesStepFor(rf::kFinish, rf::kMatchResultDemoVtable, 3) == ScenesStep{});
+	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kFinishVtable, 3) == ScenesStep{});
+	CHECK(ScenesStepFor(rf::kMatchDrawDemo, 0, 4) == ScenesStep{});
+}
+
+TEST_CASE("the scenes' ids are the flow's, apart from the fight's and the intro's")
+{
+	namespace rf = sfve::mod::sfv::resultflow;
+	CHECK(rf::kFinish == kFight + 1);
+	CHECK(rf::kRoundOver == rf::kFinish + 1);
+	CHECK(rf::kMatchEnd == rf::kMatchOver + 1);
+	// Every one of them is a state whose skip frames read the bit once decided.
+	for (const int state : {rf::kFinish, rf::kRoundOver, rf::kMatchResultDemo, rf::kMatchDrawDemo, rf::kMatchOver, rf::kMatchEnd}) {
+		CHECK(intro_skip::Skippable(state, true));
+		CHECK(intro_skip::Scenes(state, true));
+	}
 }
