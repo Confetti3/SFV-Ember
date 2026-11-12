@@ -10,6 +10,7 @@
 
 #include "mod/BuildCheck.hxx"
 #include "mod/SfvBuild.hxx"
+#include "mod/SfvBoxOffsets.hxx"
 #include "mod/SfvFighterOffsets.hxx"
 
 #include <stdint.h>
@@ -594,7 +595,9 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	// reads of its model (SocketReads).
 	kCharaVisualUpdate, kSetWorldScale3D, kActorSetMeshTransform, kSocketWorldPosition,
 	// The random generators' draw, for the development audit (RngAudit).
-	kRandomDraw};
+	kRandomDraw,
+	// The fighters' boxes and the camera, for the hitbox viewer (SfvBoxOffsets.hxx).
+	kPlaceAttackBoxes, kPlaceBodyBoxes, kListAttackBox, kListBodyBox, kBoxRect, kAimCamera};
 
 } // namespace sfve::mod::sfv
 

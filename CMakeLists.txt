@@ -110,10 +110,12 @@ add_library(sfve_ember STATIC
     src/ember/RoomBattle.cxx
     src/ember/RoomCommands.cxx
     src/ember/SfvArt.cxx
+    src/ember/SfvBoxes.cxx
     src/ember/SfvCatalog.cxx
     src/ember/SfvFaceCrop.cxx
     src/ember/SfvFrameMeter.cxx
     src/ember/SfvGame.cxx
+    src/ember/SfvHitboxes.cxx
     src/ember/SfvHud.cxx
     src/ember/SfvLoadoutNotes.cxx
     src/ember/SfvLoadoutText.cxx
@@ -316,6 +318,7 @@ add_executable(sfve_ember_tests
     tests/HookTransactionTests.cxx
     tests/SfvFlowTests.cxx
     tests/SfvFrameMeterTests.cxx
+    tests/SfvBoxesTests.cxx
     tests/RoomBuildTests.cxx
     tests/BuildKindTests.cxx
     tests/GameInputTests.cxx

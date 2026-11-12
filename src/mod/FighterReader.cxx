@@ -47,8 +47,15 @@ bool FighterReader::Bind(uint8_t* anyUnit, uintptr_t imageBase)
 		uint8_t* unit = GameFindUnit(anyUnit, fighter::kProjectileUnitType, index);
 		// One already out when the meter starts came out before it.
 		int32_t live = 0;
-		if (unit && ReadField(unit, fighter::kProjectileLive, &live)) projectiles_.push_back({unit, live != 0});
+		if (unit && ReadField(unit, fighter::kProjectileLive, &live))
+			projectiles_.push_back({unit, GameFindPart(unit, sfv::boxes::kProjectileActionPartType), live != 0});
 	}
+	// The camera and the fight's frame, for the hitbox viewer; the meter
+	// does without them.
+	camera_ = GameFindUnit(anyUnit, sfv::camera::kCameraUnitType, 0);
+	field_ = GameFindUnit(anyUnit, sfv::camera::kFieldUnitType, 0);
+	rectShape_ = imageBase + sfv::boxes::kRectShapeVtable;
+	if (!camera_ || !field_) Log("hitboxes: the battle has no camera (%p) or field (%p); boxes are not drawn", (void*)camera_, (void*)field_);
 	for (int kind = 1; kind <= fighter::kStateKinds; kind++) {
 		if (!TryRead(reinterpret_cast<const void*>(imageBase + fighter::kStateTable + 8u * kind), &states_[kind]) || !states_[kind]) {
 			return Log("frame meter: the state table has no state %d", kind), false;
@@ -66,6 +73,8 @@ void FighterReader::Forget()
 	fighters_ = {};
 	projectiles_.clear();
 	states_ = {};
+	camera_ = field_ = nullptr;
+	rectShape_ = 0;
 }
 
 fighter::StateKind FighterReader::KindOf(const uint8_t* state) const
@@ -133,6 +142,44 @@ bool FighterReader::Read(std::array<FighterFrame, 2>& fighters)
 		if (live && !projectile.live && owner >= 0 && owner < 2) fighters[owner].projectileOut = true;
 		projectile.live = live != 0;
 	}
+	return true;
+}
+
+bool FighterReader::ReadBlocks(const uint8_t* actionPart, BoxBlocks& out)
+{
+	if (!actionPart) return false;
+	out.attackAt = reinterpret_cast<uintptr_t>(actionPart + sfv::boxes::kAttackBlock);
+	out.bodyAt = reinterpret_cast<uintptr_t>(actionPart + sfv::boxes::kBodyBlock);
+	return ReadField(actionPart, sfv::boxes::kAttackBlock, &out.attack) && ReadField(actionPart, sfv::boxes::kBodyBlock, &out.body);
+}
+
+bool FighterReader::ReadBoxes(BoxFrame& frame) const
+{
+	frame = {};
+	if (!bound_) return false;
+	frame.rectShape = rectShape_;
+	for (int side = 0; side < 2; side++) {
+		BoxBlocks& blocks = frame.parts.emplace_back();
+		blocks.side = side;
+		if (!ReadBlocks(fighters_[side].actionPart, blocks)) {
+			frame = {};
+			return false;
+		}
+	}
+	for (const Projectile& projectile : projectiles_) {
+		int32_t live = 0, owner = -1;
+		if (!projectile.actionPart || !ReadField(projectile.unit, fighter::kProjectileLive, &live) ||
+			!ReadField(projectile.unit, fighter::kProjectileOwner, &owner) || !live || owner < 0 || owner > 1)
+			continue;
+		BoxBlocks blocks;
+		blocks.side = owner;
+		blocks.projectile = true;
+		if (ReadBlocks(projectile.actionPart, blocks)) frame.parts.push_back(std::move(blocks));
+	}
+	CameraFrame& camera = frame.camera;
+	camera.valid = camera_ && field_ && ReadField(camera_, sfv::camera::kTarget, &camera.target) &&
+		ReadField(camera_, sfv::camera::kEye, &camera.eye) && ReadField(camera_, sfv::camera::kFieldOfView, &camera.fieldOfView) &&
+		ReadField(field_, sfv::camera::kFightToWorld, &camera.fightToWorld);
 	return true;
 }
 

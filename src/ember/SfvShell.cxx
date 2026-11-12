@@ -5,6 +5,7 @@
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvEleven.hxx"
+#include "ember/SfvHitboxes.hxx"
 #include "ember/SfvHud.hxx"
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPick.hxx"
@@ -126,7 +127,13 @@ public:
 		const PlayerPick dummy = CurrentDummy();
 		view.dummySummary = Summary(dummy);
 		if (!PickAvailable(dummy, snapshot)) view.dummyError = loc::T("runtime.selection_unavailable");
+		// Training select's Hitboxes row shows the viewer's saved choice
+		// (SfvHitboxes; docs/design/beta8/hitboxes.md).
+		view.hitboxesShown = SfvHitboxesShown();
 	}
+
+	// Training select's Hitboxes row: the viewer's choice, saved.
+	bool ShowHitboxes(bool shown) override { return ShowSfvHitboxes(shown); }
 
 	// The table page's Appearance and Ultra rows, and the post-match
 	// prompt's Ultra: SfvSelectionScreen's StepTableSelection. Like SF4's,

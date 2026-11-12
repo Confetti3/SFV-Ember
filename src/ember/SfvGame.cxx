@@ -470,6 +470,9 @@ Capabilities SfvCapabilities()
 	caps.tinyFighters = true;
 	// A room's Skip winner scenes rule (docs/design/beta8/autoskip.md).
 	caps.skipScenes = true;
+	// Ember's hitbox viewer over SFV's Training, switched from Training select
+	// (SfvHitboxes, docs/design/beta8/hitboxes.md).
+	caps.hitboxes = true;
 	caps.settingsFeatures.shortcutHint = true;
 	return caps;
 }
