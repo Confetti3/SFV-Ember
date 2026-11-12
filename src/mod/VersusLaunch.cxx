@@ -11,12 +11,14 @@
 #include "mod/SfvOffsets.hxx"
 #include "mod/TinyFighters.hxx"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
 
 #include <array>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <utility>
@@ -123,10 +125,101 @@ bool IsOurJump(uint8_t* jumpState)
 	return s_pending.message && Field<uint8_t*>(jumpState, jump::kJumpStateMessage) == s_pending.message;
 }
 
+// Both players' looks (PlayerLook), as a launch wrote them into the jump.
+using PlayerLooks = std::array<PlayerLook, jump::kPlayers>;
+
+// The pipe's `launch` status field (tools/runbooth.py waits on it): the last
+// launch asked for, through the pipe or a room, from the ask to its battle's
+// loaded looks or its failure. Any thread, under s_launchMutex.
+struct LaunchStatus {
+	std::uint64_t number = 0;   // launches asked for in this process
+	const char* state = "none"; // asked, jumping, loading, loaded, failed
+	std::optional<PlayerLooks> asked; // what the jump was given
+	std::array<std::optional<PlayerLook>, jump::kPlayers> looks; // what the battle loaded (none: not read)
+	bool loaded = false;
+	bool mismatch = false; // a loaded look is not the one asked for (or could not be read)
+	std::string failure;
+};
+std::mutex s_launchMutex;
+LaunchStatus s_launchStatus;
+
+void NoteLaunchAsked()
+{
+	std::lock_guard lock(s_launchMutex);
+	const std::uint64_t number = s_launchStatus.number + 1;
+	s_launchStatus = LaunchStatus{};
+	s_launchStatus.number = number;
+	s_launchStatus.state = "asked";
+}
+
+void NoteLaunchState(const char* state)
+{
+	std::lock_guard lock(s_launchMutex);
+	s_launchStatus.state = state;
+}
+
+void NoteLaunchFailed(const std::string& why)
+{
+	std::lock_guard lock(s_launchMutex);
+	s_launchStatus.state = "failed";
+	s_launchStatus.loaded = false;
+	s_launchStatus.failure = why;
+}
+
+void NoteLaunchWritten(const PlayerLooks& written)
+{
+	std::lock_guard lock(s_launchMutex);
+	s_launchStatus.state = "loading";
+	s_launchStatus.asked = written;
+}
+
+// The battle loaded: `loaded` as the battle setting holds each player's look.
+// A mismatch is a fighter, costume or colour other than the one written (the
+// load puts a costume whose package this copy lacks back to 0); the voice is
+// not part of a picture and is not compared here.
+void NoteLaunchLoaded(const PlayerLooks& written, const std::array<std::optional<PlayerLook>, jump::kPlayers>& loaded)
+{
+	std::lock_guard lock(s_launchMutex);
+	s_launchStatus.state = "loaded";
+	s_launchStatus.loaded = true;
+	s_launchStatus.asked = written;
+	s_launchStatus.looks = loaded;
+	s_launchStatus.mismatch = false;
+	for (size_t player = 0; player < loaded.size(); player++) {
+		if (!loaded[player]) {
+			s_launchStatus.mismatch = true;
+			continue;
+		}
+		PlayerLook want = written[player], got = *loaded[player];
+		want.voice = got.voice = -1;
+		if (LookMismatch(want, got)) s_launchStatus.mismatch = true;
+	}
+}
+
+std::string LookJson(const std::optional<PlayerLook>& look)
+{
+	if (!look) return "null";
+	return "{\"fighter\":" + JsonString(look->fighter) + ",\"costume\":" + std::to_string(look->costume) +
+		",\"colour\":" + std::to_string(look->colour) + "}";
+}
+
+std::string LaunchStatusJson()
+{
+	std::lock_guard lock(s_launchMutex);
+	const LaunchStatus& s = s_launchStatus;
+	std::string asked = "null";
+	if (s.asked) asked = "[" + LookJson((*s.asked)[0]) + "," + LookJson((*s.asked)[1]) + "]";
+	const std::string looks = s.loaded ? "[" + LookJson(s.looks[0]) + "," + LookJson(s.looks[1]) + "]" : "null";
+	return "{\"number\":" + std::to_string(s.number) + ",\"state\":" + JsonString(s.state) +
+		",\"loaded\":" + (s.loaded ? "true" : "false") + ",\"asked\":" + asked + ",\"looks\":" + looks +
+		",\"mismatch\":" + (s.mismatch ? "true" : "false") + ",\"failure\":" + JsonString(s.failure) + "}";
+}
+
 // Ends the launch in progress, reporting why to whoever asked for it.
 void FailLaunch(const std::string& why)
 {
 	Log("launch: failed: %s", why.c_str());
+	NoteLaunchFailed(why);
 	const LaunchFailed onFailed = std::move(s_pending.onFailed);
 	s_pending = Pending{};
 	if (onFailed) onFailed(why);
@@ -180,9 +273,6 @@ std::string ModeDataRefusal(uint8_t* modeData, LaunchTarget target)
 	return {};
 }
 
-// Both players' looks (PlayerLook), as a launch wrote them into the jump.
-using PlayerLooks = std::array<PlayerLook, jump::kPlayers>;
-
 // The look the battle setting holds for player `player` (sfv::jump's
 // kSettingCostume and the rest); none where the setting has no record for it.
 std::optional<PlayerLook> LoadedLook(int player)
@@ -207,8 +297,11 @@ std::optional<PlayerLook> LoadedLook(int player)
 // kept it, shows the players a different look.
 void LogLoadedLooks(const PlayerLooks& written)
 {
+	std::array<std::optional<PlayerLook>, jump::kPlayers> looks;
+	for (int player = 0; player < jump::kPlayers; player++) looks[(size_t)player] = LoadedLook(player);
+	NoteLaunchLoaded(written, looks);
 	for (int player = 0; player < jump::kPlayers; player++) {
-		const std::optional<PlayerLook> loaded = LoadedLook(player);
+		const std::optional<PlayerLook>& loaded = looks[(size_t)player];
 		if (!loaded) {
 			Log("launch: player %d's loaded look cannot be read from the battle setting", player + 1);
 			continue;
@@ -304,6 +397,9 @@ void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 		// show a missing read-back rather than nothing.
 		if (kind != sfv::scene::kMainMenuVtable && kind != sfv::scene::kJumpStateVtable) {
 			Log("launch: left the jump for state 0x%llX; looks not read back", (unsigned long long)kind);
+			char why[96];
+			snprintf(why, sizeof(why), "left the jump for state 0x%llX, not a battle", (unsigned long long)kind);
+			NoteLaunchFailed(why);
 			return false;
 		}
 		const char* why = kind == sfv::scene::kMainMenuVtable ? "the game went back to the main menu while loading"
@@ -311,6 +407,7 @@ void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 															  : nullptr;
 		if (!why) return true; // still loading
 		Log("launch: failed: %s", why);
+		NoteLaunchFailed(why);
 		s_linkedLoading = s_replayLoading = false; // no battle came for it
 		s_loadingTiny = {false, false};
 		ClearTinyFighters();
@@ -350,6 +447,7 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	PlayerLooks written;
 	for (int player = 0; player < jump::kPlayers; player++) written[player] = WriteFighter(modeData, player, picks.players[player]);
 	WriteStage(modeData, picks);
+	NoteLaunchWritten(written);
 	GiveBackGameRef(flow);
 	if (picks.linked || picks.replay) ClearCarriedCount();
 	s_linkedLoading = picks.linked;
@@ -447,6 +545,7 @@ void Launch(const MatchPicks& picks, LaunchFailed onFailed)
 {
 	auto refuse = [&](const char* why) {
 		Log("launch: refused, %s", why);
+		NoteLaunchFailed(std::string("refused: ") + why);
 		if (onFailed) onFailed(why);
 	};
 	if (!s_installed) return refuse("the battle jump is not hooked");
@@ -474,6 +573,7 @@ void Launch(const MatchPicks& picks, LaunchFailed onFailed)
 	Field<uint8_t>(message, jump::kMessageCheckOwnership) = gameCheck ? 1 : 0;
 	if (!ChangeScene(jumpClass, message)) return refuse("the scene manager is not known");
 	s_pending = Pending{message, false, picks, std::move(onFailed)};
+	NoteLaunchState("jumping");
 	Log("launch: battle jump, target %d, %s", (int)picks.target,
 		picks.linked ? "a room's match: the game's ownership check does not run"
 		: picks.replay ? "a replay: the game's ownership check does not run"
@@ -645,15 +745,18 @@ bool InstallVersusLaunch(uintptr_t imageBase, bool gameCheckOutsideRooms)
 
 void QueueLaunch(const MatchPicks& picks, LaunchFailed onFailed)
 {
+	NoteLaunchAsked();
 	RunOnGameThread([picks, onFailed = std::move(onFailed)]() mutable { Launch(picks, std::move(onFailed)); });
 }
 
 void LaunchOnMainMenu(const MatchPicks& picks, std::function<bool()> stillWanted, LaunchFailed onFailed)
 {
+	NoteLaunchAsked();
 	auto frames = std::make_shared<int>(0);
 	RunEachGameFrame([picks, stillWanted = std::move(stillWanted), onFailed = std::move(onFailed), frames]() mutable {
 		if (stillWanted && !stillWanted()) {
 			Log("launch: no longer wanted before the main menu came");
+			NoteLaunchFailed("no longer wanted before the main menu came");
 			return false;
 		}
 		if (SceneStateKind(CurrentSceneState()) == sfv::scene::kMainMenuVtable) {
@@ -662,6 +765,7 @@ void LaunchOnMainMenu(const MatchPicks& picks, std::function<bool()> stillWanted
 		}
 		if (++*frames < kWaitForMenuFrames) return true;
 		Log("launch: refused, the main menu did not come");
+		NoteLaunchFailed("refused: the main menu did not come");
 		if (onFailed) onFailed("the main menu did not come");
 		return false;
 	});
@@ -699,6 +803,9 @@ std::optional<std::array<std::uint32_t, 2>> LoadingCodes()
 
 void RegisterVersusLaunchCommands()
 {
+	// The last launch: asked, jumping, loading, loaded (with the looks the
+	// battle holds and whether they are the ones asked for) or failed (why).
+	RegisterStatus("launch", LaunchStatusJson);
 	RegisterCommand("launch", [](const std::string& args) {
 		std::istringstream in(args);
 		std::string target, p1, p2, stage, rounds, time;

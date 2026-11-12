@@ -183,6 +183,9 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 		if (!_wcsicmp(mode, L"inert")) c.mode = ModMode::Inert;
 		else if (!_wcsicmp(mode, L"synctest")) c.mode = ModMode::SyncTest;
 		else if (!_wcsicmp(mode, L"netplay")) c.mode = ModMode::Netplay;
+		// The photo booth: a player build never gets here, as it reads only
+		// -sfve_mode=netplay (kPlayerOptions).
+		else if (!_wcsicmp(mode, L"booth")) c.mode = ModMode::Booth;
 	}
 	c.player = (int)options.Number(L"sfve_player", c.instance == 0 ? 0 : 1);
 	c.port = (uint16_t)options.Number(L"sfve_port", 7000 + 2 * c.instance);
@@ -270,6 +273,7 @@ const char* ModeName(ModMode mode)
 	case ModMode::Probe: return "probe";
 	case ModMode::SyncTest: return "synctest";
 	case ModMode::Netplay: return "netplay";
+	case ModMode::Booth: return "booth";
 	}
 	return "?";
 }

@@ -93,6 +93,26 @@ TEST_CASE("a player build reads only its launcher's options")
 	LoadConfigFromCommandLine(L"");
 }
 
+TEST_CASE("the photo booth is a development build's mode only")
+{
+	// A player build reads -sfve_mode only as netplay: booth is a test's
+	// option, ignored and noted, and the mode stays the default.
+	LoadConfigFromCommandLine(L"x -sfve_mode=booth", BuildKind::Player);
+	CHECK(Config().mode == sfve::mod::ModMode::Probe);
+	CHECK(sfve::mod::PlayerBuildIgnored().find("-sfve_mode") != std::string::npos);
+	LoadConfigFromCommandLine(L"x -sfve_mode=booth -sfve_room=1", BuildKind::Player);
+	CHECK(Config().mode == sfve::mod::ModMode::Probe);
+	// A development build makes it, in any case; rooms are netplay's only.
+	LoadConfigFromCommandLine(L"x -sfve_mode=booth", BuildKind::Development);
+	CHECK(Config().mode == sfve::mod::ModMode::Booth);
+	CHECK(std::string(sfve::mod::ModeName(Config().mode)) == "booth");
+	LoadConfigFromCommandLine(L"x -sfve_mode=BOOTH -sfve_room=1", BuildKind::Development);
+	CHECK(Config().mode == sfve::mod::ModMode::Booth);
+	CHECK_FALSE(Config().room);
+	CHECK(sfve::mod::IgnoredSetting() != nullptr);
+	LoadConfigFromCommandLine(L"");
+}
+
 TEST_CASE("a player build's pipe answers ping and status only")
 {
 	bool ran = false;

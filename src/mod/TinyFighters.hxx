@@ -40,9 +40,12 @@ namespace sfve::mod {
 // about 40 % of the normal height).
 constexpr float kTinyScale = 0.4f;
 
-// The sides drawn small, by side (0 P1, 1 P2).
+// The sides drawn small, by side (0 P1, 1 P2), and each one's size against
+// normal: kTinyScale for a Tiny pick, the photo booth's factor for a side it
+// scaled (ApplyFighterScaleNow).
 struct TinySides {
 	bool side[2] = {false, false};
+	float factor[2] = {kTinyScale, kTinyScale};
 	bool Any() const { return side[0] || side[1]; }
 };
 
@@ -50,8 +53,11 @@ struct TinySides {
 // and `announce` (a launch announces once; the battle's bind sets them again
 // without). Any thread.
 void SetTinyFighters(bool p1, bool p2, bool announce = true);
-// Nothing is drawn small. Any thread.
+// Nothing is drawn small for a Tiny pick (the booth's scale stays). Any
+// thread.
 void ClearTinyFighters();
+// The sides drawn small: a Tiny pick's (SetTinyFighters) at kTinyScale, and
+// a side the booth scaled at its factor, which wins over a Tiny pick's.
 TinySides TinyFightersNow();
 
 // The photo booth's scale (development builds, -sfve_mode=booth;
@@ -62,10 +68,21 @@ TinySides TinyFightersNow();
 // take a fighter out of a plate. Game thread only. True when both sides'
 // parts were known and scaled; false (nothing changed for a side whose part is
 // unknown) otherwise, and always false for a factor that is not positive and
-// finite. It writes only the picture, as every function here does. A-mod fills
-// it: the per-side part memory, and the factor parameter on tiny::ScaledScale
-// and tiny::ApplyToPart (default kTinyScale, so the tests stay as they are).
+// finite. It writes only the picture, as every function here does. The parts
+// are those the per-frame hook last updated for each side in this battle
+// (remembered only while the booth allows it); the factor stays with the side
+// (TinySides::factor), so the per-frame hook and a battle update keep it until
+// ForgetFighterScale. Also false outside the booth (SetFighterScaleAllowed
+// never called with true, which only BoothMode does) and off the game thread.
 bool ApplyFighterScaleNow(float p1, float p2);
+
+// The booth's install (BoothMode::Install, development builds): the
+// per-frame hook remembers each side's part, and ApplyFighterScaleNow works.
+// Off (the default, every other mode): neither. Any thread.
+void SetFighterScaleAllowed(bool on);
+// A new battle or a battle left (BoothMode): no booth scale on either side,
+// and no remembered part (the last battle's parts are gone). Game thread.
+void ForgetFighterScale();
 
 // Hooks the picture's functions (a set: all or none); false when they could
 // not be hooked. Once, from SfveStart.
@@ -86,8 +103,11 @@ using SetScaleFn = void (*)(void* sceneComponent, const float* xyz);
 
 // The scale a tiny fighter's mesh is given: each component of the game's
 // wanted scale (a part's float3 at sfv::visual::kWantedScale), or 1 where it
-// is 0, negative or not finite, times kTinyScale.
-void ScaledScale(const float wanted[3], float out[3]);
+// is 0, negative or not finite, times `factor` (a Tiny pick's kTinyScale, or
+// the booth's).
+void ScaledScale(const float wanted[3], float out[3], float factor = kTinyScale);
+// A size factor the booth may give: positive and finite.
+bool UsableFactor(float factor);
 // The scale the fight sees the same mesh at: the wanted scale, with 1 where
 // it is 0, negative or not finite (ScaledScale without kTinyScale).
 void NormalScale(const float wanted[3], float out[3]);
@@ -102,16 +122,25 @@ struct PartResult {
 // After the game's update of `part`: if it belongs to a fighter that is alive
 // (a weak pointer with an object, a control block and a use count above 0),
 // its actor and mesh component exist and its side is tiny in `sides`, the mesh
-// is given ScaledScale of the part's wanted scale through `setScale`.
+// is given ScaledScale of the part's wanted scale, with that side's
+// `sides.factor`, through `setScale`.
 PartResult ApplyToPart(const uint8_t* part, const TinySides& sides, SetScaleFn setScale);
 // As ApplyToPart, with NormalScale: a tiny side's mesh at the game's own
 // scale, for the fight's reads of the model.
 PartResult RestoreToPart(const uint8_t* part, const TinySides& sides, SetScaleFn setScale);
 
 // The whole-mesh transform {rotation, translation, scale} with its scale's
-// xyz times kTinyScale (ScaledScale of its xyz; its w is kept): `out` is a
+// xyz times `factor` (ScaledScale of its xyz; its w is kept): `out` is a
 // copy, `in` is not written.
-void ScaledTransform(const __m128 in[3], __m128 out[3]);
+void ScaledTransform(const __m128 in[3], __m128 out[3], float factor = kTinyScale);
+
+// The booth's scale on both sides' parts (ApplyFighterScaleNow without its
+// checks): each part in `parts` that is a live fighter's with an actor and a
+// mesh gets ScaledScale of its wanted scale times that side's factor, and
+// `results` say what was done (side -1 where the part is null or unreadable).
+// True when both parts were scaled, each on its own side. Nothing is called
+// for a factor that is not UsableFactor.
+bool ScaleBothSides(const uint8_t* const parts[2], const float factors[2], SetScaleFn setScale, PartResult results[2]);
 
 } // namespace tiny
 

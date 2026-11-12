@@ -3,6 +3,7 @@
 #include "mod/ControlPipe.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameMemory.hxx"
+#include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
 
@@ -10,6 +11,7 @@
 
 #include <wchar.h>
 
+#include <atomic>
 #include <mutex>
 
 namespace sfve::mod {
@@ -38,6 +40,12 @@ constexpr Label kLabels[] = {{L"SetPilotName", "plate"}, {L"SetCursorText", "mar
 Shown s_shown[2][2];
 uint64_t s_replaced;
 
+// The photo booth's probe (HudCall, SetHudCallLog): the movie that last named
+// a label (SetPilotName or SetCursorText, the HUD's own calls; the marker is
+// named again at each round's start), and whether every invoke is logged.
+std::atomic<uint8_t*> s_movie;
+std::atomic<bool> s_logCalls;
+
 bool Is(const GameString* s, const wchar_t* text)
 {
 	return s && s->data && s->count > 0 && wcsncmp(s->data, text, (size_t)s->count) == 0;
@@ -59,6 +67,12 @@ std::string Utf8(const GameString* s)
 
 uint64_t h_HudInvoke(uint8_t* movie, const GameString* method, float number, const GameString* text)
 {
+	if (s_logCalls.load()) {
+		Log("hud: invoke %s(%g, \"%s\") on movie %p", Utf8(method).c_str(), (double)number, Utf8(text).c_str(), (void*)movie);
+	}
+	for (const Label& candidate : kLabels) {
+		if (movie && Is(method, candidate.method)) s_movie.store(movie);
+	}
 	const int side = number == 0.f ? 0 : number == 1.f ? 1 : -1;
 	int label = -1;
 	for (int i = 0; side >= 0 && i < 2; ++i)
@@ -123,14 +137,38 @@ void SetPlateNames(PlateName source)
 	s_source = std::move(source);
 }
 
-// A-mod fills these. Until then no call is made and nothing is logged.
-bool HudCall(const std::wstring&, float, const std::wstring&)
+bool HudCall(const std::wstring& method, float number, const std::wstring& text)
 {
-	return false;
+	uint8_t* movie = s_movie.load();
+	if (!o_hudInvoke || !movie || method.empty()) return false;
+	if (!GameThreadId() || GetCurrentThreadId() != GameThreadId()) {
+		Log("hud: a HUD call was asked off the game thread; refused");
+		return false;
+	}
+	// Strings the mod owns, as the label hook's own: they live until the
+	// call returns (the player copies them). No text is UE4's empty FString.
+	const GameString name{method.c_str(), (int32_t)method.size() + 1, (int32_t)method.size() + 1};
+	const GameString words{text.empty() ? nullptr : text.c_str(), text.empty() ? 0 : (int32_t)text.size() + 1,
+		text.empty() ? 0 : (int32_t)text.size() + 1};
+	Log("hud: booth call %s(%g, \"%s\") on movie %p", Utf8(&name).c_str(), (double)number, Utf8(&words).c_str(), (void*)movie);
+	o_hudInvoke(movie, &name, number, &words);
+	return true;
 }
 
-void SetHudCallLog(bool)
+void ForgetHudMovie()
 {
+	s_movie.store(nullptr);
+}
+
+bool HudMovieKnown()
+{
+	return s_movie.load() != nullptr;
+}
+
+void SetHudCallLog(bool on)
+{
+	s_logCalls.store(on);
+	Log("hud: every invoke %s", on ? "logged" : "no longer logged");
 }
 
 } // namespace sfve::mod

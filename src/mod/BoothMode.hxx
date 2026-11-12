@@ -32,6 +32,8 @@
 #include "mod/ModConfig.hxx"
 #include "overlay/FrameGrab.hxx"
 
+#include <cstdint>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -53,6 +55,12 @@ struct Step {
 // frame count of 1 or more (omitted: 1). Case-insensitive; no spaces. False,
 // with the reason in `error` and `steps` left as it was, for any other text.
 bool ParseSteps(std::string_view text, std::vector<Step>& steps, std::string& error);
+
+// The fight frames `steps` take, all together.
+int StepFrames(const std::vector<Step>& steps);
+// What the steps press on their `frame`-th fight frame (from 0); none from
+// StepFrames on, or for a negative frame.
+std::optional<PackedInput> StepAt(const std::vector<Step>& steps, int frame);
 
 enum class Verb { Hold, Run, Play, Scale, Grab, Depth, Hud, HudLog, Leave };
 
@@ -101,7 +109,27 @@ public:
 	std::string Describe() const override;
 
 private:
+	// The pipe's `booth` (any thread): parsed, then either noted for the next
+	// frame under the mutex (hold, run, play, leave), asked of the game thread
+	// (scale, hud) or handed to the frame grab (grab, depth, hudlog).
+	std::string Command(const std::string& args);
+	// Under the mutex: a battle the commands act on (bound, not being left).
+	bool InBattle() const { return battle_ != 0 && !leaveWanted_; }
+
 	const ModConfig config_;
+	mutable std::mutex mutex_;
+	std::uint64_t battle_ = 0; // SfvAdapter::Battle of the battle in hand; 0 before any
+	int flow_ = -1;            // the flow state at the last frame's start
+	int fightFrame_ = -1;      // advances since the flow first said Fight; -1 before
+	int holdAt_ = 0;           // the fight frame the battle holds at
+	int nextHold_ = 0;         // a hold asked for between battles: the next battle's
+	bool held_ = false;        // the last frame advanced nothing
+	bool gauges_ = false;      // SetPracticeGauges took
+	std::vector<booth::Step> steps_; // a `play` in progress
+	int playSide_ = 0;
+	int playStart_ = 0;        // the fight frame its first step plays on
+	bool leaveWanted_ = false; // `booth leave`: the battle stands still until the menu replaces it
+	bool leaving_ = false;     // LeaveBattle took
 };
 
 } // namespace sfve::mod
