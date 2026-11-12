@@ -442,6 +442,17 @@ answer (`PadsHear`) stays a decided match's: between rounds nothing asks for any
    battle (`hooks: SFV's own pause is on`), and Ember's Start over a Practice match still opens
    Ember.
 
+### R2 and R3: not the skip
+
+Build 3's runs R2 (`-games 2 -rounds 3 -lag 30 -skipAfter 90`, a fighter at 3000) and R3
+(`-autoSkip -watchers 1`, the watcher at 3480) "diverged" a few hundred frames after a
+between-round skip. Both copies' states at 3000 were byte-for-byte equal (only the sync clock,
+left out of the hash, differed). The hash had zeroed different words of an unowned 632-byte
+table of small counters on each copy, because its address tie-break asked each process's own
+memory (`VirtualQuery`) and a counter (0x173, 0x1EE) matched one process's heap. The skip only
+moved the counters to those values at the moment the next round began. Fixed in the hash
+(`StateLayout::AddressAt` decides by value; `desync.md`, "Superseded the same day"). The skip
+itself is unchanged.
 ## Compatibility (must go with this change)
 
 The skip bit now changes the simulation where beta.7 ignored it. beta.7 already sends it after

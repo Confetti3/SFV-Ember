@@ -204,8 +204,8 @@ def show_against(regions, other, name: str) -> None:
         sys.exit(f"{name!r} is not in both files")
     _, addr_a, a, _ = mine[name]
     _, addr_b, b, _ = theirs[name]
-    ma = diffstate.masked(addr_a, a, diffstate.mapped_test(regions))
-    mb = diffstate.masked(addr_b, b, diffstate.mapped_test(other))
+    ma = diffstate.masked(addr_a, a)
+    mb = diffstate.masked(addr_b, b)
     image_a, image_b = image_base(regions), image_base(other)
     start, fields = owner_fields(name)
     count = 0

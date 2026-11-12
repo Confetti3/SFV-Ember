@@ -45,40 +45,27 @@ def looks_like_address(v: int) -> bool:
     return (1 << 40) <= v <= 0x00007FFFFFFFFFFF and v & 3 == 0
 
 
-# How near one of a file's own regions an address must be for masked() to
-# count it as that process's memory (its heap), standing in for the mod's
-# committed-memory test, which a file cannot answer for another process.
-NEAR = 64 << 30
+# StateLayout::AddressAt: in a window 4 bytes off a boundary whose aligned
+# neighbour is an address too, a low half below this is a value before that
+# address (kSmallLowHalf).
+SMALL_LOW_HALF = 0x10000
 
 
-def mapped_test(regions) -> "callable":
-    """The tie-break masked() uses for one file: near one of its regions, or
-    inside the game's image (found from the global random generator)."""
-    addresses = sorted(a for _, a, _, _ in regions)
-    image = next((a - 0x3966538 - 8 for _, a, _, n in regions if n == "global.rng"), None)
-
-    def mapped(v: int) -> bool:
-        if image is not None and image <= v < image + 0x6000000:
-            return True
-        return any(abs(v - a) < NEAR for a in addresses)
-
-    return mapped
-
-
-def masked(address: int, b: bytes, mapped=None) -> bytearray:
+def masked(address: int, b: bytes) -> bytearray:
     """The state hash's masking (StateLayout::ZeroAddresses and AddressAt): 8
     bytes at each 4-byte-aligned address word, not tested 4 bytes into one it
     found; where a window 4 bytes off an 8-byte boundary and the aligned one
-    after it both look like addresses, the one `mapped` says is memory wins
-    (else the first)."""
+    after it both look like addresses, the aligned one when the first one's
+    low half is small (SMALL_LOW_HALF), else the first. Values only, as the
+    mod's hash: equal values mask alike in every process."""
     m = bytearray(b)
     off = (4 - (address & 3)) & 3
     while off + 8 <= len(b):
         value = int.from_bytes(b[off:off + 8], "little")
         address_here = looks_like_address(value)
-        if address_here and mapped and (address + off) & 7 == 4 and off + 12 <= len(b):
+        if address_here and (address + off) & 7 == 4 and off + 12 <= len(b):
             aligned = int.from_bytes(b[off + 4:off + 12], "little")
-            if looks_like_address(aligned) and mapped(aligned) and not mapped(value):
+            if looks_like_address(aligned) and value & 0xFFFFFFFF < SMALL_LOW_HALF:
                 address_here = False
         if address_here:
             m[off:off + 8] = bytes(8)
@@ -107,20 +94,34 @@ def show(label: str, ba: bytes, bb: bytes, words: int) -> bool:
 
 def main(pa: str, pb: str) -> None:
     raw_a, raw_b = read(pa), read(pb)
-    mapped_a, mapped_b = mapped_test(raw_a), mapped_test(raw_b)
-    ra = [(s, a, masked(a, b, mapped_a), n) for s, a, b, n in raw_a]
-    rb = [(s, a, masked(a, b, mapped_b), n) for s, a, b, n in raw_b]
+    ra = [(s, a, masked(a, b), n) for s, a, b, n in raw_a]
+    rb = [(s, a, masked(a, b), n) for s, a, b, n in raw_b]
     differing = 0
     if all(r[3] for r in ra) and all(r[3] for r in rb):
-        # Two state files: the same names, compared as such.
-        by_name = {r[3]: r for r in rb}
+        # Two state files: the same names, compared as such; but an unowned
+        # run's name ("game.N") is its place in that process's region list,
+        # which differs between processes, so those are paired by size and
+        # fewest differing bytes, as a dump's regions are.
+        def unowned(name: str) -> bool:
+            return name.startswith("game.")
+        by_name = {r[3]: r for r in rb if not unowned(r[3])}
+        loose = [r for r in rb if unowned(r[3])]
         for size, addr_a, ba, name in ra:
+            if unowned(name):
+                candidates = [r for r in loose if r[0] == size]
+                if not candidates:
+                    print(f"{name} ({size} bytes): no partner in b")
+                    continue
+                other = min(candidates, key=lambda r: sum(x != y for x, y in zip(ba, r[2])))
+                loose.remove(other)
+                differing += show(f"{name} ({size} bytes; b's {other[3]})", ba, other[2], 16)
+                continue
             other = by_name.pop(name, None)
             if other is None:
                 print(f"{name} ({size} bytes): only in a")
                 continue
             differing += show(f"{name} ({size} bytes)", ba, other[2], 16)
-        for name in by_name:
+        for name in list(by_name) + [r[3] for r in loose]:
             print(f"{name}: only in b")
         print(f"{differing} region(s) differ")
         return

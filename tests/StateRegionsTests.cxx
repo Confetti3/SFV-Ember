@@ -412,11 +412,6 @@ TEST_CASE("a word that is no address across a chunk edge leaves the bytes after 
 }
 
 namespace {
-// The addresses a test's process "has": the tie-break between two windows
-// that both pass HeapLike (StateLayout::SetAddressTest's `mapped`).
-std::vector<uint64_t> s_mapped;
-bool Mapped(uint64_t value) { return std::find(s_mapped.begin(), s_mapped.end(), value) != s_mapped.end(); }
-
 bool Unit(const std::vector<uint64_t>& units, size_t unit) { return ((units[unit / 64] >> (unit % 64)) & 1) != 0; }
 } // namespace
 
@@ -430,12 +425,11 @@ TEST_CASE("an aligned address with a small low half is not hidden behind the win
 	auto one = Words(64), two = Words(64);
 	memcpy(Bytes(one) + 16, &mine, 8);
 	memcpy(Bytes(two) + 16, &theirs, 8);
-	s_mapped = {mine, theirs};
 	StateLayout a, b;
 	a.Add("r", Bytes(one), 64);
 	b.Add("r", Bytes(two), 64);
-	a.SetAddressTest(HeapLike, Mapped);
-	b.SetAddressTest(HeapLike, Mapped);
+	a.SetAddressTest(HeapLike);
+	b.SetAddressTest(HeapLike);
 	CHECK(a.HashLive() == b.HashLive());
 	// The start agreement's view: the pointer's two dwords are the address.
 	std::vector<uint64_t> units;
@@ -443,24 +437,45 @@ TEST_CASE("an aligned address with a small low half is not hidden behind the win
 	CHECK_FALSE(Unit(units, 3));
 	CHECK(Unit(units, 4));
 	CHECK(Unit(units, 5));
-	// Without the tie-break, the old reading: the copies differ.
-	StateLayout oldA, oldB;
-	oldA.Add("r", Bytes(one), 64);
-	oldB.Add("r", Bytes(two), 64);
-	oldA.SetAddressTest(HeapLike);
-	oldB.SetAddressTest(HeapLike);
-	CHECK(oldA.HashLive() != oldB.HashLive());
 	// The value before the pointer still counts.
 	Bytes(two)[8] = 1;
 	CHECK(a.HashLive() != b.HashLive());
-	s_mapped.clear();
 }
 
-TEST_CASE("an address packed 4 bytes off a boundary keeps its window when it is the mapped one")
+TEST_CASE("equal values mask alike in every process: a table of counter pairs that look like addresses")
+{
+	// Runs R2 and R3 (2026-11-12): an unowned 632-byte run of small int
+	// pairs, equal on every copy, "diverged" once a counter (0x173, 0x1EE)
+	// matched the high half of one process's heap, while the tie-break asked
+	// that process's memory. +0x0C reads 0x000003E800000000 and the aligned
+	// +0x10 0x00000173000003E8: both pass the value test, and the values
+	// alone decide: the aligned one.
+	auto words = Words(64);
+	const uint32_t dwords[] = {0x1, 0x0, 0x3E8, 0x173, 0x3E8, 0x1E};
+	memcpy(Bytes(words) + 8, dwords, sizeof(dwords));
+	StateLayout layout;
+	layout.Add("r", Bytes(words), 64);
+	layout.SetAddressTest(HeapLike);
+	std::vector<uint64_t> units;
+	layout.AddressUnits(0, Bytes(words), units);
+	CHECK_FALSE(Unit(units, 3));
+	CHECK(Unit(units, 4));
+	CHECK(Unit(units, 5));
+	// A second layout over a copy at another address: the same hash.
+	auto copy = Words(64);
+	memcpy(Bytes(copy), Bytes(words), 64);
+	StateLayout other;
+	other.Add("r", Bytes(copy), 64);
+	other.SetAddressTest(HeapLike);
+	CHECK(layout.HashLive() == other.HashLive());
+}
+
+TEST_CASE("an address packed 4 bytes off a boundary keeps its window when its low half is not small")
 {
 	// The other reading of two overlapping windows: the address at +12, a
 	// small value after it, so the aligned window at +16 (the address's high
-	// half and the value) passes the value test too.
+	// half and the value) passes the value test too. The address's low half
+	// is no small value, so its own window is the address.
 	const uint64_t mine = 0x00000204F5F982A4ull, theirs = 0x00000246994182A4ull;
 	const uint32_t value = 0x640;
 	auto one = Words(64), two = Words(64);
@@ -468,17 +483,12 @@ TEST_CASE("an address packed 4 bytes off a boundary keeps its window when it is 
 	memcpy(Bytes(two) + 12, &theirs, 8);
 	memcpy(Bytes(one) + 20, &value, 4);
 	memcpy(Bytes(two) + 20, &value, 4);
-	s_mapped = {mine, theirs};
 	StateLayout a, b;
 	a.Add("r", Bytes(one), 64);
 	b.Add("r", Bytes(two), 64);
-	a.SetAddressTest(HeapLike, Mapped);
-	b.SetAddressTest(HeapLike, Mapped);
+	a.SetAddressTest(HeapLike);
+	b.SetAddressTest(HeapLike);
 	CHECK(a.HashLive() == b.HashLive());
 	Bytes(two)[20] = 1; // the value after it counts
 	CHECK(a.HashLive() != b.HashLive());
-	// Neither window mapped: the first one, as before the tie-break.
-	s_mapped.clear();
-	Bytes(two)[20] = 0x40;
-	CHECK(a.HashLive() == b.HashLive());
 }

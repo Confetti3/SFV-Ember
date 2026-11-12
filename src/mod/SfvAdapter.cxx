@@ -28,16 +28,6 @@ constexpr uint64_t kMaxRegionSize = 64ull << 20;
 
 constexpr size_t kMaxRegions = 4096;
 
-// The value is an address of this process's committed memory: the address
-// test's tie-break where two overlapping windows both look like addresses
-// (StateLayout::SetAddressTest, AddressAt). Asked rarely: only there.
-bool CommittedAddress(uint64_t value)
-{
-	MEMORY_BASIC_INFORMATION info{};
-	return VirtualQuery(reinterpret_cast<LPCVOID>(static_cast<uintptr_t>(value)), &info, sizeof(info)) == sizeof(info) &&
-		info.State == MEM_COMMIT;
-}
-
 // How often the socket reads' counts and the keys' cost are logged.
 constexpr uint64_t kSocketSummaryUpdates = 1800;
 
@@ -145,7 +135,7 @@ bool SfvAdapter::Bind()
 		return false;
 	}
 	layout_.Clear();
-	layout_.SetAddressTest(LooksLikeAddress, CommittedAddress);
+	layout_.SetAddressTest(LooksLikeAddress);
 	uint8_t* manager = GameGetManager(rollbackUnit_);
 	if (!AddGameRegions(manager)) {
 		layout_.Clear();
