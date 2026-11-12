@@ -132,6 +132,15 @@ actor's virtual +0x220, the slot the reflection's exec thunk rva 0x20A8010 calls
 shadow. The 0.001 scale left the cloth (Ryu's gi, wraps) lying on the floor in the plate. The
 plate and a loadout picture's opponent use it.
 
+- The battle's updates show an actor again, so a hidden side is hidden again after each
+  per-frame update (CharaVisualUpdate) until it is shown or the battle ends.
+- A side can have more than one visual part: R. Mika's V-Trigger partner has one of her own on
+  Mika's side, with its actor kept hidden by the game until it calls her. Scale and hide reach
+  every part of a side (up to four, remembered per battle). Showing a side again shows every
+  part's actor, the partner's too, so the capture never shows a side it hid: the plate is the
+  last grab of a load, a loadout picture's opponent stays hidden, its own side is scaled away
+  for the crop's plate and back, and each side's loadout pictures get a battle of their own.
+
 ## HUD probe (HudText)
 
 - The hook remembers the movie that last named a plate or marker (`SetPilotName`,
@@ -169,6 +178,18 @@ voice); an unreadable look counts as a mismatch.
 order. IDA (laptop, rva 0x55A9B0): with `+96` clear the list is handed to the array copy rva
 0x5156A0, whose element copy rva 0x4E1F30 walks 16-byte `FString`s: the entries are fighter codes
 only, with no slot, row or column fields.
+
+## Throughput (laptop, 2026-11-12)
+
+- 2 copies, fight frame 300: 10 loads (20 looks) in 2.3 min with boot; about 3.5 loads/min a
+  copy once running.
+- 4 copies, fight frame 300: 16 loads in 3.7 min with boot, about 2.6 loads/min a copy.
+- 4 copies, fight frame 60: 24 loads (48 looks) in 3.8 min with boot, 0 failures; about 3.5-4
+  loads/min a copy once running, 14-15 loads/min (28-30 looks/min) together. Two of the 24
+  loads hit the same-stage hang and were caught by the driver's 25 s stuck check (relaunch,
+  load again).
+- At that rate the 6,426 looks (3,213 loads) take about 3.5-4 h on the laptop; phase 1 (875
+  looks) about 30 min. More copies on a second PC divide it.
 
 ## Laptop pilot, 2026-11-12
 
