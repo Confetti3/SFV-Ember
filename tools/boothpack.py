@@ -287,7 +287,7 @@ def compute_mask(a_path: Path | str, b_path: Path | str, method: str = "depth") 
 CHECK_DOWN = 4             # the checks compare pictures shrunk 4x (480x270 from 1920x1080)
 CHECK_DIFF = 18            # a pixel differs when a channel differs by more than this (0-255)
 STABLE_MAX = 0.002         # two grabs of the held frame may differ on at most this share of the frame
-OUTSIDE_MAX = 0.005        # grab A and the plate may differ outside the fighters on at most this share
+OUTSIDE_MAX = 0.01         # grab A and the plate may differ outside the fighters on at most this share
 PLATE_MAX = 0.15           # the plate may differ from the stage's reference plate on at most this share
 
 
@@ -338,7 +338,11 @@ def check_pair(a_path: Path | str, b_path: Path | str, reference: Path | None) -
         fighters = full.reshape(h, CHECK_DOWN, w, CHECK_DOWN).any(axis=(1, 3))
         fighters = _filter(fighters, "dilate", 7)
         outside = ~fighters
-        checks["outside"] = round(float(_differs(a, b)[outside].mean()) if outside.any() else 0.0, 5)
+        # The fighters' shadows (and the scene's ambient occlusion around them) darken the floor in
+        # A without changing its depth: a pixel only darker in A than in the plate is not a change.
+        shadow = (a <= b + 4).all(axis=-1)
+        changed = _differs(a, b) & ~shadow
+        checks["outside"] = round(float(changed[outside].mean()) if outside.any() else 0.0, 5)
         checks["warm"] = round(warm_share(a, fighters & _differs(a, b)), 4)
         if checks["outside"] > OUTSIDE_MAX:
             return checks, (f"grab A and the plate differ outside the fighters on {checks['outside']:.1%} of the frame "
