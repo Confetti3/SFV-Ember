@@ -326,7 +326,10 @@ void SfvAdapter::EndScenes()
 				Log("scene skip: Finish asks for flow state %d next, not RoundOver (%d); it plays on",
 					Field<int32_t>(state, rf::kNextState), rf::kRoundOver);
 			} else {
-				Log("scene skip: the skip bit in flow state %d (class rva 0x%X) phase %d ends nothing yet", id, vtable, phase);
+				// MatchResultDemo's phase 6 waits for the results screens, whose
+				// pages hear the bit as a press (intro_skip::PadsHear).
+				Log("scene skip: the skip bit in flow state %d (class rva 0x%X) phase %d moves no phase here; the "
+					"game's own questions for a press hear it", id, vtable, phase);
 			}
 		}
 		return;

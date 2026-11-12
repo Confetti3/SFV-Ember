@@ -77,8 +77,13 @@ public:
 	PackedInput Sampled(int player) const { return sampled_[player]; }
 	// The update now running takes Advance's inputs in place of the pads'.
 	bool Injecting() const { return padSource_ == input::PadSource::Session; }
-	// Either player's injected input for this tick has a bit of `mask`.
-	bool InjectedAny(uint32_t mask) const { return ((pending_.p[0] | pending_.p[1]) & mask) != 0; }
+	// Either player's injected input for this tick has a bit of `mask`; or,
+	// with the match decided, the skip request answers a question for any
+	// button (intro_skip::PadsHear: the results screens' pages turn on it).
+	bool InjectedAny(uint32_t mask) const
+	{
+		return intro_skip::PadsHear(pending_.p[0] | pending_.p[1], mask, MatchDecided());
+	}
 	// Every bit the player's input record ring holds (RecordedInputBits);
 	// 0 before the input unit is known.
 	PackedInput RecordedInputs(int player) const;

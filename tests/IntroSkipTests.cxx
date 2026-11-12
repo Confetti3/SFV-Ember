@@ -282,6 +282,28 @@ TEST_CASE("the skip ends Finish, the winner's demo and the draw's demo the way t
 	CHECK(ScenesStepFor(rf::kMatchDrawDemo, 0, 4) == ScenesStep{});
 }
 
+TEST_CASE("the results screens' question for any button hears the skip request, once the match is decided")
+{
+	constexpr uint32_t kAnyButton = 0xFFFFBFF0u; // the results pages' mask (rva 0x49FB00)
+	CHECK((intro_skip::kAttackBits & kAnyButton) == intro_skip::kAttackBits);
+	CHECK((kSkipBit & kAnyButton) == 0u);
+	// The skip request on a decided match's skip frame is a press of any button.
+	CHECK(intro_skip::PadsHear(kSkipBit, kAnyButton, true));
+	CHECK(intro_skip::PadsHear(0, kAnyButton, true) == false);   // the other frames: nothing pressed
+	CHECK(intro_skip::PadsHear(kSkipBit, kAnyButton, false) == false); // the intro's request presses nothing else
+	// The game's own skip question hears the bit itself, decided or not.
+	CHECK(intro_skip::PadsHear(kSkipBit, kSkipBit, true));
+	CHECK(intro_skip::PadsHear(kSkipBit, kSkipBit, false));
+	// A question for one button or a direction is not one for any button.
+	for (const uint32_t mask : {0x1u, 0x2u, 0x40u, 0x10u | 0x20u}) {
+		INFO("mask " << mask);
+		CHECK_FALSE(intro_skip::PadsHear(kSkipBit, mask, true));
+	}
+	// Whatever the inputs hold of the mask is heard as before.
+	CHECK(intro_skip::PadsHear(input::kLK, 0x40u, false));
+	CHECK(intro_skip::PadsHear(input::kHP, kAnyButton, false));
+}
+
 TEST_CASE("the scenes' ids are the flow's, apart from the fight's and the intro's")
 {
 	namespace rf = sfve::mod::sfv::resultflow;

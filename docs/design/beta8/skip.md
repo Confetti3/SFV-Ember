@@ -209,6 +209,98 @@ read from the laptop database. Layouts are in `src/mod/SfvResultFlow.hxx`: state
 vtables, +32 id, +144/+148 Finish's next, +176/+180 the demo's gate and skipped, phase numbers,
 battle data +0 kind.
 
+## The results screens (MatchResultDemo's phase 6), after the first laptop runs
+
+**What the runs showed** (`D:\sfv-re\b8-runs\R2\`, `-skipAfter 90 -skipCopy 1`; R3 with
+`-skipCopy 0` the same). Battle kind 1, so the demo's own gate was open. Decided at 2334, the
+copy asked at 2424, Finish ended at 2430, the demo went 1 → 3 at 2445 and was skipped 3 → 4
+(now in phase 6) at 2460. The result call still came only at 3813, about 1350 frames later, all
+of it in phase 6. Both copies matched exactly (0 differing).
+
+Before MatchOver the tallies showed: `the battle asked the pads for ffffbff0 1202 time(s) (1202
+from the session's inputs), 0 yes`. Something in phase 6 asked for any button on every tick, and
+the session's skip frames carry only 0x4000, which that mask leaves out.
+
+**What phase 6 waits for (IDA).** Phase 5 (rva `0x40E6A0`) starts the ResultUnit's sequence
+(rva `0x48D7D0`: the +1184 object of what rva `0x2F78A0` returns gets its vtable +1552 with 1,
+then ResultUnit+248's vtable +8). Phase 6 waits until
+that object's vtable +16 says it is done (rva `0x1B27750`: its +120). The object is made by rva
+`0x480D70` from the battle data's kind:
+
+- kind 7: vtable `0x2C70728`
+- kind 10: rva `0x478430`
+- kinds 0 and 11: rva `0x4782A0`
+- team battles: rva `0x479BB0` / `0x479B70`
+- **everything else, kind 1 included: rva `0x4793E0`, vtable `0x2C700D8`**
+
+It is a phase sequencer like a flow state: map at +24, current at +40, delegate at +48, elapsed
+at +92, a press cooldown at +124, done at +120. Start (vtable +8, rva `0x48D5A0`) binds page 0
+and one of several page lists. For a versus battle that is rva `0x490D10`, then rva `0x490EB0`.
+Their pages drive the battle HUD's Scaleform movie (strings from the UI calls they make):
+
+1. **The win quote**:
+   - `GenerateRoot`, `ResetChart` (rva `0x493F40`)
+   - `Set_Message` and `StartFadein_Message`: the winner's quote (rva `0x493970`)
+   - `Set_ResultType`, `Set_PlayerIndex` (rva `0x49B430`) and `Set_PlayerId` (rva `0x499480`)
+   - `StartFadein_Result` (rva `0x493620`) and `StartAnimation_ResultType` (rva `0x49ED00`)
+   - then **rva `0x49FB00`: any button or 600 ticks**
+   - then `StartFadeout_Result` (rva `0x493850`) and 30 ticks (rva `0x49F040`)
+
+   This page set is skipped when nobody won.
+2. **The results card**:
+   - `BattleFlow::PlayInformationVoice` (rva `0x49B990`), `GenerateRoot`/`ResetChart` (rva
+     `0x49A250`)
+   - the card: `SetCharacterName`, `SetFaceIconPath`, `SetWinCount`, `SetWinRate`,
+     `SetStraightWinCount`, `SetRoundCount` (rva `0x49A2E0`)
+   - `StartFadein_Result`, `StartAnimation_ResultType` after 30 ticks (rva `0x49EBE0`)
+   - the round icons (rva `0x49EAC0`, `0x49F2F0`, `0x492870`: `SetRoundResultIcon`,
+     `Set_SingleResultRow`)
+   - then **rva `0x49FB00` again: any button or 600 ticks**
+   - then vtable +0x28 (rva `0x491FE0`), which sets done (+120 = 1) once the game instance allows
+     (rva `0x690630`).
+
+Two pages of up to 600 ticks plus their animations make the 1350 frames. After them the flow
+plays MatchOver and MatchEnd, and the results call (where Ember's prompt opens) comes as it does
+unskipped.
+
+**How the game's own skip ends them.** Offline, a press does. Page rva `0x49FB00` counts its
+cooldown +124 down each tick. Once it is at or below 0 it asks the battle's pad query rva
+`0x2F2D40` with mask **0xFFFFBFF0** (every attack and more, not the skip bit 0x4000). After the
+decision that query asks the pads themselves (rva `0x2F30D0`, which the mod hooks). On a yes it
+plays sound 200 (rva `0x777F40`), sets the cooldown to 30 and turns the page. So it is a pad read
+in the battle tick, not a timer, a UMG callback or a Scaleform event. The other modes' page lists
+ask the same mask: rva `0x4920A0`, `0x492900`, `0x492EF0`, `0x49F970`, `0x4A1230` and
+`0x4B7D60`. The one other pad caller, rva `0x4AA110`, asks mask 0x40 (LK).
+
+**The fix.** `intro_skip::PadsHear`: while a session's inputs play a tick
+(`SfvAdapter::InjectedAny`, answering the hooked rva `0x2F30D0`), a question hears both players'
+given bits of its mask, as before. In addition, **once the match is decided, the skip bit
+answers a question for any button**: one whose mask holds every attack, as 0xFFFFBFF0 does. The
+request then turns each page the way a player's press does offline. Because the request stays on
+every skip frame (one in 15) until the scenes end, and each page waits out its 30-tick cooldown,
+each page turns within about 30 frames: two pages and their fades, instead of 1200 ticks.
+
+**Why it is safe.**
+
+- The answer is a function of the tick's given inputs and of `kDecided` only. Both are the same
+  on every copy on that frame:
+  - the inputs are the confirmed skip frame's, which every session path (fighter, watcher,
+    replay, synctest) gives alike through `GivenInputs`;
+  - `kDecided` is rollback state.
+- The question is asked inside the battle tick while the session's inputs play it (the tallies
+  show all 1202 calls "from the session's inputs"). So the page turns on the same tick on every
+  copy, and no copy reads its own pad.
+- Nothing is written from outside the game: the game's own page code advances its own sequence.
+  It does that in the unskipped path too, deterministically: the runs' result frames matched.
+- No rollback reaches the pages:
+  - frames after the decision read no input, so no misprediction can start a rollback there;
+  - a rollback from an earlier fight frame cannot cross a confirmed skip frame.
+- The answer is narrow. Directions (masks 1, 2), single buttons (0x40) and the game's own skip
+  question (0x4000, which hears the bit itself) are answered as before. The intro (not decided)
+  is unchanged.
+- The page code that hears the press is the code the game runs on an offline press: sound 200,
+  then the next page.
+
 ## Compatibility (must go with this change)
 
 The skip bit now changes the simulation where beta.7 ignored it. beta.7 already sends it after
@@ -245,8 +337,15 @@ Not built or run here: no builds on this PC.
    than 700 frames. Expect about 60 + 30 + up to 95 + the results' own wait. 0 differing
    checkpoints. The prompt still opens on SFV's results: take `-shots`.
 3. The same with `-skipCopy 0` (P1's press).
-4. `-skipAfter 20`: the press falls in the guard. No skip, and the scenes take 700 frames or
-   more.
+4. `-skipAfter 20`: the press falls in the guard. No copy applies a skip, and both copies take
+   the result on the same frame. (Run R4 found this right: 0 skips over 1865 frames. The old
+   frame-count check was wrong; the unskipped length varies, 1545 and 1865 frames have been
+   seen.)
+   With `-shots`, every game also gets `game<N>-after-skip-<copy>.png`, about 1 s after copy 0
+   first applies a skip, and `game<N>-before-result-<copy>.png`, from about 1 s before copy 0
+   logs its result. That one is picked from rolling shots taken from the decision on. Games
+   where the run answers the prompt at once (`-quickAnswer`, or the last WIN with `-padAnswers`)
+   take only the after-skip shot.
 5. `-skipPad -skipAfter 90`: copy 1's virtual pad (X) through the real pad path.
 6. `-rematches 1 -padAnswers -skipAfter 90 -lag 30`: the skip, then the rematch in place and a
    second WIN. The restart's few decided frames must not ask (no `asks to skip` line before the
@@ -261,6 +360,8 @@ Not built or run here: no builds on this PC.
 9. A draw (double KO or time-over draw at the deciding round) if one comes: MatchDrawDemo's two
    moves.
 
-If phase 6's wait for the ResultUnit's sequence turns out to differ between copies (the result
-frames would differ, and runroom fails on that), the skip from MatchResultDemo has to move
-further on its own. The unskipped path waits there too and was in sync, so this is not expected.
+Runs R2 and R3 matched on both copies through phase 6 and failed only on its length. The
+results screens' pages (above) now hear the request. The re-run of 2 and 3 must show the
+`hooks:` tally for `ffffbff0` with yes answers before flow state 13. It must also show the
+scenes well under 700 frames, a "sound 200" page turn on screen in the after-skip shot, and the
+results card (or its fade) in the before-result shot.

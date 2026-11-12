@@ -78,8 +78,9 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # presses an attack N frames into each game's scenes (the pipe's
 # "skipafter"); at N >= 60 (IntroSkip.hxx's guard) both copies must skip, the
 # scenes then taking fewer than -skipMax frames (default 700); below 60 the
-# press falls inside the guard and nothing may be skipped, the scenes taking
-# -skipMax or more. -skipPad presses copy -skipCopy's virtual pad (X) instead,
+# press falls inside the guard and no copy may apply a skip (the unskipped
+# length varies with the fighters and the finish, so no frame count is
+# checked). -skipPad presses copy -skipCopy's virtual pad (X) instead,
 # about N frames (default 90) after its log shows the decision: the player's
 # own path, through the pads.
 $ErrorActionPreference = 'Stop'
@@ -197,11 +198,53 @@ function CheckScenes([int]$game) {
     if ($a.Skips -lt 1) { throw "game ${game}: copy ${skipCopy}'s press skipped nothing" }
     foreach ($took in $a.Took, $b.Took) { if ($took -ge $skipMax) { throw "game ${game}: the skipped scenes still took $took frames (want fewer than $skipMax)" } }
   } else {
-    if ($a.Skips -gt 0) { throw "game ${game}: the scenes were skipped though no press came after the guard" }
-    if ($skipAfter -ge 0) {
-      foreach ($took in $a.Took, $b.Took) { if ($took -lt $skipMax) { throw "game ${game}: a press inside the guard ended the scenes after $took frames" } }
-    }
+    # No press after the guard (none at all, or -skipAfter inside it): no
+    # copy may apply a skip. Not a frame count: the unskipped scenes' length
+    # depends on the fighters and the finish (1545 and 1865 frames seen).
+    foreach ($s in $a, $b) { if ($s.Skips -gt 0) { throw "game ${game}: the scenes were skipped though no press came after the guard" } }
   }
+}
+# -shots, through a game's decided scenes until copy 0 logs its result:
+# "game<N>-after-skip" about a second after copy 0 first applies a skip, and
+# "game<N>-before-result" from about a second before the result (shots are
+# taken every quarter second or so from the decision on; the one nearest a
+# second before is kept). `$results` and `$decided0` are copy 0's counts of
+# result and decision lines at the game's start. With `$rolling` false only
+# the after-skip shot is taken (the run then reacts to the result at once).
+function ScenesShots([int]$game, [int]$results0, [int]$decided0, [bool]$rolling) {
+  if (!$shots) { return }
+  $skips0 = Count 0 'netplay: scenes skipped at frame'
+  $dir = Join-Path $shots "rolling-$game"
+  New-Item -ItemType Directory -Force $dir | Out-Null
+  $taken = New-Object System.Collections.Generic.List[object]
+  $afterSkip = $false
+  $deadline = (Get-Date).AddSeconds($gameSeconds)
+  while ((Count 0 'netplay: match result') -le $results0) {
+    if ((Get-Date) -gt $deadline) { throw "game ${game}: no result within $gameSeconds s" }
+    if (-not $afterSkip -and (Count 0 'netplay: scenes skipped at frame') -gt $skips0) {
+      $afterSkip = $true
+      Start-Sleep 1
+      Shot "game$game-after-skip"
+      "game ${game}: shot a second after copy 0's first skip"
+      continue
+    }
+    if ($rolling -and (Count 0 'netplay: the match is decided at frame') -gt $decided0) {
+      $name = Join-Path $dir "$($taken.Count)"
+      $at = Get-Date
+      foreach ($i in $copies) { python -I tools\sfve.py shot $i "$name-$i.png" | Out-Null }
+      $taken.Add([pscustomobject]@{ At = $at; Name = $name })
+      # Only the last few can be the one kept.
+      if ($taken.Count -gt 8) { Get-ChildItem "$($taken[$taken.Count - 9].Name)-*.png" -ErrorAction SilentlyContinue | Remove-Item -Force }
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  $resultAt = Get-Date
+  $best = $taken | Sort-Object { [Math]::Abs(($resultAt - $_.At).TotalSeconds - 1) } | Select-Object -First 1
+  if ($best) {
+    foreach ($i in $copies) { if (Test-Path "$($best.Name)-$i.png") { Move-Item "$($best.Name)-$i.png" (Join-Path $shots "game$game-before-result-$i.png") -Force } }
+    "game ${game}: shot $([int]($resultAt - $best.At).TotalMilliseconds) ms before copy 0's result was seen"
+  }
+  Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 }
 # -skipPad: copy -skipCopy's pad presses X about -skipAfter frames (default
 # 90) after its log shows game's decision, the count of those lines being
@@ -283,9 +326,13 @@ try {
       $results = @((Count 0 'netplay: match result'), (Count 1 'netplay: match result'))
       $answers = @((Count 0 "the WIN's answers"), (Count 1 "the WIN's answers"), (Count 2 "the WIN's answers"))
       $decidedBefore = Count $skipCopy 'netplay: the match is decided at frame'
+      $decided0 = Count 0 'netplay: the match is decided at frame'
       Start-Sleep 20
       Shot "game$game-fight"
       if ($skipPad) { PadSkip $decidedBefore }
+      # -quickAnswer presses as the prompt shows, and the last WIN's B mash
+      # below must land within 2 s of the result: those take no rolling shots.
+      ScenesShots $game $results[0] $decided0 (-not ($quickAnswer -or ($last -and $padAnswers)))
       if ($quickAnswer) {
         $deadline = (Get-Date).AddSeconds($gameSeconds)
         while (-not (Status 0).battle.mode.rematch.prompt) {
@@ -412,6 +459,7 @@ try {
     $wstart = Count 2 'netplay: room match watched'
     $wcloses = Count 2 "the room's battle closed"
     $decidedBefore = Count $skipCopy 'netplay: the match is decided at frame'
+    $decided0 = Count 0 'netplay: the match is decided at frame'
     # The watcher sees this game unless it watches from the next one, or left.
     $watched = $watchers -and -not $watcherLeft -and -not ($watchLate -and $game -eq 1)
     # A seat whose fighter changes takes back the other seat's Ready (the
@@ -439,6 +487,7 @@ try {
     if ($watchLate -and $game -eq 1) { Watch $true } # during the game: from the next one
     Shot "game$game-fight"
     if ($skipPad) { PadSkip $decidedBefore }
+    ScenesShots $game $results[0] $decided0 $true
     WaitFor "game $game's result on both copies" $gameSeconds { (Count 0 'netplay: match result') -gt $results[0] -and (Count 1 'netplay: match result') -gt $results[1] }
     CheckScenes $game
     WaitFor "both copies back in the room after game $game" 90 { (Count 0 'battle closed at its match') -gt $closes[0] -and (Count 1 'battle closed at its match') -gt $closes[1] -and (Status 0).room.room -eq 'joined' -and (Status 1).room.room -eq 'joined' }

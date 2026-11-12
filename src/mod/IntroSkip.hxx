@@ -29,8 +29,11 @@
 // state on the way the game's own phases do (ScenesStepFor). The frame is
 // confirmed and the move a function of the state at its start and of those
 // inputs, so the fighters, the watchers and a replay make it on the same
-// frame; the flow is in the rollback state. Either player's press skips for
-// both. A copy asks only for a new press made at least kScenesGuardFrames
+// frame; the flow is in the rollback state. The winner's demo then waits for
+// SFV's results screens (the win quote, then the results card), whose pages
+// turn on any button or after 600 ticks each: a question for any button hears
+// the request as the press it stands for (PadsHear), inside the tick, from
+// the same confirmed inputs. Either player's press skips for both. A copy asks only for a new press made at least kScenesGuardFrames
 // after it saw the match decided, so a button still down from the last hit,
 // or mashed through the KO, skips nothing.
 //
@@ -88,6 +91,25 @@ constexpr bool SkipFrame(int flowState, int frame, bool decided = false)
 constexpr PackedInput ConfirmedBits(int flowState, int frame, bool decided = false)
 {
 	return SkipFrame(flowState, frame, decided) ? kSkipBit : 0;
+}
+
+// Every attack: what the game asks for when it waits for any button. SFV's
+// results screens (the ResultUnit's sequence, which MatchResultDemo's phase 6
+// waits for) turn a page on that (rva 0x49FB00, and 0x4920A0, 0x492900,
+// 0x492EF0, 0x49F970, 0x4A1230, 0x4B7D60 in other modes ask the same, mask
+// 0xFFFFBFF0, which holds every attack but not the skip bit).
+constexpr PackedInput kAttackBits = kPressBits & ~kSkipBit;
+
+// What a question to the pads (sfv::kPadsAny) hears while a session's inputs
+// play the tick: both players' bits of `mask` (`given`, the frame's given
+// inputs ORed), and, once the match is decided, the skip request as the press
+// it stands for when the question is for any button. The request is the skip
+// bit, which reaches the game only on a decided match's confirmed skip frames
+// (GivenInputs), so every copy hears the same on the same tick.
+constexpr bool PadsHear(PackedInput given, uint32_t mask, bool decided)
+{
+	if ((given & mask) != 0) return true;
+	return decided && (given & kSkipBit) != 0 && (mask & kAttackBits) == kAttackBits;
 }
 
 // The session frame a copy first saw the decided match's scenes, from the
