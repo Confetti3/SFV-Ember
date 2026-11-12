@@ -162,7 +162,7 @@ void DrawSfvHitboxes()
 	}
 	// SFV's view has no skeleton, and its hurt boxes are all shown: the
 	// parts SF4's lab may hide are SF4's page's.
-	if (view) sf4e::ui::DrawHitboxOverlay(*view, sf4e::ui::HitboxParts{});
+	if (view) sf4e::ui::DrawHitboxOverlay(*view, sf4e::ui::HitboxOverlayParts{});
 }
 
 bool SfvHitboxesShown()
