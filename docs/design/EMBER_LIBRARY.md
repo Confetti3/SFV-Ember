@@ -2639,7 +2639,7 @@ Once that is deployed, the desync reports carry their regions and SFV crash repo
 
 The same switch as crash reports, Send problem reports, the same record of sent reports and the same limit of 3 automatic reports in 24 hours, crash and desync reports together. SFV Ember's catalogs now say so in every language:
 
-**On by default in SFV Ember** (Kate, 2026-11-09: "Yes, on by default", so testers' desyncs reach Bugsink). The library keeps it off (`PlayerPreferences::sendProblemReports`: SF4 Ember asks first), and a player who ever saved their settings has that off saved, so a default cannot be told from a choice. Before its first game the launcher turns the setting on once and records that it did (`launcher/ReportsDefault`, `sfvProblemReportsOnByDefault` in settings.json); from then on it is the player's, in Settings, Problem reports. Release notes should say so. `ReportsDefaultTests`: on from nothing, on once over a saved off, then the player's off kept.
+**On by default in SFV Ember** (the maintainer, 2026-11-09: "Yes, on by default", so testers' desyncs reach Bugsink). The library keeps it off (`PlayerPreferences::sendProblemReports`: SF4 Ember asks first), and a player who ever saved their settings has that off saved, so a default cannot be told from a choice. Before its first game the launcher turns the setting on once and records that it did (`launcher/ReportsDefault`, `sfvProblemReportsOnByDefault` in settings.json); from then on it is the player's, in Settings, Problem reports. Release notes should say so. `ReportsDefaultTests`: on from nothing, on once over a saved off, then the player's off kept.
 - `reports.setting_detail` (new overlay): "after a desync in a room match, it sends the desync's report";
 - `reports.payload`: what a desync's report holds.
 
@@ -2828,3 +2828,24 @@ The 15808 bytes at 8700 (the laptop's dump equals her state) are mostly 120-byte
 - The rule hidden in a public room's Create and Room settings, and out of a room (Training, Home); Training and the pipe's `launch` draw everyone normal; a rule turned off after a Tiny ready leaves that game as it was and the next ready sends normal.
 - No desync over a full set with a tiny side (the synctest with `-sfve_moves`, then a players' match with the desync state files).
 - SF4 Ember (the library's own build): no Tiny row anywhere, the goldens unchanged.
+
+## 60. Beta 8 (2026-11-12)
+
+Beta 8's design notes live in `docs/design/beta8/`, one per stream; this section is their index.
+Match version 0.6 (`kMatchBuild`): beta 8 meets no older beta (scene skip, socket reads, start
+agreement and the Tiny fighters fix all change what a room plays).
+
+- `skip.md`, `autoskip.md`: SFV's post-KO scenes and results pages end on a confirmed skip frame
+  on every copy; the room rule Skip winner scenes (default on) asks without a press.
+- `desync.md`: projectiles placed at a model socket read the straight play's value on a replayed
+  tick (record and serve, keyed by the fighter's own state); fighters' meshes at LOD 0 so a
+  socket reads the same at any window size; Tiny fighters back to picture only.
+- `determinism.md`: start state agreement before frame 0, the random draw audit, named fight
+  words (never masked), the cost line.
+- `perf.md`: saves no load can reach keep no copy; frames hashed once final; sampled load checks
+  (GGPO port patch `confirmed-input-frame.patch`).
+- `select.md`, `eleven.md`: the fighter board in SFV's own placement, art pane, galleries,
+  loadout cards with notes (`locales/loadout/`), stage cards, Random, remembered looks, Eleven.
+- `hitboxes.md`: Training's box viewer (library `ui/HitboxOverlay`, `Capabilities::hitboxes`).
+- `booth.md`, `booth-protocol.md`, `tools.md`, `pack.md`: the capture mode, its driver and the
+  picture pack shipped under `assets\selection\`.
