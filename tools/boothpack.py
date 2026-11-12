@@ -337,12 +337,15 @@ def untextured(rgb: np.ndarray, mask: np.ndarray) -> bool:
     return tint >= UNTEXTURED_TINT and warm_share(rgb, mask) <= UNTEXTURED_WARM
 
 
-def check_pair(a_path: Path | str, b_path: Path | str, reference: Path | None) -> tuple[dict, str | None]:
+def check_pair(a_path: Path | str, b_path: Path | str, reference: Path | None,
+               again: Path | str | None = None) -> tuple[dict, str | None]:
     """Grab A (fighters) against grab B (the plate) of one held frame, before masters are made.
-    Outside the fighters (the depth difference, widened) A must be B; B must be the stage as the
-    reference plate shows it (`reference`, a shrunk PNG; written from this B when it does not exist
-    yet and the pair passed). Returns the measures and the reason the pair is refused, or None."""
+    Outside the fighters (the depth difference, widened) A must be B, and A grabbed `again` a little
+    later must be A (inside, a living costume may move); B must be the stage as the reference plate
+    shows it (`reference`, a shrunk PNG; written from this B when it does not exist yet and the
+    pair passed). Returns the measures and the reason the pair is refused, or None."""
     a, b = _shrunk(a_path), _shrunk(b_path)
+    a2 = _shrunk(again) if again is not None else None
     checks: dict = {}
     if a.shape != b.shape:
         return checks, "grab A and the plate differ in size"
@@ -363,12 +366,24 @@ def check_pair(a_path: Path | str, b_path: Path | str, reference: Path | None) -
         # menu or a toast is found by the rest of it, far from the fighters.
         near = _filter(fighters, "dilate", GLOW_HALO)
         glow = near & (a.mean(axis=-1) > b.mean(axis=-1))
+        if a2 is not None and a2.shape == a.shape:
+            moving = _differs(a, a2)
+            checks["stable"] = round(float(moving[~near].mean()) if (~near).any() else 0.0, 5)
+            checks["stableInside"] = round(float(moving[near].mean()) if near.any() else 0.0, 5)
+            if checks["stable"] > STABLE_MAX:
+                return checks, (f"the held frame kept changing outside the fighters ({checks['stable']:.1%} of the frame "
+                                "between two grabs)")
+            a2 = None
         changed = _differs(a, b) & ~shadow & ~glow
         checks["outside"] = round(float(changed[outside].mean()) if outside.any() else 0.0, 5)
         checks["warm"] = round(warm_share(a, fighters & _differs(a, b)), 4)
         if checks["outside"] > OUTSIDE_MAX:
             return checks, (f"grab A and the plate differ outside the fighters on {checks['outside']:.1%} of the frame "
                             "(the screen changed between them)")
+    if a2 is not None and a2.shape == a.shape:  # no depth to tell the fighters apart: the whole frame
+        checks["stable"] = round(float(_differs(a, a2).mean()), 5)
+        if checks["stable"] > STABLE_MAX:
+            return checks, f"the held frame kept changing ({checks['stable']:.1%} of the frame between two grabs)"
     if reference is not None:
         if reference.is_file():
             ref = np.asarray(Image.open(reference).convert("RGB")).astype(np.float32)

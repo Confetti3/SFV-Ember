@@ -87,12 +87,13 @@ phase 3 about 20-25 min more.
 it). `launch versus A B TRN 1 inf` -> wait `launch.loaded` and `booth.battle` changed (mismatch or
 failure = failed load; still loading after `--load-stuck` 25 s = stuck: the copy is relaunched and
 the load tried once more) -> optional walk-in -> `booth hold F` (`--frame`, default 60) -> 12
-presents -> camera peek (`CameraUnit[0]+0x450`, same twice) -> wait until SFV reports nothing
+presents -> camera peek (`CameraUnit[0]+0x100.presentation`, same twice) -> wait until SFV reports nothing
 loading for 60 battle frames (`booth.loading`, `loadedFrames`) -> grab A (depth auto) -> 20
-presents -> grab A again (the held frame must be the same picture within 1 %, else A is taken again,
-up to 5 times) -> `booth hide 1 1` (both fighters' actors hidden, cloth and shadow too) -> 12
-presents -> grab B -> checks (boothpack `check_pair`: outside the fighters, i.e. the depth
-difference widened, grab A must be the plate within 1 %, a pixel only darker in A being the
+presents -> grab A again -> `booth hide 1 1` (both fighters' actors hidden, cloth and shadow too) -> 12
+presents -> grab B -> checks (boothpack `check_pair`: outside the fighters and 80 pixels around
+them, the second grab A must be the first within 1 % (inside, a living costume may move: Gill's
+glowing skin); outside the fighters, i.e. the depth difference widened, grab A must be the plate
+within 1 %, a pixel only darker in A being the
 fighters' shadow, and one brighter in A within 80 pixels of them their glow (Kage's aura); the plate must be the stage as `<store>\reference\plate-<stage>-<frame>.png`
 shows it within 15 %, that file written from the first plate that passes) -> `booth leave` -> main
 menu -> 4 s (`--menu-settle`: a launch of the same stage sooner never finishes loading). A load

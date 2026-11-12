@@ -58,11 +58,10 @@ SETTLE_PRESENTS = 12          # protocol: wait 12 presents after a hold and afte
 LOADED_FRAMES = 60            # SFV reports nothing loading for this many battle frames in a row before the grabs
 LOADED_TIMEOUT_GRAB_S = 45.0  # ...or the load fails
 STABLE_PRESENTS = 20          # grab A again this many presents later: the same picture once everything has loaded
-STABLE_TRIES = 5
 LOOK_ATTEMPTS = 2             # a load whose grabs fail the checks is loaded again once
 BURST_AFTER_PRESENTS = 3      # a burst grab of a frame just held: a few presents later, the frame drawn
 BURST_POLL_S = 0.05           # the burst's waits poll the pipe this often
-CAMERA_PEEK = "peek CameraUnit[0]+0x450 0 16"
+CAMERA_PEEK = "peek CameraUnit[0]+0x100.presentation 112 40"  # the camera: target, eye, field of view (boothcamera)
 
 PHASE_NAMES = {"1": "colour 1 of every costume", "2": "the other colours", "3": "loadout pictures"}
 
@@ -447,7 +446,7 @@ class Copy:
         self.wait_presents(SETTLE_PRESENTS)
 
     def camera_check(self) -> list[str]:
-        """The camera words (CameraUnit[0]+0x450) must be the same on two reads a few presents
+        """The camera words (CAMERA_PEEK) must be the same on two reads a few presents
         apart: a camera still moving is not a frozen frame. A copy whose peek is not answered
         (`error`) is warned about once and let through."""
         deadline = time.monotonic() + CAMERA_TIMEOUT_S
@@ -548,25 +547,18 @@ class Copy:
             self.hide(False, True)  # the opponent out of the picture, so the mask is one fighter
         a_path, a2_path, b_path = raw / "a.bmp", raw / "a2.bmp", raw / "b.bmp"
         frame = self.grab(a_path, True)
-        # The held frame grabbed again a little later must be the same picture (textures in, no
-        # screen fading over it); else the later one becomes A and is checked again.
-        for attempt in range(STABLE_TRIES):
-            self.wait_presents(STABLE_PRESENTS)
-            self.grab(a2_path, False)
-            changed = bp.grabs_differ(a_path, a2_path)
-            if changed <= bp.STABLE_MAX:
-                break
-            if attempt + 1 == STABLE_TRIES:
-                raise GrabCheckError(f"the held frame kept changing ({changed:.1%} of the frame between two grabs)")
-            frame = self.grab(a_path, True)
+        # The held frame grabbed again a little later must be the same picture outside the fighters
+        # (no screen fading over it, no menu); inside them a living costume may move (Gill's
+        # glowing skin, fire hair). Judged after the plate, whose depth tells where the fighters are.
+        self.wait_presents(STABLE_PRESENTS)
+        self.grab(a2_path, False)
         depth_state = self.booth(self.status()).get("lastGrab", {}).get("depth", "")
         self.hide(True, True)  # the plate: the same frozen frame without the fighters
         self.grab(b_path, True)
         reference = self.store / "reference" / f"plate-{stage}-{self.args.frame}.png"
-        checks, refused = bp.check_pair(a_path, b_path, reference)
+        checks, refused = bp.check_pair(a_path, b_path, reference, again=a2_path)
         if refused:
             raise GrabCheckError(refused)
-        checks["stable"] = round(changed, 5)
         meta = {"frame": frame, "stage": stage, "load": key, "camera": " ".join(camera), "depth": depth_state, "checks": checks}
         future = self.post.submit(self.make_masters, a_path, b_path, [p1, p2], meta, raw)
         self.pending.append(future)
