@@ -33,4 +33,21 @@ bool InstallHudText(uintptr_t imageBase);
 // before a battle.
 void SetPlateNames(PlateName source);
 
+// The photo booth's HUD probe (development builds, -sfve_mode=booth;
+// docs/design/beta8/booth-protocol.md `booth hud` and `booth hudlog`): the
+// booth looks for the HUD movie's call that hides the HUD, which overlaps the
+// fighters' feet.
+//
+// Game thread only. Calls the HUD movie's method `method` with `number` and,
+// when `text` is not empty, `text`, the way the game's own invoke does
+// (sfv::kHudInvoke, on the movie the hook last saw; the call is made through
+// the original, not the hook, so nothing is replaced). False when no HUD
+// movie has been seen yet or the method name is empty; true means the call was
+// made, not that the HUD changed.
+bool HudCall(const std::wstring& method, float number, const std::wstring& text = {});
+
+// While on, every HUD invoke the hook sees is logged: the method, the number
+// and the text. Any thread.
+void SetHudCallLog(bool on);
+
 } // namespace sfve::mod

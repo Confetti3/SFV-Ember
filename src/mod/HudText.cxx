@@ -123,4 +123,14 @@ void SetPlateNames(PlateName source)
 	s_source = std::move(source);
 }
 
+// A-mod fills these. Until then no call is made and nothing is logged.
+bool HudCall(const std::wstring&, float, const std::wstring&)
+{
+	return false;
+}
+
+void SetHudCallLog(bool)
+{
+}
+
 } // namespace sfve::mod

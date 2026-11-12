@@ -134,6 +134,11 @@ TinySides TinyFightersNow()
 	return sides;
 }
 
+bool ApplyFighterScaleNow(float, float)
+{
+	return false;
+}
+
 bool InstallTinyFighters(uintptr_t imageBase)
 {
 	s_setScale = reinterpret_cast<tiny::SetScaleFn>(imageBase + sfv::kSetWorldScale3D.rva);

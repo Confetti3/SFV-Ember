@@ -67,6 +67,16 @@ void SetOverlayUi(OverlayUi ui);
 // The game's window has the focus (WM_ACTIVATEAPP). Any thread.
 bool GameWindowFocused();
 
+// A function called on the render thread for every real Present (not
+// DXGI_PRESENT_TEST) of any swap chain the hook sees, before the overlay draws
+// and whether or not an interface is set: the photo booth's frame grab
+// (overlay/FrameGrab.hxx) takes the clean back buffer there. `swapChain` is the
+// IDXGISwapChain being presented, as an opaque pointer so this header needs no
+// DXGI. Null clears it. Any thread; the tap runs on the render thread and must
+// be quick. It only runs once InstallOverlay has hooked Present.
+using PresentTap = std::function<void(void* swapChain)>;
+void SetPresentTap(PresentTap tap);
+
 // The overlay's view of the game's pad polling: called for each pad state
 // the game reads (VirtualPads' filter). While the interface takes the pad
 // (OverlayUi::takesPad) the game sees an idle one, and a button still held

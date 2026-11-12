@@ -46,6 +46,19 @@ void SetTinyFighters(bool p1, bool p2, bool announce = true);
 void ClearTinyFighters();
 TinySides TinyFightersNow();
 
+// The photo booth's scale (development builds, -sfve_mode=booth;
+// docs/design/beta8/booth-protocol.md `booth scale`): sets each side's fighter
+// mesh to `p1` and `p2` times its own size at once, on the visual part each
+// side's fighter last updated, instead of waiting for the next per-frame
+// update (a frozen booth frame has none). 1 is normal; the booth uses 0.001 to
+// take a fighter out of a plate. Game thread only. True when both sides'
+// parts were known and scaled; false (nothing changed for a side whose part is
+// unknown) otherwise, and always false for a factor that is not positive and
+// finite. It writes only the picture, as every function here does. A-mod fills
+// it: the per-side part memory, and the factor parameter on tiny::ScaledScale
+// and tiny::ApplyToPart (default kTinyScale, so the tests stay as they are).
+bool ApplyFighterScaleNow(float p1, float p2);
+
 // Hooks the picture's functions (a set: all or none); false when they could
 // not be hooked. Once, from SfveStart.
 bool InstallTinyFighters(uintptr_t imageBase);

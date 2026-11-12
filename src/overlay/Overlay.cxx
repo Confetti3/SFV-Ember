@@ -49,6 +49,10 @@ std::mutex s_uiMutex;
 OverlayUi s_ui;              // as set; copied to the render thread under the mutex
 std::atomic<bool> s_haveUi;
 
+std::mutex s_tapMutex;
+PresentTap s_tap;              // as set; copied to the render thread under the mutex
+std::atomic<bool> s_haveTap;
+
 // What the render thread last published, for the window procedure.
 std::atomic<bool> s_shown, s_available;
 std::atomic<bool> s_focused{true};
@@ -280,7 +284,17 @@ void Draw(IDXGISwapChain* swap)
 
 HRESULT WINAPI h_Present(IDXGISwapChain* swap, UINT syncInterval, UINT flags)
 {
-	if (!(flags & DXGI_PRESENT_TEST)) Draw(swap);
+	if (!(flags & DXGI_PRESENT_TEST)) {
+		if (s_haveTap) {
+			PresentTap tap;
+			{
+				std::lock_guard lock(s_tapMutex);
+				tap = s_tap;
+			}
+			if (tap) tap(swap);
+		}
+		Draw(swap);
+	}
 	return o_present(swap, syncInterval, flags);
 }
 
@@ -354,6 +368,13 @@ void SetOverlayUi(OverlayUi ui)
 	std::lock_guard lock(s_uiMutex);
 	s_ui = std::move(ui);
 	s_haveUi = static_cast<bool>(s_ui.draw);
+}
+
+void SetPresentTap(PresentTap tap)
+{
+	std::lock_guard lock(s_tapMutex);
+	s_tap = std::move(tap);
+	s_haveTap = static_cast<bool>(s_tap);
 }
 
 bool GameWindowFocused()
