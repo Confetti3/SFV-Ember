@@ -206,6 +206,8 @@ public:
 
 	// This copy watches (Config::watching).
 	bool Watching() const { return config_.watching; }
+	// The side this copy plays (Config::localPlayer: 0 P1, 1 P2).
+	int LocalPlayer() const { return config_.localPlayer; }
 	// A watcher's frames received from P1 and not played yet; -1 when the
 	// session cannot tell (not a watcher's, or none).
 	int WatchedBacklog() const;

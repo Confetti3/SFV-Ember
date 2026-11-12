@@ -35,8 +35,13 @@ namespace sfve::picks {
 // copy launched V-Skill I and V-Trigger I whatever the room said (section
 // 40); and the pick space is every fighter, costume and colour the spec's
 // rows hold, whatever the account's entitlements or the install (section
-// 41). No earlier copy may meet one of these.
-constexpr const char* kMatchBuild = "sfv-ember/13173604/0.5";
+// 41). 0.6: a small fighter's model is at the game's own scale whenever the
+// fight reads it (TinyFighters' BeginFightUpdate), where 0.5's fight read
+// sockets of the small model (docs/design/beta8/desync.md); and two betas
+// that play differently must never meet (a beta.5 copy met a beta.6 one and
+// they diverged at their first checkpoint, Bugsink 2026-11). No earlier copy
+// may meet one of these.
+constexpr const char* kMatchBuild = "sfv-ember/13173604/0.6";
 
 // The stage choice that stands for Random (GameCatalog::randomStage): the
 // library's own selection::RandomStageId, never a stage on the wire. P1's

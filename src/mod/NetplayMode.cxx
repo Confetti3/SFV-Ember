@@ -21,6 +21,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <optional>
+
 namespace sfve::mod {
 
 namespace {
@@ -226,7 +228,11 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 
 PackedInput NetplayMode::LocalInput(SfvAdapter& adapter, int frame)
 {
-	if (!intro_skip::Scenes(adapter.FlowState(), adapter.MatchDecided())) return script_.At(frame).value_or(adapter.Sampled(0));
+	if (!intro_skip::Scenes(adapter.FlowState(), adapter.MatchDecided())) {
+		// A scripted player's blocks of moves face the way its fighter does.
+		const std::optional<bool> facing = config_.script.seed ? adapter.FacingRight(session_->LocalPlayer()) : std::nullopt;
+		return script_.At(frame, facing).value_or(adapter.Sampled(0));
+	}
 	// The decided match's scenes read nothing but the skip request, so only a
 	// press counts here: the pad as the battle records it and, should that
 	// record stand still, as the game asks its pads itself (its own way after

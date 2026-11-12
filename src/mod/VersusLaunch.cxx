@@ -7,6 +7,7 @@
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
+#include "mod/ModConfig.hxx"
 #include "mod/SfvOffsets.hxx"
 #include "mod/TinyFighters.hxx"
 
@@ -355,9 +356,13 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	s_replayLoading = picks.replay;
 	s_linkedPractice = picks.linked && picks.practice;
 	// The sides drawn small: a room's or a replay's battle only, from the
-	// moment it loads; any other launch (the pipe's, Training) is normal.
+	// moment it loads; any other launch (the pipe's, Training) is normal, but
+	// for a test's -sfve_tiny (development: a synctest's battle with a small
+	// side; nothing takes it back before the next launch, which a synctest's
+	// battle never sees).
 	const bool drawn = picks.linked || picks.replay;
-	s_loadingTiny = {drawn && picks.players[0].tiny, drawn && picks.players[1].tiny};
+	const uint32_t test = drawn ? 0 : Config().testTiny;
+	s_loadingTiny = {(drawn && picks.players[0].tiny) || (test & 1) != 0, (drawn && picks.players[1].tiny) || (test & 2) != 0};
 	SetTinyFighters(s_loadingTiny[0], s_loadingTiny[1]);
 	s_loadingCodes.reset();
 	if ((picks.linked || picks.replay) && picks.players[0].loadCode >= 0 && picks.players[1].loadCode >= 0) {
