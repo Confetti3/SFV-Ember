@@ -54,6 +54,11 @@ GRAB_TIMEOUT_S = 30.0
 PRESENTS_TIMEOUT_S = 30.0
 LEAVE_TIMEOUT_S = 60.0
 SETTLE_PRESENTS = 12          # protocol: wait 12 presents after a hold and after a scale
+LOADED_FRAMES = 60            # SFV reports nothing loading for this many battle frames in a row before the grabs
+LOADED_TIMEOUT_GRAB_S = 45.0  # ...or the load fails
+STABLE_PRESENTS = 20          # grab A again this many presents later: the same picture once everything has loaded
+STABLE_TRIES = 5
+LOOK_ATTEMPTS = 2             # a load whose grabs fail the checks is loaded again once
 BURST_AFTER_PRESENTS = 3      # a burst grab of a frame just held: a few presents later, the frame drawn
 BURST_POLL_S = 0.05           # the burst's waits poll the pipe this often
 CAMERA_PEEK = "peek CameraUnit[0]+0x450 0 16"
@@ -67,6 +72,10 @@ class CaptureError(RuntimeError):
 
 class Stopped(Exception):
     pass
+
+
+class GrabCheckError(CaptureError):
+    """A load's grabs failed a check (boothpack.check_pair, the held frame changing)."""
 
 
 # --- the worklist -----------------------------------------------------------------------------
@@ -137,7 +146,10 @@ def build_loads(args, space: dict, store: Path) -> list[dict]:
             looks = kept
         return looks
 
-    if args.looks:
+    if args.looks_file:
+        text = Path(args.looks_file).read_text(encoding="utf-8")
+        looks = parse_looks(",".join(line.strip() for line in text.splitlines() if line.strip()), space)
+    elif args.looks:
         looks = parse_looks(args.looks, space)
     elif args.retry_failed:
         looks = limited(sorted(bp.failed_looks(store)))
@@ -154,7 +166,7 @@ def build_loads(args, space: dict, store: Path) -> list[dict]:
         loads += [{"kind": "looks", "looks": (look, None)} for look in looks]
     else:
         loads += [{"kind": "looks", "looks": pair} for pair in pair_up(looks)]
-    if args.phase in ("3", "all") and not args.looks and not args.retry_failed:
+    if args.phase in ("3", "all") and not args.looks and not args.looks_file and not args.retry_failed:
         for code in space["fighters"]:
             if wanted_fighters and code not in wanted_fighters:
                 continue
@@ -278,6 +290,7 @@ class Copy:
         self.done = 0       # loads captured
         self.attempted = 0  # loads tried
         self.failed = 0     # looks / pictures that failed
+        self.grabbed = False  # this load's grabs passed and went to masking
         self.started = 0.0
         self.pending: list = []
 
@@ -461,7 +474,9 @@ class Copy:
         path.parent.mkdir(parents=True, exist_ok=True)
         posix = path.as_posix()
         quoted = f'"{posix}"' if " " in posix else posix  # the mod wants a path with spaces in double quotes
-        self.cmd(f"booth grab {quoted}" + ("" if depth else " depth=off") + (f" after={after}" if after else ""))
+        # ui=off: the colour from before the frame's first interface draw (no HUD, no menu left over,
+        # no overlay toast).
+        self.cmd(f"booth grab {quoted} ui=off" + ("" if depth else " depth=off") + (f" after={after}" if after else ""))
         want = posix.lower()
 
         def taken(s: dict) -> bool:
@@ -482,7 +497,26 @@ class Copy:
             return "-"
         return f"{look[0]}:{look[1]}:{look[2]}"
 
+    def wait_loaded(self) -> None:
+        """Until SFV reports nothing loading for LOADED_FRAMES battle frames (booth.loading, the
+        game's IsAsyncLoading): a fighter drawn before its costume loaded is grey."""
+        self.wait_for(lambda s: not self.booth(s).get("loading", False) and self.booth(s).get("loadedFrames", LOADED_FRAMES) >= LOADED_FRAMES,
+                      LOADED_TIMEOUT_GRAB_S, "the game to finish loading")
+
     def capture_looks(self, load: dict) -> None:
+        """A look load, its grabs checked (boothpack.check_pair); a load whose grabs fail the checks
+        is loaded again once, then its looks fail with the reason."""
+        for attempt in range(1, LOOK_ATTEMPTS + 1):
+            try:
+                return self.capture_looks_once(load)
+            except GrabCheckError as e:
+                if attempt == LOOK_ATTEMPTS:
+                    raise CaptureError(str(e)) from None
+                self.log.say(f"copy {self.index}: {e}; loading it again")
+                self.cmd("booth leave")
+                self.to_menu()
+
+    def capture_looks_once(self, load: dict) -> None:
         p1, p2 = load["looks"]
         key = "__".join(f"{c}-{n}-{m}" for c, n, m in (look for look in (p1, p2) if look))
         raw = self.store / "raw" / key
@@ -497,20 +531,38 @@ class Copy:
                 self.hold_at(self.args.frame)
         else:
             self.hold_at(self.args.frame)
+        self.wait_loaded()
         self.wait_presents(SETTLE_PRESENTS)
         camera = self.camera_check()
         sides = [(0, p1), (1, p2)] if p2 else [(0, p1)]
         if len(sides) == 1:
             self.hide(False, True)  # the opponent out of the picture, so the mask is one fighter
-        a_path, b_path = raw / "a.bmp", raw / "b.bmp"
+        a_path, a2_path, b_path = raw / "a.bmp", raw / "a2.bmp", raw / "b.bmp"
         frame = self.grab(a_path, True)
+        # The held frame grabbed again a little later must be the same picture (textures in, no
+        # screen fading over it); else the later one becomes A and is checked again.
+        for attempt in range(STABLE_TRIES):
+            self.wait_presents(STABLE_PRESENTS)
+            self.grab(a2_path, False)
+            changed = bp.grabs_differ(a_path, a2_path)
+            if changed <= bp.STABLE_MAX:
+                break
+            if attempt + 1 == STABLE_TRIES:
+                raise GrabCheckError(f"the held frame kept changing ({changed:.1%} of the frame between two grabs)")
+            frame = self.grab(a_path, True)
         depth_state = self.booth(self.status()).get("lastGrab", {}).get("depth", "")
         self.hide(True, True)  # the plate: the same frozen frame without the fighters
         self.grab(b_path, True)
-        self.cmd("booth leave")
-        meta = {"frame": frame, "stage": stage, "load": key, "camera": " ".join(camera), "depth": depth_state}
+        reference = self.store / "reference" / f"plate-{stage}-{self.args.frame}.png"
+        checks, refused = bp.check_pair(a_path, b_path, reference)
+        if refused:
+            raise GrabCheckError(refused)
+        checks["stable"] = round(changed, 5)
+        meta = {"frame": frame, "stage": stage, "load": key, "camera": " ".join(camera), "depth": depth_state, "checks": checks}
         future = self.post.submit(self.make_masters, a_path, b_path, [p1, p2], meta, raw)
         self.pending.append(future)
+        self.grabbed = True
+        self.cmd("booth leave")
         self.to_menu()
 
     def make_masters(self, a_path: Path, b_path: Path, looks: list, meta: dict, raw: Path) -> None:
@@ -570,6 +622,7 @@ class Copy:
                 self.to_menu()
             self.start_battle(picks[0], picks[1])
             self.hold_at(cfg["start"])
+            self.wait_loaded()
             self.wait_presents(SETTLE_PRESENTS)
             self.hide(side != 0, side != 1)  # the opponent's whole actor away
             steps = [t for t in todo if t[0] == side]
@@ -601,27 +654,6 @@ class Copy:
         self.cmd("booth leave")
         self.to_menu()
 
-    def crop_window(self, mask: np.ndarray, side: int) -> tuple[int, int, int, int]:
-        """(x0, y0, width, height): the 16:9 window around what `mask` holds (the fighter and what
-        the move throws out), with a margin, at least `crop.height_fraction` of the frame high."""
-        height_px, width_px = mask.shape
-        cols = np.nonzero(mask.any(axis=0))[0]
-        rows = np.nonzero(mask.any(axis=1))[0]
-        if cols.size:
-            x_lo, x_hi, y_lo, y_hi = cols.min(), cols.max(), rows.min(), rows.max()
-        else:  # nothing found: where the side stands
-            cx = width_px * (0.42 if side == 0 else 0.58)
-            x_lo, x_hi, y_lo, y_hi = cx - width_px * 0.1, cx + width_px * 0.1, height_px * 0.4, height_px * 0.95
-        margin = self.cfg["crop"].get("margin", 0.12)
-        crop_h = max((y_hi - y_lo) * (1 + 2 * margin), (x_hi - x_lo) * (1 + 2 * margin) * 9 / 16,
-                     height_px * self.cfg["crop"]["height_fraction"])
-        crop_h = min(crop_h, height_px, width_px * 9 / 16)
-        crop_w = round(crop_h * 16 / 9)
-        crop_h = round(crop_w * 9 / 16)
-        x0 = int(min(max((x_lo + x_hi) / 2 - crop_w / 2, 0), width_px - crop_w))
-        y0 = int(min(max((y_lo + y_hi) / 2 - crop_h / 2, 0), height_px - crop_h))
-        return x0, y0, crop_w, crop_h
-
     def save_loadout(self, code: str, prefix: str, choice: int, side: int, pre_path: Path, plate_path: Path,
                      burst: list, override: int | None) -> None:
         """Chooses the burst's grab (an override's frame where loadout-frames.json gives one, else
@@ -642,14 +674,15 @@ class Copy:
             if override:
                 index, method = times.index(override), "override"
             else:
-                index = bb.choose(scores)
+                index = bb.choose(scores, times)
                 method = "auto"
                 if index is None:
                     wanted = default_after_press(self.cfg, prefix)
                     index, method = min(range(len(times)), key=lambda i: abs(times[i] - wanted)), "default"
             t, path, frame = burst[index]
             grab = read(path)
-            x0, y0, crop_w, crop_h = self.crop_window(bb.change_mask(pre, plate, grab, scores[index]), side)
+            box = bb.subject_box(plate, grab, scores[index])
+            x0, y0, crop_w, crop_h = bb.frame_window(box, grab.shape[0], grab.shape[1], side=side)
             picture = Image.fromarray(grab).crop((x0, y0, x0 + crop_w, y0 + crop_h))
             target = bp.loadout_master_path(self.store, code, prefix, choice)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -698,6 +731,7 @@ class Copy:
                     self.boot()
                 phase = "loadout" if load["kind"] == "loadout" else "looks"
                 self.attempted += 1
+                self.grabbed = False
                 try:
                     (self.capture_loadout if load["kind"] == "loadout" else self.capture_looks)(load)
                     self.done += 1
@@ -705,8 +739,9 @@ class Copy:
                     break
                 except (CaptureError, lib.SfveError, ValueError, KeyError, OSError) as e:
                     for look in self.label(load):
-                        if "colour" in look and bp.master_path(self.store, look["fighter"], look["costume"], look["colour"]).is_file():
-                            continue  # grabbed and masked; only the leave failed: not a failed look
+                        if "colour" in look and self.grabbed:
+                            continue  # grabbed and handed to masking; only the leave failed: not a failed look
+                        # (A master already there is no proof: with --force it is the old one.)
                         self.failed += 1
                         self.log.failure(self.index, phase, look, str(e), self.args.stage)
                     try:
@@ -766,6 +801,8 @@ def main(argv: list[str]) -> int:
     p.add_argument("--target", choices=["versus", "training"], default="versus")
     p.add_argument("--limit", type=int, default=0, help="at most N looks (loads for phase 3), for pilots")
     p.add_argument("--looks", help="CODE:costume:colour,... exactly these looks (a pilot)")
+    p.add_argument("--looks-file", help="exactly the looks in this file, one CODE:costume:colour a line "
+                                        "(boothpack.py check writes one); use with --force to capture masters again")
     p.add_argument("--fighters", help="CODE,CODE only these fighters")
     p.add_argument("--per-fighter", type=int, default=0, help="at most N looks per fighter")
     p.add_argument("--retry-failed", action="store_true", help="the looks the capture log lists as failed and that still have no master")
