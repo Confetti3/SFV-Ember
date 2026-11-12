@@ -140,7 +140,7 @@ Cards: costume cards show each costume in its picture's colour (its first), labe
 costume's name; colour cards are the colours' swatch chips (the game's two colours each, square,
 as large as the card holds), one this player cannot ready dimmed and struck through, with the
 pane beside them showing the costume tagged with the focused colour; stage cards
-`StageSelectIcon_l`; loadout cards the captured move picture (`LoadoutPicture`), else the
+`StageSelectIcon_l`; loadout cards the captured move picture (`LoadoutPicture`, `vs<k>.png` / `vt<k>.png`), else the
 fighter in their look, with the game's I/II mark, SAVED on the stored choice, the part and
 numeral, the game's move name and the note (`LoadoutNote`, drawn after `NoteUserText`).
 

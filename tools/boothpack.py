@@ -13,7 +13,7 @@ Masters (written while the capture runs, by runbooth.py through make_masters):
 
 The pack (`pack`), exactly as docs/design/beta8/pack.md says:
   <store>\\pack\\assets\\selection\\<CODE>\\costume-<N>\\color-<M>-cutout.png   256x384, 256-colour palette PNG
-  <store>\\pack\\assets\\selection\\<CODE>\\vs<k>.jpg, vt<k>.jpg               16:9 JPEG
+  <store>\\pack\\assets\\selection\\<CODE>\\vs<k>.png, vt<k>.png               256x144 RGB PNG
   <store>\\pack\\manifest.json
 """
 
@@ -33,7 +33,7 @@ from pathlib import Path
 
 try:
     import numpy as np
-    from PIL import Image, ImageFilter
+    from PIL import Image, ImageFilter, ImageOps
 except ImportError:  # pragma: no cover - environment problem, said clearly
     sys.exit("boothpack needs Pillow and numpy: python -m pip install -r tools/booth-requirements.txt (in a venv)")
 
@@ -48,8 +48,7 @@ PACK_SIZE = (256, 384)
 PACK_MARGIN = 16            # the same canvas and margin as SF4's importer, at half the master
 PACK_COLOURS = 256
 ALPHA_BOX_MIN = 8           # alpha at or above this counts as the picture (the importer's rule)
-LOADOUT_PACK_SIZE = (1024, 576)
-LOADOUT_JPEG_QUALITY = 88
+LOADOUT_PACK_SIZE = (256, 144)  # SF4's ultra-N.png: 256x144 RGB PNG, ImageOps.fit with Lanczos, no palette
 COLOUR_DIFF_THRESHOLD = 10  # per-channel difference between grab A and grab B
 DEPTH_DIFF_EPS = 1e-5       # depth difference between the two grabs
 MIN_MASK_FRACTION = 0.0005  # a side's cutout smaller than this share of the frame is a failure
@@ -82,7 +81,7 @@ def load_space(path: Path | str = DEFAULT_PICK_SPACE) -> dict:
 
 _NUM = r"(0|[1-9][0-9]{0,5})"
 _CUTOUT_RE = re.compile(r"assets\\selection\\([^\\]+)\\costume-" + _NUM + r"\\color-" + _NUM + r"-cutout\.png")
-_LOADOUT_RE = re.compile(r"assets\\selection\\([^\\]+)\\(vs|vt)" + _NUM + r"\.jpg")
+_LOADOUT_RE = re.compile(r"assets\\selection\\([^\\]+)\\(vs|vt)" + _NUM + r"\.png")
 MANIFEST_PACKAGE_PATH = "assets\\selection\\manifest.json"
 
 
@@ -113,7 +112,7 @@ def cutout_relpath(code: str, costume: int, colour: int) -> str:
 
 
 def loadout_relpath(code: str, part: str, choice: int) -> str:
-    return f"assets/selection/{code}/{part}{choice}.jpg"
+    return f"assets/selection/{code}/{part}{choice}.png"
 
 
 # --- store layout ------------------------------------------------------------------
@@ -406,11 +405,14 @@ def pack_cutout(master: Path, target: Path) -> None:
 
 
 def pack_loadout(master: Path, target: Path) -> None:
+    """A loadout master as SF4 makes its Ultra pictures (the library's fetch-ultra-references.py):
+    ImageOps.fit to 256x144 with Lanczos, saved as an RGB PNG (not quantized); optimize=True
+    only shrinks the file, losslessly."""
     with Image.open(master) as im:
-        rgb = im.convert("RGB").resize(LOADOUT_PACK_SIZE, Image.Resampling.LANCZOS)
+        rgb = ImageOps.fit(im.convert("RGB"), LOADOUT_PACK_SIZE, Image.Resampling.LANCZOS)
     target.parent.mkdir(parents=True, exist_ok=True)
-    temp = target.with_suffix(".tmp.jpg")
-    rgb.save(temp, "JPEG", quality=LOADOUT_JPEG_QUALITY, optimize=True)
+    temp = target.with_suffix(".tmp.png")
+    rgb.save(temp, "PNG", optimize=True)
     os.replace(temp, target)
 
 
@@ -689,16 +691,16 @@ def selftest() -> int:
     space = _synthetic_space()
     # The path rules.
     good = ["assets\\selection\\manifest.json", "assets\\selection\\AAA\\costume-0\\color-100-cutout.png",
-            "assets\\selection\\AAA\\costume-2\\color-0-cutout.png", "assets\\selection\\AAA\\vs2.jpg",
-            "assets\\selection\\BBB\\vt1.jpg"]
+            "assets\\selection\\AAA\\costume-2\\color-0-cutout.png", "assets\\selection\\AAA\\vs2.png",
+            "assets\\selection\\BBB\\vt1.png"]
     bad = ["assets\\selection\\AAA\\costume-1\\color-0-cutout.png", "assets\\selection\\AAA\\costume-0\\color-2-cutout.png",
            "assets\\selection\\AAA\\costume-0\\color-0-cutout.PNG", "assets\\selection\\AAA\\costume-00\\color-0-cutout.png",
            "assets\\selection\\AAA\\costume-0\\color-+0-cutout.png", "assets/selection/AAA/costume-0/color-0-cutout.png",
-           "assets\\selection\\aaa\\vs1.jpg", "assets\\selection\\AAA\\vs3.jpg", "assets\\selection\\BBB\\vs2.jpg",
-           "assets\\selection\\AAA\\vs0.jpg", "assets\\selection\\AAA\\vs1.png", "assets\\selection\\AAA\\vs1.jpg\\",
-           "assets\\selection\\AAA\\costume-0\\color-0.png", "assets\\selection\\AAA\\..\\AAA\\vs1.jpg",
-           "assets\\\\selection\\AAA\\vs1.jpg", "assets\\selection\\AAA\\vs1.jpg\x00", "assets\\selection\\AAA\\vs1.jpg:x",
-           "assets\\selection\\AAA\\costume-0\\color-1234567-cutout.png", "assets\\selection\\AAAA\\vs1.jpg"]
+           "assets\\selection\\aaa\\vs1.png", "assets\\selection\\AAA\\vs3.png", "assets\\selection\\BBB\\vs2.png",
+           "assets\\selection\\AAA\\vs0.png", "assets\\selection\\AAA\\vs1.jpg", "assets\\selection\\AAA\\vs1.png\\",
+           "assets\\selection\\AAA\\costume-0\\color-0.png", "assets\\selection\\AAA\\..\\AAA\\vs1.png",
+           "assets\\\\selection\\AAA\\vs1.png", "assets\\selection\\AAA\\vs1.png\x00", "assets\\selection\\AAA\\vs1.png:x",
+           "assets\\selection\\AAA\\costume-0\\color-1234567-cutout.png", "assets\\selection\\AAAA\\vs1.png"]
     check(all(is_selection_asset_path(p, space) for p in good), "accepted forms are accepted")
     for p in bad:
         check(not is_selection_asset_path(p, space), f"refused {p!r}")
@@ -766,9 +768,10 @@ def selftest() -> int:
         check(rgba.size == PACK_SIZE and rgba.getpixel((0, 0))[3] == 0, "cutout is 256x384 with a transparent corner")
         box = rgba.getchannel("A").point(lambda v: 255 if v >= 8 else 0).getbbox()
         check(box[3] == PACK_SIZE[1] - PACK_MARGIN and box[1] >= PACK_MARGIN, "cutout bottom-centred with the 16 px margin")
-        jpg = Image.open(pack / "assets/selection/AAA/vs1.jpg")
-        check(jpg.format == "JPEG" and jpg.size == LOADOUT_PACK_SIZE, "loadout picture is a 16:9 JPEG")
-        check({f["path"] for f in manifest["files"]} >= {"assets/selection/AAA/vs2.jpg", "assets/selection/BBB/vs1.jpg"}, "manifest lists the loadout pictures")
+        jpg = Image.open(pack / "assets/selection/AAA/vs1.png")
+        check(jpg.format == "PNG" and jpg.mode == "RGB" and jpg.size == LOADOUT_PACK_SIZE, "loadout picture is a 256x144 RGB PNG")
+        print(f"  sizes: cutout {cut.stat().st_size} bytes, loadout picture {(pack / 'assets/selection/AAA/vs1.png').stat().st_size} bytes")
+        check({f["path"] for f in manifest["files"]} >= {"assets/selection/AAA/vs2.png", "assets/selection/BBB/vs1.png"}, "manifest lists the loadout pictures")
         # An accepted exception: remove BBB costume 0 colour 1's master and AAA's costume 2.
         master_path(store, "AAA", 2, 0).unlink()
         master_path(store, "AAA", 2, 0).with_suffix(".json").unlink()

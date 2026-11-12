@@ -19,8 +19,8 @@ TEST_CASE("the selection path builders give the package's own form")
 {
 	CHECK(ManifestPath() == L"assets\\selection\\manifest.json");
 	CHECK(CutoutPath("RYU", 2, 13) == L"assets\\selection\\RYU\\costume-2\\color-13-cutout.png");
-	CHECK(LoadoutPicturePath("RYU", LoadoutPart::VSkill, 0) == L"assets\\selection\\RYU\\vs1.jpg");
-	CHECK(LoadoutPicturePath("RYU", LoadoutPart::VTrigger, 1) == L"assets\\selection\\RYU\\vt2.jpg");
+	CHECK(LoadoutPicturePath("RYU", LoadoutPart::VSkill, 0) == L"assets\\selection\\RYU\\vs1.png");
+	CHECK(LoadoutPicturePath("RYU", LoadoutPart::VTrigger, 1) == L"assets\\selection\\RYU\\vt2.png");
 	CHECK(CutoutPath("", 0, 0).empty());
 	CHECK(CutoutPath("RYU", -1, 0).empty());
 	CHECK(LoadoutPicturePath("RYU", LoadoutPart::VSkill, 2).empty());
@@ -105,18 +105,18 @@ TEST_CASE("numbers are written as the builders write them")
 TEST_CASE("only the loadout choices a fighter has are pictured")
 {
 	// ABC has one V-Skill and two V-Triggers.
-	CHECK(Accepts(L"assets\\selection\\ABC\\vs1.jpg"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs2.jpg"));
-	CHECK(Accepts(L"assets\\selection\\ABC\\vt1.jpg"));
-	CHECK(Accepts(L"assets\\selection\\ABC\\vt2.jpg"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vt3.jpg"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs0.jpg"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs01.jpg"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs.jpg"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vx1.jpg"));
-	CHECK(Accepts(L"assets\\selection\\XYZ\\vs2.jpg"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\XYZ\\vt2.jpg"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\QRS\\vs1.jpg"));
+	CHECK(Accepts(L"assets\\selection\\ABC\\vs1.png"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs2.png"));
+	CHECK(Accepts(L"assets\\selection\\ABC\\vt1.png"));
+	CHECK(Accepts(L"assets\\selection\\ABC\\vt2.png"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vt3.png"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs0.png"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs01.png"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs.png"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vx1.png"));
+	CHECK(Accepts(L"assets\\selection\\XYZ\\vs2.png"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\XYZ\\vt2.png"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\QRS\\vs1.png"));
 	CHECK(Accepts(LoadoutPicturePath("ABC", LoadoutPart::VTrigger, 1)));
 	CHECK_FALSE(Accepts(LoadoutPicturePath("ABC", LoadoutPart::VSkill, 1)));
 }
@@ -131,10 +131,10 @@ TEST_CASE("no other name, extension, case, separator or trick is a selection ass
 	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\costume-0\\color-0-cutout.png.exe"));
 	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\costume-0\\color-0-cutout.png:stream"));
 	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\costume-0\\color-0-cutout.png\\"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs1.png"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs1.JPG"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs1.jpg.exe"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs1.jpg:x"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs1.jpg"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs1.PNG"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs1.png.exe"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\vs1.png:x"));
 	CHECK_FALSE(Accepts(L"assets\\selection\\manifest.JSON"));
 	CHECK_FALSE(Accepts(L"assets\\selection\\manifest.json."));
 	CHECK_FALSE(Accepts(L"assets\\selection\\manifest.json:x"));
@@ -146,28 +146,28 @@ TEST_CASE("no other name, extension, case, separator or trick is a selection ass
 	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\costume-0\\color-0.jpg"));
 	// Case: the code and the names are exact.
 	CHECK_FALSE(Accepts(L"assets\\selection\\abc\\costume-0\\color-0-cutout.png"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\Abc\\vs1.jpg"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\Abc\\vs1.png"));
 	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\Costume-0\\color-0-cutout.png"));
 	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\costume-0\\Color-0-cutout.png"));
-	CHECK_FALSE(Accepts(L"assets\\Selection\\ABC\\vs1.jpg"));
-	CHECK_FALSE(Accepts(L"Assets\\selection\\ABC\\vs1.jpg"));
+	CHECK_FALSE(Accepts(L"assets\\Selection\\ABC\\vs1.png"));
+	CHECK_FALSE(Accepts(L"Assets\\selection\\ABC\\vs1.png"));
 	// Separators: the package's own backslash only.
 	CHECK_FALSE(Accepts(L"assets/selection/manifest.json"));
 	CHECK_FALSE(Accepts(L"assets/selection/ABC/costume-0/color-0-cutout.png"));
 	CHECK_FALSE(Accepts(L"assets\\selection\\ABC/costume-0\\color-0-cutout.png"));
 	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\costume-0/color-0-cutout.png"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC/vs1.jpg"));
-	CHECK_FALSE(Accepts(L"assets\\\\selection\\ABC\\vs1.jpg"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\\\ABC\\vs1.jpg"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\\\vs1.jpg"));
-	CHECK_FALSE(Accepts(L"\\assets\\selection\\ABC\\vs1.jpg"));
-	CHECK_FALSE(Accepts(L".\\assets\\selection\\ABC\\vs1.jpg"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC/vs1.png"));
+	CHECK_FALSE(Accepts(L"assets\\\\selection\\ABC\\vs1.png"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\\\ABC\\vs1.png"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\\\vs1.png"));
+	CHECK_FALSE(Accepts(L"\\assets\\selection\\ABC\\vs1.png"));
+	CHECK_FALSE(Accepts(L".\\assets\\selection\\ABC\\vs1.png"));
 	// Traversal and other roots.
 	CHECK_FALSE(Accepts(L"assets\\selection\\..\\selection\\manifest.json"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\..\\ABC\\vs1.jpg"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\..\\ABC\\vs1.png"));
 	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\costume-0\\..\\costume-0\\color-0-cutout.png"));
 	CHECK_FALSE(Accepts(L"assets\\selection\\..\\..\\Launcher.exe"));
-	CHECK_FALSE(Accepts(L"assets\\selection\\.\\ABC\\vs1.jpg"));
+	CHECK_FALSE(Accepts(L"assets\\selection\\.\\ABC\\vs1.png"));
 	CHECK_FALSE(Accepts(L"..\\assets\\selection\\manifest.json"));
 	CHECK_FALSE(Accepts(L"assets\\other\\manifest.json"));
 	CHECK_FALSE(Accepts(L"C:\\assets\\selection\\manifest.json"));
@@ -180,7 +180,7 @@ TEST_CASE("no other name, extension, case, separator or trick is a selection ass
 	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\"));
 	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\costume-0"));
 	CHECK_FALSE(Accepts(L"assets\\selection\\ABC\\costume-0\\"));
-	CHECK_FALSE(Accepts(std::wstring(L"assets\\selection\\ABC\\vs1.jpg") + std::wstring(1, L'\0') + L"x"));
+	CHECK_FALSE(Accepts(std::wstring(L"assets\\selection\\ABC\\vs1.png") + std::wstring(1, L'\0') + L"x"));
 	CHECK_FALSE(Accepts(ManifestPath() + std::wstring(1, L'\0')));
 }
 
@@ -244,7 +244,7 @@ TEST_CASE("the mod's, the launcher's and the updater's rules are this one functi
 	const sfve::picks::PickSpace& space = EmbeddedPickSpace();
 	std::vector<std::wstring> paths = {ManifestPath(), L"assets\\selection\\README.md", L"assets\\selection\\..\\x",
 		L"assets/selection/manifest.json", L"Launcher.exe", L"", CutoutPath("RYU", 0, 0), CutoutPath("RYU", 0, 9999),
-		CutoutPath("QQQ", 0, 0), LoadoutPicturePath("RYU", LoadoutPart::VSkill, 1), L"assets\\selection\\RYU\\vs3.jpg"};
+		CutoutPath("QQQ", 0, 0), LoadoutPicturePath("RYU", LoadoutPart::VSkill, 1), L"assets\\selection\\RYU\\vs3.png"};
 	for (const sfve::picks::Fighter& fighter : space.fighters) {
 		paths.push_back(CutoutPath(fighter.code, fighter.costumes.front().id, fighter.costumes.front().colours.front()));
 		paths.push_back(LoadoutPicturePath(fighter.code, LoadoutPart::VTrigger, 1));

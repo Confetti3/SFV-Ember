@@ -139,8 +139,8 @@ function Read-RenderStore([string]$Store, [double]$MinCoverage) {
 			}
 			$firstColours.Add([pscustomobject]@{ Fighter = $fighter.code; Costume = [int]$costume.id; Colour = [int]$costume.colours[0] })
 		}
-		for ($choice = 1; $choice -le $fighter.v_skills; $choice++) { $allowed["assets/selection/$($fighter.code)/vs${choice}.jpg"] = "loadout $($fighter.code) vskill $choice" }
-		for ($choice = 1; $choice -le $fighter.v_triggers; $choice++) { $allowed["assets/selection/$($fighter.code)/vt${choice}.jpg"] = "loadout $($fighter.code) vtrigger $choice" }
+		for ($choice = 1; $choice -le $fighter.v_skills; $choice++) { $allowed["assets/selection/$($fighter.code)/vs${choice}.png"] = "loadout $($fighter.code) vskill $choice" }
+		for ($choice = 1; $choice -le $fighter.v_triggers; $choice++) { $allowed["assets/selection/$($fighter.code)/vt${choice}.png"] = "loadout $($fighter.code) vtrigger $choice" }
 	}
 	$loadoutTotal = @($allowed.Values | Where-Object { $_.StartsWith('loadout ') }).Count
 
@@ -198,7 +198,7 @@ function Read-RenderStore([string]$Store, [double]$MinCoverage) {
 			# A loadout picture: fighter, part ("vskill" or "vtrigger") and choice (1 or 2).
 			$key = "$($exception.fighter) $($exception.part) $($exception.choice)"
 			$suffix = if ($exception.part -eq 'vskill') { 'vs' } elseif ($exception.part -eq 'vtrigger') { 'vt' } else { '' }
-			if (!$suffix -or !$allowed.ContainsKey("assets/selection/$($exception.fighter)/$suffix$($exception.choice).jpg")) { throw "Render manifest: an exception names a loadout picture the pick space lacks: $key" }
+			if (!$suffix -or !$allowed.ContainsKey("assets/selection/$($exception.fighter)/$suffix$($exception.choice).png")) { throw "Render manifest: an exception names a loadout picture the pick space lacks: $key" }
 			if ($loadoutPresent.Contains($key)) { throw "Render manifest: $key is both excepted and rendered" }
 			$null = $loadoutExcepted.Add($key)
 			continue
