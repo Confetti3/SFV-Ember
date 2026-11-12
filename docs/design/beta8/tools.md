@@ -93,10 +93,11 @@ presents -> grab A again (the held frame must be the same picture within 1 %, el
 up to 5 times) -> `booth hide 1 1` (both fighters' actors hidden, cloth and shadow too) -> 12
 presents -> grab B -> checks (boothpack `check_pair`: outside the fighters, i.e. the depth
 difference widened, grab A must be the plate within 1 %, a pixel only darker in A being the
-fighters' shadow; the plate must be the stage as `<store>\reference\plate-<stage>-<frame>.png`
+fighters' shadow, and one brighter in A within 80 pixels of them their glow (Kage's aura); the plate must be the stage as `<store>\reference\plate-<stage>-<frame>.png`
 shows it within 15 %, that file written from the first plate that passes) -> `booth leave` -> main
 menu -> 4 s (`--menu-settle`: a launch of the same stage sooner never finishes loading). A load
-whose grabs fail a check is loaded again once; then its looks fail with the reason. Every grab is
+whose grabs fail a check is loaded again once; then its looks fail with the reason (also with
+`--force` over an old master: the old master stays, the look is logged as failed). Every grab is
 taken with `ui=off` (the colour from before the frame's first interface draw: no HUD gauges, no
 menu left over, no overlay toast). A side drawn without its textures (boothpack `untextured`:
 nearly all light cyan-grey and no warm pixel) fails as a look: on the laptop some costumes render

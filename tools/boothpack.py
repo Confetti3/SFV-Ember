@@ -288,6 +288,7 @@ CHECK_DOWN = 4             # the checks compare pictures shrunk 4x (480x270 from
 CHECK_DIFF = 18            # a pixel differs when a channel differs by more than this (0-255)
 STABLE_MAX = 0.01          # two grabs of the held frame may differ on at most this share of the frame
 OUTSIDE_MAX = 0.01         # grab A and the plate may differ outside the fighters on at most this share
+GLOW_HALO = 41             # the glow zone: the fighters widened by 20 shrunk pixels (80 in the frame)
 PLATE_MAX = 0.15           # the plate may differ from the stage's reference plate on at most this share
 
 
@@ -356,7 +357,12 @@ def check_pair(a_path: Path | str, b_path: Path | str, reference: Path | None) -
         # The fighters' shadows (and the scene's ambient occlusion around them) darken the floor in
         # A without changing its depth: a pixel only darker in A than in the plate is not a change.
         shadow = (a <= b + 4).all(axis=-1)
-        changed = _differs(a, b) & ~shadow
+        # A fighter's glow (Kage's aura, fire) lights the stage around it without a depth of its
+        # own: near the fighters a pixel only brighter in A than in the plate is not a change. A
+        # menu or a toast is found by the rest of it, far from the fighters.
+        near = _filter(fighters, "dilate", GLOW_HALO)
+        glow = near & (a.mean(axis=-1) > b.mean(axis=-1))
+        changed = _differs(a, b) & ~shadow & ~glow
         checks["outside"] = round(float(changed[outside].mean()) if outside.any() else 0.0, 5)
         checks["warm"] = round(warm_share(a, fighters & _differs(a, b)), 4)
         if checks["outside"] > OUTSIDE_MAX:

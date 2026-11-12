@@ -290,6 +290,7 @@ class Copy:
         self.done = 0       # loads captured
         self.attempted = 0  # loads tried
         self.failed = 0     # looks / pictures that failed
+        self.grabbed = False  # this load's grabs passed and went to masking
         self.started = 0.0
         self.pending: list = []
 
@@ -557,10 +558,11 @@ class Copy:
         if refused:
             raise GrabCheckError(refused)
         checks["stable"] = round(changed, 5)
-        self.cmd("booth leave")
         meta = {"frame": frame, "stage": stage, "load": key, "camera": " ".join(camera), "depth": depth_state, "checks": checks}
         future = self.post.submit(self.make_masters, a_path, b_path, [p1, p2], meta, raw)
         self.pending.append(future)
+        self.grabbed = True
+        self.cmd("booth leave")
         self.to_menu()
 
     def make_masters(self, a_path: Path, b_path: Path, looks: list, meta: dict, raw: Path) -> None:
@@ -729,6 +731,7 @@ class Copy:
                     self.boot()
                 phase = "loadout" if load["kind"] == "loadout" else "looks"
                 self.attempted += 1
+                self.grabbed = False
                 try:
                     (self.capture_loadout if load["kind"] == "loadout" else self.capture_looks)(load)
                     self.done += 1
@@ -736,8 +739,9 @@ class Copy:
                     break
                 except (CaptureError, lib.SfveError, ValueError, KeyError, OSError) as e:
                     for look in self.label(load):
-                        if "colour" in look and bp.master_path(self.store, look["fighter"], look["costume"], look["colour"]).is_file():
-                            continue  # grabbed and masked; only the leave failed: not a failed look
+                        if "colour" in look and self.grabbed:
+                            continue  # grabbed and handed to masking; only the leave failed: not a failed look
+                        # (A master already there is no proof: with --force it is the old one.)
                         self.failed += 1
                         self.log.failure(self.index, phase, look, str(e), self.args.stage)
                     try:
