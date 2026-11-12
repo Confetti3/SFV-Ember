@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog, [switch]$autoSkip, [switch]$rngAudit, [string]$startPerturb = '', [switch]$plainSaves, [int]$verifyLoads = -1, [switch]$pressStart)
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog, [switch]$autoSkip, [string]$banStages = '', [switch]$rngAudit, [string]$startPerturb = '', [switch]$plainSaves, [int]$verifyLoads = -1, [switch]$pressStart)
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -105,6 +105,13 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # each scene (between rounds and at the match's end), where SFV would open
 # its own pause on that copy alone; no copy's battle may be paused, and
 # both fighters must log the game's pause off.
+# -banStages CHN,S25 opens the room with those stage codes banned
+# (docs/design/beta8/stageban.md; the room command's last argument). P1's Ready
+# then sends a banned pick (-stage S25) as the Training stage (TRN) and rolls
+# Random (-stage RND) only over the stages left, so every game's launch, on both
+# fighters' copies, must be the same stage and never a banned one: "launch: stage
+# X -> Y" in each log, checked at the end. -stage S25 with S25 banned must give
+# TRN in every game.
 # -autoSkip opens the room with its Skip winner scenes rule on
 # (docs/design/beta8/autoskip.md; the product's default, off here so the runs
 # above mean what they did): both fighters' copies then ask for the skip on
@@ -405,7 +412,7 @@ try {
     "copy ${skipCopy} presses an attack $skipAfter frames into each game's scenes$(if ($skipAfter -lt $guardFrames) { ' (inside the guard: nothing may be skipped)' })"
   }
   $instant = if ($rematches -ge 0) { 1 } else { 0 }
-  WaitFor 'room commands to be taken' 30 { (Ctl 0 "room $rounds $seconds $instant $firstTo $([int][bool]$tiny) $([int][bool]$autoSkip)") -like 'ok*' }
+  WaitFor 'room commands to be taken' 30 { (Ctl 0 "room $rounds $seconds $instant $firstTo $([int][bool]$tiny) $([int][bool]$autoSkip) $(if ($banStages) { $banStages } else { '-' })") -like 'ok*' }
   $inv = ''
   WaitFor 'the invitation' 60 { $script:inv = Ctl 0 invite; $script:inv -like 'ok *' }
   $inv = $inv.Substring(3)
@@ -740,5 +747,18 @@ if ($pressStart) {
   }
 }
 $played = if ($rematches -ge 0) { $rematches + 1 } else { $games }
+if ($banStages -and -not $failure) {
+  $bannedCodes = $banStages -split ','
+  $launched = @(0, 1 | ForEach-Object {
+    $i = $_
+    $codes = if (Test-Path $logOf[$i]) { @(Select-String -Path $logOf[$i] -Pattern 'launch: stage \S* -> (\S+) \(time' | ForEach-Object { $_.Matches[0].Groups[1].Value }) } else { @() }
+    ,$codes
+  })
+  "launched stages: copy 0 [$($launched[0] -join ' ')], copy 1 [$($launched[1] -join ' ')]"
+  if (-not $launched[0].Count) { $failure = 'no game launched a stage' }
+  elseif (($launched[0] -join ',') -ne ($launched[1] -join ',')) { $failure = "the copies launched different stages: [$($launched[0] -join ' ')] and [$($launched[1] -join ' ')]" }
+  elseif ($launched[0] | Where-Object { $bannedCodes -contains $_ }) { $failure = "a game launched a banned stage ($($launched[0] -join ' '))" }
+  elseif ($stage -ne 'RND' -and $bannedCodes -contains $stage -and ($launched[0] | Where-Object { $_ -ne 'TRN' })) { $failure = "-stage $stage is banned, so every game must launch TRN ($($launched[0] -join ' '))" }
+}
 $passed = Write-Verdict $failure $desyncs $checkpoints.Compared "$played game(s), no desync"
 exit $(if ($passed) { 0 } else { 1 })

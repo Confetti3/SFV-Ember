@@ -179,6 +179,31 @@ order. IDA (laptop, rva 0x55A9B0): with `+96` clear the list is handed to the ar
 0x5156A0, whose element copy rva 0x4E1F30 walks 16-byte `FString`s: the entries are fighter codes
 only, with no slot, row or column fields.
 
+## The first full capture's defects (2026-11-12) and the grab before the interface
+
+The first-colour capture (875 looks, 4 copies) had two defects the old checks did not see:
+
+- **SFV's main menu drawn over the battle** in about a third of the looks (its Story / Versus /
+  Challenges list over P1, the arcade "?" cards over P2), in grab A and the plate alike, so the
+  depth mask was right and the colour inside it wrong. `booth grab ... ui=off` takes the colour
+  before the frame's first draw into the back buffer with a depth-stencil target bound (how
+  Scaleform draws: the HUD's gauges, a menu left over), copied GPU side at that draw; an overlay
+  toast drawn at Present (Steam's) is after it too. On the laptop (2026-11-12) the frame draws 55
+  times into the back buffer, 54 of them with a depth-stencil bound; the one without is the
+  scene's final pass, and the HUD's top life bars arrive in the back buffer through it (drawn
+  elsewhere first), so `booth hudhide on` still hides those. `booth depth` reports the frame's
+  back-buffer draws (`backBuffer.draws`, `.uiDraws`); `lastGrab.ui` says what a grab was
+  (`before ui`, `no ui draw`, `ui kept`).
+- **Fighters drawn without their textures** (grey all over, or the engine's default texture):
+  the same costumes every time on the laptop (CNL 25, KEN 10, RYU 15, DSM 7, NSH 12...), after
+  loading has finished and with the frame stable, so their texture data is missing on that copy
+  of the game; no wait helps. The tools refuse such looks (boothpack `untextured`).
+
+`booth` status now also carries `loading` (SFV's own IsAsyncLoading, rva 0x524430: five
+readiness flags of its resource manager and the engine's pending async packages, called each
+battle frame on the game thread; reads only) and `loadedFrames` (frames in a row it has been
+false). The driver waits for 60 such frames before its grabs.
+
 ## Throughput (laptop, 2026-11-12)
 
 - 2 copies, fight frame 300: 10 loads (20 looks) in 2.3 min with boot; about 3.5 loads/min a

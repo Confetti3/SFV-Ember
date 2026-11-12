@@ -19,6 +19,9 @@ constexpr size_t kChunk = 4096; // bytes masked and hashed at a time
 // aligned word after it that AddressAt may read: each chunk is read with
 // that much of the next, so its words are tested whole.
 constexpr size_t kLookahead = 11;
+// AddressAt: a low half below this, in a window 4 bytes off a boundary whose
+// aligned neighbour is an address too, is a value before that address.
+constexpr uint32_t kSmallLowHalf = 0x10000;
 
 // Order-independent combination of one region's hash into the total.
 uint64_t Mix(uint64_t regionHash, uint64_t size)
@@ -85,20 +88,28 @@ private:
 // another process's address of another value did not (2026-11-12, the S6b
 // run: a script header pointer at CharaActionPart->0x3EC8+0x40, "differing"
 // from frame 0 with every value equal). Where a window 4 bytes off an 8-byte
-// boundary and the aligned window right after it both pass the test, and the
-// layout can tell which of them is this process's memory (addressMapped_),
-// the one that is wins; otherwise (both, neither, or no such test) the first,
-// as before, so an address packed 4 bytes off a boundary still hashes as zero.
+// boundary and the aligned window right after it both pass the test, the
+// values decide, never this process's memory: equal values must hash alike
+// in every process. A first fix asked whether each window was committed
+// memory here (VirtualQuery), and a table of small counter pairs (an
+// unowned 632-byte run: 0x00000173000003E8 and the like) then hashed apart
+// with every byte equal, once a counter matched the high half of one
+// process's heap (2026-11-12, runs R2 and R3: a fighter and a watcher
+// "diverged" a few hundred frames into round 2). Now the aligned window is
+// the address when the first window's low half is small (below
+// kSmallLowHalf), the zero or small value before an aligned address, as in
+// S6b, R2 and R3; otherwise the first, as before, so an address packed 4
+// bytes off a boundary (its low half is rarely small) still hashes as zero.
 bool StateLayout::AddressAt(const uint8_t* word, uintptr_t address, size_t after) const
 {
 	uint64_t value;
 	memcpy(&value, word, 8);
 	if (!addressTest_(value)) return false;
-	if (!addressMapped_ || (address & 7) != 4 || after < 4) return true;
+	if ((address & 7) != 4 || after < 4) return true;
 	uint64_t aligned;
 	memcpy(&aligned, word + 4, 8);
 	if (!addressTest_(aligned)) return true;
-	return !(addressMapped_(aligned) && !addressMapped_(value));
+	return static_cast<uint32_t>(value) >= kSmallLowHalf;
 }
 
 // Zeroes the 8 bytes at every position that holds an address, and nothing

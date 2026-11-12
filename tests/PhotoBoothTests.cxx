@@ -187,6 +187,11 @@ TEST_CASE("a grab: its path, how many presents later, and which depth")
 	REQUIRE((c = Parse("grab b.bmp after=12 depth=off")));
 	CHECK(c->grab.afterPresents == 12);
 	CHECK(c->grab.depth.mode == grab::DepthMode::Off);
+	REQUIRE((c = Parse("grab b.bmp ui=off")));
+	CHECK(c->grab.beforeUi);
+	REQUIRE((c = Parse("grab b.bmp ui=on")));
+	CHECK_FALSE(c->grab.beforeUi);
+	CHECK_FALSE(Parse("grab b.bmp ui=maybe"));
 	REQUIRE((c = Parse("grab b.bmp depth=3 after=0")));
 	CHECK(c->grab.depth.mode == grab::DepthMode::Index);
 	CHECK(c->grab.depth.index == 3);
@@ -402,7 +407,7 @@ TEST_CASE("a grab needs a path, and one waits at a time")
 	CHECK(grab::CurrentStatus().presents == 0);
 	CHECK_FALSE(grab::QueueGrab(request, error));
 	CHECK(error == "grab pending");
-	CHECK(grab::DepthReport() == "{\"targets\":[]}");
+	CHECK(grab::DepthReport() == "{\"targets\":[],\"backBuffer\":{\"draws\":0,\"uiDraws\":0}}");
 }
 
 TEST_CASE("the HUD switch's sites are the ones the exe was read for, and in the build table")
@@ -411,7 +416,8 @@ TEST_CASE("the HUD switch's sites are the ones the exe was read for, and in the 
 	CHECK(sfv::kMovieSetVisible.rva == 0xEEE8C0);
 	CHECK(sfv::hudpart::kMoviePlayer == 0x318);
 	const GameBuild* build = sfv::VerifiedBuild();
-	for (const CodeSite* site : {&sfv::kHudPartPostUpdate, &sfv::kMovieSetVisible}) {
+	CHECK(sfv::kIsAsyncLoading.rva == 0x524430);
+	for (const CodeSite* site : {&sfv::kHudPartPostUpdate, &sfv::kMovieSetVisible, &sfv::kIsAsyncLoading}) {
 		CHECK(std::any_of(build->sites, build->sites + build->siteCount, [site](const CodeSite& listed) { return listed.rva == site->rva; }));
 	}
 }

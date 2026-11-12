@@ -376,6 +376,37 @@ mapped the first window is taken as before.
 -watchers 1`, RYU against CNL): the start agreement reports the same start state on all three
 copies, and every checkpoint compares equal.
 
+**Superseded the same day (R2 and R3, from the between-round skip runs).** The committed-memory
+test made the masking depend on each process's heap, and equal values then hashed apart.
+
+- **The data.** An unowned 632-byte run (no known owner, the one section 53 saw) holds pairs of
+  small ints: counters near 0x14A..0x213 next to pad-like bits. As 8-byte windows they pass the
+  value test (`0x00000173000003E8`, `0x000001EE000003E8`), and at its 4-mod-8 positions both the
+  window and its aligned neighbour pass.
+- **R2** (`-games 2 -rounds 3 -lag 30 -skipAfter 90`): a fighter's copy, heap at 0x172F..0x1738.
+  Once a counter read 0x173, its process found the aligned window "mapped" and zeroed another
+  pair of dwords than the other copy (heap at 0x242..0x243).
+- **R3** (`-autoSkip -watchers 1 -rematches 1 -padAnswers`): the watcher, heap at 0x1EE, on a
+  counter at 0x1EE.
+- **The effect.** "The two games diverged" at 3000 and 3480 with every byte of the two states
+  equal. The only difference was the sync clock the peers' hash leaves out. `battledata.round1.stats`
+  and the `game.N` lines in R2's `diff.txt` were the same masking and a name mispairing, as
+  below.
+- **The fix.** `AddressAt` decides by the values alone. When both windows pass, the aligned one is
+  the address if the first window's low half is below 0x10000 (`kSmallLowHalf`). That is the zero
+  or small value in front of an aligned address, as in S6b, R2 and R3. Otherwise the first window
+  is the address, so a pointer packed 4 bytes off a boundary (its low half is rarely that small)
+  is still zeroed whole.
+- **Removed.** `SetAddressTest`'s second test and the mod's `CommittedAddress`.
+- **Tools.** `diffstate.py` and `stateregion.py --against` mask by the same rule. `diffstate.py`
+  now pairs a state file's unowned runs (`game.N`, a place in that process's region list, which
+  differs between processes) by size and fewest differing bytes. With both, R2's two states at
+  3000 differ only in `inputunit.counters` +0xA4.
+- **Tests** (`StateRegionsTests`): the S6b pointers still hash equal with the aligned window
+  marked; R2's counter table masks the aligned window and hashes alike over a copy at another
+  address; the packed pointer with a small value after it keeps its own window.
+- **Rerun:** R2 and R3, and the S6b run above.
+
 ## Ranked hypotheses
 
 1. **Projectiles placed at a socket on a replayed tick: shown by D5, fixed above** (3360 and

@@ -82,8 +82,11 @@ public:
 	// screen shows the Size row (EMBER_LIBRARY.md section 59).
 	// `fighterKept`: an Arcade room keeps this player, its last winner, on
 	// their fighter (room::KeepsFighter): the board chooses no other.
+	// `bannedStages`: the room's Banned stages (room::Snapshot::bannedStages,
+	// ascending): the stage page lists them tagged and dimmed, with the reason,
+	// and none can be chosen; Random stays choosable.
 	void Draw(bool editable, bool stageEditable, const std::string& error, const std::vector<std::int64_t>& unavailableStages,
-		bool tinyAllowed = false, bool fighterKept = false);
+		bool tinyAllowed = false, bool fighterKept = false, const std::vector<std::int64_t>& bannedStages = {});
 
 	// The page shown and its focus, for the shell's status.
 	const std::string& Page() const { return menu_.navigation.Screen(); }
@@ -194,6 +197,7 @@ public:
 		Locked,     // the pick cannot change now
 		OnlyP1,     // the stage is not this player's to choose
 		NotShared,  // the opponent lacks it
+		Banned,     // the room bans it
 		NotOffered, // no card of the page (not a stage this player is offered)
 	};
 	static StageAnswer ChooseStage(const std::string& cardId, PlayerPick& pick, bool editable, bool stageEditable,
