@@ -774,3 +774,44 @@ TEST_CASE("the pad crosses the Random tile as the game's cursor does: Left and R
 		CHECK(row.right.empty());
 	}
 }
+
+TEST_CASE("a dimmed card is reached by the pad like any other, so the pane says why, and Select on it does nothing")
+{
+	FillTestCatalog();
+	// RYU's Nostalgia: colours 01 and 02 are this player's, EX01 and EX02 not.
+	const std::vector<MenuEntry> rows = SfvSelectionScreen::ColourCards(PlayerPickOf(kRyu, kOneOne), 4, true);
+	REQUIRE_FALSE(RowOf(rows, "color-100").enabled);
+	sf4e::ui::MenuNavigation nav;
+	double now = 0;
+	const auto press = [&](unsigned button) {
+		sf4e::ui::MenuAction last;
+		nav.Update({0, now += 1}, rows);
+		last = nav.Update({button, now += 1}, rows);
+		nav.Update({0, now += 1}, rows);
+		return last;
+	};
+	using Button = sf4e::ui::MenuInput;
+	nav.Focus("color-1", rows);
+	press(Button::Down);
+	CHECK(nav.Focus() == "color-100");
+	press(Button::Down);
+	CHECK(nav.Focus() == "color-101");
+	// Select on it: no action, the focus stays.
+	CHECK(press(Button::Select).kind == MenuAction::None);
+	CHECK(nav.Focus() == "color-101");
+	// Back up to the colours this player can ready, and Select stores one.
+	press(Button::Up);
+	press(Button::Up);
+	CHECK(nav.Focus() == "color-1");
+	const MenuAction chosen = press(Button::Select);
+	CHECK(chosen.kind == MenuAction::Activate);
+	CHECK(chosen.id == "color-1");
+	// The same on the board: KEN's tile (not this player's) is focused, and
+	// Select on it does nothing.
+	const std::vector<MenuEntry> board = SfvSelectionScreen::BoardRows(PlayerPickOf(kRyu, kOneOne), false, true, false, true);
+	sf4e::ui::MenuNavigation boardNav;
+	boardNav.Focus("fighter-2", board);
+	CHECK(boardNav.Focus() == "fighter-2");
+	boardNav.Update({0, now += 1}, board);
+	CHECK(boardNav.Update({Button::Select, now += 1}, board).kind == MenuAction::None);
+}

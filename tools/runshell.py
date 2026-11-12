@@ -104,6 +104,38 @@ def seek_board(index: int, what: str, found) -> None:
         raise lib.SfveError(f"copy {index}: could not reach {what} on the board (at {pick_place(index)['focus']})")
 
 
+def seek_cards(index: int, card: str) -> None:
+    """A card of a gallery page (costumes, colours, stages) wherever the grid
+    put it: up and left to the first card, then line by line, right along
+    one and left along the next. A run along a line ends where a press no
+    longer moves the focus. A dimmed card (not this player's) is reached as
+    any other: it is shown, only not chosen."""
+    def at() -> str:
+        return pick_place(index)["focus"]
+
+    def run(move: str, limit: int) -> bool:
+        for _ in range(limit):
+            if at() == card:
+                return True
+            before = at()
+            press(index, move)
+            if at() == before:
+                break
+        return at() == card
+
+    if run("UP", 12) or run("LEFT", 40):
+        return
+    for line in range(16):
+        if run("RIGHT" if line % 2 == 0 else "LEFT", 40):
+            return
+        before = at()
+        press(index, "DOWN")
+        if at() == before:
+            break
+    if at() != card:
+        raise lib.SfveError(f"copy {index}: could not reach {card} on the pick screen (at {at()})")
+
+
 def seek(index: int, focus: str | tuple[str, ...], moves: list[str], limit: int = 12) -> None:
     """Presses `moves` in turn, round and round, until the focus is `focus`
     (or any of them)."""
@@ -263,13 +295,13 @@ def not_owned_shots(shots: Path | None) -> None:
     table_row(0, "appearance")
     press(0, "A")
     expect_pick(0, "costumes")
-    seek_pick(0, "costume-1", ["RIGHT"], 6)
+    seek_cards(0, "costume-1")
     time.sleep(0.5)
     shot(shots, "4b-not-owned-costume", 0)
-    seek_pick(0, "costume-0", ["LEFT"], 6)
+    seek_cards(0, "costume-0")
     press(0, "A")  # costume 0's colours
     expect_pick(0, "colors")
-    seek_pick(0, "color-1", ["LEFT"], 6)
+    seek_cards(0, "color-1")
     time.sleep(0.5)
     shot(shots, "4b-not-owned-color", 0)
     press(0, "B")  # the costumes
