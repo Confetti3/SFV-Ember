@@ -4,13 +4,16 @@
 
 Writes <store>\\contact\\<CODE>.png (every costume x colour of one fighter, a row per costume,
 each cell labelled "CODE costume/colour"; a look with no cutout yet is a crossed-out cell) and
-<store>\\contact\\overview.png (the first colour of every costume, grouped by fighter). The
-background is the shell's charcoal. Needs Pillow and numpy (tools/booth-requirements.txt).
+<store>\\contact\\overview.png (the first colour of every costume, grouped by fighter), and
+<store>\\contact\\loadout.png (a row per fighter: its V-Skill I/II and V-Trigger I/II pictures, each
+labelled with how its frame was chosen, auto, override or default, and the frames after the
+press). The background is the shell's charcoal. Needs Pillow and numpy (tools/booth-requirements.txt).
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -93,6 +96,39 @@ def overview(store: Path, space: dict, codes: list[str], source: str, cell: tupl
     return sheet, have, len(items)
 
 
+LOADOUT_PICTURES = (("vs", 1), ("vs", 2), ("vt", 1), ("vt", 2))
+
+
+def loadout_label(master: Path, prefix: str, choice: int) -> str:
+    """"vs1 auto +48" from the master's sidecar (how its frame was chosen); "vs1" without one."""
+    try:
+        meta = json.loads(master.with_suffix(".json").read_text(encoding="utf-8"))
+        return f"{prefix}{choice} {meta.get('method', '?')} +{meta.get('afterPress', '?')}"
+    except (OSError, ValueError):
+        return f"{prefix}{choice}"
+
+
+def loadout_sheet(store: Path, space: dict, codes: list[str], cell: tuple[int, int] = (320, 180)) -> tuple[Image.Image, int, int]:
+    """A row per fighter that has any loadout picture: its code, then V-Skill I, II and V-Trigger I,
+    II (a move the fighter does not have is left empty, one not captured yet crossed out)."""
+    label_h, name_w = 16, 56
+    rows = [c for c in codes if any(bp.loadout_master_path(store, c, p, n).is_file() for p, n in LOADOUT_PICTURES)]
+    sheet = Image.new("RGBA", (name_w + 4 * cell[0], max(1, len(rows)) * (cell[1] + label_h)), CHARCOAL + (255,))
+    draw, font = ImageDraw.Draw(sheet), _font(13)
+    have = total = 0
+    for r, code in enumerate(rows):
+        y = r * (cell[1] + label_h)
+        draw.text((6, y + cell[1] // 2), code, fill=LABEL, font=font)
+        fighter = space["fighters"][code]
+        for c, (prefix, choice) in enumerate(LOADOUT_PICTURES):
+            if choice > fighter[prefix]:
+                continue
+            total += 1
+            master = bp.loadout_master_path(store, code, prefix, choice)
+            have += draw_cell(sheet, draw, font, master, (name_w + c * cell[0], y), cell, loadout_label(master, prefix, choice), label_h)
+    return sheet, have, total
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--store", default=bp.DEFAULT_STORE)
@@ -118,6 +154,10 @@ def main(argv: list[str]) -> int:
         sheet.convert("RGB").save(out / f"{code}.png", optimize=False)
         shown.append(code)
         print(f"{code}: {have}/{total} looks -> {out / (code + '.png')}")
+    sheet, have, total = loadout_sheet(store, space, codes)
+    if have:
+        sheet.convert("RGB").save(out / "loadout.png", optimize=False)
+        print(f"loadout: {have}/{total} pictures of the fighters that have any -> {out / 'loadout.png'}")
     if not a.no_overview and shown:
         sheet, have, total = overview(store, space, shown, a.source)
         sheet.convert("RGB").save(out / "overview.png", optimize=False)
