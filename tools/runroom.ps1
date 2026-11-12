@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog)
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog, [switch]$autoSkip)
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -83,6 +83,12 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # checked). -skipPad presses copy -skipCopy's virtual pad (X) instead,
 # about N frames (default 90) after its log shows the decision: the player's
 # own path, through the pads.
+# -autoSkip opens the room with its Skip winner scenes rule on
+# (docs/design/beta8/autoskip.md; the product's default, off here so the runs
+# above mean what they did): both fighters' copies then ask for the skip on
+# their own once the guard is over, with no press at all, and the scenes must
+# end the way a press ends them (fewer than -skipMax frames, the same skips and
+# result frame on both copies and the watcher's).
 $ErrorActionPreference = 'Stop'
 # The checkout this script is in, whichever it is.
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -172,7 +178,7 @@ function AwaitWatcher([int]$game, [int]$before) {
 # (intro_skip::kScenesGuardFrames).
 $guardFrames = 60
 if ($skipCopy -lt 0 -or $skipCopy -gt 1) { throw '-skipCopy is 0 or 1' }
-$skipWanted = $skipPad -or $skipAfter -ge $guardFrames
+$skipWanted = $skipPad -or $autoSkip -or $skipAfter -ge $guardFrames
 # Each copy's games as its log has them: frames from the decision to the
 # result, the result's frame, and the skips applied before it ("<frame>:
 # <what>"), in order.
@@ -215,7 +221,7 @@ function CheckScenes([int]$game) {
   if ($a.Result -ne $b.Result) { throw "game ${game}: the copies took the result at frames $($a.Result) and $($b.Result)" }
   if (($a.At -join '|') -ne ($b.At -join '|')) { throw "game ${game}: the copies applied different skips: copy 0 [$($a.At -join '; ')], copy 1 [$($b.At -join '; ')]" }
   if ($skipWanted) {
-    if ($a.Skips -lt 1) { throw "game ${game}: copy ${skipCopy}'s press skipped nothing" }
+    if ($a.Skips -lt 1) { throw "game ${game}: the scenes were not skipped (copy ${skipCopy}'s press, or the room's rule)" }
     foreach ($took in $a.Took, $b.Took) { if ($took -ge $skipMax) { throw "game ${game}: the skipped scenes still took $took frames (want fewer than $skipMax)" } }
   } else {
     # No press after the guard (none at all, or -skipAfter inside it): no
@@ -314,7 +320,7 @@ try {
     "copy ${skipCopy} presses an attack $skipAfter frames into each game's scenes$(if ($skipAfter -lt $guardFrames) { ' (inside the guard: nothing may be skipped)' })"
   }
   $instant = if ($rematches -ge 0) { 1 } else { 0 }
-  WaitFor 'room commands to be taken' 30 { (Ctl 0 "room $rounds $seconds $instant $firstTo $([int][bool]$tiny)") -like 'ok*' }
+  WaitFor 'room commands to be taken' 30 { (Ctl 0 "room $rounds $seconds $instant $firstTo $([int][bool]$tiny) $([int][bool]$autoSkip)") -like 'ok*' }
   $inv = ''
   WaitFor 'the invitation' 60 { $script:inv = Ctl 0 invite; $script:inv -like 'ok *' }
   $inv = $inv.Substring(3)

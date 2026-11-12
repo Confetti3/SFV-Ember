@@ -198,9 +198,13 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	// whatever was sent, but for the request on the skip frames, which are
 	// stepped confirmed.
 	const bool asked = introSkip_.Requested();
+	// The room's Skip winner scenes rule: a fighter's copy of a room battle
+	// asks for the decided match's scenes to be skipped on its own.
+	introSkip_.SetAutoScenes(room_.SkipScenes());
 	const PackedInput local = introSkip_.Next(adapter.FlowState(), LocalInput(adapter, frame), adapter.MatchDecided(), frame);
 	if (!asked && introSkip_.Requested() && scenes_.From() >= 0) {
-		Log("netplay: this copy asks to skip the scenes from frame %d, %d frame(s) into them", frame, scenes_.Shown(frame));
+		Log("netplay: this copy asks to skip the scenes from frame %d, %d frame(s) into them%s", frame, scenes_.Shown(frame),
+			introSkip_.AutoScenes() ? " (the room's Skip winner scenes rule; a press asks no sooner)" : "");
 	}
 
 	// The game's judgement, the same on both copies (it is restored with the
