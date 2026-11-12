@@ -1,7 +1,8 @@
 // The fighter board's grid table (SfvSelectGrid), checked without the game:
 // the table this checkout ships places every fighter of the pick space once,
-// in a cell of its own; a fighter the table lacks is appended after the last
-// cell taken; and a table that breaks a rule does not parse.
+// in a cell of its own, in the shape of SFV's own select screen; a fighter
+// the table lacks is appended after the last cell taken; and a table that
+// breaks a rule does not parse.
 
 #include <doctest/doctest.h>
 
@@ -188,4 +189,48 @@ TEST_CASE("a table that breaks a rule does not parse, and the grid stays as it w
 	Refusal(R"({"columns": 2, "fighters": [{"code": "RYU", "column": 1, "row": 0}], "random": {"column": 1, "row": 0}})");
 	Refusal(R"({"columns": 2, "fighters": [], "random": {"column": 2, "row": 0}})");
 	Refusal(R"({"columns": 2, "fighters": [], "random": {"code": "RND", "column": 0, "row": 0}})");
+}
+
+TEST_CASE("the shipped table has the shape of the game's own select screen: two rows split by Random")
+{
+	const SelectGrid grid = Parsed(ReadFile(SFVE_SELECT_GRID_PATH));
+	REQUIRE(grid.random.has_value());
+	const Cell random = *grid.random;
+	CHECK(random == Cell{11, 0});
+	CHECK(RowCount(grid) == 2);
+	// The second row sits about half a tile left of the first.
+	CHECK(RowOffset(grid, 0) == 0.f);
+	CHECK(RowOffset(grid, 1) < -.4f);
+	CHECK(RowOffset(grid, 1) > -.7f);
+	// Each side of Random: 11 on the first row, 12 and 11 on the second
+	// (the game's ELEVEN, last on the right, is not a fighter of ours: its
+	// cell stays empty).
+	int counts[2][2] = {};
+	for (const Entry& entry : grid.fighters) {
+		CAPTURE(entry.code);
+		REQUIRE(entry.cell.row >= 0);
+		REQUIRE(entry.cell.row < 2);
+		counts[entry.cell.row][entry.cell.column > random.column ? 1 : 0]++;
+	}
+	CHECK(counts[0][0] == 11);
+	CHECK(counts[0][1] == 11);
+	CHECK(counts[1][0] == 12);
+	CHECK(counts[1][1] == 11);
+	CHECK(!CodeAt(grid, {23, 1}).has_value());
+	// The tiles beside Random and at the ends, as the game shows them.
+	CHECK(CellOf(grid, "RYU") == Cell{10, 0});
+	CHECK(CellOf(grid, "KEN") == Cell{12, 0});
+	CHECK(CellOf(grid, "NSH") == Cell{11, 1});
+	CHECK(CellOf(grid, "VEG") == Cell{12, 1});
+	CHECK(CellOf(grid, "Z39") == Cell{0, 0});
+	CHECK(CellOf(grid, "Z41") == Cell{22, 0});
+	CHECK(CellOf(grid, "Z42") == Cell{0, 1});
+	CHECK(CellOf(grid, "Z40") == Cell{22, 1});
+	// Every first-row column but Random's is taken; the second row is whole
+	// up to the last fighter's.
+	for (int column = 0; column <= 22; column++) {
+		CAPTURE(column);
+		CHECK(CodeAt(grid, {column, 0}).has_value());
+		CHECK(CodeAt(grid, {column, 1}).has_value());
+	}
 }

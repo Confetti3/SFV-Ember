@@ -27,6 +27,8 @@
 #include <cstdlib>
 #include <functional>
 #include <optional>
+#include <string>
+#include <utility>
 
 namespace sfve::adapter {
 
@@ -75,12 +77,29 @@ constexpr float kBannerWidth = 380;
 // on the stage row's option and in the pane.
 constexpr const char* kStageNotShared = "runtime.ready.stage_not_shared";
 
-// The board's tiles: the game's select grid face (CharaSelectIconLeft,
-// 116x144), whole, at its own shape; the gap between two, in unscaled
-// pixels. Provisional with the table (docs/design/beta8/select.md): the
-// native screen's spacing is read from its screenshot with the table.
-constexpr float kTileShape = 144.f / 116.f;
-constexpr float kTileGap = 6;
+// The board as the game's own select screen draws it at 1080 lines, measured
+// on its pixels (the laptop's capture, docs/design/beta8/select.md): tiles 70
+// px apart along a row, each a parallelogram frame 64 px wide and 142 tall
+// leaning 0.2 px sideways a line (the left side's foot to the right, the
+// right side's mirrored), rows 151 px apart. The tile's picture is the
+// select grid face (CharaSelectIconLeft) at its own 116x144 on the frame's
+// centre. The Random tile stands between the two sides from 60 px under the
+// first row's top to 47 px above the last row's foot, 6 px clear of the
+// tiles beside it. The board is scaled as a whole to the room it has.
+constexpr float kTilePitch = 70;
+constexpr float kTileWidth = 64;
+constexpr float kTileHeight = 142;
+constexpr float kRowPitch = 151;
+constexpr float kTileLean = .2f;
+constexpr float kPictureWidth = 116;
+constexpr float kPictureHeight = 144;
+constexpr float kRandomTop = 60;
+constexpr float kRandomFoot = 47;
+constexpr float kRandomClear = 6;
+// A cell right of Random's column stands this many pitches further right:
+// the room the Random tile takes beyond its own column (0.66 on the game's
+// first row, 0.73 on its second).
+constexpr float kRandomGap = .69f;
 // The saved card's mark under its tile: Band's gold bar, in unscaled pixels.
 constexpr float kSavedBar = 3;
 // The pages with a body keep a pane on the right where the body is at least
@@ -319,12 +338,14 @@ BodyArea LayOutBody(float height, bool withPane)
 
 // --- The board -------------------------------------------------------------
 
-// The board as SFV's select screen lays it out (SfvSelectGrid): each
-// fighter's slanted tile in its cell, Random's card in its own, the stored
-// card marked with the gold bar under it, a fighter this player cannot play
-// dimmed; the focused one edged in gold. The art pane beside it shows the
-// focused card (BoardPick, or Random's own words). The pad moves by where
-// each tile is drawn (PressEntry places it).
+// The board as SFV's select screen lays it out (SfvSelectGrid, and the game's
+// measures above): each fighter's slanted tile in its cell, the right side's
+// mirrored, the Random tile between the two sides, the stored card with a
+// gold foot, a fighter this player cannot play dimmed, the focused one edged
+// in gold. The art pane beside it shows the focused card (BoardPick, or
+// Random's own words). The pad moves by where each tile is drawn (PressEntry
+// places it): along a row, and up and down to the tile nearest below or
+// above; Random's Left and Right are the tiles beside it on its row.
 struct BoardFrame {
 	const grid::SelectGrid& table; // the grid table, fitted to the roster
 	const PlayerPick& pick;
@@ -333,67 +354,152 @@ struct BoardFrame {
 	bool fighterKept = false;
 };
 
-void DrawTile(ImDrawList* draw, const MenuEntry& e, v2::Box b, bool focused, bool hovered, bool saved, int fighter)
+// A tile's frame: a parallelogram around `centre`, `scale` times the game's
+// 1080-line measures, leaning with `side` (1 the left side's lean, -1 the
+// right side's).
+struct Frame {
+	ImVec2 topLeft, topRight, footRight, footLeft;
+};
+Frame FrameAt(ImVec2 centre, float scale, float side)
+{
+	const float w = kTileWidth * .5f * scale, h = kTileHeight * .5f * scale, lean = kTileLean * h * side;
+	return {ImVec2(centre.x - w - lean, centre.y - h), ImVec2(centre.x + w - lean, centre.y - h),
+		ImVec2(centre.x + w + lean, centre.y + h), ImVec2(centre.x - w + lean, centre.y + h)};
+}
+
+void DrawFrameEdge(ImDrawList* draw, const Frame& f, ImU32 colour, float thickness)
+{
+	draw->AddQuad(f.topLeft, f.topRight, f.footRight, f.footLeft, colour, thickness);
+}
+
+void DrawTile(ImDrawList* draw, const MenuEntry& e, ImVec2 centre, float scale, float side, bool focused, bool hovered,
+	bool saved, int fighter)
 {
 	const auto& colors = v2::Colors();
 	const float s = sf4e::ui::Scale();
+	const Frame frame = FrameAt(centre, scale, side);
 	// The tile is the game's own card: no ground of Ember's at rest, the
 	// focus's and the pointer's under it.
-	if (focused || hovered) draw->AddRectFilled(b.min, b.max, focused ? colors.header : colors.hover);
-	if (fighter < 0) {
-		draw->AddRectFilled(b.min, b.max, colors.frame);
-		DrawRandomMark(draw, b, saved ? colors.accent : colors.text);
-	} else {
-		const float alpha = FighterLocked(fighter) ? kLocked : 1.f;
-		// The whole tile, else the head's square, else the fighter's name.
-		if (!DrawFitted(draw, FighterImage(fighter, FighterPicture::Tile), b, alpha, false) &&
-			!DrawFitted(draw, FighterImage(fighter, FighterPicture::Face), b, alpha, false)) {
+	if (focused || hovered) {
+		draw->AddQuadFilled(frame.topLeft, frame.topRight, frame.footRight, frame.footLeft, focused ? colors.header : colors.hover);
+	}
+	const float alpha = FighterLocked(fighter) ? kLocked : 1.f;
+	const sf4e::ui::SelectionImage tile = FighterImage(fighter, FighterPicture::Tile);
+	if (tile.texture && tile.width > 0 && tile.height > 0) {
+		// At its own shape on the frame's centre; mirrored on the right side,
+		// where the game draws the face's Right picture.
+		const float tall = std::floor(kPictureHeight * scale), wide = std::floor(tall * (float)tile.width / (float)tile.height);
+		ImVec2 uvA = tile.uvMin, uvB = tile.uvMax;
+		if (side < 0) std::swap(uvA.x, uvB.x);
+		const ImVec2 corner(std::floor(centre.x - wide * .5f), std::floor(centre.y - tall * .5f));
+		draw->AddImage(tile.texture, corner, ImVec2(corner.x + wide, corner.y + tall), uvA, uvB,
+			IM_COL32(255, 255, 255, (int)(alpha * 255 + .5f)));
+	} else if (tile.missing) {
+		// The head's square, else the fighter's name, upright in the frame.
+		const v2::Box box{ImVec2(centre.x - kTileWidth * .5f * scale, centre.y - kTileHeight * .5f * scale),
+			ImVec2(centre.x + kTileWidth * .5f * scale, centre.y + kTileHeight * .5f * scale)};
+		if (!DrawFitted(draw, FighterImage(fighter, FighterPicture::Face), box, alpha, false)) {
 			std::string elided;
-			sf4e::ui::DrawCardText(elided, ImVec2(b.min.x + 2 * s, b.min.y + (b.H() - ImGui::GetFontSize()) * .5f), b.W() - 4 * s,
-				e.label, (std::min)(ImGui::GetFontSize(), 13 * s), colors.muted, true);
+			sf4e::ui::DrawCardText(elided, ImVec2(box.min.x + 2 * s, centre.y - ImGui::GetFontSize() * .5f), box.W() - 4 * s, e.label,
+				(std::min)(ImGui::GetFontSize(), 13 * s), colors.muted, true);
 		}
 	}
-	if (saved) {
-		const float bar = (std::max)(1.f, std::floor(kSavedBar * s + .5f));
-		draw->AddRectFilled(ImVec2(b.min.x, b.max.y - bar), b.max, colors.accent);
-	}
-	if (focused) v2::Focus(draw, b.min, b.max, false);
+	// The frame's edge, as the game edges its tiles; the stored card's gold
+	// foot; the focus's gold edge.
+	DrawFrameEdge(draw, frame, v2::color::Alpha(colors.border, alpha), (std::max)(1.f, s));
+	if (saved) draw->AddLine(frame.footLeft, frame.footRight, colors.accent, (std::max)(1.f, std::floor(kSavedBar * s + .5f)));
+	if (focused) DrawFrameEdge(draw, frame, colors.accent, (std::max)(1.f, 2 * s));
+}
+
+// The Random tile: the game's "?" plate between the two sides.
+void DrawRandomTile(ImDrawList* draw, const Frame& quad, bool focused, bool hovered, bool saved)
+{
+	const auto& colors = v2::Colors();
+	const float s = sf4e::ui::Scale();
+	draw->AddQuadFilled(quad.topLeft, quad.topRight, quad.footRight, quad.footLeft,
+		focused ? colors.header : hovered ? colors.hover : colors.frame);
+	DrawFrameEdge(draw, quad, colors.border, (std::max)(1.f, s));
+	const float wide = ((quad.topRight.x - quad.topLeft.x) + (quad.footRight.x - quad.footLeft.x)) * .5f;
+	const float top = quad.topLeft.y, foot = quad.footLeft.y;
+	const float middle = (quad.topLeft.x + quad.topRight.x + quad.footLeft.x + quad.footRight.x) * .25f;
+	DrawRandomMark(draw, {ImVec2(middle - wide * .5f, top), ImVec2(middle + wide * .5f, foot)}, saved ? colors.accent : colors.text);
+	if (saved) draw->AddLine(quad.footLeft, quad.footRight, colors.accent, (std::max)(1.f, std::floor(kSavedBar * s + .5f)));
+	if (focused) DrawFrameEdge(draw, quad, colors.accent, (std::max)(1.f, 2 * s));
 }
 
 void DrawBoard(const std::vector<MenuEntry>& entries, MenuNavigation& nav, MenuAction& action, float height, const BoardFrame& frame)
 {
-	const float s = sf4e::ui::Scale();
 	const BodyArea area = LayOutBody(height, true);
 	const grid::SelectGrid& table = frame.table;
 	ImDrawList* draw = ImGui::GetWindowDrawList();
-	// The tiles as large as the area lets every row and column be, at their
-	// own shape; each row shifted by its offset, the whole board centred.
-	const int columns = (std::max)(1, table.columns), rows = (std::max)(1, grid::RowCount(table));
-	float least = 0, most = 0;
-	for (int row = 0; row < rows; row++) {
-		least = (std::min)(least, grid::RowOffset(table, row));
-		most = (std::max)(most, grid::RowOffset(table, row));
+	const int rows = (std::max)(1, grid::RowCount(table));
+	// The board in the game's 1080-line pixels: x from row 0's column 0's
+	// centre, y from the first row's top.
+	const auto across = [&table](grid::Cell cell) { return SfvSelectionScreen::BoardColumn(table, cell) * kTilePitch; };
+	const auto middle = [](int row) { return (float)row * kRowPitch + kTileHeight * .5f; };
+	const auto side = [&table](grid::Cell cell) { return table.random && cell.column > table.random->column ? -1.f : 1.f; };
+	// Random's plate: its top between the tiles beside it on its own row, its
+	// foot between those on the last row, each edge where those tiles' frames
+	// are at that line, kept clear of them.
+	std::optional<Frame> plate;
+	if (table.random) {
+		const int column = table.random->column;
+		const auto edges = [&](int row, float y) {
+			const std::optional<std::string> at = grid::CodeAt(table, {column, row});
+			const int left = at && *at != grid::kRandomCellCode ? column : column - 1;
+			const float leftEdge = across({left, row}) + kTileWidth * .5f + kTileLean * (y - middle(row)) + kRandomClear;
+			const float rightEdge = across({column + 1, row}) - kTileWidth * .5f - kTileLean * (y - middle(row)) - kRandomClear;
+			return std::pair<float, float>(leftEdge, (std::max)(leftEdge, rightEdge));
+		};
+		const float top = (float)table.random->row * kRowPitch + kRandomTop;
+		const float foot = (float)(rows - 1) * kRowPitch + kTileHeight - kRandomFoot;
+		const auto [topLeft, topRight] = edges(table.random->row, top);
+		const float low = (std::max)(top, foot);
+		const auto [footLeft, footRight] = edges(rows - 1, low);
+		plate = Frame{ImVec2(topLeft, top), ImVec2(topRight, top), ImVec2(footRight, low), ImVec2(footLeft, low)};
 	}
-	const float span = (float)columns + (most - least), gap = std::floor(kTileGap * s);
-	const float byWidth = (area.cards.W() - gap * (span - 1)) / span;
-	const float byHeight = ((area.cards.H() - gap * (float)(rows - 1)) / (float)rows) / kTileShape;
-	const float tile = std::floor((std::max)(1.f, (std::min)(byWidth, byHeight))), tall = std::floor(tile * kTileShape);
-	const float boardWidth = span * (tile + gap) - gap, boardHeight = (float)rows * (tall + gap) - gap;
-	const ImVec2 corner(std::floor(area.cards.min.x + (area.cards.W() - boardWidth) * .5f),
-		std::floor(area.cards.min.y + (area.cards.H() - boardHeight) * .5f));
+	// Scaled as a whole to the area, centred on the Random tile as the game
+	// centres it (else on the tiles), every picture inside.
+	float least = 0, most = 0;
+	bool any = false;
+	for (const grid::Entry& entry : table.fighters) {
+		const float x = across(entry.cell);
+		least = any ? (std::min)(least, x) : x;
+		most = any ? (std::max)(most, x) : x;
+		any = true;
+	}
+	const float centre =
+		plate ? (plate->topLeft.x + plate->topRight.x + plate->footLeft.x + plate->footRight.x) * .25f : (least + most) * .5f;
+	const float reach = (std::max)(std::fabs(least - centre), std::fabs(most - centre)) + kPictureWidth * .5f;
+	const float boardHeight = (float)(rows - 1) * kRowPitch + kPictureHeight;
+	const float scale = (std::max)(.05f, (std::min)(area.cards.W() / (2 * reach), area.cards.H() / boardHeight));
+	const float originX = std::floor(area.cards.min.x + area.cards.W() * .5f);
+	const float originY =
+		std::floor(area.cards.min.y + (area.cards.H() - boardHeight * scale) * .5f + (kPictureHeight - kTileHeight) * .5f * scale);
+	const auto screen = [&](float x, float y) { return ImVec2(std::floor(originX + (x - centre) * scale), std::floor(originY + y * scale)); };
 	for (const MenuEntry& e : entries) {
-		const bool randomCard = e.id == kRandomCard;
+		if (e.id == kRandomCard) {
+			if (!plate) continue;
+			const Frame q{screen(plate->topLeft.x, plate->topLeft.y), screen(plate->topRight.x, plate->topRight.y),
+				screen(plate->footRight.x, plate->footRight.y), screen(plate->footLeft.x, plate->footLeft.y)};
+			// Its box is its narrower foot's width, so it never covers the
+			// tiles beside it; at least a third of a tile wide.
+			const float half = (std::max)((q.footRight.x - q.footLeft.x) * .5f, kTileWidth * scale / 6);
+			const float mid = (q.footLeft.x + q.footRight.x) * .5f;
+			const v2::Box b{ImVec2(mid - half, q.topLeft.y), ImVec2(mid + half, q.footLeft.y)};
+			const bool hovered = sf4e::ui::PressEntry(nav, entries, e, b, action).hovered;
+			DrawRandomTile(draw, q, e.id == nav.Focus(), hovered, frame.random);
+			continue;
+		}
 		const std::optional<int> fighter = sf4e::ui::RowKey<int>(e.id, kFighterCard);
-		std::optional<grid::Cell> cell;
-		if (randomCard) cell = table.random;
-		else if (fighter) cell = grid::CellOf(table, FighterCode(*fighter));
+		const std::optional<grid::Cell> cell = fighter ? grid::CellOf(table, FighterCode(*fighter)) : std::nullopt;
 		if (!cell) continue;
-		const float x = corner.x + std::floor(((float)cell->column + grid::RowOffset(table, cell->row) - least) * (tile + gap));
-		const float y = corner.y + (float)cell->row * (tall + gap);
-		const v2::Box b{ImVec2(x, y), ImVec2(x + tile, y + tall)};
+		const ImVec2 centreAt = screen(across(*cell), middle(cell->row));
+		const float w = std::floor(kTileWidth * .5f * scale), h = std::floor(kTileHeight * .5f * scale);
+		const v2::Box b{ImVec2(centreAt.x - w, centreAt.y - h), ImVec2(centreAt.x + w, centreAt.y + h)};
 		const bool hovered = sf4e::ui::PressEntry(nav, entries, e, b, action).hovered, focused = e.id == nav.Focus();
-		const bool saved = randomCard ? frame.random : !frame.random && fighter && *fighter == frame.pick.pick.fighter;
-		DrawTile(draw, e, b, focused, hovered, saved, randomCard ? -1 : *fighter);
+		const bool saved = !frame.random && *fighter == frame.pick.pick.fighter;
+		DrawTile(draw, e, centreAt, scale, side(*cell), focused, hovered, saved, *fighter);
 	}
 	// The art pane: the focused card.
 	if (const MenuEntry* focused = EntryOf(entries, nav.Focus())) {
@@ -410,6 +516,25 @@ void DrawBoard(const std::vector<MenuEntry>& entries, MenuNavigation& nav, MenuA
 	}
 	ImGui::SetCursorScreenPos(area.origin);
 	ImGui::Dummy(ImVec2(area.width, 0));
+}
+
+// Random's Left and Right: the tiles beside it on its own row, across the
+// gap as the game's cursor crosses it (by position alone the tile below
+// would be nearer).
+void LinkRandom(std::vector<MenuEntry>& rows, const grid::SelectGrid& table)
+{
+	if (!table.random) return;
+	const auto card = [&table](grid::Cell cell) {
+		const std::optional<std::string> code = grid::CodeAt(table, cell);
+		if (!code || *code == grid::kRandomCellCode) return std::string();
+		const std::optional<int> id = FighterId(std::wstring(code->begin(), code->end()));
+		return id ? CardId(kFighterCard, *id) : std::string();
+	};
+	for (MenuEntry& row : rows) {
+		if (row.id != kRandomCard) continue;
+		row.left = card({table.random->column - 1, table.random->row});
+		row.right = card({table.random->column + 1, table.random->row});
+	}
 }
 
 // --- Picture cards: costumes, colours, stages --------------------------------
@@ -728,6 +853,12 @@ std::vector<MenuEntry> SfvSelectionScreen::BoardRows(const PlayerPick& pick, boo
 		rows.push_back(std::move(row));
 	}
 	return rows;
+}
+
+float SfvSelectionScreen::BoardColumn(const grid::SelectGrid& table, grid::Cell cell)
+{
+	const bool pastRandom = table.random && cell.column > table.random->column;
+	return (float)cell.column + grid::RowOffset(table, cell.row) + (pastRandom ? kRandomGap : 0.f);
 }
 
 PlayerPick SfvSelectionScreen::BoardPick(const PlayerPick& pick, const std::string& cardId, bool remembered)
@@ -1054,6 +1185,7 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 				   const sf4e::ui::MenuVisualFeedback&) { DrawCardGrid(entries, navigation, action, height, moved(navigation), cards); };
 	} else {
 		rows = BoardRows(pick, random, editable, fighterKept, !dummy_);
+		LinkRandom(rows, grid_);
 		columns = (std::max)(1, grid_.columns);
 		if (editable) status = fighterKept ? "selection.winner_keeps_fighter" : "selection.status_browse";
 		// A focus from no card of the board (a first visit) starts on the stored card.

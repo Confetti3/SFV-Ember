@@ -70,14 +70,33 @@ lacks is appended after the last cell taken and logged (`pick screen: the select
 lacks ...`); a table that does not parse is logged and the board falls back to eight across.
 Random gets the cell after the last one when the table gives none.
 
-**Provisional:** the shipped table is the pick-space order, 16 columns, Random at column 13,
-row 2. It must be re-cut from the screenshot of SFV's own select screen (laptop baseline run):
-one `{"code", "column", "row"}` per fighter, `rowOffsets` (in tile widths, fractions allowed)
-for rows the game staggers, and `random`. Two layout constants in `SfvSelectionScreen.cxx` may
-need the screenshot too: `kTileShape` (the tile's height over width, from
-`CharaSelectIconLeft`'s 116x144) and `kTileGap` (6 px between tiles, unscaled). Nothing else
-changes when the table does; `SfvSelectGridTests` checks every pick-space fighter is in it once
-and no cell is shared.
+**The table is cut from the game's own select screen** (the laptop's capture
+`D:/sfv-re/b8-j0/select-native-1.png`, the game's 1920x1080 frame at the top left of the
+image, and its crops): two rows of slanted tiles split by one tall Random tile spanning both.
+Row 0: columns 0-10 left of Random (Rose ... Ryu, outward to inward), Random at column 11,
+columns 12-22 right of it (Ken ... Akira). Row 1: columns 0-11 (Luke ... Nash), columns 12-22
+(M. Bison ... Oro); the game's ELEVEN, last on the right, is not a fighter of ours and its cell
+(23, 1) stays empty. `rowOffsets` [0, -0.54]: the second row sits 38 px (0.54 of the 70 px
+pitch) left of the first.
+
+What the board draws from the table, measured on the capture's pixels (1080 lines; constants at
+the top of `SfvSelectionScreen.cxx`): tiles 70 px apart, each frame 64 px wide and 142 tall,
+leaning 0.2 px sideways a line (the left side's foot to the right, the right side mirrored),
+rows 151 px apart; a cell right of Random's column stands 0.69 pitches further right
+(`kRandomGap`: 0.66 on the game's first row, 0.73 on its second, so a tile lands within 3 px of
+the game's); the Random plate fills the room between the two sides, 6 px clear of the tiles
+beside it, from 60 px under the first row's top to 47 px above the last row's foot (108 px wide
+at its top, 39 at its foot, as the game's). The board is scaled as a whole to its area and
+centred on Random, as the game centres it. `SfvSelectionScreen::BoardColumn` is the placement
+across; `SfvSelectionScreenTests` checks it against the capture's tile centres (within 4 px),
+and `SfvSelectGridTests` checks the table's shape (two rows, 11/11 and 12/11 around Random,
+the tiles beside Random and at the ends).
+
+Pad: Left and Right along a row; Up and Down to the nearest tile by where it is drawn (the
+second row's offset makes Down from a first-row tile its right-hand neighbour below). Random's
+Left and Right are the tiles beside it on its own row (Ryu and Ken), set on its entry, so the
+cursor crosses it along the first row as the game's does; from the second row, Right from Nash
+and Left from M. Bison reach Random by position.
 
 Not done here: the development dump of the setup asset's "+48 select-grid list"
 (`SfvOffsets.hxx:477-478, 489-497`) on the `content` command. It needs the battle setup asset
@@ -85,9 +104,12 @@ that `src/mod/GameContent.cxx` finds and a line in `src/mod/dllmain.cxx:305`, bo
 A-mod's files; it should log the list's fighter codes in order so the table's order can be
 checked against the game's.
 
-Tiles: the game's `CharaSelectIconLeft` whole (`FighterPicture::Tile`), else the head's square
-(`Face`), else the fighter's name. No Ember ground at rest; the focus's and the pointer's ground
-behind it, the gold edge on the focused tile, the gold bar under the stored one.
+Tiles: the game's `CharaSelectIconLeft` (`FighterPicture::Tile`) at its own 116x144 on the
+frame's centre, mirrored on the right side (the game draws `CharaSelectIconRight` there, which
+`SfvPictureSpec` does not offer yet: stream B's to add; until then the Left picture flipped),
+else the head's square (`Face`), else the fighter's name. A thin frame edge as the game's; the
+focus's and the pointer's ground behind the tile, the gold frame on the focused tile (as the
+game's cursor), the gold foot under the stored one.
 
 ## The art pane and pictures
 
@@ -161,7 +183,9 @@ Game runs (English, then Japanese for the notes' glyphs):
    choose Random, then Ready twice in a room and see `Fighter select: Random rolled` and a
    different fighter each game, in the look last used on them.
 5. Compare `4c-board` with the native select screen screenshot: same cells, same row stagger.
-   Re-cut `data/select-grid.json` (and `kTileShape` / `kTileGap` if needed) until they match.
+   Check the mirrored right-side tiles against the game's Right pictures, and that each
+   picture's slant matches its frame (the frame's lean is the capture's border; the picture's
+   is the texture's own, about 22 px over 140 rows per EMBER_LIBRARY.md section 37).
 6. Check every picture fallback at least once: a fighter with no captured cutout shows its
    `PartCharacter`; a colour with no cutout its swatch; a loadout card with no picture the
    fighter; smallest window (960x540) shows the pane's words with the picture shrinking.

@@ -23,6 +23,7 @@
 #include "ember/SfvPick.hxx"
 #include "ember/SfvPickSpace.hxx"
 #include "ember/SfvRandomFighter.hxx"
+#include "ember/SfvSelectGrid.hxx"
 #include "ember/SfvSelectionScreen.hxx"
 
 #include "common/Localization.hxx"
@@ -30,6 +31,7 @@
 #include "ui/GameMenu.hxx"
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <utility>
@@ -695,4 +697,25 @@ TEST_CASE("Random takes each roll once into the player's pick, in the fighter's 
 	CHECK_FALSE(PickRandom());
 	// The dummy's screen has no Random card.
 	CHECK_FALSE(HasRow(SfvSelectionScreen::BoardRows(CurrentDummy(), false, true, false, false), "random-fighter"));
+}
+
+TEST_CASE("the board places the shipped table's tiles where the game's own select screen draws them")
+{
+	const grid::SelectGrid& table = grid::EmbeddedSelectGrid();
+	REQUIRE(table.columns > 0);
+	// Tile centres measured on the game's 1080-line select screen, in pixels,
+	// and its 70 px pitch: the first row's first tile at 167, RYU 867, KEN
+	// 1053, Akira 1753; the second row's Luke 129, Nash 899, M. Bison 1020.
+	const auto place = [&table](const char* code) {
+		const std::optional<grid::Cell> cell = grid::CellOf(table, code);
+		REQUIRE(cell.has_value());
+		return 167 + 70 * SfvSelectionScreen::BoardColumn(table, *cell);
+	};
+	CHECK(std::abs(place("Z39") - 167.f) <= .5f);
+	const std::vector<std::pair<const char*, float>> measured{
+		{"RYU", 867.f}, {"KEN", 1053.f}, {"Z41", 1753.f}, {"Z42", 129.f}, {"NSH", 899.f}, {"VEG", 1020.f}};
+	for (const std::pair<const char*, float>& expected : measured) {
+		CAPTURE(expected.first);
+		CHECK(std::abs(place(expected.first) - expected.second) <= 4.f);
+	}
 }

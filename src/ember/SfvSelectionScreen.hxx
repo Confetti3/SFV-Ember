@@ -7,7 +7,8 @@
 // (docs/design/beta8/select.md):
 // - "home", the board: the game's slanted select tiles (CharaSelectIconLeft)
 //   in the cells SFV's own select screen puts them in (SfvSelectGrid's
-//   table, data/select-grid.json), Random in its cell, and beside them the
+//   table, data/select-grid.json; the right side's tiles mirrored), the
+//   Random tile between the two sides, and beside them the
 //   art pane: the focused fighter in the look choosing them would store
 //   (the fighter's remembered look), its names and colour chips. A fighter
 //   this player cannot play keeps its place, dimmed, and the pane says why
@@ -153,6 +154,11 @@ public:
 	// screen) or in the pick's look (LookFor); the pick itself for Random's
 	// card or any other id.
 	static PlayerPick BoardPick(const PlayerPick& pick, const std::string& cardId, bool remembered);
+	// Where the board puts a cell of the grid table across, in tile pitches
+	// from row 0's column 0: its column, its row's offset and, right of
+	// Random's column, the room the Random tile takes beyond its own column,
+	// as the game's own select screen places them.
+	static float BoardColumn(const grid::SelectGrid& table, grid::Cell cell);
 
 	// The costume cards: "costume-<n>" for every costume of the fighter, in
 	// the game's order, each shown in the colour worn where it has it and
