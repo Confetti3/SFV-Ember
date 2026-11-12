@@ -218,6 +218,10 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.scheduleSeed = (uint32_t)options.Number(L"sfve_schedule", 0);
 	c.lagMs = (int)options.Number(L"sfve_lag", 0);
 	c.hashEvery = (int)options.Number(L"sfve_hash_every", 0);
+	c.skipSaves = options.Number(L"sfve_skip_saves", 1) != 0;
+	c.hashOnConfirm = options.Number(L"sfve_hash_on_confirm", 1) != 0;
+	const long verifyLoads = options.Number(L"sfve_verify_loads", 16);
+	c.verifyLoadsEvery = verifyLoads > 0 ? (int)verifyLoads : 0;
 	c.replayRegionsFrom = (int)options.Number(L"sfve_replay_regions", 0);
 	c.replayCheck = (int)options.Number(L"sfve_replay_check", 0);
 	c.replayLag = (int)options.Number(L"sfve_replay_lag", 0);

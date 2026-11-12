@@ -36,8 +36,14 @@ struct LoopbackPair {
 	// is P1's): what a copy does between its battle's bind and its session's
 	// start (the start state's agreement, StartAgreementTests).
 	using BeforeStart = std::function<void(MockFighter& a, MockFighter& b, uint16_t portA, uint16_t portB)>;
+	// Changes each peer's session settings before it starts (the cheaper
+	// rollbacks off, a lossy link's ports: LossyLink.hxx).
+	using Configure = std::function<void(RollbackSession::Config& a, RollbackSession::Config& b)>;
+	// Called on every turn of RunTo's loop (a lossy link's relay).
+	std::function<void()> pump;
 
-	LoopbackPair(unsigned bugs, int delay, bool keepAllHashes = false, const BeforeStart& beforeStart = {})
+	LoopbackPair(unsigned bugs, int delay, bool keepAllHashes = false, const BeforeStart& beforeStart = {},
+		const Configure& configure = {})
 		: gameA(bugs), gameB(bugs)
 	{
 		const uint16_t base = LoopbackPortBase();
@@ -53,6 +59,7 @@ struct LoopbackPair {
 		ca.verifyLoads = cb.verifyLoads = true;
 		ca.keepAllHashes = cb.keepAllHashes = keepAllHashes;
 		ca.disconnectTimeoutMs = cb.disconnectTimeoutMs = 1000;
+		if (configure) configure(ca, cb);
 		std::string error;
 		REQUIRE_MESSAGE(a.Start(ca, &error), error);
 		REQUIRE_MESSAGE(b.Start(cb, &error), error);
@@ -66,6 +73,7 @@ struct LoopbackPair {
 		const ULONGLONG start = GetTickCount64();
 		while (a.Frame() < frames || b.Frame() < frames) {
 			if (GetTickCount64() - start > deadlineMs) return false;
+			if (pump) pump();
 			if (a.Frame() < frames) a.Step(ScriptedInput(0, a.Frame(), kLoopbackSeed));
 			else a.Poll();
 			if (b.Frame() < frames) b.Step(ScriptedInput(1, b.Frame(), kLoopbackSeed));
