@@ -21,6 +21,7 @@
 // picks, it is the first fighter they can play in their first costume and
 // colour, on the first stage they are offered. Any thread.
 
+#include "common/MatchWireTypes.hxx"
 #include "common/SelectionPick.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 
@@ -58,6 +59,34 @@ void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command);
 // the room allows tiny fighters, else normal, whatever the stored pick says. A
 // pick keeps its size while the rule is off, so a rule turned back on finds it.
 int SizeToSend(int storedSize, bool roomAllowsTiny);
+
+// The pick as the wire carries it (AddPickTo's): with this copy's player's
+// voice for its fighter, the costume code with its marker, and the size only
+// where the room allows tiny fighters (SizeToSend). The Random fighter's
+// runtime is handed the remembered looks so (SfvRandomFighter).
+void ToWire(sf4e::selection::Pick pick, bool roomAllowsTiny, sf4e::wire::ConfirmedCharaConditions& out);
+
+// Random on the fighter board (SfvRandomFighter): the player's pick is a
+// fighter rolled for each game, and the stored pick is the rolled fighter in
+// the look last used on them. Off until the board's Random card is chosen;
+// choosing a fighter turns it off. Not saved between runs, as the pick is
+// not. The dummy has no Random. Any thread.
+bool PickRandom();
+void SetPickRandom(bool random);
+
+// The look last stored for each fighter this run (SetPick remembers the
+// stored pick under its fighter: costume, colour, loadout, costume code and
+// size), as SF4 Ember keeps one per fighter; none for a fighter not stored
+// since the start. The dummy's picks are not remembered (SF4 Ember's dummy
+// keeps to its own pick too). Any thread.
+std::optional<sf4e::selection::Pick> RememberedLook(int fighter);
+
+// The pick that choosing `fighter` on the board stores, from `pick`: with
+// `remembered`, the fighter's remembered look where there is one; otherwise,
+// or with none, `pick` with that fighter. Fitted as the pick screen fits a
+// fighter (SfvCatalog's FitLookWithin): in a look this player can ready, or
+// for a fighter they cannot play, as the spec fits it.
+sf4e::selection::Pick LookFor(const sf4e::selection::Pick& pick, int fighter, bool remembered);
 
 // "RYU costume 0 colour 1 vskill II vtrigger I stage S25", by the game's
 // codes, for the status and the logs ("stage random" for Random).

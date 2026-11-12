@@ -6,6 +6,7 @@
 #include "common/GameCatalog.hxx"
 
 #include <algorithm>
+#include <array>
 #include <mutex>
 #include <optional>
 
@@ -16,6 +17,14 @@ namespace {
 std::mutex s_mutex;
 PlayerPick s_pick;
 std::optional<PlayerPick> s_dummy; // none until the player picks one
+// Random on the board, and the look last stored for each fighter (SetPick).
+bool s_random = false;
+std::array<std::optional<sf4e::selection::Pick>, ember::MaxFighters> s_looks;
+
+bool InRoster(int fighter)
+{
+	return fighter >= 0 && fighter < ember::MaxFighters;
+}
 
 // The pick under the catalog's rules and fitted to what this copy's player
 // can ready (FitOwnPick), and its stage fitted to the stage row's choices
@@ -67,6 +76,7 @@ PlayerPick SetPick(const PlayerPick& pick)
 	std::lock_guard lock(s_mutex);
 	s_pick = Fitted(pick);
 	LogRefitted("asked for", pick, s_pick);
+	if (InRoster(s_pick.pick.fighter)) s_looks[(size_t)s_pick.pick.fighter] = s_pick.pick;
 	return s_pick;
 }
 
@@ -87,21 +97,54 @@ PlayerPick SetDummy(const PlayerPick& dummy)
 	return *s_dummy;
 }
 
-void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command)
+void ToWire(sf4e::selection::Pick pick, bool roomAllowsTiny, sf4e::wire::ConfirmedCharaConditions& out)
 {
-	PlayerPick pick = CurrentPick();
 	// The player's own voice for the fighter goes with the pick, so the
 	// opponent's copy plays it too (picks::VoiceIn, SfvCatalog's LaunchPicks).
-	picks::SetVoice(pick.pick, OwnVoice(pick.pick.fighter));
+	picks::SetVoice(pick, OwnVoice(pick.fighter));
 	// The costume code the player chose, with the marker that says this copy
 	// knows codes even for none (picks::LoadCodeIn, SfvCatalog's LaunchPicks).
-	picks::SetLoadCode(pick.pick, picks::LoadCodeIn(pick.pick).value_or(0));
+	picks::SetLoadCode(pick, picks::LoadCodeIn(pick).value_or(0));
 	// The size only where the room allows tiny fighters (a Training or Home
 	// pick is never sent, and a room without the rule sees 0).
+	pick.size = SizeToSend(pick.size, roomAllowsTiny);
+	sf4e::selection::ToNative(pick, out);
+}
+
+void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command)
+{
+	const PlayerPick pick = CurrentPick();
 	const auto runtime = sf4e::NetplayFacade::GetRuntimeSnapshotShared();
-	pick.pick.size = SizeToSend(pick.pick.size, runtime && runtime->Room().tinyFighters);
-	sf4e::selection::ToNative(pick.pick, command.character);
+	ToWire(pick.pick, runtime && runtime->Room().tinyFighters, command.character);
 	command.stage = pick.stage;
+}
+
+bool PickRandom()
+{
+	std::lock_guard lock(s_mutex);
+	return s_random;
+}
+
+void SetPickRandom(bool random)
+{
+	std::lock_guard lock(s_mutex);
+	if (s_random != random) mod::Log("pick: Random %s", random ? "on" : "off");
+	s_random = random;
+}
+
+std::optional<sf4e::selection::Pick> RememberedLook(int fighter)
+{
+	std::lock_guard lock(s_mutex);
+	return InRoster(fighter) ? s_looks[(size_t)fighter] : std::nullopt;
+}
+
+sf4e::selection::Pick LookFor(const sf4e::selection::Pick& pick, int fighter, bool remembered)
+{
+	std::optional<sf4e::selection::Pick> look = remembered ? RememberedLook(fighter) : std::nullopt;
+	if (!look) look = pick;
+	look->fighter = fighter;
+	if (ember::ValidFighter(fighter)) FitLookWithin(*look);
+	return *look;
 }
 
 int SizeToSend(int storedSize, bool roomAllowsTiny)

@@ -6,8 +6,13 @@ Each copy's virtual pad 0 (-sfve_pads=01) presses the shell's buttons, the
 same path a physical pad takes (EMBER_LIBRARY.md section 13): copy 0 opens
 Ember with Start, creates a private room of 1 round of 30 s and copies its
 invitation; copy 1 joins by pasting it from the clipboard; both take a seat,
-pick on the pick screen and Ready on their own seat. The match plays with
-seeded random input, and both copies must be back in the room after it.
+pick on the pick screen's board (X opens it on the fighters' tiles; Select on
+one keeps it and closes the screen) and Ready on their own seat. The match
+plays with seeded random input, and both copies must be back in the room
+after it. With --shots, copy 0 also walks the pick screen's pages (the
+board and its art pane, the costume and colour cards, the V-Skill and
+V-Trigger cards, the stage cards, where Select must store the stage) and
+copy 1 its table page's stage row as P2 (docs/design/beta8/select.md).
 Nothing goes through the room test commands: the pipe only reads the status
 and presses the pad. Prints PASS or FAIL; closes the copies unless --keep.
 
@@ -56,6 +61,31 @@ def expect(index: int, screen: str, focus: str | None = None) -> None:
     s = shell(index)
     if s["screen"] != screen or (focus is not None and s["focus"] != focus):
         raise lib.SfveError(f"copy {index}: expected {screen}/{focus}, shell is at {s['screen']}/{s['focus']}")
+
+
+def pick_place(index: int) -> dict:
+    """The pick screen's own page and focus (the shell status' "pick"), and
+    the stored pick ("stored", PickText) and whether it is Random."""
+    return shell(index)["pick"]
+
+
+def expect_pick(index: int, page: str, focus: str | None = None) -> None:
+    s = shell(index)
+    p = s["pick"]
+    if s["screen"] != "selection" or p["page"] != page or (focus is not None and p["focus"] != focus):
+        raise lib.SfveError(f"copy {index}: expected the pick screen at {page}/{focus}, "
+                            f"shell is at {s['screen']} and the pick screen at {p['page']}/{p['focus']}")
+
+
+def seek_pick(index: int, focus: str | tuple[str, ...], moves: list[str], limit: int = 12) -> None:
+    """seek, on the pick screen's own focus."""
+    wanted = (focus,) if isinstance(focus, str) else focus
+    for step in range(limit):
+        if pick_place(index)["focus"] in wanted:
+            return
+        press(index, moves[step % len(moves)])
+    if pick_place(index)["focus"] not in wanted:
+        raise lib.SfveError(f"copy {index}: could not reach {focus} on the pick screen (at {pick_place(index)['focus']})")
 
 
 def seek(index: int, focus: str | tuple[str, ...], moves: list[str], limit: int = 12) -> None:
@@ -143,41 +173,139 @@ def take_seat(index: int, seat: int) -> None:
 
 
 def pick(index: int, fighter_steps: int, shots: Path | None, name: str | None) -> None:
-    """X opens the pick screen: the fighter `fighter_steps` along, costume 0, colour 1."""
+    """X opens the pick screen on its board, the stored fighter's tile
+    focused; Right `fighter_steps` tiles along (and on past a fighter the
+    player cannot play) and Select keeps that fighter in their remembered
+    look and closes the screen (opened for the room's Fighter)."""
     press(index, "X")
-    expect(index, "selection")
+    expect_pick(index, "home")
+    before = pick_place(index)["stored"]
     for _ in range(fighter_steps):
         press(index, "RIGHT")
-    press(index, "DOWN")  # costume
-    press(index, "DOWN")  # colour
-    press(index, "RIGHT")
+    if not pick_place(index)["focus"].startswith("fighter-"):
+        raise lib.SfveError(f"copy {index}: the board's focus is {pick_place(index)['focus']}, not a fighter")
     if name:
         shot(shots, name, index)
-    press(index, "B")
+    # A fighter its player cannot play keeps its tile but is not chosen:
+    # the next one along is.
+    for _ in range(6):
+        press(index, "A")
+        if shell(index)["screen"] != "selection":
+            break
+        press(index, "RIGHT")
     expect(index, "room")
+    print(f"copy {index}: pick {before} -> {pick_place(index)['stored']}")
+
+
+def table_row(index: int, row: str) -> None:
+    """The table page (Y on the table's card) with `row` focused."""
+    seek(index, "table-0", ["UP"], 20)
+    press(index, "Y")
+    expect(index, "room-table")
+    seek(index, row, ["DOWN"], 20)
 
 
 def not_owned_shots(shots: Path | None) -> None:
     """Copy 0, after its pick, with --unowned CNL,KEN:1,KEN:0:1 (the pick is
     KEN's costume 0 in colour 03, the fitting having skipped CNL and colour
-    02): each row's choices opened (Select) and the focus moved onto the
-    choice its player does not own (CHUN-LI beside KEN, KEN's costume 1, his
-    colour 02), where the pane says NOT OWNED's words."""
+    02): CHUN-LI's tile beside KEN's on the board, dimmed in its place, the
+    art pane saying NOT OWNED's words; then the costume cards (the table
+    page's Appearance) on KEN's costume 1 and the colour cards on his colour
+    02, dimmed, the pane saying why."""
     if not shots:
         return
-    press(0, "X")  # the screen opens on its first row, the fighter
-    expect(0, "selection")
-    for row, moves in (("fighter", ["LEFT"]), ("costume", ["RIGHT"]), ("color", ["UP", "RIGHT"])):
-        if row != "fighter":
-            press(0, "DOWN")
-        press(0, "A")
-        for move in moves:
-            press(0, move)
-        time.sleep(0.5)
-        shot(shots, f"4b-not-owned-{row}", 0)
-        press(0, "B")  # the choice closes; the pick is as it was
+    press(0, "X")
+    expect_pick(0, "home")
+    seek_pick(0, "fighter-2", ["LEFT", "UP"], 6)
+    time.sleep(0.5)
+    shot(shots, "4b-not-owned-fighter", 0)
+    press(0, "B")  # Back from the board: the room
+    expect(0, "room")
+    table_row(0, "appearance")
+    press(0, "A")
+    expect_pick(0, "costumes")
+    seek_pick(0, "costume-1", ["RIGHT"], 6)
+    time.sleep(0.5)
+    shot(shots, "4b-not-owned-costume", 0)
+    seek_pick(0, "costume-0", ["LEFT"], 6)
+    press(0, "A")  # costume 0's colours
+    expect_pick(0, "colors")
+    seek_pick(0, "color-1", ["LEFT"], 6)
+    time.sleep(0.5)
+    shot(shots, "4b-not-owned-color", 0)
+    press(0, "B")  # the costumes
+    press(0, "B")  # opened on them: back to the table page
+    expect(0, "room-table")
     press(0, "B")
     expect(0, "room")
+
+
+def select_shots(shots: Path | None) -> None:
+    """Copy 0 (P1) walks the pick screen's pages and takes each one's shot;
+    a stage card chosen by pad stores the stage and closes the screen.
+    Copy 1 (P2) shows its table page's stage row, which only P1 can open."""
+    if not shots:
+        return
+    # The board: the tiles in the game's own cells, the art pane on the right.
+    press(0, "X")
+    expect_pick(0, "home")
+    time.sleep(1)
+    shot(shots, "4c-board", 0)
+    seek_pick(0, "random-fighter", ["DOWN", "RIGHT"], 60)
+    time.sleep(0.5)
+    shot(shots, "4c-board-random", 0)
+    press(0, "B")
+    expect(0, "room")
+    # The costume cards, then a costume's colour cards (the table page's Appearance).
+    table_row(0, "appearance")
+    press(0, "A")
+    expect_pick(0, "costumes")
+    time.sleep(1)
+    shot(shots, "4d-costumes", 0)
+    press(0, "A")
+    expect_pick(0, "colors")
+    time.sleep(1)
+    shot(shots, "4e-colours", 0)
+    press(0, "B")
+    press(0, "B")
+    expect(0, "room-table")
+    # The V-Skill and V-Trigger cards (the table page's V-Skill and V-Trigger row).
+    seek(0, "ultra", ["UP", "DOWN"], 20)
+    press(0, "A")
+    expect_pick(0, "loadout")
+    time.sleep(1)
+    shot(shots, "4f-loadout", 0)
+    seek_pick(0, ("vtrigger-0", "vtrigger-1"), ["DOWN"], 3)
+    time.sleep(0.5)
+    shot(shots, "4f-loadout-vtrigger", 0)
+    press(0, "B")
+    expect(0, "room-table")
+    # The stage cards (the table page's Stage): Right and Select store the
+    # next stage and close the screen.
+    seek(0, "stage", ["DOWN", "UP"], 20)
+    press(0, "A")
+    expect_pick(0, "stage")
+    time.sleep(1)
+    shot(shots, "4h-stage", 0)
+    before = pick_place(0)["stored"]
+    press(0, "RIGHT")
+    focus = pick_place(0)["focus"]
+    press(0, "A")
+    expect(0, "room-table")
+    after = pick_place(0)["stored"]
+    print(f"copy 0: stage card {focus}: {before} -> {after}")
+    if focus != "stage-255" and after == before:
+        raise lib.SfveError(f"copy 0: the stage card {focus} did not change the stage ({after})")
+    press(0, "B")
+    expect(0, "room")
+    # P2's stage row: shown, not opened; its words say only P1 chooses.
+    table_row(1, "stage")
+    time.sleep(0.5)
+    shot(shots, "4i-stage-p2", 1)
+    press(1, "A")
+    expect(1, "room-table", "stage")
+    press(1, "B")
+    expect(1, "room")
 
 
 def room_shots(shots: Path | None) -> None:
@@ -240,6 +368,7 @@ def main(argv: list[str]) -> int:
         pick(1, 3, None, None)
         if a.unowned:
             not_owned_shots(a.shots)
+        select_shots(a.shots)
         room_shots(a.shots)
         for game in range(1, a.games + 1):
             results = [lib.count_log(i, "netplay: match result") for i in (0, 1)]

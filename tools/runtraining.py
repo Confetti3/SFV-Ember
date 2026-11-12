@@ -8,10 +8,13 @@ Practice checks, reads and changes P2's vital (peek, perturb).
 
 solo: one copy. Start opens Ember; Home's Training row leads to Ember's
   Training select (the game's main menu stays behind it); the Dummy row opens
-  the dummy's own pick screen, where the dummy becomes another fighter;
-  Start Training loads SFV's own Training battle (TrainingBattleState) with
-  the player's pick as P1 and the dummy as P2. Start there is the game's
-  pause menu, and Ember's shell stays away.
+  the dummy's own pick screen on its board (no Random card), where Select on
+  a tile makes the dummy that fighter and opens its look page (with --shots,
+  its costume and V-Skill cards too); the Stage row opens the stage cards,
+  where Select stores the stage and closes them; Start Training loads SFV's
+  own Training battle (TrainingBattleState) with the player's pick as P1 and
+  the dummy as P2. Start there is the game's pause menu, and Ember's shell
+  stays away.
 call: two copies in a private room (runshell's steps). Copy 0 sits alone and
   waits in Training from the room's row. Copy 1 sits down opposite: copy 0's
   battle shows the call's banner and leaves for the main menu after the
@@ -59,6 +62,9 @@ press = shell_steps.press
 wait_for = shell_steps.wait_for
 expect = shell_steps.expect
 seek = shell_steps.seek
+pick_place = shell_steps.pick_place
+expect_pick = shell_steps.expect_pick
+seek_pick = shell_steps.seek_pick
 
 
 def take_launch_lock() -> None:
@@ -117,12 +123,59 @@ def solo(shots: Path | None) -> None:
     press(0, "DOWN")
     expect(0, "training", "training-dummy")
     press(0, "A")
-    expect(0, "selection")
-    press(0, "RIGHT")  # the dummy becomes the next fighter
+    # The dummy's board: its tiles, no Random card.
+    expect_pick(0, "home")
+    if not pick_place(0)["dummy"]:
+        raise lib.SfveError("Training select's Dummy row opened the player's pick screen")
+    shot(shots, "solo-3-dummy-board", 0)
+    # Two tiles along (and on past a fighter the player cannot play), Select
+    # makes the dummy that fighter and opens its look page.
     press(0, "RIGHT")
+    press(0, "RIGHT")
+    for _ in range(6):
+        press(0, "A")
+        if pick_place(0)["page"] == "look":
+            break
+        press(0, "RIGHT")
+    expect_pick(0, "look")
     shot(shots, "solo-3-dummy", 0)
+    if shots:
+        # The look page's Costume row opens the costume cards, its V-Skill
+        # row the V-Skill and V-Trigger cards; Back returns to the look page.
+        seek_pick(0, "costume", ["UP", "DOWN"], 4)
+        press(0, "A")
+        expect_pick(0, "costumes")
+        time.sleep(1)
+        shot(shots, "solo-3-dummy-costumes", 0)
+        press(0, "B")
+        expect_pick(0, "look")
+        seek_pick(0, "vskill", ["DOWN"], 8)
+        press(0, "A")
+        expect_pick(0, "loadout")
+        time.sleep(1)
+        shot(shots, "solo-3-dummy-loadout", 0)
+        press(0, "B")
+        expect_pick(0, "look")
+    press(0, "B")  # the board
+    expect_pick(0, "home")
     press(0, "B")
     expect(0, "training")
+    # The Stage row opens the stage cards; a card chosen by pad is stored and
+    # the cards close.
+    seek(0, "training-stage", ["DOWN"], 6)
+    press(0, "A")
+    expect_pick(0, "stage")
+    time.sleep(1)
+    shot(shots, "solo-3-stage", 0)
+    before = pick_place(0)["stored"]
+    press(0, "RIGHT")
+    card = pick_place(0)["focus"]
+    press(0, "A")
+    expect(0, "training")
+    after = pick_place(0)["stored"]
+    print(f"solo: stage card {card}: {before} -> {after}")
+    if card != "stage-255" and after == before:
+        raise lib.SfveError(f"the stage card {card} did not change the stage ({after})")
     seek(0, "training-start", ["DOWN"], 6)
     shot(shots, "solo-4-start", 0)
     starts = lib.count_log(0, "training: battle")
