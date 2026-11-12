@@ -186,6 +186,71 @@ TEST_CASE("a press in the scenes' first second asks nothing, then or later")
 	CHECK(request.Requested());
 }
 
+TEST_CASE("with the room's rule on the scenes ask by themselves once the guard is over, and never before")
+{
+	constexpr int kFinish = 7;
+	constexpr int kDecidedAt = 800;
+	constexpr int kGuardEnds = kDecidedAt + intro_skip::kScenesGuardFrames;
+	intro_skip::Request request;
+	request.SetAutoScenes(true);
+	CHECK(request.AutoScenes());
+	// The fight asks nothing, rule or not.
+	CHECK(request.Next(kFight, 0, false, kDecidedAt - 1) == 0u);
+	CHECK_FALSE(request.Requested());
+	// Nothing in the guard: not on the deciding frame, not on any frame up to the last one inside it.
+	for (int frame = kDecidedAt; frame < kGuardEnds; frame++) {
+		INFO("frame " << frame);
+		CHECK(request.Next(kFinish, 0, true, frame) == 0u);
+		CHECK_FALSE(request.Requested());
+	}
+	// The first frame past it asks, with no press, and goes on asking through the scenes.
+	CHECK(request.Next(kFinish, 0, true, kGuardEnds) == kSkipBit);
+	CHECK(request.Requested());
+	CHECK(request.Next(11, 0, true, kGuardEnds + 1) == kSkipBit);
+	CHECK(request.Next(13, input::kLeft, true, kGuardEnds + 2) == (kSkipBit | input::kLeft));
+	// A rematch in place starts it over: nothing asked until its own scenes have shown the guard.
+	CHECK(request.Next(kMatchStart, 0, false, kGuardEnds + 3) == 0u);
+	CHECK_FALSE(request.Requested());
+	CHECK(request.Next(kFinish, 0, true, kGuardEnds + 4) == 0u);
+	CHECK_FALSE(request.Requested());
+	CHECK(request.Next(kFinish, 0, true, kGuardEnds + 4 + intro_skip::kScenesGuardFrames) == kSkipBit);
+}
+
+TEST_CASE("with the room's rule on a press in the guard still asks nothing, and the intro still needs a press")
+{
+	constexpr int kFinish = 7;
+	intro_skip::Request request;
+	request.SetAutoScenes(true);
+	// The intro: the rule is about the winner scenes, so no press, no request.
+	for (int frame = 0; frame < 200; frame++) CHECK(request.Next(kIntro, 0, false, frame) == 0u);
+	CHECK_FALSE(request.Requested());
+	CHECK(request.Next(kIntro, input::kHK, false, 200) == (kSkipBit | input::kHK));
+	CHECK(request.Next(kFight, 0, false, 201) == 0u);
+	// A mash inside the scenes' first second asks nothing, with the rule on too.
+	for (int frame = 300; frame < 300 + intro_skip::kScenesGuardFrames; frame++) {
+		CHECK(request.Next(kFinish, (frame % 3 == 0) ? input::kMP : 0, true, frame) == ((frame % 3 == 0) ? input::kMP : 0u));
+		CHECK_FALSE(request.Requested());
+	}
+	CHECK(request.Next(kFinish, 0, true, 300 + intro_skip::kScenesGuardFrames) == kSkipBit);
+}
+
+TEST_CASE("with the rule off a press by this copy is the only ask, as before")
+{
+	constexpr int kFinish = 7;
+	intro_skip::Request request;
+	CHECK_FALSE(request.AutoScenes());
+	request.SetAutoScenes(true);
+	request.SetAutoScenes(false);
+	int frame = 100;
+	CHECK(request.Next(kFight, 0, false, frame++) == 0u);
+	for (int i = 0; i < 4 * intro_skip::kScenesGuardFrames; i++) {
+		CHECK(request.Next(kFinish, 0, true, frame++) == 0u);
+		CHECK_FALSE(request.Requested());
+	}
+	CHECK(request.Next(kFinish, input::kLP, true, frame++) == (kSkipBit | input::kLP));
+	CHECK(request.Requested());
+}
+
 TEST_CASE("a button held through the guard counts only once released and pressed again")
 {
 	constexpr int kFinish = 7;

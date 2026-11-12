@@ -123,6 +123,10 @@ struct MatchPicks {
 	// sets Training's refilling gauges before the session's first frame
 	// (PracticeGauges). Only a linked launch carries it.
 	bool practice = false;
+	// The room's Skip winner scenes rule (docs/design/beta8/autoskip.md): the
+	// battle mode's fighter copy asks for the decided match's scenes to be
+	// skipped on its own. Only a linked launch carries it.
+	bool skipScenes = false;
 	// A replay's launch (EMBER_LIBRARY.md section 26): the battle it loads
 	// plays a recorded battle back, which the battle mode learns from
 	// TakeReplayBattle. The game's ownership check never runs for it.
@@ -185,8 +189,9 @@ void LaunchOnMainMenu(const MatchPicks& picks, std::function<bool()> stillWanted
 // any other battle, which is the player's own (a native menu's, or the
 // pipe's "launch"). A linked launch that fails before its battle binds
 // leaves nothing to take.
-// `practice`, when given, says whether that launch was a Practice room's.
-bool TakeLinkedBattle(bool* practice = nullptr);
+// `practice`, when given, says whether that launch was a Practice room's;
+// `skipScenes` whether its room's Skip winner scenes rule was on.
+bool TakeLinkedBattle(bool* practice = nullptr, bool* skipScenes = nullptr);
 // The same for a replay's launch (MatchPicks::replay): true once for the
 // battle it loaded.
 bool TakeReplayBattle();
