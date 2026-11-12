@@ -1,10 +1,10 @@
 {
-  "_comment": "Loadout pictures (runbooth.py --phase 3). start: the fight frame the battle is held at before the first press; press: frames the button is held; gap: frames between the V-Skill and V-Trigger of one side; default: fight frames to run after the press before the grab; fighters: per-fighter overrides, a number for both choices or {\"1\": n, \"2\": n} per choice, e.g. {\"RYU\": {\"vskill\": {\"2\": 30}, \"vtrigger\": 52}}; crop: the 16:9 window above the gauge line, its height as a share of the frame height, centred on the fighter; burst: frames either side of the chosen one that --burst also grabs for review.",
+  "_comment": "Loadout pictures (runbooth.py --phase 3). start: the fight frame the battle is held at before the first press; press: frames the button is held; gap: frames between the V-Skill and V-Trigger of one side; default: fight frames to run after the press before the grab; fighters: per-fighter overrides, a number for both choices or {\"1\": n, \"2\": n} per choice, e.g. {\"RYU\": {\"vskill\": {\"2\": 30}, \"vtrigger\": 52}}; crop: the 16:9 window around the fighter and its effects, at least height_fraction of the frame high, with margin on each side of what the grab shows; burst: frames either side of the chosen one that --burst also grabs for review.",
   "start": 150,
   "press": 4,
   "gap": 150,
   "default": {"vskill": 20, "vtrigger": 45},
-  "crop": {"height_fraction": 0.85},
+  "crop": {"height_fraction": 0.6, "margin": 0.12},
   "burst": {"around": 2},
   "fighters": {}
 }

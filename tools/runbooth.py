@@ -593,17 +593,29 @@ class Copy:
                 mask = bp._keep_components(bp.colour_mask(a, b))  # noqa: SLF001
                 height_px, width_px = a.shape[:2]
                 cols = np.nonzero(mask.any(axis=0))[0]
-                centre = (cols.min() + cols.max()) / 2 if cols.size else width_px * (0.42 if side == 0 else 0.58)
-                crop_h = round(height_px * self.cfg["crop"]["height_fraction"])
-                crop_w = min(width_px, round(crop_h * 16 / 9))
+                rows = np.nonzero(mask.any(axis=1))[0]
+                if cols.size:
+                    x_lo, x_hi, y_lo, y_hi = cols.min(), cols.max(), rows.min(), rows.max()
+                else:  # nothing found: where the side stands
+                    cx = width_px * (0.42 if side == 0 else 0.58)
+                    x_lo, x_hi, y_lo, y_hi = cx - width_px * 0.1, cx + width_px * 0.1, height_px * 0.4, height_px * 0.95
+                # The whole fighter and what the move throws out, with a margin, in a 16:9 window
+                # at least `height_fraction` of the frame high, centred on them (the HUD is hidden,
+                # so nothing has to stay above a gauge line).
+                margin = self.cfg["crop"].get("margin", 0.12)
+                crop_h = max((y_hi - y_lo) * (1 + 2 * margin), (x_hi - x_lo) * (1 + 2 * margin) * 9 / 16,
+                             height_px * self.cfg["crop"]["height_fraction"])
+                crop_h = min(crop_h, height_px, width_px * 9 / 16)
+                crop_w = round(crop_h * 16 / 9)
                 crop_h = round(crop_w * 9 / 16)
-                x0 = int(min(max(centre - crop_w / 2, 0), width_px - crop_w))
-                picture = image.crop((x0, 0, x0 + crop_w, crop_h))
+                x0 = int(min(max((x_lo + x_hi) / 2 - crop_w / 2, 0), width_px - crop_w))
+                y0 = int(min(max((y_lo + y_hi) / 2 - crop_h / 2, 0), height_px - crop_h))
+                picture = image.crop((x0, y0, x0 + crop_w, y0 + crop_h))
                 if k == chosen:
                     target = bp.loadout_master_path(self.store, code, prefix, choice)
                     target.parent.mkdir(parents=True, exist_ok=True)
                     picture.save(target)
-                    target.with_suffix(".json").write_text(json.dumps({"frame": frame, "stage": stage, "crop": [x0, 0, crop_w, crop_h]}),
+                    target.with_suffix(".json").write_text(json.dumps({"frame": frame, "stage": stage, "crop": [x0, y0, crop_w, crop_h]}),
                                                            encoding="utf-8")
                 if self.args.burst:
                     burst = self.store / "burst" / code
