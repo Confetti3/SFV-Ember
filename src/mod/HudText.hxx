@@ -66,10 +66,11 @@ bool HudMovieKnown();
 // hidden, hides that part's movies after the game's own update.
 bool InstallHudHide(uintptr_t imageBase);
 // Hides (or shows again, as each part's last answer says) every remembered
-// part's movies now, and keeps them so in each PostUpdate. Game thread
-// (checked). The number of parts it reached; -1 when not installed or off
-// the game thread.
-int SetHudHidden(bool hidden);
+// part's movies now when `now` (a battle is in hand: its parts are alive),
+// and keeps them so in each PostUpdate from then on. Game thread (checked).
+// The number of parts it reached; -1 when not installed or off the game
+// thread.
+int SetHudHidden(bool hidden, bool now = true);
 // A battle left or a new one: the remembered parts are the last battle's.
 // The hidden switch stays as it was set. Any thread.
 void ForgetHudParts();

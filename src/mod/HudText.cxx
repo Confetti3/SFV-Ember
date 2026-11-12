@@ -233,7 +233,7 @@ bool InstallHudHide(uintptr_t imageBase)
 	return ok;
 }
 
-int SetHudHidden(bool hidden)
+int SetHudHidden(bool hidden, bool now)
 {
 	if (!s_hudHideInstalled.load()) return -1;
 	if (!GameThreadId() || GetCurrentThreadId() != GameThreadId()) {
@@ -242,7 +242,7 @@ int SetHudHidden(bool hidden)
 	}
 	s_hudHidden.store(hidden);
 	std::vector<uint8_t*> parts;
-	{
+	if (now) {
 		std::lock_guard lock(s_partsMutex);
 		parts = s_hudParts;
 	}

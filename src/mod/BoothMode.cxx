@@ -508,8 +508,14 @@ std::string BoothMode::Command(const std::string& args)
 	case booth::Verb::HudHide: {
 		const bool hidden = c.on;
 		return AskGameThread(
-			[hidden] {
-				const int parts = SetHudHidden(hidden);
+			[this, hidden] {
+				// Between battles the parts remembered are the last battle's: only the switch is set.
+				bool inBattle = false;
+				{
+					std::lock_guard lock(mutex_);
+					inBattle = InBattle();
+				}
+				const int parts = SetHudHidden(hidden, inBattle);
 				if (parts < 0) return std::string("error hudhide: the HUD parts' update is not hooked");
 				return "ok " + std::to_string(parts);
 			},
