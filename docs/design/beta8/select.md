@@ -116,29 +116,37 @@ game's cursor), the gold foot under the stored one.
 
 ## The art pane and pictures
 
+The package holds each costume in its **first colour only** (the owner's call for beta.8),
+plus the V-Skill and V-Trigger pictures; colours are chosen with the game's swatch chips.
+
 The board's pane, the look page's pane and the card pages' panes are one drawing
 (`DrawPickPreviewIn` in `SfvPickPreview.cxx`), on the detail pane's panel ground:
 
-- The figure: the captured cutout (`SelectionArt::Character` through `MenuArt()`, stream B),
-  else the shop's costume picture where `SfvPictureSpec` allows it (off), else the fighter's
-  large HUD figure (`PartCharacter`, `FighterPicture::Large`), else the banner. While a picture
-  loads its frame is the shape it will have.
+- The figure (`ChooseLookPicture`, tested): the look's own picture where the package has it
+  (`SelectionArt::Appearance`); else its costume's picture, which is of the costume's first
+  colour (`PictureColour`); else the shop's costume picture where `SfvPictureSpec` allows it
+  (off), the fighter's large HUD figure (`PartCharacter`) or the banner. Any picture that is not
+  of the look's own colour carries the colour's tag at its foot: the colour's swatch chip and
+  its number ("05", "EX01") on a dark plate, so a costume picture never passes for another
+  colour. The costume's first colour itself is shown untagged (its picture is that colour).
 - The fighter's name, costume name, the colour chips and the colour's label, then the loadout
   lines; the note (why it cannot be chosen) first, in the danger tone.
 - Random's card: a question mark on a banner-shaped plate (gold while Random is the pick),
-  `selection.random_card`, the rolled fighter as `selection.random_fighter`, and
-  `selection.random_card.detail`.
+  `selection.random_card`, the rolled fighter, and `selection.random_card.detail`.
 - On the look page, the stage card shown while the Stage row has the focus is a button: a click
   opens the stage cards.
 
-Card pictures: costume cards show the figure in the colour worn (or the costume's first
-colour this player can ready); colour cards the exact look's cutout (`Appearance`), else the
-colour's two-tone swatch as a square, else the figure; stage cards `StageSelectIcon_l`;
-loadout cards the captured move picture (`LoadoutPicture`, stream B's `vs<k>.jpg` /
-`vt<k>.jpg`), else the fighter in their look, with the game's I/II mark top right, SAVED top
-left on the stored choice, then the part and numeral, the game's move name and the note
-(`LoadoutNote`, stream D, drawn after `NoteUserText` so CJK glyphs load). Until streams B and D
-land, every picture falls back as above and the notes are empty.
+Cards: costume cards show each costume in its picture's colour (its first), labelled with the
+costume's name; colour cards are the colours' swatch chips (the game's two colours each, square,
+as large as the card holds), one this player cannot ready dimmed and struck through, with the
+pane beside them showing the costume tagged with the focused colour; stage cards
+`StageSelectIcon_l`; loadout cards the captured move picture (`LoadoutPicture`), else the
+fighter in their look, with the game's I/II mark, SAVED on the stored choice, the part and
+numeral, the game's move name and the note (`LoadoutNote`, drawn after `NoteUserText`).
+
+Elsewhere (the library's room seats and cards) a look is drawn through `SelectionArt::Character`,
+which falls back to the costume's first-colour picture; those places show no chip, and the
+costume picture alone is the accepted rule there.
 
 ## Random and the remembered look
 
