@@ -98,10 +98,24 @@ constexpr CodeSite kSetWorldScale3D{"SetWorldScale3D", 0x1BE8B40,
 // Hooked: a tiny side's actor gets the scale times kTinyScale.
 constexpr CodeSite kActorSetMeshTransform{"ActorSetMeshTransform", 0xE5BD90,
 	{0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x40, 0x48, 0x8B, 0xD9, 0x48, 0x8B, 0x89}};
+// void SocketWorldPosition(CharaVisualPart*, const wchar_t* socket, float out[4],
+// bool) (__fastcall): a socket of the fighter's model where the Unreal pose
+// last left it: the actor (visual::kActor), its mesh (visual::kActorMesh),
+// the mesh's GetSocketTransform in world space (its virtual +856, from rva
+// 0xE58F10), the translation turned into the fight's units (x/100, z/100,
+// -y/100, w 1). The fight reads it: a fighter's bone 28 every tick (rva
+// 0x37D250), the camera's handlers, and spawns placed at a bone (rva 0x4CFB70
+// through 0x32BAA0 for any script's spawn with a bone; Z33's part at the end
+// of its V-Trigger, rva 0x3BD900). The socket names come from the table rva
+// 0x351250 reads. Hooked only by the -sfve_socket_log diagnostics.
+constexpr CodeSite kSocketWorldPosition{"SocketWorldPosition", 0x3919D0,
+	{0x48, 0x89, 0x5C, 0x24, 0x20, 0x57, 0x48, 0x83, 0xEC, 0x70, 0x48, 0x8B, 0x05, 0x9F, 0x08, 0x63}};
 
 namespace visual {
 
-// CharaVisualPart.
+// CharaVisualPart: its type id, what the game's own lookups pass FindPart
+// (rva 0x3BB4A0, 0x3BD900).
+constexpr uint32_t kPartType = 0x3A64AD0;
 constexpr uint32_t kWantedScale = 0xD0;     // float3 (+0xD0, +0xD4, +0xD8): the scale the game wants; its setter (rva 0x3A3C20) writes 16 bytes here
 constexpr uint32_t kOwnerObject = 0x98;     // the owning fighter's weak pointer: the CharaUnit* ...
 constexpr uint32_t kOwnerControl = 0xA0;    // ... and its control block (the game's lock, rva 0x315870, reads both)
@@ -142,6 +156,10 @@ enum class StateKind : int {
 // CharaActionPart (type below) +0xD8: the script player of what the fighter plays.
 constexpr uint32_t kActionPartType = 0x3A64A98;
 constexpr uint32_t kScriptPlayer = 0xD8;
+// int: 1 while the fighter faces left, and the fight mirrors its x (rva
+// 0x2FB820 compares it with 1, rva 0x2F9310 returns it); fight state, in the
+// action part's registered run (rva 0x2E8D30: its controller's +15824).
+constexpr uint32_t kMirrored = 0x3E90;
 constexpr uint32_t kScriptHeader = 0x40;    // const int32[3]: first attack frame, last (exclusive), interrupt; -1 none
 constexpr uint32_t kScriptNumber = 0x48;    // int: the script (action) played
 constexpr uint32_t kScriptFrame = 0x4C;     // 16.16

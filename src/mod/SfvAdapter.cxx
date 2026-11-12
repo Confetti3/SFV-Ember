@@ -4,6 +4,8 @@
 #include "mod/Log.hxx"
 #include "mod/SfvLayoutRules.hxx"
 #include "mod/SfvOffsets.hxx"
+#include "mod/SocketProbe.hxx"
+#include "mod/TinyFighters.hxx"
 
 #include <windows.h>
 
@@ -150,6 +152,29 @@ uint8_t* SfvAdapter::FindUnit(uint32_t typeRva) const
 	return GameFindUnit(rollbackUnit_, typeRva);
 }
 
+std::optional<bool> SfvAdapter::FacingRight(int side) const
+{
+	if (!rollbackUnit_ || side < 0 || side >= kPlayers) return std::nullopt;
+	for (int index = 0; index < kPlayers; index++) {
+		uint8_t* chara = GameFindUnit(rollbackUnit_, sfv::unit::kCharaUnitType, (uint32_t)index);
+		int32_t charaSide = -1;
+		if (!chara || !TryRead(chara + sfv::fighter::kSide, &charaSide) || charaSide != side) continue;
+		const uint8_t* part = GameFindPart(chara, sfv::fighter::kActionPartType);
+		int32_t mirrored = 0;
+		if (!part || !TryRead(part + sfv::fighter::kMirrored, &mirrored)) return std::nullopt;
+		return mirrored != 1;
+	}
+	return std::nullopt;
+}
+
+void SfvAdapter::FighterVisualParts(uint8_t* parts[kPlayers]) const
+{
+	for (int index = 0; index < kPlayers; index++) {
+		uint8_t* chara = rollbackUnit_ ? GameFindUnit(rollbackUnit_, sfv::unit::kCharaUnitType, (uint32_t)index) : nullptr;
+		parts[index] = chara ? GameFindPart(chara, sfv::visual::kPartType) : nullptr;
+	}
+}
+
 // Every region of the game's rollback manager, named by its owner; the runs
 // sfv::manager::kRunRules lists are restored but not hashed, or masked.
 bool SfvAdapter::AddGameRegions(uint8_t* manager)
@@ -253,7 +278,15 @@ bool SfvAdapter::MatchDecided() const
 void SfvAdapter::RunUpdate()
 {
 	ticksThisUpdate_ = 0;
+	// The fight reads the fighters' models (sfv::kSocketWorldPosition), so it
+	// sees a small side at the game's own scale, and the picture is made
+	// small again after it (TinyFighters).
+	uint8_t* visualParts[kPlayers] = {};
+	if (TinyFightersNow().Any()) FighterVisualParts(visualParts);
+	BeginFightUpdate(visualParts);
+	NoteSocketProbeUpdate(inputUnit_ ? Field<int32_t>(inputUnit_, sfv::inputunit::kInputFrame) : -1, replaying_);
 	original_(battleFrame_);
+	EndFightUpdate(visualParts);
 	ticksInLastUpdate_ = ticksThisUpdate_;
 	flow_.Capture(); // the record mirrors the game whenever it is saved or hashed
 }
@@ -281,14 +314,16 @@ void SfvAdapter::PresetHeldAtLoad(const std::array<PackedInput, kPlayers>& codes
 		wasTaken ? "was taken" : "was not taken yet", before[0], before[1]);
 }
 
-void SfvAdapter::Advance(const FrameInputs& inputs, bool)
+void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)
 {
 	// One GGPO frame is one update: the game's own replay mechanism (extra
 	// ticks) is not used, rollbacks call Advance once per frame instead.
 	Field<uint32_t>(battleFrame_, sfv::battleframe::kExtraTicks) = 0;
 	pending_ = inputs;
 	padSource_ = input::PadSource::Session;
+	replaying_ = resimulating;
 	RunUpdate();
+	replaying_ = false;
 	padSource_ = input::PadSource::Pads;
 }
 

@@ -13,6 +13,16 @@
 //   -sfve_mash_from=F    ...starting at session frame F (no input before)
 //   -sfve_mash_pad=1     ...and the pad's input before F (a test's scripted presses first)
 //   -sfve_moves=1        ...playing the game's system moves (input::Script::Moves)
+//   -sfve_moveset=S      ...from a set of moves: system (default), supers, cody,
+//                        projectiles (input::MoveSet; any but system implies -sfve_moves=1)
+//   -sfve_idle=P         the scripted player P (0 P1, 1 P2) stands still; the other
+//                        walks forward at the start of each block of moves
+//   -sfve_tiny=MASK      test: a launch that is no room's or replay's (the pipe's, for a
+//                        synctest) draws these sides small: 1 P1, 2 P2, 3 both
+//   -sfve_socket_log=1   diagnostics: log every read of a fighter's model socket the
+//                        fight makes (SocketProbe), but the ones made every tick
+//   -sfve_replay_any_build=1  diagnostics: Watch now plays a replay made with
+//                        another build (its result says nothing of this build)
 //   -sfve_practice=1     synctest, netplay: Training's refilling gauges from the first frame
 //   -sfve_replay_regions=F  replay playback: log each checkpoint's region hashes from frame F
 //   -sfve_replay_check=N    replay playback: also make rollbacks up to N frames deep and log
@@ -113,8 +123,16 @@ struct ModConfig {
 	uint16_t peerPort = 7001;
 	int delay = 0;
 	// Scripted play for automated tests (-sfve_mash, -sfve_mash_from,
-	// -sfve_mash_pad, -sfve_moves): the seed 0 leaves the pad playing.
+	// -sfve_mash_pad, -sfve_moves, -sfve_moveset, -sfve_idle): the seed 0
+	// leaves the pad playing.
 	input::ScriptConfig script;
+	// Sides a launch that is no room's or replay's draws small (bit 0 P1,
+	// bit 1 P2; -sfve_tiny): a synctest's battle with a small side.
+	uint32_t testTiny = 0;
+	// Log the fight's reads of a fighter's model socket (-sfve_socket_log).
+	bool socketLog = false;
+	// Watch now plays a replay of another build (-sfve_replay_any_build).
+	bool replayAnyBuild = false;
 	// Training's refilling gauges from the battle's first frame on both
 	// players, as a Practice room's match has them, so every V-Trigger and
 	// Critical Art a script asks for is played (synctest and netplay).

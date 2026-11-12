@@ -83,7 +83,7 @@ TEST_CASE("a loadout and its Ultra number are one codec, and nothing else is a l
 	// The catalog's Ultra numbers are the loadouts, and this build's match
 	// version is the one that launches them.
 	CHECK(picks::kLoadoutChoices == 4);
-	CHECK(std::string(picks::kMatchBuild) == "sfv-ember/13173604/0.5");
+	CHECK(std::string(picks::kMatchBuild) == "sfv-ember/13173604/0.6");
 }
 
 TEST_CASE("a pick holds only loadouts its fighter has, and every copy fits one alike")

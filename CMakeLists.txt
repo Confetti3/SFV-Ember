@@ -201,7 +201,7 @@ add_library(sfve_ember_test_mod OBJECT
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx src/mod/TinyFighters.cxx
     src/mod/ModConfig.cxx src/mod/PadLayer.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx
-    src/mod/SfvRegionNames.cxx src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx src/mod/XInputHooks.cxx)
+    src/mod/SfvRegionNames.cxx src/mod/SocketProbe.cxx src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx src/mod/XInputHooks.cxx)
 target_link_libraries(sfve_ember_test_mod PUBLIC sfve_ember minhook::minhook)
 # The runtime under SFV's definitions, with nothing of SF4's roster, stages
 # or custom content: SFV's catalog (SfvCatalog.cxx) answers every pick check.
@@ -309,6 +309,7 @@ add_library(sfv_ember SHARED
     src/mod/GameExit.cxx
     src/mod/FighterReader.cxx
     src/mod/TinyFighters.cxx
+    src/mod/SocketProbe.cxx
     src/mod/HudText.cxx)
 target_link_libraries(sfv_ember PRIVATE sfve_ember dbghelp ember_sdl_pads_x64 SDL3::SDL3-static)
 target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")

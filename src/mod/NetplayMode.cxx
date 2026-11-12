@@ -21,6 +21,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <optional>
+
 namespace sfve::mod {
 
 namespace {
@@ -189,7 +191,9 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	// ignores (outside the fight) get neutral ones in RollbackSession,
 	// whatever was sent, but for the request on the skip frames, which are
 	// stepped confirmed.
-	const PackedInput local = introSkip_.Next(adapter.FlowState(), script_.At(frame).value_or(adapter.Sampled(0)),
+	// A scripted player's blocks of moves face the way its fighter does.
+	const std::optional<bool> facing = config_.script.seed ? adapter.FacingRight(session_->LocalPlayer()) : std::nullopt;
+	const PackedInput local = introSkip_.Next(adapter.FlowState(), script_.At(frame, facing).value_or(adapter.Sampled(0)),
 		adapter.MatchDecided());
 
 	// The game's judgement, the same on both copies (it is restored with the

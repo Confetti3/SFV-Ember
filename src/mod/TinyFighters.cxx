@@ -20,20 +20,30 @@ using SetTransformFn = void (*)(void* actor, const __m128* transform);
 VisualUpdateFn o_visualUpdate;
 SetTransformFn o_setTransform;
 tiny::SetScaleFn s_setScale;
+// Both hooks are in (InstallTinyFighters); otherwise nothing is drawn small
+// and the fight's update has nothing to undo.
+std::atomic<bool> s_hooked;
 
 // Any thread writes (a launch, a battle's close); the game thread reads.
 std::atomic<bool> s_tiny[2];
 // The actors the per-frame hook last scaled for a tiny side, so the transform
 // hook knows them; none for a normal side. Cleared with the sides.
 std::atomic<void*> s_actor[2];
+// A battle update runs (BeginFightUpdate to EndFightUpdate): the fight may
+// read the model, so nothing is scaled. The game thread's.
+std::atomic<bool> s_fightUpdate;
+
+void NoteScaled(const tiny::PartResult& result)
+{
+	if (result.side >= 0) s_actor[result.side].store(result.scaled ? result.actor : nullptr);
+}
 
 void h_VisualUpdate(uint8_t* part)
 {
 	o_visualUpdate(part);
 	const TinySides sides = TinyFightersNow();
-	if (!sides.Any()) return;
-	const tiny::PartResult result = tiny::ApplyToPart(part, sides, s_setScale);
-	if (result.side >= 0) s_actor[result.side].store(result.scaled ? result.actor : nullptr);
+	if (!sides.Any() || s_fightUpdate.load()) return;
+	NoteScaled(tiny::ApplyToPart(part, sides, s_setScale));
 }
 
 bool IsTinyActor(void* actor)
@@ -43,7 +53,7 @@ bool IsTinyActor(void* actor)
 
 void h_ActorSetMeshTransform(void* actor, const __m128* transform)
 {
-	if (!transform || !IsTinyActor(actor)) return o_setTransform(actor, transform);
+	if (!transform || s_fightUpdate.load() || !IsTinyActor(actor)) return o_setTransform(actor, transform);
 	alignas(16) __m128 scaled[3];
 	tiny::ScaledTransform(transform, scaled);
 	o_setTransform(actor, scaled);
@@ -53,15 +63,26 @@ void h_ActorSetMeshTransform(void* actor, const __m128* transform)
 
 namespace tiny {
 
-void ScaledScale(const float wanted[3], float out[3])
+void NormalScale(const float wanted[3], float out[3])
 {
 	for (int i = 0; i < 3; i++) {
 		const float w = wanted[i];
-		out[i] = (std::isfinite(w) && w > 0.0f ? w : 1.0f) * kTinyScale;
+		out[i] = std::isfinite(w) && w > 0.0f ? w : 1.0f;
 	}
 }
 
-PartResult ApplyToPart(const uint8_t* part, const TinySides& sides, SetScaleFn setScale)
+void ScaledScale(const float wanted[3], float out[3])
+{
+	NormalScale(wanted, out);
+	for (int i = 0; i < 3; i++) out[i] *= kTinyScale;
+}
+
+namespace {
+
+// ApplyToPart and RestoreToPart: a tiny side's mesh given `scaleOf` the
+// part's wanted scale.
+PartResult ScalePart(const uint8_t* part, const TinySides& sides, SetScaleFn setScale,
+	void (*scaleOf)(const float wanted[3], float out[3]))
 {
 	PartResult result;
 	if (!part || !setScale) return result;
@@ -86,11 +107,23 @@ PartResult ApplyToPart(const uint8_t* part, const TinySides& sides, SetScaleFn s
 		if (!TryRead(part + visual::kWantedScale + 4 * i, &wanted[i])) return result;
 	}
 	float scale[3];
-	ScaledScale(wanted, scale);
+	scaleOf(wanted, scale);
 	setScale(const_cast<uint8_t*>(mesh), scale);
 	result.actor = const_cast<uint8_t*>(actor);
 	result.scaled = true;
 	return result;
+}
+
+} // namespace
+
+PartResult ApplyToPart(const uint8_t* part, const TinySides& sides, SetScaleFn setScale)
+{
+	return ScalePart(part, sides, setScale, &ScaledScale);
+}
+
+PartResult RestoreToPart(const uint8_t* part, const TinySides& sides, SetScaleFn setScale)
+{
+	return ScalePart(part, sides, setScale, &NormalScale);
 }
 
 void ScaledTransform(const __m128 in[3], __m128 out[3])
@@ -134,6 +167,22 @@ TinySides TinyFightersNow()
 	return sides;
 }
 
+void BeginFightUpdate(uint8_t* const parts[2])
+{
+	const TinySides sides = TinyFightersNow();
+	if (!sides.Any() || !s_hooked.load()) return;
+	s_fightUpdate.store(true);
+	for (int i = 0; i < 2; i++) tiny::RestoreToPart(parts[i], sides, s_setScale);
+}
+
+void EndFightUpdate(uint8_t* const parts[2])
+{
+	if (!s_fightUpdate.exchange(false)) return;
+	const TinySides sides = TinyFightersNow();
+	if (!sides.Any()) return;
+	for (int i = 0; i < 2; i++) NoteScaled(tiny::ApplyToPart(parts[i], sides, s_setScale));
+}
+
 bool InstallTinyFighters(uintptr_t imageBase)
 {
 	s_setScale = reinterpret_cast<tiny::SetScaleFn>(imageBase + sfv::kSetWorldScale3D.rva);
@@ -142,6 +191,7 @@ bool InstallTinyFighters(uintptr_t imageBase)
 	hooks.Add(imageBase, sfv::kActorSetMeshTransform, reinterpret_cast<void*>(&h_ActorSetMeshTransform),
 		reinterpret_cast<void**>(&o_setTransform));
 	const bool ok = !CommitHookSet(hooks, "tiny fighters");
+	s_hooked.store(ok);
 	Log("tiny: %s", ok ? "the fighters' picture hooked" : "the fighters' picture NOT hooked; tiny fighters draw normal");
 	return ok;
 }

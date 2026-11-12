@@ -554,8 +554,9 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	// The fighter state the frame meter reads (SfvFighterOffsets.hxx).
 	kUpdateUntilActionable, kFrameAdvantage, kChangeState, kStateTableInit, kApplyHitStop, kSetScript, kSetScriptFrame,
 	kScriptPosture, kStartAction, kProjectileDie, kDamage,
-	// The fighter's picture, for Tiny fighters (TinyFighters).
-	kCharaVisualUpdate, kSetWorldScale3D, kActorSetMeshTransform};
+	// The fighter's picture, for Tiny fighters (TinyFighters), and the fight's
+	// reads of its model (SocketProbe).
+	kCharaVisualUpdate, kSetWorldScale3D, kActorSetMeshTransform, kSocketWorldPosition};
 
 } // namespace sfve::mod::sfv
 

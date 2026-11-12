@@ -21,6 +21,14 @@
 //     a cinematic (a Critical Art) may set the mesh's transform after the
 //     per-frame update, so a tiny side's actor has its scale multiplied here
 //     too.
+//
+// The fight reads the model too: a socket's world position
+// (sfv::kSocketWorldPosition) places some projectiles and items at a bone,
+// and a scaled mesh moves every socket toward the mesh's origin. So the fight
+// never sees the small model: each battle update starts with the tiny sides'
+// meshes back at the game's own scale (BeginFightUpdate), neither hook scales
+// while it runs, and the update ends with them small again (EndFightUpdate),
+// before anything is drawn (docs/design/beta8/desync.md).
 
 #include <stdint.h>
 
@@ -50,6 +58,13 @@ TinySides TinyFightersNow();
 // not be hooked. Once, from SfveStart.
 bool InstallTinyFighters(uintptr_t imageBase);
 
+// Around one battle update, on the game thread (SfvAdapter): `parts` are both
+// fighters' CharaVisualParts (null where there is none). Begin gives a tiny
+// side's mesh the game's own scale and keeps both hooks from scaling until
+// End, which makes it small again. Nothing happens when no side is tiny.
+void BeginFightUpdate(uint8_t* const parts[2]);
+void EndFightUpdate(uint8_t* const parts[2]);
+
 // The parts of it that need no game: the tests reach them with memory laid
 // out as the game's.
 namespace tiny {
@@ -60,6 +75,9 @@ using SetScaleFn = void (*)(void* sceneComponent, const float* xyz);
 // wanted scale (a part's float3 at sfv::visual::kWantedScale), or 1 where it
 // is 0, negative or not finite, times kTinyScale.
 void ScaledScale(const float wanted[3], float out[3]);
+// The scale the fight sees the same mesh at: the wanted scale, with 1 where
+// it is 0, negative or not finite (ScaledScale without kTinyScale).
+void NormalScale(const float wanted[3], float out[3]);
 
 // What a CharaVisualPart update did for one part.
 struct PartResult {
@@ -73,6 +91,9 @@ struct PartResult {
 // its actor and mesh component exist and its side is tiny in `sides`, the mesh
 // is given ScaledScale of the part's wanted scale through `setScale`.
 PartResult ApplyToPart(const uint8_t* part, const TinySides& sides, SetScaleFn setScale);
+// As ApplyToPart, with NormalScale: a tiny side's mesh at the game's own
+// scale, for the fight's reads of the model.
+PartResult RestoreToPart(const uint8_t* part, const TinySides& sides, SetScaleFn setScale);
 
 // The whole-mesh transform {rotation, translation, scale} with its scale's
 // xyz times kTinyScale (ScaledScale of its xyz; its w is kept): `out` is a
