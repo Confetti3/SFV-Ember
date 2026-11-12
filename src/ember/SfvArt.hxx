@@ -41,6 +41,8 @@ namespace sfve::adapter {
 enum class FighterPicture {
 	Face,   // square, the head from the select grid's face
 	Banner, // wide, the select screen's large card
+	Tile,   // the select grid's slanted native tile, whole (CharaSelectIconLeft)
+	Large,  // the fighter's large HUD figure, whole (PartCharacter)
 };
 
 // Render thread. Not missing and no texture while it loads; missing when the

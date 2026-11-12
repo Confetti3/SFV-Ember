@@ -42,6 +42,16 @@ Spec FighterBanner(std::string_view code)
 	return InFolder(L"Chara/", code, L"/Hud", L"CharaSelectIcon_l");
 }
 
+Spec FighterTile(std::string_view code)
+{
+	return InFolder(L"Chara/", code, L"/Hud", L"CharaSelectIconLeft");
+}
+
+Spec FighterLarge(std::string_view code)
+{
+	return InFolder(L"Chara/", code, L"/Hud", L"PartCharacter");
+}
+
 Spec StageCard(std::string_view code)
 {
 	return InFolder(L"Stage/", code, L"/UI", L"StageSelectIcon_l");

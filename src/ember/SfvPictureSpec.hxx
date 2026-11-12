@@ -67,6 +67,14 @@ std::wstring ObjectPath(std::wstring_view folder, std::wstring_view name);
 Spec FighterFace(std::string_view code);
 // /Game/Chara/<code>/Hud/CharaSelectIcon_l, whole.
 Spec FighterBanner(std::string_view code);
+// /Game/Chara/<code>/Hud/CharaSelectIconLeft, whole: the select grid's slanted
+// native tile, as the game draws it (FighterFace is the same texture cut to
+// the head's square). Beta.8 board (SfvArt's FighterPicture::Tile).
+Spec FighterTile(std::string_view code);
+// /Game/Chara/<code>/Hud/PartCharacter, whole: the fighter's large HUD figure,
+// the art pane's fallback where no captured cutout exists (SfvArt's
+// FighterPicture::Large).
+Spec FighterLarge(std::string_view code);
 // /Game/Stage/<code>/UI/StageSelectIcon_l, whole: the stage select's
 // landscape card, Random's (RND) a dark world map. Every stage has one.
 Spec StageCard(std::string_view code);

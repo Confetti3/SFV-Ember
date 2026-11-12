@@ -275,7 +275,13 @@ void PumpSwatches()
 sf4e::ui::SelectionImage FighterImage(int fighter, FighterPicture picture)
 {
 	const std::string code = FighterCode(fighter);
-	return Image(picture == FighterPicture::Face ? pictures::FighterFace(code) : pictures::FighterBanner(code));
+	switch (picture) {
+	case FighterPicture::Face: return Image(pictures::FighterFace(code));
+	case FighterPicture::Banner: return Image(pictures::FighterBanner(code));
+	case FighterPicture::Tile: return Image(pictures::FighterTile(code));
+	case FighterPicture::Large: return Image(pictures::FighterLarge(code));
+	}
+	return Image(pictures::FighterBanner(code));
 }
 
 sf4e::ui::SelectionImage StageImage(int stage)

@@ -21,6 +21,7 @@
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvLoadoutText.hxx"
+#include "ember/SfvSelection.hxx"
 
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
@@ -93,3 +94,18 @@ SelectionImage SelectionArt::Stage(int stage) { return sfve::adapter::StageImage
 SelectionImage SelectionArt::RankingEmblem(const std::string& entry) { return sfve::adapter::LeagueImage(entry); }
 
 } // namespace sf4e::ui
+
+namespace sfve::adapter {
+
+sf4e::ui::SelectionImage LoadoutPicture(sf4e::ui::SelectionArt* art, int fighter, picks::LoadoutPart part, int choice)
+{
+	const int number = LoadoutPictureNumber(part, choice);
+	if (!art || number < 0) {
+		sf4e::ui::SelectionImage missing;
+		missing.missing = true;
+		return missing;
+	}
+	return art->Ultra(fighter, number);
+}
+
+} // namespace sfve::adapter
