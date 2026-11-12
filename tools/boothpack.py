@@ -324,9 +324,10 @@ def warm_share(rgb: np.ndarray, mask: np.ndarray) -> float:
 def untextured(rgb: np.ndarray, mask: np.ndarray) -> bool:
     """The fighter in `mask` is drawn without its textures: nearly all of it the light, unsaturated
     cyan-grey of the bare model and no warm pixel at all (skin and hair are warm in every costume).
-    Measured on the 2026-11-12 capture: the bare models 0.61-0.69 grey and 0.00 warm, every
-    light costume (white gi, silver armour, white dress) 0.08 warm or more. These looks render
-    the same every time on that copy of the game: their texture data is missing there."""
+    Measured on the 2026-11-12 capture (875 masters): the bare models 0.47-0.84 grey and 0.00
+    warm; every textured master with almost no warm pixel 0.16 grey at most. The bare models are
+    the 45 costumes the game lists with no name (the raw text id ID_SYS_BSet_0224): slots it never
+    shipped assets for, the same on every install."""
     if not mask.any():
         return False
     px = rgb[mask].astype(np.int32)
@@ -412,7 +413,7 @@ def master_suspect(path: Path | str) -> list[str]:
     return why
 
 
-UNTEXTURED_TINT = 0.55     # a fighter this much light cyan-grey...
+UNTEXTURED_TINT = 0.4      # a fighter this much light cyan-grey... (bare models 0.47-0.84, textured with no warm pixel 0.16 at most)
 UNTEXTURED_WARM = 0.01     # ...with no more warm pixels than this is drawn without its textures
 SUSPECT_LINE = 0.18        # a row with a straight edge across this share of the fighter's width...
 SUSPECT_LINES = 3          # ...this many times is flagged

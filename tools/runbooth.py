@@ -35,6 +35,7 @@ try:
     import numpy as np
     from PIL import Image
     import boothburst as bb
+    import boothcamera as bc
     import boothpack as bp
 except ImportError as e:  # pragma: no cover
     sys.exit(f"runbooth needs Pillow and numpy ({e}): python -m pip install -r tools/booth-requirements.txt (in a venv)")
@@ -467,6 +468,14 @@ class Copy:
                 raise CaptureError(f"camera not stable: {' '.join(words)}")
             self.wait_presents(4)
 
+    def camera_now(self) -> "bc.Camera":
+        """The camera the held frame is drawn through (boothcamera.CAMERA_PEEK)."""
+        reply = self.cmd_raw(bc.CAMERA_PEEK)
+        camera = bc.Camera.from_reply(reply)
+        if camera is None:
+            raise CaptureError(f"the camera did not read: {reply[:120]}")
+        return camera
+
     def cmd_raw(self, line: str) -> str:
         return lib.request(self.index, line)
 
@@ -631,13 +640,17 @@ class Copy:
                 stem = f"{prefix}{choice}"
                 # The stage behind the fighter (scaled away; never hidden, see above), then the
                 # fighter standing again once its cloth has settled.
+                # The plate keeps its depth, and every grab the camera it was drawn through: the
+                # plate is seen again through each burst grab's camera (boothburst, boothcamera).
                 self.scale(0.001 if side == 0 else 1.0, 0.001 if side == 1 else 1.0)
                 plate = raw_root / f"{stem}-plate.bmp"
-                self.grab(plate, False)
+                self.grab(plate, True)
+                plate_camera = self.camera_now()
                 self.scale(1.0, 1.0)
                 self.advance(f"booth run {auto['settle_frames']}", auto["settle_frames"])
                 pre = raw_root / f"{stem}-pre.bmp"
                 self.grab(pre, False)
+                pre_camera = self.camera_now()
                 buttons = "MP+MK" if prefix == "vs" else "HP+HK"
                 self.advance(f"booth play {side} {buttons}:{cfg['press']}", cfg["press"])
                 override = override_after_press(cfg, code, prefix, choice)
@@ -647,14 +660,16 @@ class Copy:
                     self.advance(f"booth run {t - now}", t - now, poll_s=BURST_POLL_S)
                     now = t
                     path = raw_root / f"{stem}-{t:03d}.bmp"
-                    burst.append((t, path, self.grab(path, False, after=BURST_AFTER_PRESENTS, poll_s=BURST_POLL_S)))
-                self.post.submit(self.save_loadout, code, prefix, choice, side, pre, plate, burst, override)
+                    frame = self.grab(path, False, after=BURST_AFTER_PRESENTS, poll_s=BURST_POLL_S)
+                    burst.append((t, path, frame, self.camera_now()))
+                self.post.submit(self.save_loadout, code, prefix, choice, side, (pre, pre_camera), (plate, plate_camera),
+                                 burst, override)
                 if n + 1 < len(steps):
                     self.advance(f"booth run {cfg['gap']}", cfg["gap"])
         self.cmd("booth leave")
         self.to_menu()
 
-    def save_loadout(self, code: str, prefix: str, choice: int, side: int, pre_path: Path, plate_path: Path,
+    def save_loadout(self, code: str, prefix: str, choice: int, side: int, pre: tuple, plate: tuple,
                      burst: list, override: int | None) -> None:
         """Chooses the burst's grab (an override's frame where loadout-frames.json gives one, else
         boothburst's choice, else the grab nearest the default frame), and saves its 16:9 crop
@@ -667,10 +682,14 @@ class Copy:
                 with Image.open(path) as im:
                     return np.asarray(im.convert("RGB"))
 
-            pre, plate = read(pre_path), read(plate_path)
-            small = [bb.shrink(read(path)) for _, path, _ in burst]
-            scores = bb.score_shrunk(bb.shrink(pre), bb.shrink(plate), small)
-            times = [t for t, _, _ in burst]
+            (pre_path, pre_camera), (plate_path, plate_camera) = pre, plate
+            depth = bp.read_depth(plate_path)
+            if depth is None:
+                raise bp.BoothError("the plate has no depth")
+            grabs = [read(path) for _, path, _, _ in burst]
+            scores = bb.score_move(read(plate_path), depth, plate_camera, read(pre_path), pre_camera, grabs,
+                                   [c for _, _, _, c in burst])
+            times = [t for t, _, _, _ in burst]
             if override:
                 index, method = times.index(override), "override"
             else:
@@ -679,31 +698,34 @@ class Copy:
                 if index is None:
                     wanted = default_after_press(self.cfg, prefix)
                     index, method = min(range(len(times)), key=lambda i: abs(times[i] - wanted)), "default"
-            t, path, frame = burst[index]
-            grab = read(path)
-            box = bb.subject_box(plate, grab, scores[index])
+            t, path, frame, _ = burst[index]
+            grab = grabs[index]
+            box = bb.subject_box(scores[index])
             x0, y0, crop_w, crop_h = bb.frame_window(box, grab.shape[0], grab.shape[1], side=side)
             picture = Image.fromarray(grab).crop((x0, y0, x0 + crop_w, y0 + crop_h))
             target = bp.loadout_master_path(self.store, code, prefix, choice)
             target.parent.mkdir(parents=True, exist_ok=True)
             picture.save(target)
             meta = {"frame": frame, "afterPress": t, "method": method, "stage": stage, "crop": [x0, y0, crop_w, crop_h],
-                    "scores": [[tt, round(g.score, 4), g.usable] for tt, g in zip(times, scores)]}
+                    "scores": [[tt, round(g.score, 4), g.usable, round(g.stage, 4), g.flash] for tt, g in zip(times, scores)]}
             target.with_suffix(".json").write_text(json.dumps(meta), encoding="utf-8")
             if method != "auto":
                 self.log.say(f"copy {self.index}: {code} {prefix}{choice}: {method} frame {t} after the press")
             if self.args.burst:
                 out = self.store / "burst" / code
                 out.mkdir(parents=True, exist_ok=True)
-                for i, ((tt, p, _), g) in enumerate(zip(burst, scores)):
-                    thumb = Image.fromarray(read(p)).resize((480, 270), Image.Resampling.BILINEAR)
+                for old in out.glob(f"{prefix}{choice}-t*.jpg"):
+                    old.unlink(missing_ok=True)
+                for i, ((tt, p, _, _), g) in enumerate(zip(burst, scores)):
+                    thumb = Image.fromarray(grabs[i]).resize((480, 270), Image.Resampling.BILINEAR)
                     mark = "-chosen" if i == index else ("" if g.usable else "-unused")
                     thumb.save(out / f"{prefix}{choice}-t{tt:03d}-s{round(g.score * 1000):03d}{mark}.jpg", quality=80)
             if not self.args.keep_raw:
-                for _, p, _ in burst:
+                for _, p, _, _ in burst:
                     p.unlink(missing_ok=True)
-                pre_path.unlink(missing_ok=True)
-                plate_path.unlink(missing_ok=True)
+                for p in (pre_path, plate_path):
+                    for f in p.parent.glob(p.name + "*"):
+                        f.unlink(missing_ok=True)
         except Exception as e:  # noqa: BLE001
             self.failed += 1
             self.log.failure(self.index, "loadout", {"fighter": code, "part": part, "choice": choice},
