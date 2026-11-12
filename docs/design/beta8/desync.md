@@ -164,9 +164,10 @@ values the differing action-part words are needs the other player's file or a re
   be read). `-sfve_idle=0|1`: that player stands still and the other walks forward 40 frames
   at the start of each block, so its moves land. The system moves play what they played before.
 - **Diagnostics** (development builds only): `-sfve_socket_log=1` logs every fight-time socket
-  read but the every-tick ones (`SocketProbe`: frame, replayed or not, side, socket, call
-  site, position); `-sfve_tiny=MASK` draws sides small in a battle that is no room's or
-  replay's (a synctest's); `-sfve_replay_any_build=1` plays another build's replay.
+  read (`SocketReads`, below: frame, replayed or not, side, socket, call site, position, and
+  whether it was recorded, given the straight read, or missed); `-sfve_tiny=MASK` draws sides
+  small in a battle that is no room's or replay's (a synctest's); `-sfve_replay_any_build=1`
+  plays another build's replay.
 - `tools/synctest.ps1` and `tools/runroom.ps1`: `-moveset`, `-idle`, `-socketLog`; synctest
   also `-tiny` / `-tinySides`. `tools/stateregion.py` as above.
 
@@ -175,20 +176,84 @@ but the full circles, the system moves keep their 96-frame blocks and coin, a bl
 is the fighter's facing at its first frame and stays for the block, an idle player presses
 nothing and the other walks forward first, a script read out of order plays the same frames),
 `TinyFightersTests` (the game's own scale for the fight, a normal side untouched, no hooks no
-change, the socket read's site in the build table, the every-tick call sites),
+change), `SocketReadsTests` and `StateRegionsTests` (below),
 `BuildKindTests` (a player build ignores the new options), `SfvLoadoutTests` (0.6). Not built
 yet: the maintainer batches builds.
 
+## The laptop runs of 2026-11-12, and the socket fix
+
+**Runs** (`D:\sf4\interactive\sfv-b8-runs.log` on the laptop, sections D1 to D7): Cody's
+synctests with the system moves, `-moveset supers -idle 1`, `-moveset cody -idle 1` and supers
+with P1 drawn small: clean (0 failures, 1296 rollbacks, about 7,200 frames each). Two copies,
+Cody supers, 30 ms lag, 960x540 and 1920x1080 (D7): PASS. Z37 against Z33 with projectiles
+(D6): clean. **Z33 against Z37 with projectiles (D5): 2 failures, both `ProjectileUnit[23]+0x1D0`**
+(frame 5265: the position and its copy at +0x20, x y z played -0.2023 1.0999 -0.2170, replayed
+-0.2235 1.0839 -0.2300: off the fight's plane, as a socket places it). The socket log shows the mechanism directly: the same frame's
+read placed differently played and replayed (frame 487, `b_R_Foot` from rva 0x4CFC99: 2.772,
+0.237, -0.057 played; 3.271, 0.211, -0.045 replayed; frame 769, `b_L_Foot`: 7.364 against 7.576).
+The reads run on the battle's job threads. The log filled its 20,000 lines by frame 988 with
+the head reads of Chara PostVisual (rva 0x38F401, 0x38F69B, 0x38F6B7, from rva 0x3897C0
+through 0x3A53E0: after the tick, not the fight's), now left out.
+
+**Where the pose comes from** (IDA). Each battle update runs the tick (phase 2), then phase 4,
+then phase 8 (rva 0x4DC6A0); phase 8 holds "CharaVisualPart PostUpdate Main Thread" (rva
+0x3A06C0, registered by rva 0x39BD50), which sets every layer of the fighter's actor (actor
++1056, count +1064) to a motion and time from the fight state (rva 0xE5F6E0: +2448 the motion,
++2452 the time). The engine then evaluates the pose in the mesh's component tick (virtual
++0x7D0; SFV's layer class, rva 0xE62E70, hands the motion and time to the `KiwiChara` anim
+instance, +896 and +904), and `RefreshBoneTransforms` (virtual +0xC80: rva 0x1C0B890, SFV's
+override rva 0xE5CC90; with no tick function it evaluates at once, rva 0x1C09F00). The engine
+calls the battle once a frame (`BattleDriver::OnBattleFrame`), so the first update after a
+drawn frame reads the pose of exactly the state it starts from, on every copy; every update
+after a restore, and every further update in the same engine frame, reads an older pose.
+
+**Why not a refresh before each replayed tick.** It would have to run the mesh's component
+tick between replayed updates. That tick advances a looping layer's time by a fixed 1/60 per
+call (rva 0xE62E70, `+2452 += 0.016666668` when +2469 is set), sets material parameters
+(`OpacityRate`, `StippleClipValue`) and is written for the engine's tick function (parallel
+evaluation and its completion); extra calls during a rollback would leave the picture after
+it different from the one without the fix, and make the pose depend on how many frames were
+replayed. The first replayed tick would also need the visual task run again for the restored
+state, which starts and stops the actor's effects (CharaVisualPart +0x6D8). So the faithful
+value is taken from where it already exists: the straight read of the same state.
+
+**The fix** (`mod/SocketReads`, always on; the hook on rva 0x3919D0 is a verified site).
+- `SfvAdapter` knows when the models show the state the next update starts from: set at every
+  engine frame (`SeeBattleFrame`), cleared by every update and every restore (`AfterLoad`).
+- At the start of every update, on the game thread, it hashes each fighter's regions (all its
+  hashed runs and sub-objects, `CharaUnit[i]...`, masks and address zeroing as the state hash
+  has them: `StateLayout::HashLiveRegions`), and publishes the two hashes and the freshness
+  before the update's tasks start.
+- A fight read (any caller but the ten that are not the fight's) on a fresh pose is recorded
+  under (side, socket name, that fighter's state hash). A read on a stale pose with a recorded
+  key gets the recorded position written over its output; without one it keeps the live value
+  and is counted as missed. A fresh read that finds its key with another value is counted as
+  conflicting (and keeps the newer): that would mean the fighter's own state does not decide
+  its pose. 8,192 reads kept, the oldest dropped; cleared at each new battle.
+- **Why it is deterministic.** A served value is what a straight play of that same fighter
+  state reads, and a straight play reads the same on every copy (D7 and the sweeps). Every
+  copy therefore gives a replayed read the value both copies' straight plays give it. A read
+  is changed only on a stale pose; the update after a drawn frame with no restore is
+  untouched, and nothing in the picture changes, so the pose after a rollback is what it was.
+  What it does not cover: a state that never had a fresh update on this copy (a remote
+  fighter's frames first simulated after a misprediction that changed that fighter); those
+  keep the live read and show in the missed count. The key is the reading fighter's state
+  alone, so a misprediction of the other player's input does not make the read miss.
+- **Cost.** Two hashes of about 40 KB each per update (every update, replayed or not); the log
+  says the average every 1,800 updates (`sockets: N updates keyed, X us per update to key both
+  fighters; ...`, also when a battle ends), with the counts. A read itself costs a lock and a
+  map lookup; they happen at spawns only.
+- `tools/synctest.ps1 -check` ends with PASS or FAIL: the run reached `-frames`, 0 failures, no
+  conflicting socket read.
+
+*Tests:* `SocketReadsTests` (the site in the build table, the reads that are not the fight's,
+the name key, a stale read takes the straight read of the same state, socket and side only,
+conflicts, the capacity), `StateRegionsTests` (a hash of some regions follows those only).
+
 ## Ranked hypotheses
 
-1. **Projectiles placed at a socket on a replayed tick** (3360: high; section 48's Z33 and NCL
-   synctest hits: same). The pose of the newest presented frame, not the replayed one. Fix
-   candidates, for the maintainer to choose once the run below shows it: (a) record each
-   fight-time socket read on the frame's first simulation and give the replay the recorded
-   value (deterministic for a fighter's own inputs, not for a frame first simulated on guessed
-   inputs); (b) place such spawns at the fighter's position plus a fixed offset (deterministic,
-   but not the game's placement); (c) refresh the mesh's pose from the restored motion state
-   before a replayed tick (exact, but it runs Unreal's animation on the battle's thread).
+1. **Projectiles placed at a socket on a replayed tick: shown by D5, fixed above** (3360 and
+   section 48's Z33 and NCL synctest hits).
 2. **Cody's Critical Art leaves something outside the snapshot in his action part** (12780 and
    8940: medium). The controller's command list (+0x3E98) or part +0x3EB4, or a value the
    Critical Art takes from the model. The synctest below either reproduces it on one PC (a
@@ -201,6 +266,18 @@ yet: the maintainer batches builds.
    (looks are not fight state), different builds or looks (both beta.7, identical looks).
 
 ## The runs that settle it (laptop; each game launch with the maintainer's OK)
+
+**After the socket fix, re-run** (each must PASS):
+```
+powershell -File tools\synctest.ps1 -p1 Z33:0:112:1:1 -p2 Z37:3:0:1:1 -moveset projectiles -idle 1 -practice -frames 7000 -socketLog -check
+powershell -File tools\synctest.ps1 -p1 Z37:3:0:1:1 -p2 Z33:0:112:1:1 -moveset projectiles -idle 1 -practice -frames 7000 -check
+powershell -File tools\synctest.ps1 -p1 Z29:0:112:2:2 -p2 KEN:3:0:1:2 -moveset supers -idle 1 -practice -frames 7000 -check
+powershell -File tools\synctest.ps1 -p1 Z29:0:112:2:2 -p2 KEN:3:0:1:2 -moveset supers -idle 1 -practice -frames 7000 -tiny -tinySides 1 -check
+powershell -File tools\runroom.ps1 -p1 Z33:0:112:1:1 -p2 Z37:3:0:1:1 -moveset projectiles -idle 1 -practice -lag 30 -res0 960x540 -res1 1920x1080 -rounds 3 -seconds 99 -games 2
+```
+In the first, the `socket:` lines of a replayed frame say "the straight read's taken" with the
+stale value beside it, and the `sockets:` lines give the counts (conflicting 0) and the
+microseconds per update. Then the 45-fighter sweep (step 6 below), with `-check`.
 
 Build the development build of this branch. From the sfv-ember checkout:
 

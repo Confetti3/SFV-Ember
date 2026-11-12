@@ -198,6 +198,15 @@ uint64_t StateLayout::HashLive(HashScope scope) const
 	return h;
 }
 
+uint64_t StateLayout::HashLiveRegions(const std::vector<size_t>& regions, HashScope scope) const
+{
+	uint64_t h = 0x5346564521ull;
+	for (const size_t i : regions) {
+		if (i < regions_.size() && Hashed(regions_[i], scope)) h += Mix(HashRegion(i, regions_[i].ptr, scope), regions_[i].size);
+	}
+	return h;
+}
+
 uint64_t StateLayout::HashSaved(const uint8_t* src, HashScope scope) const
 {
 	uint64_t h = 0x5346564521ull;

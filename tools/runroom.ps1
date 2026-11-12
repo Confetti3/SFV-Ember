@@ -38,7 +38,7 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # implies -moves). -idle 0|1: that side's player stands still, and the other
 # walks forward at the start of each block of moves. Every block faces the
 # way its fighter does. -socketLog: each copy logs the fight's reads of the
-# fighters' models (SocketProbe); the lines are printed per copy at the end.
+# fighters' models (SocketReads); the lines are printed per copy at the end.
 # -practice: both copies' fighters get Training's refilling gauges from the
 # first frame (as a Practice room's), so every V-Trigger and Critical Art plays.
 # -unowned0 / -unowned1 give copy 0 / copy 1 a -sfve_unowned list

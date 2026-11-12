@@ -21,7 +21,8 @@
 //   -sfve_tiny=MASK      test: a launch that is no room's or replay's (the pipe's, for a
 //                        synctest) draws these sides small: 1 P1, 2 P2, 3 both
 //   -sfve_socket_log=1   diagnostics: log every read of a fighter's model socket the
-//                        fight makes (SocketProbe), but the ones made every tick
+//                        fight makes (SocketReads): fresh and recorded, or stale and
+//                        given the straight read, or missed
 //   -sfve_replay_any_build=1  diagnostics: Watch now plays a replay made with
 //                        another build (its result says nothing of this build)
 //   -sfve_practice=1     synctest, netplay: Training's refilling gauges from the first frame

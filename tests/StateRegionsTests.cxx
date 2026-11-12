@@ -28,6 +28,29 @@ TEST_CASE("save then load restores every region byte for byte")
 	CHECK(b == b0);
 }
 
+TEST_CASE("a hash of some regions follows those regions only, masks and all")
+{
+	std::vector<uint8_t> a(256, 1), b(128, 2), c(64, 3);
+	StateLayout layout;
+	layout.Add("a", a.data(), a.size());
+	layout.Add("b", b.data(), b.size());
+	layout.Add("c", c.data(), c.size(), false);
+	layout.IgnoreWord(0, 16);
+	const std::vector<size_t> ab = {0, 1};
+	const uint64_t h = layout.HashLiveRegions(ab);
+	CHECK(h == layout.HashLiveRegions({1, 0}));      // the order does not matter
+	CHECK(h == layout.HashLiveRegions({0, 1, 2}));   // an unhashed region adds nothing
+	CHECK(h == layout.HashLiveRegions({0, 1, 99}));  // nor an index past the layout
+	CHECK(h == layout.HashLive());                   // all of the hashed regions: the whole hash
+	c[5] = 9;
+	CHECK(h == layout.HashLiveRegions(ab));
+	a[16] = 9; // the masked word
+	CHECK(h == layout.HashLiveRegions(ab));
+	b[3] = 9;
+	CHECK(h != layout.HashLiveRegions(ab));
+	CHECK(layout.HashLiveRegions({0}) != layout.HashLiveRegions(ab));
+}
+
 TEST_CASE("live and saved hashes agree and track checked content only")
 {
 	std::vector<uint8_t> checked(5000, 1), unchecked(64, 2);
