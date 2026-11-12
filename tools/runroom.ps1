@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '')
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700)
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -63,6 +63,20 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # rest. -watcherLeaves N has it Stop watching ("stopwatching", the shell's
 # Stop watching) N seconds into the first game it watches: it goes back to
 # the room, and the fighters' game goes on unaffected.
+#
+# The decided match's scenes (docs/design/beta8/skip.md): every game prints
+# how many frames each copy spent from the decision to the result and the
+# skips applied, which must be the same frames on both copies (and the
+# watcher's), with the result on the same frame. The seeded scripts press
+# nothing in the scenes, so a plain run plays them whole (about 1545 frames)
+# and must apply no skip. -skipAfter N: copy -skipCopy (0 or 1, default 1)
+# presses an attack N frames into each game's scenes (the pipe's
+# "skipafter"); at N >= 60 (IntroSkip.hxx's guard) both copies must skip, the
+# scenes then taking fewer than -skipMax frames (default 700); below 60 the
+# press falls inside the guard and nothing may be skipped, the scenes taking
+# -skipMax or more. -skipPad presses copy -skipCopy's virtual pad (X) instead,
+# about N frames (default 90) after its log shows the decision: the player's
+# own path, through the pads.
 $ErrorActionPreference = 'Stop'
 # The checkout this script is in, whichever it is.
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -128,6 +142,73 @@ function AwaitWatcher([int]$game, [int]$before) {
   $script:watchedGames.Add($game - 1)
 }
 
+# The decided match's scenes. The guard before a press there counts
+# (intro_skip::kScenesGuardFrames).
+$guardFrames = 60
+if ($skipCopy -lt 0 -or $skipCopy -gt 1) { throw '-skipCopy is 0 or 1' }
+$skipWanted = $skipPad -or $skipAfter -ge $guardFrames
+# Each copy's games as its log has them: frames from the decision to the
+# result, the result's frame, and the skips applied before it ("<frame>:
+# <what>"), in order.
+function ScenesOf([int]$i) {
+  $games = New-Object System.Collections.Generic.List[object]
+  if ($copies -notcontains $i -or -not (Test-Path $logOf[$i])) { return ,$games }
+  $skips = @()
+  $pattern = 'netplay: the scenes took (\d+) frame\(s\), from the decision at frame (\d+) to the result at frame (\d+) \((\d+) skip|netplay: scenes skipped at frame (\d+): (.*)$'
+  foreach ($m in Select-String -Path $logOf[$i] -Pattern $pattern) {
+    $g = $m.Matches[0].Groups
+    if ($g[1].Success) {
+      $games.Add([pscustomobject]@{ Took = [int]$g[1].Value; From = [int]$g[2].Value; Result = [int]$g[3].Value; Skips = [int]$g[4].Value; At = $skips })
+      $skips = @()
+    } else {
+      $skips += "$($g[5].Value): $($g[6].Value)"
+    }
+  }
+  return ,$games
+}
+$scenesChecked = 0
+# Game `$game`'s scenes on both fighters' copies: the same result frame and
+# the same skips, and skipped (or not) as the run asked.
+function CheckScenes([int]$game) {
+  # Logged right after the result, which the caller has seen on both copies.
+  $deadline = (Get-Date).AddSeconds(10)
+  do {
+    $s0 = ScenesOf 0; $s1 = ScenesOf 1
+    $logged = $s0.Count -gt $script:scenesChecked -and $s1.Count -gt $script:scenesChecked
+    if (-not $logged) { Start-Sleep -Milliseconds 250 }
+  } while (-not $logged -and (Get-Date) -lt $deadline)
+  if (-not $logged) {
+    "game ${game}: no decided scenes logged on both copies"
+    if ($skipWanted) { throw "game ${game}: no decided scenes to skip" }
+    return
+  }
+  $a = $s0[$script:scenesChecked]; $b = $s1[$script:scenesChecked]
+  $script:scenesChecked++
+  $applied = if ($a.At.Count) { $a.At -join '; ' } else { 'none' }
+  "game ${game}: scenes $($a.Took) frames on copy 0 (decided at $($a.From)), $($b.Took) on copy 1 (decided at $($b.From)); result at frame $($a.Result); skips applied: $applied"
+  if ($a.Result -ne $b.Result) { throw "game ${game}: the copies took the result at frames $($a.Result) and $($b.Result)" }
+  if (($a.At -join '|') -ne ($b.At -join '|')) { throw "game ${game}: the copies applied different skips: copy 0 [$($a.At -join '; ')], copy 1 [$($b.At -join '; ')]" }
+  if ($skipWanted) {
+    if ($a.Skips -lt 1) { throw "game ${game}: copy ${skipCopy}'s press skipped nothing" }
+    foreach ($took in $a.Took, $b.Took) { if ($took -ge $skipMax) { throw "game ${game}: the skipped scenes still took $took frames (want fewer than $skipMax)" } }
+  } else {
+    if ($a.Skips -gt 0) { throw "game ${game}: the scenes were skipped though no press came after the guard" }
+    if ($skipAfter -ge 0) {
+      foreach ($took in $a.Took, $b.Took) { if ($took -lt $skipMax) { throw "game ${game}: a press inside the guard ended the scenes after $took frames" } }
+    }
+  }
+}
+# -skipPad: copy -skipCopy's pad presses X about -skipAfter frames (default
+# 90) after its log shows game's decision, the count of those lines being
+# `$before` at the game's start.
+function PadSkip([int]$before) {
+  WaitFor "copy ${skipCopy}'s decision" $gameSeconds { (Count $skipCopy 'netplay: the match is decided at frame') -gt $before }
+  $frames = if ($skipAfter -ge 0) { $skipAfter } else { 90 }
+  Start-Sleep -Milliseconds ([int]($frames * 1000 / 60))
+  Ctl $skipCopy 'pad 0 X:100 -:150' | Out-Null
+  "copy ${skipCopy} pressed X on its pad about $frames frames into the scenes"
+}
+
 python -I tools\sfve.py kill | Out-Null
 $seeds = @($seed0, $seed1, 303)
 $unowned = @($unowned0, $unowned1, '')
@@ -147,6 +228,10 @@ foreach ($i in $copies) {
 $failure = ''
 try {
   WaitFor 'the runtime on every copy' 120 { foreach ($i in $copies) { if ((Status $i).ember.host -ne 'running') { return $false } }; $true }
+  if ($skipAfter -ge 0 -and -not $skipPad) {
+    WaitFor "copy ${skipCopy}'s skip press to be scheduled" 30 { (Ctl $skipCopy "skipafter $skipAfter") -like 'ok*' }
+    "copy ${skipCopy} presses an attack $skipAfter frames into each game's scenes$(if ($skipAfter -lt $guardFrames) { ' (inside the guard: nothing may be skipped)' })"
+  }
   $instant = if ($rematches -ge 0) { 1 } else { 0 }
   WaitFor 'room commands to be taken' 30 { (Ctl 0 "room $rounds $seconds $instant $firstTo $([int][bool]$tiny)") -like 'ok*' }
   $inv = ''
@@ -189,8 +274,10 @@ try {
       $last = $game -eq $rematches + 1
       $results = @((Count 0 'netplay: match result'), (Count 1 'netplay: match result'))
       $answers = @((Count 0 "the WIN's answers"), (Count 1 "the WIN's answers"), (Count 2 "the WIN's answers"))
+      $decidedBefore = Count $skipCopy 'netplay: the match is decided at frame'
       Start-Sleep 20
       Shot "game$game-fight"
+      if ($skipPad) { PadSkip $decidedBefore }
       if ($quickAnswer) {
         $deadline = (Get-Date).AddSeconds($gameSeconds)
         while (-not (Status 0).battle.mode.rematch.prompt) {
@@ -222,6 +309,7 @@ try {
         "game ${game}: copy 1's B inside the guard declined nothing"
       }
       WaitFor "game $game's result on both copies" $gameSeconds { (Count 0 'netplay: match result') -gt $results[0] -and (Count 1 'netplay: match result') -gt $results[1] }
+      CheckScenes $game
       # A game that ends the first-to-N set offers no rematch: both copies
       # decline at once, and the WIN may be over before the status shows it.
       $decided = { (Count 0 "the WIN's answers") -gt $answers[0] -and (Count 1 "the WIN's answers") -gt $answers[1] }
@@ -315,6 +403,7 @@ try {
     $closes = @((Count 0 'battle closed at its match'), (Count 1 'battle closed at its match'))
     $wstart = Count 2 'netplay: room match watched'
     $wcloses = Count 2 "the room's battle closed"
+    $decidedBefore = Count $skipCopy 'netplay: the match is decided at frame'
     # The watcher sees this game unless it watches from the next one, or left.
     $watched = $watchers -and -not $watcherLeft -and -not ($watchLate -and $game -eq 1)
     # A seat whose fighter changes takes back the other seat's Ready (the
@@ -341,7 +430,9 @@ try {
     }
     if ($watchLate -and $game -eq 1) { Watch $true } # during the game: from the next one
     Shot "game$game-fight"
+    if ($skipPad) { PadSkip $decidedBefore }
     WaitFor "game $game's result on both copies" $gameSeconds { (Count 0 'netplay: match result') -gt $results[0] -and (Count 1 'netplay: match result') -gt $results[1] }
+    CheckScenes $game
     WaitFor "both copies back in the room after game $game" 90 { (Count 0 'battle closed at its match') -gt $closes[0] -and (Count 1 'battle closed at its match') -gt $closes[1] -and (Status 0).room.room -eq 'joined' -and (Status 1).room.room -eq 'joined' }
     if ($watched -and -not $watcherLeft) {
       WaitFor "copy 2 back in the room after game $game" 90 { (Count 2 "the room's battle closed") -gt $wcloses -and (Status 2).room.room -eq 'joined' }
@@ -423,6 +514,16 @@ if ($watchers) {
     if ($h0[$theirs] -ne $h2[$key]) { $watcherDiffering += $theirs }
   }
   "watcher checkpoints: $($watchedKeys.Count) compared with the fighters', $($watcherDiffering.Count) differing (games watched: $(($watchedGames | ForEach-Object { $_ + 1 }) -join ', '))"
+  # The watcher's scenes: each game it saw ended on the fighters' result
+  # frame with the fighters' skips.
+  $fought = @((ScenesOf 0) | ForEach-Object { "result $($_.Result), skips [$($_.At -join '; ')]" })
+  foreach ($w in (ScenesOf 2)) {
+    $line = "result $($w.Result), skips [$($w.At -join '; ')]"
+    if ($fought -notcontains $line) {
+      "copy 2's scenes differ from the fighters': $line"
+      if (-not $failure) { $failure = "the watcher's scenes ended apart from the fighters' ($line)" }
+    }
+  }
   $desyncs += (Count 2 'desync|mismatch') + $watcherDiffering.Count
   if (-not $failure -and -not $watchedKeys.Count) { $failure = "no watcher checkpoint could be compared" }
 }

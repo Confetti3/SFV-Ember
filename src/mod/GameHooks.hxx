@@ -125,6 +125,12 @@ void AddGameHooks(HookTransaction& hooks, uintptr_t imageBase, BattleListener* l
 // The game's GetManager, for the rollback unit's context.
 uint8_t* GameGetManager(uint8_t* rollbackUnit);
 
+// The game's own question to this copy's pads (sfv::kPadsAny), unhooked:
+// whether a local pad holds a bit of `mask` now, with a battle unit's context
+// (unit + sfv::unit::kContext). False before the battle's hooks are in. Game
+// thread, between battle updates.
+bool GameLocalPadsAny(uint8_t* unitContext, uint32_t mask);
+
 // The battle's match data (sfv::battledata), from any unit.
 uint8_t* GameGetBattleData(uint8_t* anyUnit);
 

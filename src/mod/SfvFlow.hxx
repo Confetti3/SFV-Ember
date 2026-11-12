@@ -89,6 +89,11 @@ public:
 	void Announce(int state) { record_.announced = state; }
 	int Announced() const { return record_.announced; }
 
+	// The flow unit the record mirrors, while it can (null before Bind or once
+	// failed): what the decided match's skip asks for the next state, between
+	// two updates (SfvAdapter, IntroSkip.hxx).
+	uint8_t* Unit() const { return Usable() ? flow_ : nullptr; }
+
 	void Capture();
 	void Apply();
 

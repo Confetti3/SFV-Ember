@@ -47,7 +47,10 @@
 // (hold the battle at that frame so both screens can be compared). Test aid:
 // "perturb <frame> <region name or size> <offset> <add>" adds to a 32-bit
 // value of this copy's state once the session has played that frame: a real
-// desync, for checking that the peers' hashes then differ.
+// desync, for checking that the peers' hashes then differ. "skipafter <n>"
+// (-1 off): this copy presses an attack n frames into each decided match's
+// scenes, which asks to skip them once they have shown the guard's second
+// (IntroSkip.hxx); a test's script presses nothing else there.
 
 #include "core/ReplayRecorder.hxx"
 #include "core/RollbackSession.hxx"
@@ -107,13 +110,28 @@ private:
 	void ConfirmRecording();
 	void NoteRecordedGame();
 	void FinishRecording();
+	// The decided match's scenes (IntroSkip.hxx), for the log: where they
+	// start as this copy steps or watches, each skip the adapter applied with
+	// its frame, and their length when the match's end is taken.
+	void NoteScenes(SfvAdapter& adapter, int frame);
+	void NoteScenesSkip(SfvAdapter& adapter);
+	void NoteScenesEnd();
+	// This copy's player's input for `frame`: the pad's (or a test's script)
+	// in the fight, and in the decided match's scenes the press that may skip
+	// them (IntroSkip.hxx).
+	PackedInput LocalInput(SfvAdapter& adapter, int frame);
 
 	// Without a room: the same in every copy.
 	static constexpr uint32_t kSessionSeed = 0x5F0E5EED;
 
 	const ModConfig& config_;
 	input::ScriptedInput script_{config_.script, config_.player}; // the local player's, for tests
-	intro_skip::Request introSkip_; // the local player's ask to skip the intros
+	intro_skip::Request introSkip_; // the local player's ask to skip the intros and the decided match's scenes
+	intro_skip::ScenesClock scenes_; // where this copy saw the decided match's scenes start (NoteScenes)
+	int scenesSkips_ = 0;            // skips the adapter applied in them
+	// "skipafter <n>" (tests, runroom's -skipAfter): the script presses an
+	// attack n frames into each decided match's scenes; -1 never.
+	int skipAfter_ = -1;
 	mutable std::mutex mutex_; // the game thread steps, the pipe thread reads
 	std::unique_ptr<RollbackSession> session_;
 	// P1's last session, kept after its battle for the watchers still

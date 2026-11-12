@@ -27,6 +27,7 @@
 
 #include <array>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace sfve::mod {
@@ -80,13 +81,23 @@ public:
 	// with ticks stopped): the last original update recorded at least one tick.
 	uint32_t TicksInLastUpdate() const { return ticksInLastUpdate_; }
 
-	// The state the battle flow last announced (part of the rollback state).
-	void SeeFlowState(int state) { flow_.Announce(state); }
+	// The state the battle flow last announced (part of the rollback state);
+	// each change with the match decided is logged.
+	void SeeFlowState(int state);
 	int FlowState() const { return flow_.Announced(); }
 	bool Fighting() const;
 	// The match is decided (sfv::battledata::kDecided, part of the rollback
 	// state): the scenes after its last round are the ones a press skips.
 	bool MatchDecided() const;
+	// Whether a local pad holds a bit of `mask` (in the battle's input bits)
+	// now, as the game asks its pads after the decision (sfv::kPadsAny,
+	// unhooked): this copy's press in the decided match's scenes even if the
+	// battle's input record stood still. False until bound. Game thread.
+	bool LocalPadsAny(uint32_t mask) const;
+	// What the last Advance did to end the decided match's scenes (a line
+	// for the log, which the netplay mode gives its frame), taken once; null
+	// when it did nothing.
+	const char* TakeScenesSkip() { return std::exchange(scenesSkip_, nullptr); }
 	// Only the fight reads the players' inputs (GameAdapter::InputsMatter),
 	// and the intro and the decided match's scenes their skip request on
 	// their skip frames (IntroSkip.hxx).
@@ -152,6 +163,13 @@ private:
 	bool AddGameRegions(uint8_t* manager);
 	void CollectPostRestore(uint8_t* manager);
 	void RunUpdate();
+	// A frame whose inputs carry the skip bit with the match decided: the
+	// current flow state moved on (intro_skip::ScenesStepFor), before the
+	// frame's update.
+	void EndScenes();
+	// The input unit's ticks per update while the match is decided: logged
+	// each time the count changes.
+	void NoteDecidedTicks();
 
 	BattleIdentity identity_;
 	uint8_t* battleFrame_ = nullptr;
@@ -175,6 +193,20 @@ private:
 	uint8_t* (*gameInstance_)() = nullptr; // sfv::kGameInstance
 	uint32_t ticksThisUpdate_ = 0;
 	FlowRollback flow_;
+
+	// Ending the decided match's scenes (EndScenes); the game's functions
+	// from the bind's image base.
+	uintptr_t imageBase_ = 0;
+	int64_t (*flowRequest_)(uint8_t* flowUnit, int32_t state, uint8_t flags, int32_t arg) = nullptr; // sfv::kFlowRequest
+	int64_t (*setFlowPhase_)(uint8_t* flowState, int32_t phase) = nullptr;                          // sfv::kSetFlowPhase
+	void (*markResultSkipped_)(uint8_t* unitContext) = nullptr;                                      // sfv::kMarkResultSkipped
+	bool resimulating_ = false;       // the update now running replays a frame after a rollback
+	const char* scenesSkip_ = nullptr; // TakeScenesSkip: points at scenesSkipText_
+	char scenesSkipText_[192] = {};
+	// What EndScenes last left alone (state id, phase), logged once each.
+	int scenesIdleState_ = -1;
+	int scenesIdlePhase_ = -1;
+	int64_t decidedTicks_ = -1; // the tick count last logged with the match decided; -1 none
 };
 
 } // namespace sfve::mod
