@@ -78,6 +78,15 @@ constexpr float kBannerWidth = 380;
 // Why a stage the opponent lacks cannot be chosen: the runtime's own words,
 // on the stage row's option and in the pane.
 constexpr const char* kStageNotShared = "runtime.ready.stage_not_shared";
+constexpr const char* kStageBanned = "selection.stage_banned"; // the room's Banned stages rule
+
+// A stage card's caption: the stage's name, tagged where the room bans it.
+std::string StageCardLabel(const StageOption& option)
+{
+	std::string label = sf4e::ui::StageLabel(option.id);
+	if (option.offer == StageOffer::Banned) label += " (" + std::string(loc::T("room.banned_stages.tag")) + ")";
+	return label;
+}
 
 // The board as the game's own select screen draws it at 1080 lines, measured
 // on its pixels (the laptop's capture, docs/design/beta8/select.md): tiles 70
@@ -731,9 +740,10 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 	// runtime's own reason (EMBER_LIBRARY.md section 43).
 	std::vector<MenuChoice> stages;
 	for (const StageOption& option : stageOptions) {
-		const bool lacking = option.offer == StageOffer::OpponentLacks;
-		stages.push_back({OptionId(option.id), sf4e::ui::StageLabel(option.id),
-			lacking ? std::string(loc::T(kStageNotShared)) : std::string(), editable && stageEditable && !lacking});
+		const bool lacking = option.offer == StageOffer::OpponentLacks, banned = option.offer == StageOffer::Banned;
+		stages.push_back({OptionId(option.id), StageCardLabel(option),
+			lacking ? std::string(loc::T(kStageNotShared)) : banned ? std::string(loc::T(kStageBanned)) : std::string(),
+			editable && stageEditable && !lacking && !banned});
 	}
 	std::vector<MenuEntry> rows;
 	rows.push_back(StepRow(kFighter, "selection.fighter", catalog.fighterName(pick.pick.fighter),
@@ -974,11 +984,11 @@ std::vector<MenuEntry> SfvSelectionScreen::StageCards(const PlayerPick& pick, bo
 	const char* refused = !editable ? "selection.locked_detail" : !stageEditable ? "selection.only_p1_stage" : nullptr;
 	std::vector<MenuEntry> rows;
 	for (const StageOption& option : stageOptions) {
-		const bool lacking = option.offer == StageOffer::OpponentLacks;
-		const char* detail = lacking ? kStageNotShared : refused ? refused :
+		const bool lacking = option.offer == StageOffer::OpponentLacks, banned = option.offer == StageOffer::Banned;
+		const char* detail = banned ? kStageBanned : lacking ? kStageNotShared : refused ? refused :
 			option.id == picks::kRandomStage ? "selection.random_stage.detail" : nullptr;
-		MenuEntry row = sf4e::ui::Row(CardId(kStageCard, option.id), sf4e::ui::StageLabel(option.id),
-			detail ? std::string(loc::T(detail)) : std::string(), choosable && !lacking);
+		MenuEntry row = sf4e::ui::Row(CardId(kStageCard, option.id), StageCardLabel(option),
+			detail ? std::string(loc::T(detail)) : std::string(), choosable && !lacking && !banned);
 		row.key = (std::uint64_t)option.id;
 		if (row.enabled) row.hint = loc::T("menu.hint.save_stage");
 		rows.push_back(std::move(row));
@@ -996,6 +1006,7 @@ SfvSelectionScreen::StageAnswer SfvSelectionScreen::ChooseStage(const std::strin
 	if (option == stageOptions.end()) return StageAnswer::NotOffered;
 	if (!editable) return StageAnswer::Locked;
 	if (!stageEditable) return StageAnswer::OnlyP1;
+	if (option->offer == StageOffer::Banned) return StageAnswer::Banned;
 	if (option->offer == StageOffer::OpponentLacks) return StageAnswer::NotShared;
 	if (pick.stage == option->id) return StageAnswer::Unchanged;
 	pick.stage = option->id;
@@ -1089,7 +1100,8 @@ void SfvSelectionScreen::FitGrid()
 }
 
 void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::string& error,
-	const std::vector<std::int64_t>& unavailableStages, bool tinyAllowed, bool fighterKept)
+	const std::vector<std::int64_t>& unavailableStages, bool tinyAllowed, bool fighterKept,
+	const std::vector<std::int64_t>& bannedStages)
 {
 	auto& nav = menu_.navigation;
 	PlayerPick pick = dummy_ ? CurrentDummy() : CurrentPick();
@@ -1106,7 +1118,7 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 		stageRefusal_.clear();
 	}
 	FitGrid();
-	const std::vector<StageOption> stageOptions = StageOptions(unavailableStages);
+	const std::vector<StageOption> stageOptions = StageOptions(unavailableStages, bannedStages);
 	// A page this screen does not have (the stage page on the dummy's) is
 	// the board.
 	if (nav.Screen() == kStagePage && !withStage) nav.Home();
@@ -1219,18 +1231,23 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 			return std::any_of(stageOptions.begin(), stageOptions.end(),
 				[stage](const StageOption& option) { return option.id == stage && option.offer == StageOffer::OpponentLacks; });
 		};
+		const auto banned = [&stageOptions](int stage) {
+			return std::any_of(stageOptions.begin(), stageOptions.end(),
+				[stage](const StageOption& option) { return option.id == stage && option.offer == StageOffer::Banned; });
+		};
 		CardGrid cards{kStagePage, kStageCardShape, {}, {}, {}};
-		cards.picture = [lacking](ImDrawList* draw, const MenuEntry& e, v2::Box box, float) {
-			DrawFitted(draw, StageImage((int)e.key), box, lacking((int)e.key) ? kLocked : 1.f, false);
+		cards.picture = [lacking, banned](ImDrawList* draw, const MenuEntry& e, v2::Box box, float) {
+			DrawFitted(draw, StageImage((int)e.key), box, lacking((int)e.key) || banned((int)e.key) ? kLocked : 1.f, false);
 		};
 		cards.saved = [&pick](const MenuEntry& e) { return (int)e.key == pick.stage; };
-		cards.preview = [&pick, lacking, stageMine](const MenuEntry& e) {
+		cards.preview = [&pick, lacking, banned, stageMine](const MenuEntry& e) {
 			PickPreview preview;
 			preview.pick = pick;
 			preview.pick.stage = (int)e.key;
 			preview.focus = PreviewFocus::Stage;
 			preview.stageShared = !lacking((int)e.key);
-			preview.note = !preview.stageShared ? std::string(loc::T(kStageNotShared)) :
+			preview.note = banned((int)e.key) ? std::string(loc::T(kStageBanned)) :
+				!preview.stageShared ? std::string(loc::T(kStageNotShared)) :
 				!stageMine ? std::string(loc::T("selection.only_p1_stage")) : std::string();
 			return preview;
 		};
@@ -1354,6 +1371,7 @@ void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& scr
 			case StageAnswer::Locked: stageRefusal_ = loc::T("selection.locked_detail"); break;
 			case StageAnswer::OnlyP1: stageRefusal_ = loc::T("selection.only_p1_stage"); break;
 			case StageAnswer::NotShared: stageRefusal_ = loc::T(kStageNotShared); break;
+			case StageAnswer::Banned: stageRefusal_ = loc::T(kStageBanned); break;
 			case StageAnswer::NotOffered: break;
 			}
 		}
@@ -1435,12 +1453,17 @@ PickPreview SfvSelectionScreen::PreviewOf(const PlayerPick& pick, const std::str
 	preview.pick = Previewed(pick, rowId, optionId);
 	preview.focus = FocusOf(rowId);
 	if (const std::optional<picks::LoadoutPart> part = PartOfRow(rowId)) preview.part = *part;
+	bool stageBanned = false;
 	for (const StageOption& option : stageOptions) {
 		if (option.id == preview.pick.stage) preview.stageShared = option.offer != StageOffer::OpponentLacks;
+		if (option.id == preview.pick.stage && option.offer == StageOffer::Banned) stageBanned = true;
 	}
 	// A stage the opponent lacks says so whenever the pane shows it: the
 	// stored stage with the row focused, as an option with its choice open.
 	if (preview.focus == PreviewFocus::Stage && !preview.stageShared) preview.note = loc::T(kStageNotShared);
+	// So does a banned one: the stored stage stays as picked, but P1's Ready
+	// sends the Training stage for it.
+	if (preview.focus == PreviewFocus::Stage && stageBanned) preview.note = loc::T(kStageBanned);
 	return preview;
 }
 

@@ -64,16 +64,38 @@ std::optional<std::string> SetRounds(sf4e::netplay::PlayerPreferences& preferenc
 	return std::nullopt;
 }
 
+// The room command's banned stages: stage codes ("CHN,S25"), "-" for none, as
+// ascending ids. Nothing for a code that is not a stage of the universe.
+std::optional<std::vector<std::int64_t>> BannedStagesOf(const std::string& text)
+{
+	std::vector<std::int64_t> ids;
+	if (text == "-") return ids;
+	std::istringstream in(text);
+	std::string code;
+	while (std::getline(in, code, ',')) {
+		const std::optional<int> id = StageId(std::wstring(code.begin(), code.end()));
+		if (!id) return std::nullopt;
+		ids.push_back(*id);
+	}
+	std::sort(ids.begin(), ids.end());
+	ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+	return ids;
+}
+
 std::string Host(const std::string& args)
 {
 	int rounds = 3, seconds = 99, rematch = 0, firstTo = 0, tiny = 0, skipScenes = 1;
 	std::istringstream in(args);
-	const char* usage = "error usage: room [rounds] [seconds] [instant rematch 0|1] [first to N, 0 unlimited] [tiny fighters 0|1] [skip winner scenes 0|1]";
+	const char* usage = "error usage: room [rounds] [seconds] [instant rematch 0|1] [first to N, 0 unlimited] [tiny fighters 0|1] [skip winner scenes 0|1] [banned stages CODE,CODE or -]";
 	if (!args.empty() && !(in >> rounds >> seconds)) return usage;
 	if (!in.eof() && !(in >> rematch)) return usage;
 	if (!in.eof() && !(in >> firstTo)) return usage;
 	if (!in.eof() && !(in >> tiny)) return usage;
 	if (!in.eof() && !(in >> skipScenes)) return usage;
+	std::string bans = "-";
+	if (!in.eof() && !(in >> bans)) return usage;
+	const std::optional<std::vector<std::int64_t>> banned = BannedStagesOf(bans);
+	if (!banned) return "error a banned stage is not a stage code of this game";
 	if (rematch < 0 || rematch > 1 || tiny < 0 || tiny > 1 || skipScenes < 0 || skipScenes > 1) return usage;
 	if (!sf4e::room::ValidSetFormat(firstTo)) return "error the set is first to 1-10 games, or 0 for unlimited";
 	facade::RuntimeCommand command = CommandFor(CommandKind::HostRoom);
@@ -88,6 +110,9 @@ std::string Host(const std::string& args)
 	command.tinyFighters = tiny != 0;
 	// Skip winner scenes (docs/design/beta8/autoskip.md): on unless a test turns it off.
 	command.skipScenes = skipScenes != 0;
+	// Banned stages (docs/design/beta8/stageban.md): the room opens with them, as a host's
+	// Room settings would set them; a test names them.
+	command.bannedStages = *banned;
 	if (!command.preferences.Valid()) return "error the room's settings are not valid";
 	return Submit(std::move(command));
 }

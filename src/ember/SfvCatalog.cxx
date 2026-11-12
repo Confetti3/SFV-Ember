@@ -409,7 +409,7 @@ std::vector<std::int64_t> MissingStages()
 	return missing;
 }
 
-std::vector<StageOption> StageOptions(const std::vector<std::int64_t>& unavailable)
+std::vector<StageOption> StageOptions(const std::vector<std::int64_t>& unavailable, const std::vector<std::int64_t>& banned)
 {
 	// The one walk: a stage this player is not offered is never listed; one
 	// they are offered that the runtime's set holds is the opponent's lack,
@@ -418,9 +418,26 @@ std::vector<StageOption> StageOptions(const std::vector<std::int64_t>& unavailab
 	for (int id = 0; id < (int)s_lists.stages.size(); id++) {
 		if (!StageOffered(id)) continue;
 		const bool lacking = std::find(unavailable.begin(), unavailable.end(), id) != unavailable.end();
-		options.push_back({id, lacking ? StageOffer::OpponentLacks : StageOffer::Playable});
+		const bool isBanned = std::binary_search(banned.begin(), banned.end(), (std::int64_t)id);
+		options.push_back({id, isBanned ? StageOffer::Banned : lacking ? StageOffer::OpponentLacks : StageOffer::Playable});
 	}
 	return options;
+}
+
+std::int64_t TrainingStage()
+{
+	const std::optional<int> id = StageId(L"TRN");
+	return id ? *id : -1;
+}
+
+std::vector<sf4e::StageChoice> BannableStages()
+{
+	const std::int64_t training = TrainingStage();
+	std::vector<sf4e::StageChoice> stages;
+	for (std::int64_t id = 0; id < (std::int64_t)s_lists.stages.size(); id++) {
+		if (id != training) stages.push_back({id, StageName(id)});
+	}
+	return stages;
 }
 
 std::vector<int> PlayableIds(const std::vector<StageOption>& options)

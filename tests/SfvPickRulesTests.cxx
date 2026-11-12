@@ -14,6 +14,7 @@
 #include "mod/ModConfig.hxx"
 
 #include "common/GameCatalog.hxx"
+#include "common/StageBans.hxx"
 #include "common/RandomFighter.hxx"
 #include "common/SelectionPick.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
@@ -139,6 +140,78 @@ TEST_CASE("Random rolls only stages both seated players have, each as likely, an
 	PlayerPick chosen = random;
 	chosen.stage = 2;
 	CHECK(OfflineStageCode(chosen.stage) == "S25");
+}
+
+TEST_CASE("under the room's banned stages Random never rolls one, and a banned pick or no stage left is the Training stage")
+{
+	FillTestCatalog();
+	const ember::GameCatalog& catalog = ember::Catalog();
+	const sf4e::selection::RandomPool pool;
+	// This copy offers S01 (0) and S25 (2) only: S02 (1) is not in the
+	// account's cache and S26 (3) is not installed. S02 stands in for the
+	// Training stage, which any list has.
+	constexpr std::int64_t kTraining = 1;
+	using Stages = std::vector<std::int64_t>;
+	const auto under = [&](int choice, std::uint32_t roll, const Stages& unavailable, const Stages& banned) {
+		return sf4e::StageUnderBans(choice, catalog.randomStage, kTraining, unavailable, banned,
+			[&](const Stages& excluded) { return catalog.resolveStage(choice, roll, pool, nullptr, excluded); });
+	};
+	// Nothing banned: the catalog's own answer.
+	for (std::uint32_t roll = 0; roll < 50; roll++) {
+		CHECK(under(picks::kRandomStage, roll, {kUninstalledStage}, {}) ==
+			catalog.resolveStage(picks::kRandomStage, roll, pool, nullptr, {kUninstalledStage}));
+	}
+	CHECK(under(0, 5, {}, {}) == 0);
+	// Random never lands on a banned stage, and reaches every other one.
+	std::vector<int> landed(4, 0);
+	for (std::uint32_t roll = 0; roll < 2000; roll++) {
+		const int stage = under(picks::kRandomStage, roll * 2654435761u, {kUninstalledStage}, {0});
+		REQUIRE((stage == 2 || stage == 0));
+		landed[(size_t)stage]++;
+	}
+	CHECK(landed[0] == 0);
+	CHECK(landed[2] == 2000);
+	for (std::uint32_t roll = 0; roll < 100; roll++) CHECK(under(picks::kRandomStage, roll, {}, {2}) == 0);
+	// A ban on a stage this player is not offered changes nothing for Random.
+	for (std::uint32_t roll = 0; roll < 100; roll++) {
+		CHECK(under(picks::kRandomStage, roll, {kUninstalledStage}, {1, 3}) ==
+			catalog.resolveStage(picks::kRandomStage, roll, pool, nullptr, {kUninstalledStage}));
+	}
+	// The opponent's lack and the bans together leave one.
+	for (std::uint32_t roll = 0; roll < 100; roll++) CHECK(under(picks::kRandomStage, roll, {0, kUninstalledStage}, {2}) == kTraining);
+	// A banned specific stage is the Training stage; another stands.
+	CHECK(under(0, 9, {}, {0}) == kTraining);
+	CHECK(under(2, 9, {}, {0}) == 2);
+	CHECK(under(2, 9, {2}, {2}) == kTraining); // banned and the opponent lacks it: banned first
+	// Every stage banned: Random and a pick are both the Training stage.
+	for (std::uint32_t roll = 0; roll < 100; roll++) CHECK(under(picks::kRandomStage, roll, {}, {0, 1, 2, 3}) == kTraining);
+	CHECK(under(2, 0, {}, {0, 1, 2, 3}) == kTraining);
+	// The same snapshot and roll give the same stage, whichever copy asks.
+	for (std::uint32_t roll = 0; roll < 100; roll++) {
+		CHECK(under(picks::kRandomStage, roll, {kUninstalledStage}, {0}) == under(picks::kRandomStage, roll, {kUninstalledStage}, {0}));
+	}
+	// The universe has no Training stage in this list: the room's stage list leaves nothing out.
+	CHECK(TrainingStage() == -1);
+	const std::vector<sf4e::StageChoice> bannable = BannableStages();
+	REQUIRE(bannable.size() == 4);
+	CHECK(bannable[0].id == 0);
+	CHECK(bannable[0].name == "Stage One");
+	CHECK(bannable[3].name == "S26");
+}
+
+TEST_CASE("the stage row lists a banned stage as Banned, before the opponent's lack, and Random never")
+{
+	FillTestCatalog();
+	CHECK(StageOptions({}, {}) == StageOptions({}));
+	const std::vector<StageOption> options = StageOptions({0, kUninstalledStage}, {0, 2});
+	REQUIRE(options.size() == 3);
+	CHECK(options[0] == StageOption{picks::kRandomStage, StageOffer::Playable});
+	CHECK(options[1] == StageOption{0, StageOffer::Banned}); // banned though the opponent also lacks it
+	CHECK(options[2] == StageOption{2, StageOffer::Banned});
+	// Only Random can be chosen of that row, and Random rolls over nothing.
+	CHECK(PlayableIds(options) == std::vector<int>{picks::kRandomStage});
+	// A stage this player is not offered is not listed, banned or not.
+	CHECK(StageOptions({}, {1, 3}).size() == 3);
 }
 
 TEST_CASE("this player's stored stage is Random or one they are offered")

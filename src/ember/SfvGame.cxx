@@ -116,6 +116,10 @@ public:
 	// MissingStages): the room hears them, and no table offers them to this
 	// copy's opponent (EMBER_LIBRARY.md section 38).
 	std::vector<std::int64_t> MissingStages() const override { return adapter::MissingStages(); }
+	// The room's Banned stages rule (docs/design/beta8/stageban.md): the stages
+	// its host may ban, and the Training stage a banned pick is sent as.
+	std::vector<sf4e::StageChoice> BannableStages() const override { return adapter::BannableStages(); }
+	std::int64_t TrainingStage() const override { return adapter::TrainingStage(); }
 	// The host's match seed and its Random rolls. No reader of the game's own
 	// generator yet, so the system's serves.
 	std::uint32_t Random() override
@@ -470,6 +474,8 @@ Capabilities SfvCapabilities()
 	caps.tinyFighters = true;
 	// A room's Skip winner scenes rule (docs/design/beta8/autoskip.md).
 	caps.skipScenes = true;
+	// A private room's host may ban stages (docs/design/beta8/stageban.md).
+	caps.bannedStages = true;
 	// Ember's hitbox viewer over SFV's Training, switched from Training select
 	// (SfvHitboxes, docs/design/beta8/hitboxes.md).
 	caps.hitboxes = true;
