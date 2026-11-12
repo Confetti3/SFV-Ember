@@ -7,10 +7,12 @@
 #include "ember/SfvHud.hxx"
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPick.hxx"
+#include "ember/SfvRandomFighter.hxx"
 #include "ember/SfvReplays.hxx"
 #include "ember/SfvSelectionScreen.hxx"
 #include "ember/SfvTraining.hxx"
 #include "mod/ControlPipe.hxx"
+#include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
 #include "overlay/Overlay.hxx"
 
@@ -23,6 +25,7 @@
 #include "common/TrainingCallInput.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 #include "sf4e/sf4e__ShellHost.hxx"
+#include "session/RoomQueries.hxx"
 #include "ui/ControllerNavigation.hxx"
 #include "ui/GameMenu.hxx"
 #include "ui/MenuRows.hxx"
@@ -98,7 +101,11 @@ public:
 		view.canReady = view.canReady && snapshot.atMainMenu && available;
 		view.build = MatchBuildId();
 		view.selectedPick = pick.pick;
-		view.fighterName = ember::Catalog().fighterName(pick.pick.fighter);
+		// A Random pick is the fighter it rolled: selection.random_fighter, as SF4
+		// Ember's summaries name it (the room's seat shows Random's mark).
+		view.selectedRandom = PickRandom();
+		const std::string fighter = ember::Catalog().fighterName(pick.pick.fighter);
+		view.fighterName = view.selectedRandom ? loc::Tf("selection.random_fighter", fighter) : fighter;
 		view.appearanceName = loc::Tf("selection.appearance_value", sf4e::ui::CostumeLabel(pick.pick), ColourName(pick.pick.color));
 		view.selectionSummary = view.fighterName + " / " + view.appearanceName;
 		view.stageName = sf4e::ui::StageLabel(pick.stage);
@@ -134,33 +141,52 @@ public:
 		const std::string stage = OfflineStageCode(player.stage);
 		LaunchTraining(FighterPickOf(player.pick), FighterPickOf(CurrentDummy().pick), std::wstring(stage.begin(), stage.end()),
 			"Training select's Start", "home.training_unavailable");
+		// Training plays the fighter in hand: a Random pick rolls again.
+		if (PickRandom()) RandomFighterPlayed();
 	}
 
 	void AddPick(facade::RuntimeCommand& command) override { AddPickTo(command); }
 
 	// The stage is this player's to choose out of a room, or as P1 in one.
 	// Training select's Dummy row opens the dummy's own screen (no stage).
+	// An Arcade room's winner keeps their fighter (room::KeepsFighter).
 	void DrawSelection(bool dummy, const RuntimeSnapshot& snapshot) override
 	{
 		const bool stage = snapshot.session.room == sf4e::netplay::RoomState::Idle || snapshot.localSlot == 0;
 		const PlayerPick pick = dummy ? CurrentDummy() : CurrentPick();
 		const std::string error =
 			PickAvailable(pick, snapshot) ? std::string() : loc::T("runtime.selection_combination_unavailable");
+		const sf4e::room::Snapshot& room = snapshot.Room();
+		const bool kept = !dummy && sf4e::room::KeepsFighter(room, room.localMember);
 		// The Size row only in a room whose host allowed tiny fighters
 		// (the snapshot's room is empty out of a room: Training, Home).
-		(dummy ? dummyScreen_ : screen_)
-			.Draw(snapshot.canEditSelection, stage && !dummy, error, snapshot.unavailableStages, snapshot.Room().tinyFighters);
+		shown_ = dummy ? &dummyScreen_ : &screen_;
+		shown_->Draw(snapshot.canEditSelection, stage && !dummy, error, snapshot.unavailableStages, room.tinyFighters, kept);
 	}
+
+	// The pick screen last drawn (the player's or the dummy's), its page and
+	// focus, for the status.
+	struct PickPlace {
+		std::string page, focus;
+		bool dummy = false;
+	};
+	PickPlace LastPickPlace() const { return {shown_->Page(), shown_->Focus(), shown_ == &dummyScreen_}; }
 
 private:
 	SfvSelectionScreen screen_;
 	SfvSelectionScreen dummyScreen_{true};
+	const SfvSelectionScreen* shown_ = &screen_;
 };
 
 // What the "shell" status field reports, as the render thread last left it.
 struct ShellStatus {
 	bool shown = false;
 	std::string why, screen, focus;
+	// The pick screen's own page and focus (SfvSelectionScreen), the last
+	// one drawn, and whether it is the dummy's; the stored pick (PickText)
+	// and whether it is Random.
+	std::string pickPage, pickFocus, pickText;
+	bool pickDummy = false, pickRandom = false;
 	// The pad as the shell navigated by it this frame: the runtime's menu
 	// sample (device, whether it read, its menu bits), the capture and
 	// context that gate it, and what navigation made of it.
@@ -398,6 +424,12 @@ void PublishStatus(Shell& shell)
 	sf4e::ui::MenuNavigation& navigation = shell.host.Shell().Navigation();
 	status.screen = navigation.Screen();
 	status.focus = navigation.Focus();
+	const SfvShellGame::PickPlace pick = shell.game.LastPickPlace();
+	status.pickPage = pick.page;
+	status.pickFocus = pick.focus;
+	status.pickDummy = pick.dummy;
+	status.pickText = PickText(CurrentPick());
+	status.pickRandom = PickRandom();
 	if (shell.frame) {
 		const Snapshot& snapshot = *shell.frame->runtime;
 		status.deviceType = snapshot.menuController.deviceType;
@@ -529,6 +561,9 @@ std::string StatusJson()
 	std::lock_guard lock(s_statusMutex);
 	return "{\"shown\":" + std::string(s_status.shown ? "true" : "false") + ",\"why\":" + mod::JsonString(s_status.why) +
 		",\"screen\":" + mod::JsonString(s_status.screen) + ",\"focus\":" + mod::JsonString(s_status.focus) +
+		",\"pick\":{\"page\":" + mod::JsonString(s_status.pickPage) + ",\"focus\":" + mod::JsonString(s_status.pickFocus) +
+		",\"dummy\":" + (s_status.pickDummy ? "true" : "false") + ",\"stored\":" + mod::JsonString(s_status.pickText) +
+		",\"random\":" + (s_status.pickRandom ? "true" : "false") + "}" +
 		",\"input\":{\"device\":[" + std::to_string(s_status.deviceType) + "," + std::to_string(s_status.deviceIndex) +
 		"],\"capture\":" + std::to_string(s_status.capture) + ",\"context\":" + std::to_string(s_status.context) +
 		",\"sample\":" + (s_status.sampleConnected ? std::to_string(s_status.sampleButtons) : std::string("null")) +
@@ -547,6 +582,14 @@ void InstallEmberShell()
 {
 	InstallSfvArt();
 	InstallSfvHud();
+	// Random on the board (SfvRandomFighter): each frame the runtime hears
+	// whether the pick is Random, and a roll it made becomes the stored pick.
+	mod::RunEachGameFrame([] {
+		if (!EmberRuntimeRunning()) return true;
+		NoteRandomFighter(PickRandom());
+		if (const auto snapshot = facade::GetRuntimeSnapshotShared()) FollowRandomFighter(*snapshot);
+		return true;
+	});
 	mod::RegisterStatus("shell", StatusJson);
 	overlay::OverlayUi ui;
 	ui.applyScale = ApplyScale;
