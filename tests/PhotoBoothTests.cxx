@@ -46,7 +46,7 @@ std::uint16_t U16(const std::vector<std::uint8_t>& bytes, size_t at)
 
 constexpr size_t kPixels = 14 + 108; // where a grab's BMP's pixels start
 
-grab::DepthCandidate Candidate(int index, int width, int height, std::uint32_t draws, int samples = 1)
+grab::DepthCandidate Candidate(int index, int width, int height, std::uint32_t draws, int samples = 1, std::uint32_t firstDraw = 0)
 {
 	grab::DepthCandidate c;
 	c.index = index;
@@ -55,6 +55,7 @@ grab::DepthCandidate Candidate(int index, int width, int height, std::uint32_t d
 	c.height = height;
 	c.samples = samples;
 	c.draws = draws;
+	c.firstDraw = draws ? (firstDraw ? firstDraw : (std::uint32_t)index * 100 + 1) : 0;
 	return c;
 }
 
@@ -317,13 +318,22 @@ TEST_CASE("a picture a grab cannot encode is no BMP")
 
 TEST_CASE("the depth target a grab copies")
 {
-	// A shadow map with more draws than the scene, the scene's depth at the
-	// back buffer's size, a small one, and a multisampled one at that size.
+	// A shadow map drawn first, the scene's depth at the back buffer's size,
+	// a small one, and a multisampled one at that size.
 	const std::vector<grab::DepthCandidate> targets = {Candidate(0, 2048, 2048, 900), Candidate(1, 1920, 1080, 400),
 		Candidate(2, 960, 540, 20), Candidate(3, 1920, 1080, 800, 4)};
 	grab::DepthChoice choice;
 	CHECK(grab::ChooseDepthTarget(targets, choice, 1920, 1080) == 1); // auto: the back buffer's size first
-	CHECK(grab::ChooseDepthTarget(targets, choice, 1280, 720) == 0);  // none that size: the most draws
+	CHECK(grab::ChooseDepthTarget(targets, choice, 1280, 720) == 0);  // none that size: the earliest drawn
+	// The probe's frame (2026-11-12): HUD stencil targets with more draws than
+	// the scene once the fighters are away, a custom depth drawn later, the
+	// shadow map gone: the scene's, drawn first, whatever the counts.
+	const std::vector<grab::DepthCandidate> plate = {Candidate(0, 1920, 1080, 25, 1, 120), Candidate(1, 1920, 1080, 45, 1, 1),
+		Candidate(2, 1920, 1080, 18, 1, 39), Candidate(3, 1920, 1080, 50, 1, 130)};
+	CHECK(grab::ChooseDepthTarget(plate, choice, 1920, 1080) == 1);
+	const std::vector<grab::DepthCandidate> shuffled = {Candidate(0, 1920, 1080, 50, 1, 130), Candidate(1, 1920, 1080, 18, 1, 39),
+		Candidate(2, 1920, 1080, 69, 1, 1)};
+	CHECK(grab::ChooseDepthTarget(shuffled, choice, 1920, 1080) == 2);
 	choice.mode = grab::DepthMode::Index;
 	choice.index = 2;
 	CHECK(grab::ChooseDepthTarget(targets, choice, 1920, 1080) == 2);

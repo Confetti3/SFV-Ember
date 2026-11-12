@@ -707,7 +707,7 @@ int ChooseDepthTarget(const std::vector<DepthCandidate>& candidates, const Depth
 			const DepthCandidate& c = candidates[i];
 			if (!c.draws) continue;
 			if (sized && (c.width != backWidth || c.height != backHeight || c.samples != 1)) continue;
-			if (found < 0 || c.draws > candidates[(size_t)found].draws) found = (int)i;
+			if (found < 0 || c.firstDraw < candidates[(size_t)found].firstDraw) found = (int)i;
 		}
 		return found;
 	};

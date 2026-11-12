@@ -85,10 +85,16 @@ struct DepthCandidate {
 
 // Pure. The candidate a grab's depth choice takes, by its index in
 // `candidates`; -1 for none (Off, an index past the list, or no candidate
-// with a draw). Auto: the target with the most draws among those of the back
-// buffer's size (`backWidth` x `backHeight`), single-sampled; when none is,
-// the one with the most draws of all (a shadow map can have more draws than
-// the scene, so the size comes first). Ties go to the first used.
+// with a draw). Auto: the scene's depth, which the frame draws into first:
+// of the targets of the back buffer's size (`backWidth` x `backHeight`),
+// single-sampled and drawn into, the one with the earliest first draw; when
+// none is that size, the earliest drawn of all. Measured on the laptop
+// (2026-11-12, docs/design/beta8/booth.md): SFV's frame draws the scene's
+// depth first (cleared to 0, reversed-Z), then a fighters-only target (UE4's
+// custom depth), the shadow map (R16, gone when no fighter casts one) and
+// the HUD's stencil targets last; draw counts change with what is on screen
+// (the HUD's can pass the scene's once the fighters are away), the order
+// does not.
 int ChooseDepthTarget(const std::vector<DepthCandidate>& candidates, const DepthChoice& choice, int backWidth, int backHeight);
 
 // Pure. `{"targets":[...]}` for DepthReport and the depth sidecar.
