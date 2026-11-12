@@ -73,7 +73,7 @@ enum class Verb { Hold, Run, Play, Scale, Grab, Depth, Hud, HudLog, Leave, HudHi
 //   Depth  nothing
 //   Hud    method, number, text (optional)
 //   HudLog on
-//   Leave  nothing
+//   Leave  on (`leave still`: the battle stands still until the menu comes)
 //   HudHide on (the HUD hidden for every grab from now on, or shown again)
 //   Hide   side (bit 0 P1, bit 1 P2: the fighters hidden; 0 shows both)
 struct Command {
@@ -132,6 +132,7 @@ private:
 	int playStart_ = 0;        // the fight frame its first step plays on
 	bool leaveWanted_ = false; // `booth leave`: the battle stands still until the menu replaces it
 	bool leaving_ = false;     // LeaveBattle took
+	bool leaveStill_ = false;  // `booth leave still`: no update after the leave (else the battle runs on, nobody pressing)
 };
 
 } // namespace sfve::mod

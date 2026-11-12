@@ -144,6 +144,9 @@ TEST_CASE("booth commands as the protocol writes them")
 	CHECK(c->verb == booth::Verb::Depth);
 	REQUIRE((c = Parse("leave")));
 	CHECK(c->verb == booth::Verb::Leave);
+	CHECK_FALSE(c->on);
+	REQUIRE((c = Parse("leave still")));
+	CHECK(c->on);
 	REQUIRE((c = Parse("hudlog on")));
 	CHECK(c->verb == booth::Verb::HudLog);
 	CHECK(c->on);

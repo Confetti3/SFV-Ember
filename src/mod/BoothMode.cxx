@@ -257,7 +257,14 @@ std::optional<Command> ParseCommand(std::string_view args, std::string& error)
 		c.on = state == "on";
 		return c;
 	}
-	if (verb == "leave") return none(Verb::Leave);
+	if (verb == "leave") {
+		// "leave still": the battle stands still until the menu replaces it, as before.
+		const std::string_view how = NextWord(rest);
+		if ((!how.empty() && how != "still") || !OnlySpaces(rest)) return error = "usage: booth leave [still]", std::nullopt;
+		c.verb = Verb::Leave;
+		c.on = how == "still";
+		return c;
+	}
 	if (verb == "hide") {
 		const std::optional<int> p1 = Integer(NextWord(rest), 0, 1);
 		const std::optional<int> p2 = Integer(NextWord(rest), 0, 1);
@@ -371,11 +378,11 @@ void BoothMode::NewBattle(SfvAdapter& adapter)
 void BoothMode::Frame(SfvAdapter& adapter)
 {
 	FrameInputs inputs;
+	bool runOn = false;
 	{
 		std::lock_guard lock(mutex_);
 		flow_ = adapter.FlowState();
 		if (leaveWanted_) {
-			// The battle stands still until the main menu replaces it.
 			held_ = true;
 			if (!leaving_) {
 				ForgetFighterScale();
@@ -384,8 +391,16 @@ void BoothMode::Frame(SfvAdapter& adapter)
 				leaving_ = LeaveBattle();
 				if (!leaving_) Log("booth: could not leave the battle yet (no scene manager); asking again next frame");
 			}
-			return;
+			// Until the main menu replaces it the battle runs on as the game's own
+			// Exit leaves it running (nobody pressing anything): whatever the
+			// battle does on its way out is done. `leave still` stands still.
+			runOn = !leaveStill_;
 		}
+	}
+	if (runOn) adapter.RunOriginal(true);
+	{
+		std::lock_guard lock(mutex_);
+		if (leaveWanted_) return;
 		if (fightFrame_ < 0 && flow_ == sfv::flow::kFight) {
 			fightFrame_ = 0;
 			Log("booth: battle %llu fights", (unsigned long long)battle_);
@@ -451,6 +466,7 @@ std::string BoothMode::Command(const std::string& args)
 		std::lock_guard lock(mutex_);
 		if (!InBattle()) return "error no battle";
 		leaveWanted_ = true;
+		leaveStill_ = c.on;
 		return "ok";
 	}
 	case booth::Verb::Scale: {
