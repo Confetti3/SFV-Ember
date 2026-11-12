@@ -113,20 +113,23 @@ add_library(sfve_ember STATIC
     src/ember/SfvFrameMeter.cxx
     src/ember/SfvGame.cxx
     src/ember/SfvHud.cxx
+    src/ember/SfvLoadoutNotes.cxx
     src/ember/SfvLoadoutText.cxx
     src/ember/SfvMeterSample.cxx
     src/ember/SfvPick.cxx
     src/ember/SfvPickPreview.cxx
-    src/ember/SfvPickSpace.cxx
     src/ember/SfvPictureSpec.cxx
+    src/ember/SfvRandomFighter.cxx
     src/ember/SfvReplays.cxx
     src/ember/SfvRoomBuild.cxx
+    src/ember/SfvSelectGrid.cxx
     src/ember/SfvSelection.cxx
     src/ember/SfvSelectionScreen.cxx
     src/ember/SfvShell.cxx
     src/ember/SfvSwatchStrip.cxx
     src/ember/SfvTraining.cxx
     src/ember/SfvVerification.cxx
+    src/overlay/FrameGrab.cxx
     src/overlay/Overlay.cxx
     src/overlay/TextureUploaderD3D11.cxx)
 # SFV Ember's source revision, which a desync's report names
@@ -155,49 +158,116 @@ target_include_directories(sfve_product PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src")
 # (The library's own cmake/sf4e_locales.cmake already re-runs the configure
 # when locales.json changes; naming it here too makes ninja refuse it.)
 set(sfve_locale_registry "${SFVE_EMBER_SOURCE_ROOT}/locales/locales.json")
-file(READ "${sfve_locale_registry}" sfve_locale_json)
-string(JSON sfve_locale_count LENGTH "${sfve_locale_json}" locales)
-math(EXPR sfve_locale_last "${sfve_locale_count} - 1")
-set(sfve_locale_texts "")
-set(sfve_locale_rows "")
-foreach(index RANGE ${sfve_locale_last})
-    string(JSON tag GET "${sfve_locale_json}" locales ${index} tag)
-    set(catalog "${CMAKE_CURRENT_SOURCE_DIR}/locales/${tag}.po")
-    if(NOT EXISTS "${catalog}")
-        message(FATAL_ERROR "SFV Ember has no catalog for ${tag}, a language the Ember library declares: add locales/${tag}.po")
-    endif()
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${catalog}")
-    file(READ "${catalog}" text)
-    # A checkout may give the file CRLF line ends.
-    string(REPLACE "\r\n" "\n" text "${text}")
-    # The text goes into a raw literal through file(GENERATE): one that ends
-    # the literal or reads as a generator expression would change it.
-    if(text MATCHES "\\)po\"" OR text MATCHES "\\$<")
-        message(FATAL_ERROR "locales/${tag}.po holds )po\" or $<, which the embedded catalog cannot carry")
-    endif()
-    # One raw literal per entry, concatenated: MSVC takes at most about 16 KB
-    # in one literal, which a whole Cyrillic or CJK catalog can pass.
-    string(REPLACE "\n\nmsgid " "\n\n)po\"\n    R\"po(msgid " text "${text}")
-    string(MAKE_C_IDENTIFIER "${tag}" name)
-    string(APPEND sfve_locale_texts "const char kOverlay_${name}[] = R\"po(${text})po\";\n")
-    string(APPEND sfve_locale_rows "    {\"${tag}\", kOverlay_${name}},\n")
-endforeach()
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/locales/SfvLocaleOverlays.inc" CONTENT
-    "// Generated from locales/*.po by CMakeLists.txt (sfve_product).\n${sfve_locale_texts}\nconst ember::LocaleOverlay LocaleOverlays[] = {\n${sfve_locale_rows}    {nullptr, nullptr}};\n")
+# Embeds one catalog per language the library declares, from
+# <directory>/<tag>.po, as raw strings, and writes <output>, an include file for
+# the one target that uses it: `const char <text_prefix><tag as an identifier>[]`
+# for each, then `<table_declaration>[] = { {"<tag>", <text>}, ...,
+# {nullptr, nullptr}};`. A language without a catalog stops the configure
+# (<label> names the folder in the message). With <chunked> a language's text
+# is not one literal but `const char* const <text_prefix><tag>[] = {"entry",
+# ..., nullptr};`, and the table's second member is a `const char* const*`:
+# MSVC takes at most about 64 KB in one concatenated literal, which 180
+# Cyrillic notes can pass. Called once for SFV Ember's own words (locales/) and
+# once for the loadout notes (locales/loadout/).
+function(sfve_embed_locales directory label output text_prefix table_declaration chunked)
+    file(READ "${sfve_locale_registry}" sfve_locale_json)
+    string(JSON sfve_locale_count LENGTH "${sfve_locale_json}" locales)
+    math(EXPR sfve_locale_last "${sfve_locale_count} - 1")
+    set(sfve_locale_texts "")
+    set(sfve_locale_rows "")
+    foreach(index RANGE ${sfve_locale_last})
+        string(JSON tag GET "${sfve_locale_json}" locales ${index} tag)
+        set(catalog "${directory}/${tag}.po")
+        if(NOT EXISTS "${catalog}")
+            message(FATAL_ERROR "SFV Ember has no catalog for ${tag}, a language the Ember library declares: add ${label}/${tag}.po")
+        endif()
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${catalog}")
+        file(READ "${catalog}" text)
+        # A checkout may give the file CRLF line ends.
+        string(REPLACE "\r\n" "\n" text "${text}")
+        # The text goes into a raw literal through file(GENERATE): one that ends
+        # the literal or reads as a generator expression would change it.
+        if(text MATCHES "\\)po\"" OR text MATCHES "\\$<")
+            message(FATAL_ERROR "${label}/${tag}.po holds )po\" or $<, which the embedded catalog cannot carry")
+        endif()
+        # One raw literal per entry, concatenated: MSVC takes at most about 16 KB
+        # in one literal, which a whole Cyrillic or CJK catalog can pass. An
+        # entry ends at a blank line (a comment may come before its msgid).
+        string(MAKE_C_IDENTIFIER "${tag}" name)
+        if(chunked)
+            string(REPLACE "\n\n" "\n\n)po\",\n    R\"po(" text "${text}")
+            string(APPEND sfve_locale_texts "const char* const ${text_prefix}${name}[] = {\n    R\"po(${text})po\",\n    nullptr};\n")
+        else()
+            string(REPLACE "\n\n" "\n\n)po\"\n    R\"po(" text "${text}")
+            string(APPEND sfve_locale_texts "const char ${text_prefix}${name}[] = R\"po(${text})po\";\n")
+        endif()
+        string(APPEND sfve_locale_rows "    {\"${tag}\", ${text_prefix}${name}},\n")
+    endforeach()
+    file(GENERATE OUTPUT "${output}" CONTENT
+        "// Generated from ${label}/*.po by CMakeLists.txt.\n${sfve_locale_texts}\n${table_declaration}[] = {\n${sfve_locale_rows}    {nullptr, nullptr}};\n")
+endfunction()
+sfve_embed_locales("${CMAKE_CURRENT_SOURCE_DIR}/locales" "locales"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/locales/SfvLocaleOverlays.inc" "kOverlay_"
+    "const ember::LocaleOverlay LocaleOverlays" OFF)
 target_include_directories(sfve_product PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/locales")
-unset(text)
-unset(tag)
-unset(name)
-unset(catalog)
-unset(index)
+# The loadout notes (locales/loadout/<tag>.po, src/ember/SfvLoadoutNotes.cxx):
+# the same languages, one catalog each, embedded for the pick screen's cards.
+# The table's element type, EmbeddedCatalog {const char* tag; const char* const*
+# parts;} (the parts end with nullptr), is declared by the file that includes the
+# generated SfvLoadoutCatalogs.inc.
+sfve_embed_locales("${CMAKE_CURRENT_SOURCE_DIR}/locales/loadout" "locales/loadout"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/loadout/SfvLoadoutCatalogs.inc" "kLoadout_"
+    "const EmbeddedCatalog LoadoutCatalogs" ON)
+target_include_directories(sfve_ember PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/loadout")
+
+# A data file embedded as the bytes of one NUL-ended text: in <output>,
+# <name_space>::<symbol> is a `const char* const` to it, constant-initialized
+# (as the room host's pick space below). ASCII only, which JSON data is: a byte
+# above 0x7F would narrow in the array's initializer.
+function(sfve_embed_text_file source output name_space symbol)
+    if(NOT EXISTS "${source}")
+        message(FATAL_ERROR "${source} is missing")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")
+    file(READ "${source}" bytes HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," bytes "${bytes}")
+    if(bytes MATCHES "0x[89a-f][0-9a-f],")
+        message(FATAL_ERROR "${source} holds a byte above 0x7F; the embedded copy is ASCII only")
+    endif()
+    file(CONFIGURE OUTPUT "${output}" CONTENT
+"// Generated from ${source} by CMakeLists.txt.
+namespace ${name_space} {
+static const char kBytes[] = {${bytes}0};
+extern const char* const ${symbol} = kBytes;
+}
+")
+endfunction()
+# The selection files' path rules (src/ember/SfvSelectionAssetPath.cxx) over
+# the pick space the game exported (data/pick-space.json, embedded as bytes), in
+# a library of its own so the mod, the launcher, the updater and the package
+# check all judge a path alike. It also holds SfvPickSpace.cxx, which reads
+# the embedded pick space.
+sfve_embed_text_file("${CMAKE_CURRENT_SOURCE_DIR}/data/pick-space.json"
+    "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedPickSpace.cxx" "sfve::assets" kEmbeddedPickSpaceJson)
+add_library(sfve_selection_assets STATIC
+    src/ember/SfvPickSpace.cxx
+    src/ember/SfvSelectionAssetPath.cxx
+    "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedPickSpace.cxx")
+target_include_directories(sfve_selection_assets PUBLIC src "${SFVE_EMBER_SOURCE_ROOT}/src")
+target_link_libraries(sfve_selection_assets PUBLIC ember_neutral_x64 xxHash::xxhash nlohmann_json::nlohmann_json)
+# The select grid (data/select-grid.json, src/ember/SfvSelectGrid.cxx), embedded
+# the same way.
+sfve_embed_text_file("${CMAKE_CURRENT_SOURCE_DIR}/data/select-grid.json"
+    "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedSelectGrid.cxx" "sfve::grid" kEmbeddedSelectGridJson)
+target_sources(sfve_ember PRIVATE "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedSelectGrid.cxx")
 sf4e_embed_brand_mark(sfve_product "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
-target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
+target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product sfve_selection_assets ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
 
 # The mod's code the SFV catalog and adapter tests reach without the game,
 # compiled once for the three test programs that link it.
 add_library(sfve_ember_test_mod OBJECT
     src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/EntitlementGrant.cxx src/mod/FighterReader.cxx
-    src/mod/GameArt.cxx src/mod/GameInput.cxx
+    src/mod/BoothMode.cxx src/mod/GameArt.cxx src/mod/GameInput.cxx
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx src/mod/TinyFighters.cxx
     src/mod/ModConfig.cxx src/mod/PadLayer.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx
@@ -220,6 +290,10 @@ add_executable(sfve_ember_tests
     tests/ProductIdentityTests.cxx
     tests/GameLocatorTests.cxx
     tests/SelectionArtTests.cxx
+    tests/SelectionAssetPathTests.cxx
+    tests/SfvSelectGridTests.cxx
+    tests/LoadoutNotesTests.cxx
+    tests/PhotoBoothTests.cxx
     tests/FaceCropTests.cxx
     tests/SfvPictureSpecTests.cxx
     tests/SwatchStripTests.cxx
@@ -256,6 +330,12 @@ target_compile_definitions(sfve_ember_tests PRIVATE SFVE_EMBER_SOURCE_ROOT="${sf
 # RoomBuildTests reads the room host's pick space from this checkout.
 file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/data/pick-space.json" sfve_pick_space_forward)
 target_compile_definitions(sfve_ember_tests PRIVATE SFVE_PICK_SPACE_PATH="${sfve_pick_space_forward}")
+# SfvSelectGridTests reads the select grid, and LoadoutNotesTests the loadout
+# catalogs, from this checkout.
+file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/data/select-grid.json" sfve_select_grid_forward)
+file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/locales/loadout" sfve_loadout_locales_forward)
+target_compile_definitions(sfve_ember_tests PRIVATE SFVE_SELECT_GRID_PATH="${sfve_select_grid_forward}"
+    SFVE_LOADOUT_LOCALES_DIR="${sfve_loadout_locales_forward}")
 
 # The catalog's life (empty, filled once, sealed) changes the process for good: a program of its own.
 add_executable(sfve_catalog_lifecycle_tests tests/main.cxx tests/CatalogLifecycleTests.cxx)
@@ -297,6 +377,7 @@ add_library(sfv_ember SHARED
     src/mod/GameThread.cxx
     src/mod/GameHooks.cxx
     src/mod/BattleDriver.cxx
+    src/mod/BoothMode.cxx
     src/mod/SyncTestMode.cxx
     src/mod/NetplayMode.cxx
     src/mod/GameInput.cxx
@@ -353,13 +434,13 @@ target_include_directories(Launcher PRIVATE src "${SFVE_EMBER_SOURCE_ROOT}/src" 
 target_compile_definitions(Launcher PRIVATE UNICODE _UNICODE)
 # Its wWinMain is in ember_launcher_x64, where the linker does not look for an entry point.
 target_link_options(Launcher PRIVATE "/ENTRY:wWinMainCRTStartup")
-target_link_libraries(Launcher PRIVATE sfve_product ember_launcher_x64 CLI11::CLI11 "${DETOURS_LIBRARY}")
+target_link_libraries(Launcher PRIVATE sfve_product sfve_selection_assets ember_launcher_x64 CLI11::CLI11 "${DETOURS_LIBRARY}")
 sfve_program_resources(Launcher "SFV Ember" "Launcher.exe")
 # A Windows program, as SF4 Ember's: its progress window is all a player sees.
 add_executable(Updater WIN32 src/launcher/LauncherSelection.cxx)
 target_include_directories(Updater PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/src/common")
 target_link_options(Updater PRIVATE "/ENTRY:wmainCRTStartup")
-target_link_libraries(Updater PRIVATE sfve_product ember_updater_x64)
+target_link_libraries(Updater PRIVATE sfve_product sfve_selection_assets ember_updater_x64)
 sfve_program_resources(Updater "SFV Ember Updater" "Updater.exe")
 # Discord's companion (ember-discord.exe, the library's src/discord): the
 # player's activity and invitations. SFV Ember uses SF4 Ember's Discord
@@ -406,7 +487,7 @@ endif()
 add_executable(sfve_package_check tests/package_check.cxx src/launcher/LauncherSelection.cxx)
 target_include_directories(sfve_package_check PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/src/common")
 target_link_options(sfve_package_check PRIVATE "/ENTRY:wmainCRTStartup")
-target_link_libraries(sfve_package_check PRIVATE sfve_product ember_neutral_x64 nlohmann_json::nlohmann_json bcrypt shell32)
+target_link_libraries(sfve_package_check PRIVATE sfve_product sfve_selection_assets ember_neutral_x64 nlohmann_json::nlohmann_json bcrypt shell32)
 
 # Proxy the game loads by name from its own folder; it forwards the real
 # exports and loads sfv_ember.dll. Which DLL to proxy is decided from the
