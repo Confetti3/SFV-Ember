@@ -88,6 +88,22 @@ def seek_pick(index: int, focus: str | tuple[str, ...], moves: list[str], limit:
         raise lib.SfveError(f"copy {index}: could not reach {focus} on the pick screen (at {pick_place(index)['focus']})")
 
 
+# Runs of presses that walk the whole board from any tile: along the row
+# both ways, then the same on the other row.
+BOARD_RUNS = (["LEFT"] * 13, ["RIGHT"] * 26, ["DOWN"] + ["LEFT"] * 13, ["RIGHT"] * 26, ["UP"] + ["LEFT"] * 13)
+
+
+def seek_board(index: int, what: str, found) -> None:
+    """Walks the board (BOARD_RUNS) until `found(pick status)` holds."""
+    for run in BOARD_RUNS:
+        for move in run:
+            if found(pick_place(index)):
+                return
+            press(index, move)
+    if not found(pick_place(index)):
+        raise lib.SfveError(f"copy {index}: could not reach {what} on the board (at {pick_place(index)['focus']})")
+
+
 def seek(index: int, focus: str | tuple[str, ...], moves: list[str], limit: int = 12) -> None:
     """Presses `moves` in turn, round and round, until the focus is `focus`
     (or any of them)."""
@@ -198,8 +214,11 @@ def pick(index: int, fighter_steps: int, shots: Path | None, name: str | None) -
     press(index, "X")
     expect_pick(index, "home")
     before = pick_place(index)["stored"]
+    # Right along the row, across the Random tile (Random is not this pick).
     for _ in range(fighter_steps):
         press(index, "RIGHT")
+        if pick_place(index)["focus"] == "random-fighter":
+            press(index, "RIGHT")
     if not pick_place(index)["focus"].startswith("fighter-"):
         raise lib.SfveError(f"copy {index}: the board's focus is {pick_place(index)['focus']}, not a fighter")
     if name:
@@ -211,6 +230,8 @@ def pick(index: int, fighter_steps: int, shots: Path | None, name: str | None) -
         if shell(index)["screen"] != "selection":
             break
         press(index, "RIGHT")
+        if pick_place(index)["focus"] == "random-fighter":
+            press(index, "RIGHT")
     expect(index, "room")
     print(f"copy {index}: pick {before} -> {pick_place(index)['stored']}")
 
@@ -234,7 +255,7 @@ def not_owned_shots(shots: Path | None) -> None:
         return
     press(0, "X")
     expect_pick(0, "home")
-    seek_pick(0, "fighter-2", ["LEFT", "UP"], 6)
+    seek_board(0, "CNL's tile", lambda p: p.get("code") == "CNL")
     time.sleep(0.5)
     shot(shots, "4b-not-owned-fighter", 0)
     press(0, "B")  # Back from the board: the room
@@ -269,7 +290,7 @@ def select_shots(shots: Path | None) -> None:
     expect_pick(0, "home")
     time.sleep(1)
     shot(shots, "4c-board", 0)
-    seek_pick(0, "random-fighter", ["DOWN", "RIGHT"], 60)
+    seek_board(0, "the Random tile", lambda p: p["focus"] == "random-fighter")
     time.sleep(0.5)
     shot(shots, "4c-board-random", 0)
     press(0, "B")
