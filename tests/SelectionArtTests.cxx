@@ -1,6 +1,6 @@
 // SFV's pick labels and pictures (SfvSelection.cxx, SfvArt), checked without
 // the game: the labels are the catalog's names, and the pictures wait for the
-// game's textures or report missing.
+// game's textures or the package's files, or report missing.
 
 #include <doctest/doctest.h>
 
@@ -9,6 +9,7 @@
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvPictureSpec.hxx"
+#include "ember/SfvSelection.hxx"
 
 #include "common/Localization.hxx"
 #include "ui/SelectionArt.hxx"
@@ -75,10 +76,46 @@ TEST_CASE("the game's pictures are its fighters' faces and its stages', and the 
 	// Random has the game's own Random stage picture (section 43).
 	CHECK_FALSE(art.Stage(sfve::picks::kRandomStage).missing);
 	CHECK(art.Stage(sfve::picks::kRandomStage).texture == 0);
-	// The game has no picture of a fighter in a costume or colour.
-	CHECK(art.Character(0, 0, 0).missing);
-	CHECK(art.Appearance(0, 0, 0).missing);
-	CHECK(art.Ultra(0, 0).missing);
+	// A fighter in a costume and colour is the package's captured cutout: it
+	// waits for the decoder like any other picture (no file is read here)
+	// instead of reporting missing, thumbnail and large alike, and a look the
+	// fighter lacks asks for his first costume's cutout instead.
+	CHECK_FALSE(art.Character(0, 0, 0).missing);
+	CHECK(art.Character(0, 0, 0).texture == 0);
+	CHECK_FALSE(art.Character(0, 4, 100, true).missing);
+	CHECK_FALSE(art.Character(0, 3, 9).missing);
+	CHECK_FALSE(art.Character(0, -1, -1).missing);
+	CHECK_FALSE(art.Character(3, 3, 5).missing);
+	CHECK(art.Character(5, 0, 0).missing); // not a fighter of the catalog
+	CHECK(art.Character(-1, 0, 0).missing);
+	// Appearance is the exact look and nothing else: a costume or colour the
+	// catalog lacks is missing at once.
+	CHECK_FALSE(art.Appearance(0, 0, 0).missing);
+	CHECK_FALSE(art.Appearance(0, 4, 101).missing);
+	CHECK(art.Appearance(0, 0, 7).missing);  // RYU's costume 0 has no colour 7
+	CHECK(art.Appearance(0, 2, 0).missing);  // and no costume 2
+	CHECK(art.Appearance(0, 4, 2).missing);
+	CHECK(art.Appearance(5, 0, 0).missing);
+	// A loadout picture is asked with part * 2 + choice, and only for a
+	// choice the fighter has (RYU two of each, CMY one V-Skill and two
+	// V-Triggers).
+	for (int number = 0; number < 4; number++) CHECK_FALSE(art.Ultra(0, number).missing);
+	CHECK(art.Ultra(0, 0).texture == 0);
+	CHECK(art.Ultra(0, 4).missing);
+	CHECK(art.Ultra(0, -1).missing);
+	CHECK_FALSE(art.Ultra(3, 0).missing);
+	CHECK(art.Ultra(3, 1).missing); // CMY's one V-Skill
+	CHECK_FALSE(art.Ultra(3, 2).missing);
+	CHECK_FALSE(art.Ultra(3, 3).missing);
+	CHECK(art.Ultra(5, 0).missing);
+	using sfve::picks::LoadoutPart;
+	CHECK_FALSE(LoadoutPicture(&art, 0, LoadoutPart::VSkill, 1).missing);
+	CHECK_FALSE(LoadoutPicture(&art, 1, LoadoutPart::VSkill, 1).missing);
+	CHECK(LoadoutPicture(&art, 1, LoadoutPart::VTrigger, 1).missing); // CNL's one V-Trigger
+	CHECK(LoadoutPicture(&art, 0, LoadoutPart::VTrigger, 2).missing);
+	CHECK(LoadoutPicture(&art, 0, LoadoutPart::VTrigger, -1).missing);
+	CHECK(LoadoutPicture(nullptr, 0, LoadoutPart::VSkill, 0).missing);
+	CHECK(LoadoutPictureNumber(LoadoutPart::VTrigger, 1) == 3);
 	// A class is one of SFV's league icons, which also waits for the game; a
 	// name that is not one of SFV Ember's ranks (USF4's own emblems among
 	// them) loads nothing and reports missing.
