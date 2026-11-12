@@ -239,7 +239,7 @@ msgstr "時間制の強化。毒の雲が近くの敵を毒にし、溜めなし
 
 #. V-Trigger II: KORYO DOKUDA
 msgid "FAN.vt2"
-msgstr "時間制の強化。毒の玉と毒の罠を強化する。"
+msgstr "時間制の強化。毒の玉と毒のトラップを強化する。"
 
 # LAR = Laura
 #. V-Skill I: VOLTY LINE
@@ -652,7 +652,7 @@ msgstr "時間制の強化。警棒を振る必殺技 Tactical Weapon を解放�
 # Z36 = Gill
 #. V-Skill I: DIVINE COMET
 msgid "Z36.vs1"
-msgstr "3つの異なる軌道で彗星の飛び道具を落とす。Vトリガーごとに、炎か氷に変わる。"
+msgstr "3つの異なる軌道で流れ星の飛び道具を落とす。Vトリガーごとに、炎か氷に変わる。"
 
 #. V-Skill II: BLOCKING
 msgid "Z36.vs2"
