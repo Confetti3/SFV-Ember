@@ -102,11 +102,18 @@ The adapter (`SfvAdapter`) therefore:
 2. Adds what a battle tick changes that the game's snapshot leaves out: the
    battle frame's counters, the input unit's frame counters and the global
    random generator, plus everything a round's end changes (below).
-3. Restores but does not hash the presentation regions (camera and pawn
-   animation clocks, which follow how ticks fall into rendered frames) and
-   the replay unit's tick counters (they follow the replay recorder, which
-   stops at a round's end outside the snapshot). Pointer words are hashed as
-   zero.
+3. Restores but does not hash the presentation regions (the camera's runs,
+   whose values follow how ticks fall into rendered frames, the fighters'
+   visual and material parts and the projectiles' visual parts: kRunRules)
+   and the replay unit's tick counters (they follow the replay recorder,
+   which stops at a round's end outside the snapshot). Pointer words are
+   hashed as zero. The Unreal pawn and view target actors are not in the
+   layout, their animation clocks included: the battle's camera code (rva
+   0x318FB0, 0x319460 and others, through rva 0x2F9E70) writes the
+   restored camera's view into the view target each update, and the pawn
+   is reached only through the engine and its Blueprints (KiwiGame's
+   GetBattlePawn, rva 0xD137A0). Both are presentation, as the camera is
+   (docs/design/beta8/determinism.md).
 4. Runs one GGPO frame as exactly one original battle-frame update with the
    game's extra-tick (its own replay) count forced to zero, both players'
    inputs written into the per-tick input record after button config is
