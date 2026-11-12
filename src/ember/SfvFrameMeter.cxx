@@ -1,5 +1,6 @@
 #include "ember/SfvFrameMeter.hxx"
 
+#include "ember/SfvHitboxes.hxx"
 #include "ember/SfvMeterSample.hxx"
 #include "ember/SfvTraining.hxx"
 #include "mod/FighterReader.hxx"
@@ -109,10 +110,14 @@ void Watch(mod::SfvAdapter& adapter)
 		if (s_followed) {
 			s_followed.reset();
 			Show(nullptr);
+			ForgetSfvHitboxes();
 		}
 		return;
 	}
-	if (!s_followed || s_followed->battle != adapter.Battle()) s_followed = Follow(adapter);
+	if (!s_followed || s_followed->battle != adapter.Battle()) {
+		s_followed = Follow(adapter);
+		ForgetSfvHitboxes();
+	}
 	Followed& followed = *s_followed;
 	const uint32_t ticks = adapter.TicksInLastUpdate();
 	// Paused: no tick, nothing to measure.
@@ -125,6 +130,9 @@ void Watch(mod::SfvAdapter& adapter)
 	followed.feed.Feed(followed.meter, fighters, ticks);
 	followed.log.Note(followed.meter.View(), fighters);
 	Show(std::make_shared<const training::MeterView>(followed.meter.View()));
+	// The hitbox viewer reads the same battle's boxes after the same tick
+	// (one watcher: mod::WatchBattleFrames).
+	ReadSfvHitboxes(followed.reader);
 }
 
 } // namespace

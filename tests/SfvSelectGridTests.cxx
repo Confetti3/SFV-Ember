@@ -82,6 +82,10 @@ TEST_CASE("the shipped table places every fighter of the pick space once, each i
 	REQUIRE(grid.random.has_value());
 	CHECK(cells.insert({grid.random->column, grid.random->row}).second);
 	CHECK(CodeAt(grid, *grid.random) == std::string(kRandomCellCode));
+	// ELEVEN has the last cell of the second row, a cell of its own.
+	REQUIRE(grid.eleven.has_value());
+	CHECK(cells.insert({grid.eleven->column, grid.eleven->row}).second);
+	CHECK(CodeAt(grid, *grid.eleven) == std::string(kElevenCellCode));
 	for (const sfve::picks::Fighter& fighter : space.fighters) {
 		CAPTURE(fighter.code);
 		REQUIRE(CellOf(grid, fighter.code).has_value());
@@ -102,6 +106,7 @@ TEST_CASE("the shipped table places every fighter of the pick space once, each i
 		CHECK(embedded.fighters[i].cell == grid.fighters[i].cell);
 	}
 	CHECK(embedded.random == grid.random);
+	CHECK(embedded.eleven == grid.eleven);
 }
 
 TEST_CASE("a table's cells, rows and row offsets read back as written")
@@ -191,6 +196,31 @@ TEST_CASE("a table that breaks a rule does not parse, and the grid stays as it w
 	Refusal(R"({"columns": 2, "fighters": [], "random": {"code": "RND", "column": 0, "row": 0}})");
 }
 
+TEST_CASE("ELEVEN's cell is read, shares no cell, counts as a row and is stepped over by an appended fighter")
+{
+	const SelectGrid grid = Parsed(R"({"columns": 3, "fighters": [{"code": "RYU", "column": 0, "row": 0}],
+		"random": {"column": 1, "row": 0}, "eleven": {"column": 2, "row": 1}})");
+	REQUIRE(grid.eleven.has_value());
+	CHECK(*grid.eleven == Cell{2, 1});
+	CHECK(CodeAt(grid, {2, 1}) == std::string(kElevenCellCode));
+	CHECK(CodeAt(grid, {1, 0}) == std::string(kRandomCellCode));
+	CHECK(RowCount(grid) == 2);
+	CHECK_FALSE(CellOf(grid, std::string(kElevenCellCode)).has_value());
+	// Not offered as a fighter's cell: the first free cell after the last one
+	// taken (ELEVEN's, in row order) is the next row's start.
+	SelectGrid fitted = grid;
+	CHECK(FitToRoster(fitted, {"RYU", "KEN"}) == std::vector<std::string>{"KEN"});
+	CHECK(CellOf(fitted, "KEN") == Cell{0, 2});
+	// A table with no ELEVEN has none.
+	CHECK_FALSE(Parsed(R"({"columns": 2, "fighters": []})").eleven.has_value());
+	// One entry per cell, ELEVEN's among them, and only a cell of the grid.
+	Refusal(R"({"columns": 2, "fighters": [{"code": "RYU", "column": 1, "row": 0}], "eleven": {"column": 1, "row": 0}})");
+	Refusal(R"({"columns": 2, "fighters": [], "random": {"column": 1, "row": 0}, "eleven": {"column": 1, "row": 0}})");
+	Refusal(R"({"columns": 2, "fighters": [], "eleven": {"column": 2, "row": 0}})");
+	Refusal(R"({"columns": 2, "fighters": [], "eleven": {"code": "ELV", "column": 0, "row": 0}})");
+	Refusal(R"({"columns": 2, "fighters": [], "eleven": 5})");
+}
+
 TEST_CASE("the shipped table has the shape of the game's own select screen: two rows split by Random")
 {
 	const SelectGrid grid = Parsed(ReadFile(SFVE_SELECT_GRID_PATH));
@@ -204,7 +234,7 @@ TEST_CASE("the shipped table has the shape of the game's own select screen: two 
 	CHECK(RowOffset(grid, 1) > -.7f);
 	// Each side of Random: 11 on the first row, 12 and 11 on the second
 	// (the game's ELEVEN, last on the right, is not a fighter of ours: its
-	// cell stays empty).
+	// cell is the board's Eleven card, in the table's own `eleven`).
 	int counts[2][2] = {};
 	for (const Entry& entry : grid.fighters) {
 		CAPTURE(entry.code);
@@ -216,7 +246,9 @@ TEST_CASE("the shipped table has the shape of the game's own select screen: two 
 	CHECK(counts[0][1] == 11);
 	CHECK(counts[1][0] == 12);
 	CHECK(counts[1][1] == 11);
-	CHECK(!CodeAt(grid, {23, 1}).has_value());
+	REQUIRE(grid.eleven.has_value());
+	CHECK(*grid.eleven == Cell{23, 1});
+	CHECK(CodeAt(grid, {23, 1}) == std::string(kElevenCellCode));
 	// The tiles beside Random and at the ends, as the game shows them.
 	CHECK(CellOf(grid, "RYU") == Cell{10, 0});
 	CHECK(CellOf(grid, "KEN") == Cell{12, 0});

@@ -207,6 +207,9 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.testTiny = (uint32_t)options.Number(L"sfve_tiny", 0) & 3u;
 	c.socketLog = options.Number(L"sfve_socket_log", 0) != 0;
 	c.replayAnyBuild = options.Number(L"sfve_replay_any_build", 0) != 0;
+	c.rngAudit = options.Number(L"sfve_rng_audit", 0) != 0;
+	wchar_t perturb[96];
+	if (options.Find(L"sfve_start_perturb", perturb, 96)) c.startPerturb = Narrow(perturb);
 	c.practiceGauges = options.Number(L"sfve_practice", 0) != 0;
 	c.distance = (int)options.Number(L"sfve_distance", 7);
 	c.backgroundPlay = options.Number(L"sfve_background", 0) != 0;

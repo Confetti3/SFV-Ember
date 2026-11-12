@@ -224,6 +224,22 @@ int PartChoices(std::int64_t fighter, picks::LoadoutPart part);
 std::string MoveName(std::int64_t fighter, picks::LoadoutPart part, int number);
 std::vector<int> LoadoutIndices(std::int64_t fighter);
 
+// The look the game's own ELEVEN wears, by the numbers the spec lists for it
+// (GameContent's ContentLists::eleven): its first costume's number and that
+// costume's first colour. Eleven plays another fighter, so the numbers are
+// asked of each fighter's own costumes and colours (SfvEleven's ElevenPick).
+// None before FillCatalog, or where the spec has no row for ELEVEN with a
+// costume and a colour. Never part of the pick space or the build id.
+struct ElevenSpec {
+	int costume = 0;
+	int colour = 0;
+	bool operator==(const ElevenSpec&) const = default;
+};
+std::optional<ElevenSpec> ElevenSpecOf();
+// What the board and the summaries call Eleven: the game's own name for it
+// (the fighter table's, in the game's language), else "ELEVEN".
+std::string ElevenName();
+
 // The pick as a launch names it (VersusLaunch's FighterPick): the fighter's
 // code, the costume and colour numbers, the loadout, and the voice the pick
 // carries (picks::VoiceIn), or, where it carries none, this copy's options
@@ -259,6 +275,10 @@ struct RoomMatch {
 	// room's rule): only then is a pick's Tiny drawn, so a public room's
 	// battle is always normal size whatever a pick carries.
 	bool tinyAllowed = false;
+	// The room's Skip winner scenes rule (room::Snapshot::skipScenes, on by
+	// default, any room's): the fighters' copies ask for the decided match's
+	// scenes to be skipped on their own (mod::intro_skip::Request).
+	bool skipScenes = true;
 };
 
 // Why this copy cannot launch a room's match: the reason the runtime words

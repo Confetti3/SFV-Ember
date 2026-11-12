@@ -40,6 +40,7 @@
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
 #include "mod/ModConfig.hxx"
+#include "mod/RngAudit.hxx"
 #include "mod/SocketReads.hxx"
 #include "mod/TinyFighters.hxx"
 #include "mod/MultiInstance.hxx"
@@ -304,6 +305,9 @@ extern "C" int SfveStart(int beforeGameCode)
 	// of the same state shows, on replayed frames too (docs/design/beta8/
 	// desync.md); -sfve_socket_log (development) logs every one.
 	InstallSocketReads(base, Config().socketLog);
+	// Development: every random draw a battle update makes, placed against
+	// the rollback state (RngAudit; docs/design/beta8/determinism.md).
+	if (Config().rngAudit) InstallRngAudit(base);
 	// The host for Ember's interface (its shell is plugged in below, with
 	// rooms on); the game's content lists, on the pipe. Its swap chain hooks
 	// are one set, so without the overlay none of them is live and the pads

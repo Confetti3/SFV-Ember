@@ -94,6 +94,11 @@ struct Header {
 	int roundSeconds = 0;
 	int timeFrames = 0;   // the round clock as launched, in frames
 	uint32_t seed = 0;    // the room's match seed: the session's random generators
+	// P1's peers' hash of the battle's start state, as the copies agreed on it
+	// before frame 0 (core/StartAgreement.hxx): a playback that starts from
+	// another state says so. Written only when known, as 16 hex digits; 0 for
+	// a header without it.
+	uint64_t startHash = 0;
 	int inputDelay = -1;  // the delay this copy played at (watchers: the fighters'); for the record
 	std::vector<Game> games;
 	// The battle went back to the room by its WIN's decision. False for one

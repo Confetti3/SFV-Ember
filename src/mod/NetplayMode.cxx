@@ -1,5 +1,6 @@
 #include "mod/NetplayMode.hxx"
 
+#include "ember/DesyncReporter.hxx"
 #include "ember/EmberHost.hxx"
 #include "ember/RoomCommands.hxx"
 #include "ember/SfvFrameMeter.hxx"
@@ -20,6 +21,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <windows.h>
 
 #include <optional>
 
@@ -84,6 +86,9 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 		else Log("netplay: a replay's battle loaded with no replay to play; it plays offline");
 	}
 	started_ = leaveWanted_ = leaving_ = false;
+	prepared_ = false;
+	EndStartAgreement();
+	startHash_ = 0;
 	exitAsked_ = false;
 	introSkip_ = {};
 	scenes_ = {};
@@ -198,9 +203,13 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	// whatever was sent, but for the request on the skip frames, which are
 	// stepped confirmed.
 	const bool asked = introSkip_.Requested();
+	// The room's Skip winner scenes rule: a fighter's copy of a room battle
+	// asks for the decided match's scenes to be skipped on its own.
+	introSkip_.SetAutoScenes(room_.SkipScenes());
 	const PackedInput local = introSkip_.Next(adapter.FlowState(), LocalInput(adapter, frame), adapter.MatchDecided(), frame);
 	if (!asked && introSkip_.Requested() && scenes_.From() >= 0) {
-		Log("netplay: this copy asks to skip the scenes from frame %d, %d frame(s) into them", frame, scenes_.Shown(frame));
+		Log("netplay: this copy asks to skip the scenes from frame %d, %d frame(s) into them%s", frame, scenes_.Shown(frame),
+			introSkip_.AutoScenes() ? " (the room's Skip winner scenes rule; a press asks no sooner)" : "");
 	}
 
 	// The game's judgement, the same on both copies (it is restored with the
@@ -421,6 +430,7 @@ void NetplayMode::FinishRecording()
 
 void NetplayMode::Leave()
 {
+	EndStartAgreement(); // a battle left while its copies compared start states
 	if (!leaveWanted_) SetLinkedMatchEnd(false);
 	const bool retry = leaveWanted_;
 	leaveWanted_ = true;
@@ -429,6 +439,56 @@ void NetplayMode::Leave()
 }
 
 bool NetplayMode::StartSession(SfvAdapter& adapter)
+{
+	if (!prepared_) {
+		switch (PrepareStart(adapter)) {
+		case Prepared::Waiting: return false;
+		case Prepared::NoSession: started_ = true; return true;
+		case Prepared::Ready: break;
+		}
+	}
+	// Every copy stands still at its start state until they agree on it
+	// (core/StartAgreement.hxx); the battle waits meanwhile.
+	if (startAgreement_ && !AgreeStart(adapter)) return false;
+	started_ = true;
+	RollbackSession::Config& c = pending_.config;
+	const bool practice = pending_.practice;
+	const uint32_t seed = pending_.seed;
+	// A room battle is recorded from its first frame (EMBER_LIBRARY.md
+	// section 26): the session reports each frame it plays to the recorder.
+	// A watched one only with Settings' "Save matches you watch", and never a
+	// Practice room's (its refilling gauges are set outside the frames, and
+	// it reaches no result), as SF4's (UserApp's recordReplay).
+	const bool record = room_.Active() && !replay_ && !practice &&
+		(!room_.Watching() || sf4e::NetplayFacade::GetRuntimeSnapshotShared()->preferences.recordWatched);
+	if (record) {
+		recorder_.Start();
+		recording_ = {};
+		recordingWhole_ = false;
+		c.onFrame = [this](int frame, const RecordedFrame& played) { recorder_.OnFrame(frame, played); };
+		c.onCheckpoint = [this](int frame, uint64_t hash) { recorder_.OnCheckpoint(frame, hash); };
+	}
+	std::string error;
+	const bool started = session_->Start(c, &error);
+	if (!started) Log("netplay: could not start: %s", error.c_str());
+	if (room_.Active() && !replay_) room_.NoteSessionStart(started);
+	if (record) {
+		// The room's names for both sides are known once the start is noted.
+		const int recordedDelay = room_.Watching() ? room_.WatchedDelay() : c.inputDelay;
+		if (!started || !adapter::RecordingHeader((int)room_.LocalSlot(), seed, recordedDelay, &recording_)) {
+			if (started) Log("netplay: the room's match is not known; this battle is not recorded");
+			recorder_.Stop();
+		}
+		// P1's start state, which a playback compares its own with.
+		recording_.startHash = startHash_;
+	}
+	// The results menu would let each player leave the match their own way.
+	// A replay's battle holds its WIN as the room's did.
+	SetLinkedMatchEnd(room_.Active() && session_->Live());
+	return true;
+}
+
+NetplayMode::Prepared NetplayMode::PrepareStart(SfvAdapter& adapter)
 {
 	script_ = input::ScriptedInput(config_.script, config_.player);
 	RollbackSession::Config c;
@@ -452,20 +512,19 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 		delay = 0;
 	} else if (room_.Active()) {
 		switch (room_.SessionConfig(&c, &seed, &delay)) {
-		case adapter::RoomBattle::Start::Waiting: return false;
-		case adapter::RoomBattle::Start::Gone: started_ = true; return true;
+		case adapter::RoomBattle::Start::Waiting: return Prepared::Waiting;
+		case adapter::RoomBattle::Start::Gone: return Prepared::NoSession;
 		case adapter::RoomBattle::Start::Ready: break;
 		}
 	} else if (config_.room) {
 		// A battle of the player's own while rooms are on: it plays offline.
-		started_ = true;
-		return true;
+		return Prepared::NoSession;
 	} else {
 		c.localPlayer = config_.player;
 		c.localPort = config_.port;
 		c.remotePort = config_.peerPort;
 	}
-	started_ = true;
+	prepared_ = true;
 	// At least one frame: a decision held for a confirmed frame (match end)
 	// waits for the other side's input for the next frame, which it has
 	// always sent by then.
@@ -493,36 +552,97 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 	if (practice && !adapter.SetPracticeGauges()) Log("netplay: the Practice match plays with a match's gauges");
 	seed_ = seed;
 	startTime_ = adapter.StartTime();
-	// A room battle is recorded from its first frame (EMBER_LIBRARY.md
-	// section 26): the session reports each frame it plays to the recorder.
-	// A watched one only with Settings' "Save matches you watch", and never a
-	// Practice room's (its refilling gauges are set outside the frames, and
-	// it reaches no result), as SF4's (UserApp's recordReplay).
-	const bool record = room_.Active() && !replay_ && !practice &&
-		(!room_.Watching() || sf4e::NetplayFacade::GetRuntimeSnapshotShared()->preferences.recordWatched);
-	if (record) {
-		recorder_.Start();
-		recording_ = {};
-		recordingWhole_ = false;
-		c.onFrame = [this](int frame, const RecordedFrame& played) { recorder_.OnFrame(frame, played); };
-		c.onCheckpoint = [this](int frame, uint64_t hash) { recorder_.OnCheckpoint(frame, hash); };
+	// A test's difference in this copy's start state (-sfve_start_perturb),
+	// for the agreement below to find and repair.
+	PerturbStart(adapter);
+	pending_ = {c, seed, practice};
+	startHash_ = 0;
+	if (replay_) {
+		// No peer to agree with: the recording says what P1 started from.
+		adapter::NotePlaybackStart(replay_->header.startHash, adapter.Layout().HashLive(HashScope::Peers));
+	} else {
+		BeginStartAgreement(adapter);
 	}
-	std::string error;
-	const bool started = session_->Start(c, &error);
-	if (!started) Log("netplay: could not start: %s", error.c_str());
-	if (room_.Active() && !replay_) room_.NoteSessionStart(started);
-	if (record) {
-		// The room's names for both sides are known once the start is noted.
-		const int recordedDelay = room_.Watching() ? room_.WatchedDelay() : c.inputDelay;
-		if (!started || !adapter::RecordingHeader((int)room_.LocalSlot(), seed, recordedDelay, &recording_)) {
-			if (started) Log("netplay: the room's match is not known; this battle is not recorded");
-			recorder_.Stop();
-		}
+	return Prepared::Ready;
+}
+
+void NetplayMode::BeginStartAgreement(SfvAdapter& adapter)
+{
+	const RollbackSession::Config& c = pending_.config;
+	StartAgreement::Config agreement;
+	agreement.token = pending_.seed;
+	// "game.N" is a place in the game's table, which two processes order
+	// differently; every other region name is its owner's (RegionNames,
+	// SfvLayoutRules) and the same in every process.
+	agreement.stableName = [](const std::string& name) { return name.rfind("game.", 0) != 0; };
+	std::vector<uint16_t> ports{c.remotePort};
+	if (!c.watching && c.localPlayer == 0) {
+		// P1: P2 first, then each watcher it streams to.
+		agreement.role = StartAgreement::Role::Reference;
+		agreement.requiredPeers = 1;
+		for (const RollbackSession::Config::Watcher& w : c.watchers) ports.push_back(w.port);
+	} else {
+		agreement.role = StartAgreement::Role::Follower;
+		// P1 drops a watcher that has not synchronized 5 s after a fighter
+		// has (SpectatorPolicy::SyncDeadlineMs), and serves watchers only a
+		// second after P2 is done: a watcher gives up sooner than a fighter.
+		if (c.watching) agreement.timeLimitMs = 3000;
 	}
-	// The results menu would let each player leave the match their own way.
-	// A replay's battle holds its WIN as the room's did.
-	SetLinkedMatchEnd(room_.Active() && session_->Live());
+	auto channel = std::make_unique<UdpStartChannel>();
+	if (!channel->Open(c.localPort, c.remoteIp, ports)) {
+		Log("netplay: no start state agreement on port %u; the session starts as it is", c.localPort);
+		return;
+	}
+	startChannel_ = std::move(channel);
+	startAgreement_ = std::make_unique<StartAgreement>(adapter, *startChannel_, std::move(agreement));
+	startAgreement_->Begin(GetTickCount64(), ports.size());
+}
+
+bool NetplayMode::AgreeStart(SfvAdapter& adapter)
+{
+	if (!startAgreement_->Pump(GetTickCount64())) return false;
+	const StartAgreement::Report& report = startAgreement_->GetReport();
+	startHash_ = report.reference ? report.reference : report.localBefore;
+	// A repair is reported as a desync is (it was one, before frame 0).
+	if (!report.regions.empty() && room_.Active()) {
+		adapter::ReportStartRepair(report, adapter.Layout(), room_.Watching(), pending_.config.inputDelay);
+	}
+	if (const char* failure = adapter.StateFailure()) Log("netplay: after the start state's agreement: %s", failure);
+	EndStartAgreement(); // the port is GGPO's from here
 	return true;
+}
+
+void NetplayMode::EndStartAgreement()
+{
+	startAgreement_.reset();
+	startChannel_.reset();
+}
+
+void NetplayMode::PerturbStart(SfvAdapter& adapter)
+{
+	if (config_.startPerturb.empty()) return;
+	char region[96] = {};
+	size_t offset = 0;
+	int32_t add = 0;
+	// "<region>,<offset>,<add>": a region name has no comma.
+	const std::string& text = config_.startPerturb;
+	const size_t first = text.find(','), second = text.find(',', first + 1);
+	if (first == std::string::npos || second == std::string::npos || first >= sizeof(region)) {
+		Log("netplay: -sfve_start_perturb=%s does not read as <region>,<offset>,<add>", text.c_str());
+		return;
+	}
+	text.copy(region, first);
+	offset = strtoull(text.c_str() + first + 1, nullptr, 0);
+	add = (int32_t)strtol(text.c_str() + second + 1, nullptr, 0);
+	const StateRegion* r = adapter.Layout().FindByNameOrSize(region);
+	if (!r || offset + 4 > r->size) {
+		Log("netplay: nothing to perturb at %s+0x%zX before frame 0", region, offset);
+		return;
+	}
+	int32_t& value = *reinterpret_cast<int32_t*>(r->ptr + offset);
+	value += add;
+	Log("netplay: perturbed %s+0x%zX before frame 0 (now %d), for the start state's agreement to repair", r->name.c_str(),
+		offset, value);
 }
 
 // Layout: per region {uint64 size, uint64 address}, then its bytes. Written

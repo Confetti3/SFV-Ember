@@ -86,6 +86,11 @@ struct Facts {
 	// no longer kept.
 	std::vector<StateRegionFacts> stateRegions;
 	std::vector<std::uint8_t> state;
+	// Not empty: no desync but a repair of the start state before frame 0
+	// (core/StartAgreement.hxx), in words: what was taken from P1 and what
+	// still differed. `frame` is 0, `local` this copy's hash before the repair
+	// and `remote` P1's; `regions` and the state are this copy's before it.
+	std::string startRepair;
 };
 
 // A copy's state at the desync's checkpoint, kept on this PC beside the
@@ -108,6 +113,10 @@ constexpr std::size_t kTailLines = 300;
 // The comment's first line, which Bugsink groups by: "SFV desync: build
 // <first 12 digits of the build id>", or "SFV desync seen by a watcher: ...".
 std::string Title(bool watcher, std::string_view buildId);
+// A start state repair's first line (Facts::startRepair): "SFV start state
+// repaired: build <12 digits>", or "SFV start state repaired for a watcher:
+// ...", its own Bugsink group.
+std::string StartRepairTitle(bool watcher, std::string_view buildId);
 // The whole comment: the title, then the match, this copy, both picks, the
 // checkpoint and the session, at most kCommentCharacters characters.
 std::string Comment(const Facts& facts, std::string_view buildId);

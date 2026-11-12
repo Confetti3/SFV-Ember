@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog)
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog, [switch]$autoSkip, [switch]$rngAudit, [string]$startPerturb = '')
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -39,6 +39,13 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # walks forward at the start of each block of moves. Every block faces the
 # way its fighter does. -socketLog: each copy logs the fight's reads of the
 # fighters' models (SocketReads); the lines are printed per copy at the end.
+# -rngAudit: each copy checks every random draw of a battle update against
+# the rollback state (RngAudit; docs/design/beta8/determinism.md) and its
+# `rng audit:` lines are printed at the end. -startPerturb "R,O,A": copy 1
+# (P2) adds A to the dword at offset O of region R of its start state before
+# the start state's agreement (-sfve_start_perturb), which must repair it:
+# the run fails unless copy 1 logs `start: repaired`. Each copy's `start:`,
+# `costs:` and `input unit +0x2178` lines are printed at the end.
 # -practice: both copies' fighters get Training's refilling gauges from the
 # first frame (as a Practice room's), so every V-Trigger and Critical Art plays.
 # -unowned0 / -unowned1 give copy 0 / copy 1 a -sfve_unowned list
@@ -83,6 +90,12 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # checked). -skipPad presses copy -skipCopy's virtual pad (X) instead,
 # about N frames (default 90) after its log shows the decision: the player's
 # own path, through the pads.
+# -autoSkip opens the room with its Skip winner scenes rule on
+# (docs/design/beta8/autoskip.md; the product's default, off here so the runs
+# above mean what they did): both fighters' copies then ask for the skip on
+# their own once the guard is over, with no press at all, and the scenes must
+# end the way a press ends them (fewer than -skipMax frames, the same skips and
+# result frame on both copies and the watcher's).
 $ErrorActionPreference = 'Stop'
 # The checkout this script is in, whichever it is.
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -92,6 +105,9 @@ $env:SFVE_RUN = [guid]::NewGuid().ToString('N')
 # The mod logs under %APPDATA%\SFVEmber\logs (mod/Log.cxx), whether the launcher or the proxy started it.
 $logs = Join-Path $env:APPDATA 'SFVEmber\logs'
 $logOf = @("$logs\sfv_ember.log", "$logs\sfv_ember.1.log", "$logs\sfv_ember.2.log")
+# A desync's lines; a start state's repair (its report is filed as a desync's
+# is) is not one: the match then plays from the same state.
+$desyncPattern = '^(?!.*desync report)(?!.*start state).*(desync|mismatch)'
 if ($watchers -lt 0 -or $watchers -gt 1) { throw '-watchers is 0 or 1' }
 $copies = if ($watchers) { @(0, 1, 2) } else { @(0, 1) }
 # The fighters' game (from 0) each of the watcher's battles was, in order.
@@ -172,7 +188,7 @@ function AwaitWatcher([int]$game, [int]$before) {
 # (intro_skip::kScenesGuardFrames).
 $guardFrames = 60
 if ($skipCopy -lt 0 -or $skipCopy -gt 1) { throw '-skipCopy is 0 or 1' }
-$skipWanted = $skipPad -or $skipAfter -ge $guardFrames
+$skipWanted = $skipPad -or $autoSkip -or $skipAfter -ge $guardFrames
 # Each copy's games as its log has them: frames from the decision to the
 # result, the result's frame, and the skips applied before it ("<frame>:
 # <what>"), in order.
@@ -215,7 +231,7 @@ function CheckScenes([int]$game) {
   if ($a.Result -ne $b.Result) { throw "game ${game}: the copies took the result at frames $($a.Result) and $($b.Result)" }
   if (($a.At -join '|') -ne ($b.At -join '|')) { throw "game ${game}: the copies applied different skips: copy 0 [$($a.At -join '; ')], copy 1 [$($b.At -join '; ')]" }
   if ($skipWanted) {
-    if ($a.Skips -lt 1) { throw "game ${game}: copy ${skipCopy}'s press skipped nothing" }
+    if ($a.Skips -lt 1) { throw "game ${game}: the scenes were not skipped (copy ${skipCopy}'s press, or the room's rule)" }
     foreach ($took in $a.Took, $b.Took) { if ($took -ge $skipMax) { throw "game ${game}: the skipped scenes still took $took frames (want fewer than $skipMax)" } }
   } else {
     # No press after the guard (none at all, or -skipAfter inside it): no
@@ -300,6 +316,8 @@ foreach ($i in $copies) {
   if ($moveset) { $marks += "-sfve_moveset=$moveset" }
   if ($idle -ge 0) { $marks += "-sfve_idle=$idle" }
   if ($socketLog) { $marks += '-sfve_socket_log=1' }
+  if ($rngAudit) { $marks += '-sfve_rng_audit=1' }
+  if ($startPerturb -and $i -eq 1) { $marks += "-sfve_start_perturb=$startPerturb" }
   $resOf = @($res0, $res1, '')
   $priorRes = $env:SFVE_RES
   if ($resOf[$i]) { $env:SFVE_RES = $resOf[$i] }
@@ -314,7 +332,7 @@ try {
     "copy ${skipCopy} presses an attack $skipAfter frames into each game's scenes$(if ($skipAfter -lt $guardFrames) { ' (inside the guard: nothing may be skipped)' })"
   }
   $instant = if ($rematches -ge 0) { 1 } else { 0 }
-  WaitFor 'room commands to be taken' 30 { (Ctl 0 "room $rounds $seconds $instant $firstTo $([int][bool]$tiny)") -like 'ok*' }
+  WaitFor 'room commands to be taken' 30 { (Ctl 0 "room $rounds $seconds $instant $firstTo $([int][bool]$tiny) $([int][bool]$autoSkip)") -like 'ok*' }
   $inv = ''
   WaitFor 'the invitation' 60 { $script:inv = Ctl 0 invite; $script:inv -like 'ok *' }
   $inv = $inv.Substring(3)
@@ -578,7 +596,7 @@ try {
 }
 foreach ($i in $copies) {
   try { "copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress) } catch { "copy $i is not answering" }
-  if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern 'desync|mismatch' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
+  if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern $desyncPattern | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
 }
 # The copies close here, whatever happened above; the logs stay.
 RemoveRollingShots
@@ -588,7 +606,7 @@ if (!$keep) { python -I tools\sfve.py kill | Out-Null }
 $h0 = Get-Checkpoints $logOf[0]; $h1 = Get-Checkpoints $logOf[1]
 $checkpoints = Compare-Checkpoints $h0 $h1
 "checkpoints: $($checkpoints.Compared) compared, $($checkpoints.Differing) differing"
-$desyncs = (Count 0 'desync|mismatch') + (Count 1 'desync|mismatch') + $checkpoints.Differing
+$desyncs = (Count 0 $desyncPattern) + (Count 1 $desyncPattern) + $checkpoints.Differing
 if ($watchers) {
   # The watcher's battle k is the fighters' game $watchedGames[k]: its
   # checkpoints against copy 0's of that game and frame (copy 0's equal
@@ -614,13 +632,21 @@ if ($watchers) {
       if (-not $failure) { $failure = "the watcher's scenes ended apart from the fighters' ($line)" }
     }
   }
-  $desyncs += (Count 2 'desync|mismatch') + $watcherDiffering.Count
+  $desyncs += (Count 2 $desyncPattern) + $watcherDiffering.Count
   if (-not $failure -and -not $watchedKeys.Count) { $failure = "no watcher checkpoint could be compared" }
 }
 if ($socketLog) {
   foreach ($i in $copies) {
     if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern 'socket: frame' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
   }
+}
+foreach ($i in $copies) {
+  if (Test-Path $logOf[$i]) {
+    Select-String -Path $logOf[$i] -Pattern 'start: |costs: |input unit \+0x2178|rng audit' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) }
+  }
+}
+if ($startPerturb -and -not $failure -and (Count 1 'start: repaired after') -eq 0) {
+  $failure = "copy 1's start state was perturbed ($startPerturb) and not repaired"
 }
 $played = if ($rematches -ge 0) { $rematches + 1 } else { $games }
 $passed = Write-Verdict $failure $desyncs $checkpoints.Compared "$played game(s), no desync"

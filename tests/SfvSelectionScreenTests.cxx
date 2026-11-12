@@ -18,6 +18,7 @@
 #include "CatalogFixture.hxx"
 
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvEleven.hxx"
 #include "ember/SfvLoadoutNotes.hxx"
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPick.hxx"
@@ -407,13 +408,13 @@ using Pages = std::vector<std::pair<std::string, std::string>>;
 
 } // namespace
 
-TEST_CASE("the board has a card for every fighter in the roster's order, then Random; one this player cannot play keeps its place")
+TEST_CASE("the board has a card for every fighter in the roster's order, then Random and Eleven; one this player cannot play keeps its place")
 {
 	FillTestCatalog();
 	const PlayerPick ryu = PlayerPickOf(kRyu, kOneOne);
 	const std::vector<MenuEntry> rows = SfvSelectionScreen::BoardRows(ryu, false, true, false, true);
 	CHECK(IdsOf(rows) ==
-		std::vector<std::string>{"fighter-0", "fighter-1", "fighter-2", "fighter-3", "fighter-4", "random-fighter"});
+		std::vector<std::string>{"fighter-0", "fighter-1", "fighter-2", "fighter-3", "fighter-4", "random-fighter", "eleven-fighter"});
 	CHECK(RowOf(rows, "fighter-0").enabled);
 	CHECK(RowOf(rows, "fighter-0").label == "Ryu");
 	CHECK(RowOf(rows, "fighter-1").enabled);
@@ -427,20 +428,31 @@ TEST_CASE("the board has a card for every fighter in the roster's order, then Ra
 	}
 	CHECK(RowOf(rows, "random-fighter").enabled);
 	CHECK(RowOf(rows, "random-fighter").label == sf4e::loc::T("selection.random_card"));
-	// The dummy's board has no Random.
+	// ELEVEN's card is named as the game names it, and chosen as Random is.
+	CHECK(RowOf(rows, "eleven-fighter").enabled);
+	CHECK(RowOf(rows, "eleven-fighter").label == ElevenName());
+	CHECK(RowOf(rows, "eleven-fighter").hint == sf4e::loc::T("menu.hint.save_fighter"));
+	// The dummy's board has no Random and no Eleven.
 	CHECK_FALSE(HasRow(SfvSelectionScreen::BoardRows(ryu, false, true, false, false), "random-fighter"));
+	CHECK_FALSE(HasRow(SfvSelectionScreen::BoardRows(ryu, false, true, false, false), "eleven-fighter"));
 	// Locked: only the stored fighter, whose look page opens; Random only while it is the pick.
 	const std::vector<MenuEntry> locked = SfvSelectionScreen::BoardRows(ryu, false, false, false, true);
 	CHECK(RowOf(locked, "fighter-0").enabled);
 	CHECK_FALSE(RowOf(locked, "fighter-1").enabled);
 	CHECK_FALSE(RowOf(locked, "random-fighter").enabled);
 	CHECK(RowOf(SfvSelectionScreen::BoardRows(ryu, true, false, false, true), "random-fighter").enabled);
+	// Eleven only while it is the pick, and then Random is not the stored card.
+	CHECK_FALSE(RowOf(locked, "eleven-fighter").enabled);
+	const std::vector<MenuEntry> elevenLocked = SfvSelectionScreen::BoardRows(ryu, true, false, false, true, true);
+	CHECK(RowOf(elevenLocked, "eleven-fighter").enabled);
+	CHECK_FALSE(RowOf(elevenLocked, "random-fighter").enabled);
 	// A winner who keeps the fighter chooses no other, and not Random.
 	const std::vector<MenuEntry> kept = SfvSelectionScreen::BoardRows(ryu, false, true, true, true);
 	CHECK(RowOf(kept, "fighter-0").enabled);
 	CHECK_FALSE(RowOf(kept, "fighter-1").enabled);
 	CHECK(RowOf(kept, "fighter-1").detail == sf4e::loc::T("selection.winner_keeps_fighter"));
 	CHECK_FALSE(RowOf(kept, "random-fighter").enabled);
+	CHECK_FALSE(RowOf(kept, "eleven-fighter").enabled);
 }
 
 TEST_CASE("the board's art pane shows the look choosing the fighter stores: their remembered look on the player's screen")
@@ -472,7 +484,7 @@ TEST_CASE("the board's art pane shows the look choosing the fighter stores: thei
 	CHECK(shown.pick.costume == 0);
 	CHECK(picks::LoadoutOf(shown.pick) == kOneOne);
 	// The stored fighter, Random's card and any other id: the pick itself.
-	for (const char* id : {"fighter-1", "random-fighter", "stage-2", "fighter-99"}) {
+	for (const char* id : {"fighter-1", "random-fighter", "eleven-fighter", "stage-2", "fighter-99"}) {
 		CAPTURE(id);
 		CHECK(SameLook(SfvSelectionScreen::BoardPick(cnl, id, true).pick, cnl.pick));
 	}
@@ -519,6 +531,9 @@ TEST_CASE("the look page's rows open the board and the cards, and the costume co
 	CHECK(MenuSelectOpens(RowOf(locked, "vskill")) == SelectOpens::Activate);
 	CHECK_FALSE(RowOf(locked, "vskill").adjustable);
 	// Random: the fighter row names the roll as Random's.
+	const std::vector<MenuEntry> eleven =
+		SfvSelectionScreen::LookRows(PlayerPickOf(kRyu, kOneOne), true, true, true, true, stages, false, true);
+	CHECK(RowOf(eleven, "fighter").value == ElevenTitle("Ryu"));
 	const std::vector<MenuEntry> random = SfvSelectionScreen::LookRows(PlayerPickOf(kRyu, kOneOne), true, true, true, true, stages);
 	CHECK(RowOf(random, "fighter").value == sf4e::loc::Tf("selection.random_fighter", "Ryu"));
 	// The dummy's: no stage row.
@@ -532,8 +547,8 @@ TEST_CASE("each way the shell opens the screen starts on its page, and the room'
 	PlayerPick pick = PlayerPickOf(kRyu, kTwoOne);
 	pick.pick.costume = 4;
 	pick.stage = 2;
-	const auto opening = [&pick](SelectionStart start, bool random = false, bool dummy = false) {
-		return SfvSelectionScreen::OpeningFor(start, pick, random, dummy);
+	const auto opening = [&pick](SelectionStart start, bool random = false, bool dummy = false, bool eleven = false) {
+		return SfvSelectionScreen::OpeningFor(start, pick, random, dummy, eleven);
 	};
 	CHECK(opening(SelectionStart::Board).pages == Pages{{"home", "fighter-0"}});
 	CHECK_FALSE(opening(SelectionStart::Board).closesOnChoice);
@@ -542,6 +557,9 @@ TEST_CASE("each way the shell opens the screen starts on its page, and the room'
 	// Random's card is the stored one, on the player's screen only.
 	CHECK(opening(SelectionStart::Roster, true).pages == Pages{{"home", "random-fighter"}});
 	CHECK(opening(SelectionStart::Board, true, true).pages == Pages{{"home", "fighter-0"}});
+	// Eleven's card is, while Eleven is the pick (Random's flag is set with it).
+	CHECK(opening(SelectionStart::Roster, true, false, true).pages == Pages{{"home", "eleven-fighter"}});
+	CHECK(opening(SelectionStart::Board, true, true, true).pages == Pages{{"home", "fighter-0"}});
 	CHECK(opening(SelectionStart::Costumes).pages == Pages{{"home", "fighter-0"}, {"look", "costume"}, {"costumes", "costume-4"}});
 	CHECK(opening(SelectionStart::Costumes).closesOnChoice);
 	CHECK(opening(SelectionStart::Ultras).pages == Pages{{"home", "fighter-0"}, {"look", "vskill"}, {"loadout", "vskill-1"}});

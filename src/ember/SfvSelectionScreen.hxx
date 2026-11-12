@@ -140,15 +140,17 @@ public:
 	// chooses). `random`: the fighter row reads as selection.random_fighter
 	// names it ("Random" and the fighter).
 	static std::vector<sf4e::ui::MenuEntry> LookRows(const PlayerPick& pick, bool random, bool editable, bool withStage,
-		bool stageEditable, const std::vector<StageOption>& stageOptions, bool withSize = false);
+		bool stageEditable, const std::vector<StageOption>& stageOptions, bool withSize = false, bool eleven = false);
 
 	// The board's cards: "fighter-<id>" for every fighter of the roster, in
 	// the catalog's order (the grid places them), then, with `withRandom`,
-	// "random-fighter". One this player cannot play, or any other than the
-	// stored one while `fighterKept`, cannot be chosen; the stored one can
-	// always be selected, which opens its look page.
+	// "random-fighter" and the game's ELEVEN's card "eleven-fighter" (in its
+	// own cell, SfvSelectGrid's `eleven`; `eleven`: Eleven is the stored pick,
+	// and `random` is set as well). One this player cannot play, or any other
+	// than the stored one while `fighterKept`, cannot be chosen; the stored
+	// one can always be selected, which opens its look page.
 	static std::vector<sf4e::ui::MenuEntry> BoardRows(const PlayerPick& pick, bool random, bool editable, bool fighterKept,
-		bool withRandom);
+		bool withRandom, bool eleven = false);
 	// The pick choosing the board's card `cardId` would store, for the art
 	// pane: the fighter in their remembered look (`remembered`, the player's
 	// screen) or in the pick's look (LookFor); the pick itself for Random's
@@ -209,7 +211,7 @@ public:
 		std::vector<std::pair<std::string, std::string>> pages; // page, focus; the board first
 		bool closesOnChoice = false;
 	};
-	static Opening OpeningFor(sf4e::ui::SelectionStart start, const PlayerPick& pick, bool random, bool dummy);
+	static Opening OpeningFor(sf4e::ui::SelectionStart start, const PlayerPick& pick, bool random, bool dummy, bool eleven = false);
 
 private:
 	// Shows the opening's pages, each on its focus.
@@ -220,8 +222,8 @@ private:
 	void FitGrid();
 	// What the frame's action on `screen` does: pages opened, the pick
 	// (`pick`, as the frame showed it) stored, the screen closed.
-	void Answer(const sf4e::ui::MenuAction& action, const std::string& screen, PlayerPick pick, bool random, bool editable,
-		bool stageMine, bool fighterKept, const std::vector<StageOption>& stageOptions);
+	void Answer(const sf4e::ui::MenuAction& action, const std::string& screen, PlayerPick pick, bool random, bool eleven,
+		bool editable, bool stageMine, bool fighterKept, const std::vector<StageOption>& stageOptions);
 	bool dummy_ = false;
 	sf4e::ui::GameMenu menu_;
 	// Where the shell opened the screen.

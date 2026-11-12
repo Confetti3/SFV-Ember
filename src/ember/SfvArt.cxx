@@ -272,9 +272,12 @@ void PumpSwatches()
 
 } // namespace
 
-sf4e::ui::SelectionImage FighterImage(int fighter, FighterPicture picture)
+namespace {
+
+// The picture of the fighter folder `code` names (a catalog fighter's, or
+// the game's ELEVEN's).
+sf4e::ui::SelectionImage ImageOfCode(const std::string& code, FighterPicture picture)
 {
-	const std::string code = FighterCode(fighter);
 	switch (picture) {
 	case FighterPicture::Face: return Image(pictures::FighterFace(code));
 	case FighterPicture::Banner: return Image(pictures::FighterBanner(code));
@@ -282,6 +285,21 @@ sf4e::ui::SelectionImage FighterImage(int fighter, FighterPicture picture)
 	case FighterPicture::Large: return Image(pictures::FighterLarge(code));
 	}
 	return Image(pictures::FighterBanner(code));
+}
+
+// The game's folder for ELEVEN's pictures, as the fighter table's code names it.
+constexpr const char* kElevenFolder = "ELV";
+
+} // namespace
+
+sf4e::ui::SelectionImage FighterImage(int fighter, FighterPicture picture)
+{
+	return ImageOfCode(FighterCode(fighter), picture);
+}
+
+sf4e::ui::SelectionImage ElevenImage(FighterPicture picture)
+{
+	return ImageOfCode(kElevenFolder, picture);
 }
 
 sf4e::ui::SelectionImage StageImage(int stage)
