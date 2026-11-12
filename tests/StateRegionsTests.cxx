@@ -4,6 +4,7 @@
 
 #include <string.h>
 
+#include <algorithm>
 #include <vector>
 
 using namespace sfve;
@@ -408,4 +409,76 @@ TEST_CASE("a word that is no address across a chunk edge leaves the bytes after 
 		CheckEveryByteCounts(region, 8300, 8184, 8200);
 		CheckEveryByteCounts(region, 8300, 8292, 8300);
 	}
+}
+
+namespace {
+// The addresses a test's process "has": the tie-break between two windows
+// that both pass HeapLike (StateLayout::SetAddressTest's `mapped`).
+std::vector<uint64_t> s_mapped;
+bool Mapped(uint64_t value) { return std::find(s_mapped.begin(), s_mapped.end(), value) != s_mapped.end(); }
+
+bool Unit(const std::vector<uint64_t>& units, size_t unit) { return ((units[unit / 64] >> (unit % 64)) & 1) != 0; }
+} // namespace
+
+TEST_CASE("an aligned address with a small low half is not hidden behind the window before it")
+{
+	// The S6b run (2026-11-12): a script header pointer at an aligned +0x10,
+	// a zero dword before it. P2's pointer 0x0000013D000042D0 makes the window
+	// at +0x0C read 0x000042D000000000, an address to the value test; P1's
+	// 0x00000217806F42D0 does not. Zeroing +0x0C first left 0x13D in P2's hash.
+	const uint64_t mine = 0x0000013D000042D0ull, theirs = 0x00000217806F42D0ull;
+	auto one = Words(64), two = Words(64);
+	memcpy(Bytes(one) + 16, &mine, 8);
+	memcpy(Bytes(two) + 16, &theirs, 8);
+	s_mapped = {mine, theirs};
+	StateLayout a, b;
+	a.Add("r", Bytes(one), 64);
+	b.Add("r", Bytes(two), 64);
+	a.SetAddressTest(HeapLike, Mapped);
+	b.SetAddressTest(HeapLike, Mapped);
+	CHECK(a.HashLive() == b.HashLive());
+	// The start agreement's view: the pointer's two dwords are the address.
+	std::vector<uint64_t> units;
+	a.AddressUnits(0, Bytes(one), units);
+	CHECK_FALSE(Unit(units, 3));
+	CHECK(Unit(units, 4));
+	CHECK(Unit(units, 5));
+	// Without the tie-break, the old reading: the copies differ.
+	StateLayout oldA, oldB;
+	oldA.Add("r", Bytes(one), 64);
+	oldB.Add("r", Bytes(two), 64);
+	oldA.SetAddressTest(HeapLike);
+	oldB.SetAddressTest(HeapLike);
+	CHECK(oldA.HashLive() != oldB.HashLive());
+	// The value before the pointer still counts.
+	Bytes(two)[8] = 1;
+	CHECK(a.HashLive() != b.HashLive());
+	s_mapped.clear();
+}
+
+TEST_CASE("an address packed 4 bytes off a boundary keeps its window when it is the mapped one")
+{
+	// The other reading of two overlapping windows: the address at +12, a
+	// small value after it, so the aligned window at +16 (the address's high
+	// half and the value) passes the value test too.
+	const uint64_t mine = 0x00000204F5F982A4ull, theirs = 0x00000246994182A4ull;
+	const uint32_t value = 0x640;
+	auto one = Words(64), two = Words(64);
+	memcpy(Bytes(one) + 12, &mine, 8);
+	memcpy(Bytes(two) + 12, &theirs, 8);
+	memcpy(Bytes(one) + 20, &value, 4);
+	memcpy(Bytes(two) + 20, &value, 4);
+	s_mapped = {mine, theirs};
+	StateLayout a, b;
+	a.Add("r", Bytes(one), 64);
+	b.Add("r", Bytes(two), 64);
+	a.SetAddressTest(HeapLike, Mapped);
+	b.SetAddressTest(HeapLike, Mapped);
+	CHECK(a.HashLive() == b.HashLive());
+	Bytes(two)[20] = 1; // the value after it counts
+	CHECK(a.HashLive() != b.HashLive());
+	// Neither window mapped: the first one, as before the tie-break.
+	s_mapped.clear();
+	Bytes(two)[20] = 0x40;
+	CHECK(a.HashLive() == b.HashLive());
 }
