@@ -158,6 +158,14 @@ struct ModConfig {
 	uint32_t scheduleSeed = 0;
 	int lagMs = 0;
 	int hashEvery = 0; // 0: checkpoints only
+	// Cheaper rollbacks (RollbackSession::Config, docs/design/beta8/perf.md):
+	// a save no load can reach keeps no copy (-sfve_skip_saves), frames are
+	// hashed once final (-sfve_hash_on_confirm), and one restore in this many
+	// is re-hashed against its save (-sfve_verify_loads; 0: none). A
+	// development build's =0 plays as before, for comparison runs.
+	bool skipSaves = true;
+	bool hashOnConfirm = true;
+	int verifyLoadsEvery = 16;
 	// A replay's playback logs each checkpoint's region hashes from this frame
 	// on, in the desync dump's form, so two PCs' playbacks (or a playback and
 	// a match's log) can be compared region by region (tools/compare.py).

@@ -533,6 +533,11 @@ NetplayMode::Prepared NetplayMode::PrepareStart(SfvAdapter& adapter)
 		c.hashEveryFrames = config_.hashEvery;
 		c.keepAllHashes = true;
 	}
+	// Cheaper rollbacks (docs/design/beta8/perf.md); a replay's playback
+	// makes no GGPO saves, so they change nothing there.
+	c.skipUnloadableSaves = config_.skipSaves;
+	c.hashOnConfirm = config_.hashOnConfirm;
+	c.verifyLoadsEvery = config_.verifyLoadsEvery;
 	// Both copies are at the battle's first frame: give the clock-seeded
 	// random generators the same seeds before anything is simulated.
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
@@ -652,6 +657,7 @@ void NetplayMode::PerturbStart(SfvAdapter& adapter)
 void NetplayMode::DumpIfRequested()
 {
 	if (dumpFrame_ < 0) return;
+	session_->KeepSave(dumpFrame_); // a session started since the request keeps it too
 	if (const uint8_t* saved = session_->SavedState(dumpFrame_)) {
 		dumpBytes_.assign(saved, saved + session_->Layout().TotalSize());
 	}
@@ -750,6 +756,8 @@ void NetplayMode::RegisterCommands()
 		std::lock_guard lock(mutex_);
 		dumpFrame_ = atoi(args.c_str());
 		dumpBytes_.clear();
+		// Its save keeps its copy even where no load can reach it.
+		if (session_) session_->KeepSave(dumpFrame_);
 		return std::string("ok");
 	});
 	RegisterCommand("perturb", [this](const std::string& args) {

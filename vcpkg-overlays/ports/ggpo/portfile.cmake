@@ -22,6 +22,7 @@ vcpkg_from_github(
         "event-queue-size.patch"
         "bound-input-decoding.patch"
         "ignored-inputs.patch"
+        "confirmed-input-frame.patch"
 )
 
 # One canonical policy is compiled by both GGPO and the portable tests.

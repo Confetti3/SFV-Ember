@@ -559,12 +559,17 @@ void SfvAdapter::LogCosts()
 	const auto us = [&](int64_t ticks, uint64_t calls) {
 		return calls && frequency.QuadPart ? 1e6 * (double)ticks / (double)frequency.QuadPart / (double)calls : 0.0;
 	};
-	Log("costs: the last %llu updates: tick %.0f us; replayed tick %.0f us (%llu); save %.0f us (%llu), load %.0f us (%llu), "
-		"hash %.0f us (%llu), the restore's callbacks %.0f us (%llu)",
+	// The session's counts (docs/design/beta8/perf.md): saves that kept no
+	// copy, and of the hashes, those made once a frame was final; saves a
+	// rollback replaced before they were final, whose hash was never needed.
+	Log("costs: the last %llu updates: tick %.0f us; replayed tick %.0f us (%llu); save %.0f us (%llu, %llu skipped), "
+		"load %.0f us (%llu), hash %.0f us (%llu, %llu once final, %llu not needed), the restore's callbacks %.0f us (%llu)",
 		(unsigned long long)costs_.ticks, us(costs_.tickTicks, costs_.ticks), us(costs_.replayedTicks, costs_.replayed),
 		(unsigned long long)costs_.replayed, us(layout.saveTicks, layout.saves), (unsigned long long)layout.saves,
-		us(layout.loadTicks, layout.loads), (unsigned long long)layout.loads, us(layout.hashTicks, layout.hashes),
-		(unsigned long long)layout.hashes, us(costs_.callbackTicks, costs_.callbacks), (unsigned long long)costs_.callbacks);
+		(unsigned long long)layout.skippedSaves, us(layout.loadTicks, layout.loads), (unsigned long long)layout.loads,
+		us(layout.hashTicks, layout.hashes), (unsigned long long)layout.hashes, (unsigned long long)layout.confirmedHashes,
+		(unsigned long long)layout.droppedHashes, us(costs_.callbackTicks, costs_.callbacks),
+		(unsigned long long)costs_.callbacks);
 	costs_ = {};
 }
 
