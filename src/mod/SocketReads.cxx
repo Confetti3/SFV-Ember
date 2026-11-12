@@ -142,9 +142,97 @@ void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t f
 	}
 }
 
+// The fighters' meshes: each side's components logged once a battle, and the
+// times the LOD had to be forced again after that (a few, then quiet).
+std::atomic<bool> s_meshesLogged[2];
+std::atomic<int> s_reforced;
+constexpr int kMostReforcedLines = 8;
+
+// A component the game would use: not marked unusable, and of a class with
+// the skeletal mesh component cast flag (rva 0xE5F7D0, 0xE58F10).
+bool UsableSkeletalMesh(const uint8_t* component)
+{
+	int32_t flags = 0;
+	const uint8_t* cls = nullptr;
+	uint64_t cast = 0;
+	return component && TryRead(component + sfv::mesh::kObjectFlags, &flags) && (flags & sfv::mesh::kUnusable) == 0 &&
+		TryRead(component + sfv::mesh::kObjectClass, &cls) && cls && TryRead(cls + sfv::mesh::kClassCastFlags, &cast) &&
+		(cast & sfv::mesh::kSkeletalMeshComponentFlag) != 0;
+}
+
+int ForceOne(uint8_t* component, int which, std::vector<socket_reads::MeshLod>* seen)
+{
+	namespace m = sfv::mesh;
+	if (!UsableSkeletalMesh(component)) return 0;
+	socket_reads::MeshLod lod;
+	lod.component = which;
+	if (!TryRead(component + m::kForcedLodModel, &lod.forced) || !TryRead(component + m::kMinLodModel, &lod.minLod) ||
+		!TryRead(component + m::kPredictedLodLevel, &lod.predicted) || !TryRead(component + m::kUpdateFlag, &lod.updateFlag)) {
+		return 0;
+	}
+	if (lod.forced != m::kForceLodZero) lod.written = TryWrite(component + m::kForcedLodModel, m::kForceLodZero);
+	if (seen) seen->push_back(lod);
+	return lod.written ? 1 : 0;
+}
+
+std::string Describe(const std::vector<socket_reads::MeshLod>& seen)
+{
+	std::string text;
+	for (const socket_reads::MeshLod& lod : seen) {
+		char one[112];
+		const std::string kind = lod.component == 0 ? "mesh" : lod.component == 1 ? "second mesh" : "layer " + std::to_string(lod.component - 2);
+		snprintf(one, sizeof(one), "%s%s LOD %d (forced %d, min %d, update flag %u)%s", text.empty() ? "" : "; ", kind.c_str(),
+			lod.predicted, lod.forced, lod.minLod, (unsigned)lod.updateFlag, lod.written ? ", now LOD 0" : "");
+		text += one;
+	}
+	return text;
+}
+
 } // namespace
 
+void KeepFighterMeshesAtLodZero(uint8_t* const visualParts[2])
+{
+	for (int side = 0; side < 2; side++) {
+		uint8_t* actor = nullptr;
+		if (!visualParts[side] || !TryRead(visualParts[side] + sfv::visual::kActor, &actor) || !actor) continue;
+		if (!s_meshesLogged[side].load()) {
+			std::vector<socket_reads::MeshLod> seen;
+			socket_reads::ForceLodZero(actor, &seen);
+			if (seen.empty()) continue; // the actor's meshes are not there yet: look again next update
+			s_meshesLogged[side].store(true);
+			// "fighter k": the battle's order of its fighters (CharaUnit[k]), not the side.
+			Log("meshes: fighter %d: %zu skeletal mesh component(s): %s", side, seen.size(), Describe(seen).c_str());
+			continue;
+		}
+		const int written = socket_reads::ForceLodZero(actor, nullptr);
+		if (written && s_reforced.fetch_add(1) < kMostReforcedLines) {
+			Log("meshes: fighter %d: %d component(s) given LOD 0 again (something reset ForcedLodModel)", side, written);
+		}
+	}
+}
+
 namespace socket_reads {
+
+int ForceLodZero(uint8_t* actor, std::vector<MeshLod>* seen)
+{
+	namespace v = sfv::visual;
+	if (!actor) return 0;
+	int written = 0;
+	uint8_t* component = nullptr;
+	if (TryRead(actor + v::kActorMesh, &component)) written += ForceOne(component, 0, seen);
+	component = nullptr;
+	if (TryRead(actor + v::kActorSecondMesh, &component)) written += ForceOne(component, 1, seen);
+	uint8_t* layers = nullptr;
+	int32_t count = 0;
+	if (TryRead(actor + v::kActorLayers, &layers) && TryRead(actor + v::kActorLayerCount, &count) && layers && count > 0 &&
+		count <= v::kMostLayers) {
+		for (int32_t i = 0; i < count; i++) {
+			component = nullptr;
+			if (TryRead(layers + sizeof(uint8_t*) * (size_t)i, &component)) written += ForceOne(component, 2 + i, seen);
+		}
+	}
+	return written;
+}
 
 bool EveryTick(uint32_t returnRva)
 {
@@ -217,8 +305,13 @@ void NoteSocketUpdate(const SocketUpdate& update)
 
 void ForgetSocketReads()
 {
-	std::lock_guard lock(s_mutex);
-	s_cache.Clear();
+	{
+		std::lock_guard lock(s_mutex);
+		s_cache.Clear();
+	}
+	s_meshesLogged[0].store(false);
+	s_meshesLogged[1].store(false);
+	s_reforced.store(0);
 }
 
 std::string SocketReadsSummary()

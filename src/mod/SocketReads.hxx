@@ -37,6 +37,7 @@
 #include <deque>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace sfve::mod {
 
@@ -57,7 +58,36 @@ bool InstallSocketReads(uintptr_t imageBase, bool log);
 // The counts so far, for the log (SfvAdapter, with the keys' cost).
 std::string SocketReadsSummary();
 
+// The same pose on every copy, whatever its window. The engine evaluates a
+// skeletal mesh's bones at the LOD the renderer picks from its size on
+// screen, so two copies at 960x540 and 1920x1080 read a socket a few ulps
+// apart (2026-11-12, F5: ProjectileUnit[20]+0x1D0's y and z one ulp apart).
+// Each battle update (SfvAdapter, the game thread, before the update) gives
+// every skeletal mesh component of both fighters' actors LOD 0
+// (ForcedLodModel 1, sfv::mesh), which the engine's LOD update (rva 0x1C8B830)
+// takes over the screen size. `visualParts`: both fighters' CharaVisualParts
+// (null where there is none). Each side's components are logged once a
+// battle with what the engine had picked (forget with ForgetSocketReads).
+void KeepFighterMeshesAtLodZero(uint8_t* const visualParts[2]);
+
 namespace socket_reads {
+
+// One skeletal mesh component of a fighter's actor as ForceLodZero found it.
+struct MeshLod {
+	int component = 0; // 0 the actor's mesh, 1 its second mesh, 2 + i layer i
+	int32_t forced = 0;    // ForcedLodModel as found
+	int32_t minLod = 0;    // MinLodModel
+	int32_t predicted = 0; // PredictedLODLevel: the LOD the engine evaluated last
+	uint8_t updateFlag = 0; // MeshComponentUpdateFlag
+	bool written = false;  // ForcedLodModel was set to 1 here
+};
+
+// Gives each skeletal mesh component of `actor` (its mesh, its second mesh and
+// its layers, sfv::visual) ForcedLodModel 1 where it holds another value; an
+// object that is not a usable skeletal mesh component (sfv::mesh's flag and
+// class tests, as the game makes them) is left alone. Fills `seen`, if any,
+// with each component as found. Returns how many it wrote.
+int ForceLodZero(uint8_t* actor, std::vector<MeshLod>* seen);
 
 // A read from a call site that is not the fight's, by the rva of its return
 // address: left as it is, not logged.

@@ -250,6 +250,71 @@ value is taken from where it already exists: the straight read of the same state
 the name key, a stale read takes the straight read of the same state, socket and side only,
 conflicts, the capacity), `StateRegionsTests` (a hash of some regions follows those only).
 
+## Two windows, one ulp: the fighters' LOD (2026-11-12, F5)
+
+**What the runs showed.** With the record above, the synctests passed: F1 (Z33 against Z37,
+projectiles) 7,282 frames, 0 failures (was 2), `18000 updates keyed, 50.3 us per update; 544
+fresh recorded, 196 stale given the straight read, 129 stale of a state never read fresh, 0
+conflicting`; F2 to F4 (Z37 against Z33, Cody's supers, small P1) passed too. Two copies on the
+laptop, Z33 against Z37, 960x540 against 1920x1080, 30 ms lag (F5), diverged at checkpoint
+10440: `ProjectileUnit[20]+0x1D0` (and the same values in its visual part) has y and z one ulp
+apart (`3f86d881`/`3f86d880`, `be23388a`/`be23388b`), x equal. F5 ran without `-socketLog`,
+so there is no line per read; its `sockets:` lines say copy 0 (960x540) served no stale read
+at all (every read it made was fresh) and copy 1 (1920x1080) served 22 and missed 22 in some
+11,000 updates. A stale pose is a frame or more of motion away (centimetres), not one ulp, so
+the two copies' fresh reads themselves differed: the same state, the same PC (the same CPU and
+code), only the window different.
+
+**Why** (IDA). A socket's position comes from the bones the mesh evaluated, and the engine
+evaluates only the bones the mesh's LOD needs: `RefreshBoneTransforms` (rva 0x1C0B890) rebuilds
+its required bones from `PredictedLODLevel` (rva 0x1C0B3E0 with the component's +1384), and the
+LOD update (rva 0x1C8B830, from rva 0x1C12100) sets `PredictedLODLevel` to `ForcedLodModel -
+1` when `ForcedLodModel` (+1376) is above 0, otherwise to the renderer's LOD for the mesh's
+size on screen (the mesh object's +24) plus the global LOD bias, raised to `MinLodModel`
+(+1380) if that is set. The offsets are the ones `USkinnedMeshComponent`'s registration (rva
+0x20F7A60) gives those properties. SFV never sets `ForcedLodModel` or `MinLodModel` on a
+fighter's components (no write to +0x560 or +0x564 in its actor code, rva 0xE00000..0xE80000;
+the writes at those offsets in the battle code are to other objects); it only sets
+`MeshComponentUpdateFlag` (+0x5AC) on some (rva 0xE4E7C0, 0xE4FD90, 0xE50160, 0xE50420,
+0xE51B60). So the LOD a fighter is evaluated at follows the window, and with another LOD
+comes another set of required bones; the most likely way that moves a bone by an ulp is that
+the animation's decompression and the bone composition run over another set of tracks
+(packed for another bone count). Not yet observed: the `meshes:` lines below log each
+copy's LOD, which settles it. No update-rate optimisation cvar exists in this build (`a.URO.*` is not
+in the image); the meshes' `bEnableUpdateRateOptimizations` was not read (a bitfield whose
+offset the registration computes at run time) and is the next suspect if LOD 0 is not enough.
+
+**The fix: one LOD for the fighters.** Each battle update, before the update and on the game
+thread, every skeletal mesh component of both fighters' actors (the mesh at actor +0x3A8, the
+second at +0x400, the layers at +0x420 with their count at +0x428, each checked as the game
+checks one: the skeletal mesh cast flag of its class, rva 0xE58F10, and not the unusable flag,
+rva 0xE5F7D0) gets `ForcedLodModel = 1`: LOD 0 whatever the window, the DPI or the frame rate
+(`KeepFighterMeshesAtLodZero`, `socket_reads::ForceLodZero`; a checked write, `TryWrite`). The
+engine's next LOD update takes it, so the same bones are evaluated by the same code on every
+copy. The first time a battle finds a fighter's components, it logs what the engine had picked
+(`meshes: fighter K: N skeletal mesh component(s): mesh LOD 1 (forced 0, min 0, update flag
+1), now LOD 0; ...`): the two copies' lines at 960x540 and 1920x1080 are the cause's evidence.
+If something sets the value back, it is written again and logged (a few lines). The picture:
+both fighters drawn at full detail in a small window too (a little more GPU work there).
+
+**Why not round the read instead.** Rounding the position (to 1e-4, say) makes two values a
+few ulps apart equal only when no rounding boundary lies between them; when one does, they
+round apart and the copies differ as before. With some ten thousand reads a match and values
+spread over the stage, that happens: rounding lowers the odds, it does not remove them. The
+same goes for comparing with a tolerance. LOD 0 removes the cause: equal inputs, equal code
+path, equal bits.
+
+**The record still has a job, and its misses.** LOD 0 makes the fresh pose the same on every
+copy; it does not make a stale pose fresh, so the record-and-serve stays for replayed frames
+and the frame after a rollback. A miss (the reading fighter's state never had a fresh update
+on this copy) keeps the stale live read, and two copies can differ there in real play: the
+stale pose is the newest drawn state, which differs with each copy's rollbacks. In the
+synctest the misses are the perturbed (wrong-input) replays, which are thrown away, so they
+cost nothing there; between two PCs they are the reads of a fighter whose own state a
+misprediction changed (F5's copy 1: 22 in some 11,000 updates). Closing them exactly needs the
+pose evaluated for the replayed state, which the component tick cannot give safely (above);
+the count in the `sockets:` lines is the measure of the risk left.
+
 ## Ranked hypotheses
 
 1. **Projectiles placed at a socket on a replayed tick: shown by D5, fixed above** (3360 and
@@ -266,6 +331,17 @@ conflicts, the capacity), `StateRegionsTests` (a hash of some regions follows th
    (looks are not fight state), different builds or looks (both beta.7, identical looks).
 
 ## The runs that settle it (laptop; each game launch with the maintainer's OK)
+
+**After the LOD fix, re-run** (the two copies must PASS, with the `meshes:` lines of both
+copies kept: they show the LOD each window had picked):
+```
+powershell -File tools\runroom.ps1 -p1 Z33:0:112:1:1 -p2 Z37:3:0:1:1 -moveset projectiles -idle 1 -practice -lag 30 -res0 960x540 -res1 1920x1080 -rounds 3 -seconds 99 -games 2 -socketLog
+powershell -File tools\runroom.ps1 -p1 Z33:0:112:1:1 -p2 Z37:3:0:1:1 -moveset projectiles -idle 1 -practice -lag 30 -res0 960x540 -res1 2560x1440 -rounds 3 -seconds 99 -games 2 -socketLog
+powershell -File tools\synctest.ps1 -p1 Z33:0:112:1:1 -p2 Z37:3:0:1:1 -moveset projectiles -idle 1 -practice -frames 7000 -check
+```
+Then `findstr "meshes:" %APPDATA%\SFVEmber\logs\sfv_ember.log %APPDATA%\SFVEmber\logs\sfv_ember.1.log`.
+If the pair still differs with both copies' meshes at LOD 0, the next suspect is the meshes'
+update-rate optimisation (above), then their update flags (logged in the same lines).
 
 **After the socket fix, re-run** (each must PASS):
 ```

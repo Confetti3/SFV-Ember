@@ -75,6 +75,7 @@ void SfvAdapter::Forget()
 	flow_.Forget();
 	if (bound_ || !fighterRegions_[0].empty()) Log("sockets: the battle ends: %s", SocketReadsSummary().c_str());
 	for (std::vector<size_t>& regions : fighterRegions_) regions.clear();
+	for (uint8_t*& part : fighterVisualParts_) part = nullptr;
 	ForgetSocketReads();
 	scenesSkip_ = nullptr;
 	scenesIdleState_ = scenesIdlePhase_ = -1;
@@ -139,6 +140,7 @@ bool SfvAdapter::Bind()
 	Log("adapter: socket reads keyed by P1's %zu and P2's %zu regions", fighterRegions_[0].size(), fighterRegions_[1].size());
 	battleData_ = battleData;
 	bound_ = true;
+	FighterVisualParts(fighterVisualParts_);
 	Log("adapter: bound: %zu game regions + %zu outside the game's snapshot, %zu bytes; intros %s, input source %d",
 		gameRegions_, layout_.Regions().size() - gameRegions_, layout_.TotalSize(),
 		Field<int32_t>(battleData, sfv::battledata::kIntroSkippable) ? "skippable" : "not skippable",
@@ -430,6 +432,9 @@ void SfvAdapter::RunUpdate()
 	sockets.replaying = replaying_;
 	sockets.fresh = poseFresh_;
 	if (bound_) {
+		// The poses the engine evaluates next are at LOD 0 whatever the window
+		// (SocketReads): the same bones on every copy.
+		KeepFighterMeshesAtLodZero(fighterVisualParts_);
 		LARGE_INTEGER from{}, to{};
 		QueryPerformanceCounter(&from);
 		for (int side = 0; side < kPlayers; side++) {
