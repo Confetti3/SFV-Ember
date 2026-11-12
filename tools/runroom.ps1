@@ -133,6 +133,26 @@ function Shot([string]$name) {
   if (!$shots) { return }
   foreach ($i in $copies) { python -I tools\sfve.py shot $i "$shots\$name-$i.png" | Out-Null }
 }
+# The same, without waiting: for a shot taken while the run must answer in
+# time. A shot of three copies can take several seconds (the 2026-11-11 S6
+# run's B answer reached its prompt after the 10 s countdown because two
+# shots were taken in between). Returns the shot processes, which are also
+# kept for WaitShots.
+$pendingShots = New-Object System.Collections.Generic.List[object]
+function ShotAsync([string]$name, [string]$folder = $shots) {
+  if (!$shots) { return @() }
+  $started = foreach ($i in $copies) {
+    # Start-Process runs in the process's directory, not the script's location.
+    Start-Process -FilePath python -ArgumentList @('-I', 'tools\sfve.py', 'shot', "$i", "`"$folder\$name-$i.png`"") -WorkingDirectory (Get-Location).Path -WindowStyle Hidden -PassThru
+  }
+  foreach ($p in $started) { $script:pendingShots.Add($p) }
+  return $started
+}
+# Waits for every shot ShotAsync started (at most `$seconds`).
+function WaitShots([int]$seconds = 30) {
+  foreach ($p in $script:pendingShots) { if (-not $p.WaitForExit($seconds * 1000)) { try { $p.Kill() } catch {} } }
+  $script:pendingShots.Clear()
+}
 # Copy 2 watches table 0 (the room board's Watch); `$next`: from the next game.
 function Watch([bool]$next) {
   WaitFor "copy 2's Watch to be taken" 30 { (Ctl 2 'watchtable 0') -like 'ok*' }
@@ -206,45 +226,55 @@ function CheckScenes([int]$game) {
 }
 # -shots, through a game's decided scenes until copy 0 logs its result:
 # "game<N>-after-skip" about a second after copy 0 first applies a skip, and
-# "game<N>-before-result" from about a second before the result (shots are
-# taken every quarter second or so from the decision on; the one nearest a
-# second before is kept). `$results` and `$decided0` are copy 0's counts of
-# result and decision lines at the game's start. With `$rolling` false only
-# the after-skip shot is taken (the run then reacts to the result at once).
+# "game<N>-before-result" from about a second before the result (rolling
+# shots from the decision on, a new set as soon as the last one is done; the
+# one nearest a second before is kept). `$results` and `$decided0` are copy
+# 0's counts of result and decision lines at the game's start. With
+# `$rolling` false only the after-skip shot is taken. Every shot runs
+# without blocking (ShotAsync), so the result is seen within a quarter
+# second: the last WIN's B mash after it must land inside the 2 s guard.
 function ScenesShots([int]$game, [int]$results0, [int]$decided0, [bool]$rolling) {
   if (!$shots) { return }
   $skips0 = Count 0 'netplay: scenes skipped at frame'
   $dir = Join-Path $shots "rolling-$game"
   New-Item -ItemType Directory -Force $dir | Out-Null
   $taken = New-Object System.Collections.Generic.List[object]
-  $afterSkip = $false
+  $skipSeen = $null
+  $afterSkipTaken = $false
   $deadline = (Get-Date).AddSeconds($gameSeconds)
   while ((Count 0 'netplay: match result') -le $results0) {
     if ((Get-Date) -gt $deadline) { throw "game ${game}: no result within $gameSeconds s" }
-    if (-not $afterSkip -and (Count 0 'netplay: scenes skipped at frame') -gt $skips0) {
-      $afterSkip = $true
-      Start-Sleep 1
-      Shot "game$game-after-skip"
+    if (-not $skipSeen -and (Count 0 'netplay: scenes skipped at frame') -gt $skips0) { $skipSeen = Get-Date }
+    if ($skipSeen -and -not $afterSkipTaken -and ((Get-Date) - $skipSeen).TotalSeconds -ge 1) {
+      $afterSkipTaken = $true
+      ShotAsync "game$game-after-skip" | Out-Null
       "game ${game}: shot a second after copy 0's first skip"
-      continue
     }
-    if ($rolling -and (Count 0 'netplay: the match is decided at frame') -gt $decided0) {
-      $name = Join-Path $dir "$($taken.Count)"
-      $at = Get-Date
-      foreach ($i in $copies) { python -I tools\sfve.py shot $i "$name-$i.png" | Out-Null }
-      $taken.Add([pscustomobject]@{ At = $at; Name = $name })
+    $busy = $taken.Count -and ($taken[$taken.Count - 1].Shots | Where-Object { -not $_.HasExited })
+    if ($rolling -and -not $busy -and (Count 0 'netplay: the match is decided at frame') -gt $decided0) {
+      $name = "$($taken.Count)"
+      $taken.Add([pscustomobject]@{ At = Get-Date; Name = (Join-Path $dir $name); Shots = @(ShotAsync $name $dir) })
       # Only the last few can be the one kept.
       if ($taken.Count -gt 8) { Get-ChildItem "$($taken[$taken.Count - 9].Name)-*.png" -ErrorAction SilentlyContinue | Remove-Item -Force }
     }
     Start-Sleep -Milliseconds 250
   }
   $resultAt = Get-Date
-  $best = $taken | Sort-Object { [Math]::Abs(($resultAt - $_.At).TotalSeconds - 1) } | Select-Object -First 1
+  # Of the sets already written, the one nearest a second before the result;
+  # nothing waits for a set still being taken (the prompt counts down), and
+  # the rolling folders go at the end of the run (RemoveRollingShots).
+  $done = $taken | Where-Object { -not ($_.Shots | Where-Object { -not $_.HasExited }) }
+  $best = $done | Sort-Object { [Math]::Abs(($resultAt - $_.At).TotalSeconds - 1) } | Select-Object -First 1
   if ($best) {
     foreach ($i in $copies) { if (Test-Path "$($best.Name)-$i.png") { Move-Item "$($best.Name)-$i.png" (Join-Path $shots "game$game-before-result-$i.png") -Force } }
     "game ${game}: shot $([int]($resultAt - $best.At).TotalMilliseconds) ms before copy 0's result was seen"
   }
-  Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+}
+# At the end of the run: every shot finished, and the rolling shots' folders gone.
+function RemoveRollingShots {
+  if (!$shots) { return }
+  WaitShots 30
+  Get-ChildItem $shots -Directory -Filter 'rolling-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 }
 # -skipPad: copy -skipCopy's pad presses X about -skipAfter frames (default
 # 90) after its log shows game's decision, the count of those lines being
@@ -331,7 +361,8 @@ try {
       Shot "game$game-fight"
       if ($skipPad) { PadSkip $decidedBefore }
       # -quickAnswer presses as the prompt shows, and the last WIN's B mash
-      # below must land within 2 s of the result: those take no rolling shots.
+      # below must land within 2 s of the result: those take no rolling
+      # shots, only the after-skip one.
       ScenesShots $game $results[0] $decided0 (-not ($quickAnswer -or ($last -and $padAnswers)))
       if ($quickAnswer) {
         $deadline = (Get-Date).AddSeconds($gameSeconds)
@@ -378,14 +409,15 @@ try {
         "game ${game}: no rematch offered (the set is over); both copies declined"
       } else {
         Start-Sleep -Milliseconds 1500 # the prompt opens over the WIN
-        Shot "game$game-prompt"
+        # The prompt counts down 10 s: its shots must not hold the answers back.
+        ShotAsync "game$game-prompt" | Out-Null
         # Rematch ("yes") is parked by the runtime as the choice the held frames
         # carry; asked again until this copy's input shows it.
         $say = if ($last) { @('yes', $(if ($leaveAnswer) { 'leave' } else { 'no' })) } else { @('yes', 'yes') }
         Answer 0 $say[0]
         if ($shots) {
           Start-Sleep -Milliseconds 700
-          Shot "game$game-prompt-one-chose"
+          ShotAsync "game$game-prompt-one-chose" | Out-Null
         }
         Answer 1 $say[1]
         WaitFor "both copies' decision over game $game's WIN" 30 {
@@ -549,6 +581,7 @@ foreach ($i in $copies) {
   if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern 'desync|mismatch' | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
 }
 # The copies close here, whatever happened above; the logs stay.
+RemoveRollingShots
 if (!$keep) { python -I tools\sfve.py kill | Out-Null }
 # Each copy logs its checkpoint hashes (every 60 confirmed frames); tools/verdict.ps1
 # compares them and holds the verdict rule: PASS needs a compared checkpoint.
