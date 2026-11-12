@@ -8,6 +8,7 @@
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
 #include "mod/SfvBattleLayouts.hxx"
+#include "mod/SfvOffsets.hxx"
 #include "mod/TinyFighters.hxx"
 #include "overlay/Overlay.hxx"
 
@@ -222,6 +223,10 @@ std::optional<Command> ParseCommand(std::string_view args, std::string& error)
 				const std::optional<int> after = Integer(option.substr(6), 0, kMaxAfterPresents);
 				if (!after) return error = "grab: after= is 0 to " + std::to_string(kMaxAfterPresents) + " presents", std::nullopt;
 				c.grab.afterPresents = *after;
+			} else if (option.substr(0, 3) == "ui=") {
+				const std::string_view ui = option.substr(3);
+				if (ui != "off" && ui != "on") return error = "grab: ui= is off or on", std::nullopt;
+				c.grab.beforeUi = ui == "off";
 			} else if (option.substr(0, 6) == "depth=") {
 				if (!overlay::grab::ParseDepthChoice(std::string(option.substr(6)), c.grab.depth)) {
 					return error = "grab: depth= is auto, off or a target's number", std::nullopt;
@@ -379,8 +384,14 @@ void BoothMode::Frame(SfvAdapter& adapter)
 {
 	FrameInputs inputs;
 	bool runOn = false;
+	// SFV's own loading check, on the game thread, each frame of the battle.
+	static const auto isAsyncLoading =
+		reinterpret_cast<bool (*)()>(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)) + sfv::kIsAsyncLoading.rva);
+	const bool loading = isAsyncLoading();
 	{
 		std::lock_guard lock(mutex_);
+		loading_ = loading;
+		loadedFrames_ = loading ? 0 : loadedFrames_ + 1;
 		flow_ = adapter.FlowState();
 		if (leaveWanted_) {
 			held_ = true;
@@ -539,13 +550,14 @@ std::string BoothMode::Describe() const
 		",\"holdAt\":" + std::to_string(holdAt_) + ",\"playing\":" + (steps_.empty() ? "false" : "true") +
 		",\"leaving\":" + (leaveWanted_ ? "true" : "false") + ",\"gauges\":" + (gauges_ ? "true" : "false") +
 		",\"hudMovie\":" + (HudMovieKnown() ? "true" : "false") + ",\"hudHidden\":" + (HudHidden() ? "true" : "false") +
-		",\"hudParts\":" + std::to_string(HudPartsKnown()) + ",\"presents\":" + std::to_string(grab.presents) +
+		",\"hudParts\":" + std::to_string(HudPartsKnown()) + ",\"loading\":" + (loading_ ? "true" : "false") +
+		",\"loadedFrames\":" + std::to_string(loadedFrames_) + ",\"presents\":" + std::to_string(grab.presents) +
 		",\"pending\":" + (grab.pending ? "true" : "false") + ",\"depthProbe\":" + (grab.depthProbe ? "true" : "false") +
 		",\"lastGrab\":";
 	if (grab.lastPath.empty()) return json + "null}";
 	return json + "{\"path\":" + JsonString(grab.lastPath) + ",\"ok\":" + (grab.lastOk ? "true" : "false") +
 		",\"error\":" + JsonString(grab.lastError) + ",\"present\":" + std::to_string(grab.lastPresent) +
-		",\"depth\":" + JsonString(grab.lastDepth) + "}}";
+		",\"depth\":" + JsonString(grab.lastDepth) + ",\"ui\":" + JsonString(grab.lastUi) + "}}";
 }
 
 } // namespace sfve::mod

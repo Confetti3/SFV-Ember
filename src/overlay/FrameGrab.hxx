@@ -122,6 +122,12 @@ struct Request {
 	std::string path;        // the BMP's path (UTF-8); the depth files are named from it
 	int afterPresents = 0;   // wait this many presents before copying (0: the next)
 	DepthChoice depth;
+	// ui=off: the colour as the frame was before its first user-interface
+	// draw (the depth probe's: the first draw into the back buffer with a
+	// depth-stencil target bound, which is how Scaleform draws its movies),
+	// so no HUD, menu left over or overlay toast is in it. Needs the depth
+	// probe; without a UI draw in the frame the back buffer at Present.
+	bool beforeUi = false;
 };
 
 // Any thread: queues a grab, taken on the render thread at the Present that
@@ -140,6 +146,10 @@ struct Status {
 	// The last grab's depth: "off" (not asked), "ok" (written), or why not.
 	std::string lastDepth;
 	bool depthProbe = false;    // InstallDepthProbe hooked the context
+	// The last grab's colour: "before ui" (copied before the frame's first UI
+	// draw), "no ui draw" (ui=off, and the frame drew none: the back buffer
+	// at Present) or "ui kept" (ui=on).
+	std::string lastUi;
 };
 Status CurrentStatus();
 

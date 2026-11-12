@@ -511,6 +511,15 @@ constexpr CodeSite kHudPartPostUpdate{"HudPartPostUpdate", 0x41A910,
 // hidden movie is not drawn. 13 bytes, then the padding.
 constexpr CodeSite kMovieSetVisible{"MovieSetVisible", 0xEEE8C0,
 	{0x48, 0x8B, 0x41, 0x30, 0x48, 0x8B, 0x08, 0x48, 0x8B, 0x01, 0x48, 0xFF, 0x60, 0x48, 0xCC, 0xCC}};
+// bool IsAsyncLoading(): SFV's own "is anything still loading" (the
+// KWGameBlueprintFunction reflection registers it as "IsAsyncLoading", rva
+// 0xC42666, exec thunk rva 0xD19E40): five readiness flags of SFV's resource
+// manager (its singleton, rva 0x68CEA0) and the engine's pending async
+// packages (rva 0x11F4630: a counter above 0). Reads only. The photo booth
+// waits for it to be false before its grabs: a fighter drawn before its
+// costume's data has loaded is grey, or wears the default texture.
+constexpr CodeSite kIsAsyncLoading{"IsAsyncLoading", 0x524430,
+	{0x48, 0x83, 0xEC, 0x28, 0xE8, 0x67, 0x8A, 0x16, 0x00, 0x48, 0x8B, 0xC8, 0xE8, 0x2F, 0xB5, 0x16}};
 namespace hudpart {
 constexpr uint32_t kMoviesBegin = 0xC0; // HudMovie** (std::vector)
 constexpr uint32_t kMoviesEnd = 0xC8;
@@ -616,7 +625,7 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kSpecData, kMainMenuClass,
 	kSetPlayerParam, kRequestExit, kStageName, kSpecReady, kFindSpecFighter, kFindSpecFighterStep, kFindSpecCostume,
 	kFindSpecCostumeStep, kFindSpecColour, kFindSpecColourStep, kCostumeName, kTextToString, kCreateText,
-	kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke, kHudPartPostUpdate, kMovieSetVisible, kBattleSetupClass,
+	kTexture2DClass, kStaticLoadObject, kColourSwatch, kHudInvoke, kHudPartPostUpdate, kMovieSetVisible, kIsAsyncLoading, kBattleSetupClass,
 	kOwnedFighters, kOwnedCostumes,
 	kOwnedColours, kLoggedIn, kVersionDataClass, kSystemSave, kCharaVoiceLanguage,
 	// The spec's code cache and its grant pass (EntitlementGrant).

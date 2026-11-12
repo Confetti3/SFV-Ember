@@ -133,6 +133,8 @@ private:
 	bool leaveWanted_ = false; // `booth leave`: the battle stands still until the menu replaces it
 	bool leaving_ = false;     // LeaveBattle took
 	bool leaveStill_ = false;  // `booth leave still`: no update after the leave (else the battle runs on, nobody pressing)
+	bool loading_ = false;     // SFV's IsAsyncLoading at the last frame (sfv::kIsAsyncLoading)
+	int loadedFrames_ = 0;     // frames in a row it has been false
 };
 
 } // namespace sfve::mod
