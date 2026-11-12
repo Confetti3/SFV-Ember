@@ -341,6 +341,12 @@ Not built or run here: no builds on this PC.
    the result on the same frame. (Run R4 found this right: 0 skips over 1865 frames. The old
    frame-count check was wrong; the unskipped length varies, 1545 and 1865 frames have been
    seen.)
+   A shot of three copies can take several seconds. In run S6 (`-rematches 1 -padAnswers -shots
+   -watchers 1`), two blocking shots between the prompt opening and copy 1's B answer pushed the
+   B past the prompt's 10 s countdown. Copy 1's shell closed at +10.01 s ("Back on Ember's Home"),
+   P2 never declined, and its asking lapsed at 11 s. The unanswered prompt gave up the seat, so
+   the room's results prompt never came. The shots over the prompt, and every shot taken during
+   the scenes, now run without blocking (`ShotAsync`). The run waits for them only at its end.
    With `-shots`, every game also gets `game<N>-after-skip-<copy>.png`, about 1 s after copy 0
    first applies a skip, and `game<N>-before-result-<copy>.png`, from about 1 s before copy 0
    logs its result. That one is picked from rolling shots taken from the decision on. Games
