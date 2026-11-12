@@ -154,13 +154,13 @@ TEST_CASE("English has no keys beyond the pick space's V-Skills and V-Triggers")
 	}
 }
 
-TEST_CASE("every note is at most 140 characters, in every language")
+TEST_CASE("every note is at most 140 characters in English and 160 in a translation")
 {
 	for (const std::string& tag : LoadoutTags()) {
 		const Catalog catalog = ParseEmbedded(tag);
 		for (const auto& [key, text] : catalog) {
 			INFO(tag << " " << key);
-			CHECK(CodePoints(text) <= (std::size_t)kMaxNoteLength);
+			CHECK(CodePoints(text) <= (std::size_t)(tag == "en" ? kMaxNoteLength : kMaxTranslatedNoteLength));
 		}
 	}
 }

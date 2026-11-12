@@ -202,6 +202,42 @@ TEST_CASE("the interface's fonts draw every character of SFV Ember's words")
 	}
 }
 
+TEST_CASE("the interface's fonts draw every character of the V-Skill and V-Trigger notes")
+{
+	// The notes are drawn as the player's own words are (NoteUserText): Latin and
+	// Cyrillic from the ranges the atlas bakes, the CJK scripts from their font.
+	const Font body(LibraryPath("src/ui/fonts/Inter-Regular.ttf"));
+	const nlohmann::json registry = nlohmann::json::parse(ReadFile(LibraryPath("locales/locales.json")));
+	std::map<std::string, std::string> fontOfScript;
+	for (const auto& script : registry.at("scripts")) {
+		if (script.at("font").is_string()) fontOfScript[script.at("id").get<std::string>()] = script.at("font").get<std::string>();
+	}
+	for (const auto& locale : registry.at("locales")) {
+		const std::string tag = locale.at("tag").get<std::string>();
+		const std::string script = locale.at("script").get<std::string>();
+		INFO(tag);
+		std::unique_ptr<Font> scriptFont;
+		if (fontOfScript.count(script)) scriptFont = std::make_unique<Font>(LibraryPath(("src/ui/fonts/" + fontOfScript[script]).c_str()));
+		loc::Catalog notes;
+		std::string error;
+		REQUIRE(loc::testing::ParsePo(ReadFile(std::string(SFVE_LOADOUT_LOCALES_DIR) + "/" + tag + ".po"), notes, error));
+		notes.erase(""); // the header
+		CHECK(!notes.empty());
+		for (const auto& [id, text] : notes) {
+			for (const unsigned codepoint : Codepoints(text)) {
+				if (codepoint < 0x20) continue;
+				bool baked = false;
+				for (const ImWchar* range = sf4e::ui::UiGlyphRanges; range[0] && range[1]; range += 2) {
+					baked = baked || (codepoint >= range[0] && codepoint <= range[1]);
+				}
+				const bool drawn = (baked && body.Has(codepoint)) || (scriptFont && scriptFont->Has(codepoint));
+				INFO(id << " U+" << std::hex << codepoint);
+				CHECK(drawn);
+			}
+		}
+	}
+}
+
 TEST_CASE("no language's SFV Ember text names Ultra or an edition")
 {
 	// SFV's pick is the V-Skill and V-Trigger; the shared text's Ultra Combo and

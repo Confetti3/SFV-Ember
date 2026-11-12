@@ -3,14 +3,767 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Language: de\n"
 
-#. Placeholder entry (step 0 stub): stream D replaces this file with all 180 notes.
+# RYU = Ryu
+#. V-Skill I: MIND'S EYE
 msgid "RYU.vs1"
-msgstr "Stub note for Ryu's first V-Skill."
+msgstr "Eine Parry-Haltung, die jeden Schlag oder Feuerball abfängt, V-Leiste auflädt und Specials als Cancel erlaubt."
 
-#. Placeholder entry (step 0 stub).
+#. V-Skill II: THRUST STRIKE
 msgid "RYU.vs2"
-msgstr "Stub note for Ryu's second V-Skill."
+msgstr "Ein Vorwärtsschlag mit eingebautem Parry gegen Schläge; ein geparrierter Treffer schleudert den Gegner in einen Wallbounce."
 
-#. Placeholder entry (step 0 stub).
+#. V-Trigger I: DENJIN RENKI
 msgid "RYU.vt1"
-msgstr "Stub note for Ryu's first V-Trigger."
+msgstr "Zeitlich begrenzt. Blitze verstärken seine Schläge, Feuerbälle und Uppercuts und verbessern seinen Super."
+
+#. V-Trigger II: KAKKO FUBATSU
+msgid "RYU.vt2"
+msgstr "Zeitlich begrenzt. Fügt einen verstärkten Parry hinzu, dazu einen Konter, nutzbar aus seinen Feuerbällen und seinem Shoryuken."
+
+# VEG = M. Bison
+#. V-Skill I: PSYCHO REFLECT
+msgid "VEG.vs1"
+msgstr "Absorbiert einen eingehenden Treffer und kann ihn zurückschicken, eine gute Antwort auf Feuerbälle."
+
+#. V-Skill II: HELL'S WARP
+msgid "VEG.vs2"
+msgstr "Teleportiert mit einem Kniestoß hinter den Gegner. Praktisch zum Überkreuzen oder um dem Druck zu entkommen."
+
+#. V-Trigger I: PSYCHO POWER
+msgid "VEG.vt1"
+msgstr "Zeitlich begrenzt. Verbessert seinen Dash und seine Specials und erlaubt, ein Special in ein anderes zu canceln, für V-Timer-Kosten."
+
+#. V-Trigger II: PSYCHO NIGHTMARE
+msgid "VEG.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Psycho Crusher, Psycho Charge und Psycho Judgement frei, solange es läuft."
+
+# CNL = Chun-Li
+#. V-Skill I: RANKYAKU
+msgid "CNL.vs1"
+msgstr "Ein Sprungkick, der sie für Luftangriffe, einen Stomp oder einen Wall-Jump in der Luft hält."
+
+#. V-Skill II: HAZANSHU
+msgid "CNL.vs2"
+msgstr "Ein Salto-Kick, der Feuerbällen ausweicht und in einen V-Trigger gecancelt werden kann. Nach hinten halten für einen kürzeren."
+
+#. V-Trigger I: RENKIKO
+msgid "CNL.vt1"
+msgstr "Zeitlich begrenzt. Die meisten ihrer Moves werden schneller und stärker, und sie erhält Stun-Combos."
+
+#. V-Trigger II: KIKOSHO
+msgid "CNL.vt2"
+msgstr "Eine Chi-Attacke, die den Gegner abhebt; danach kann sie für kurze Zeit weitere abfeuern."
+
+# KEN = Ken
+#. V-Skill I: QUICK STEP
+msgid "KEN.vs1"
+msgstr "Ein schneller Lauf nach vorn, der zu einem Kick werden kann. Schnelle Bewegung für Druck und Mix-ups."
+
+#. V-Skill II: RYUSENKYAKU
+msgid "KEN.vs2"
+msgstr "Ein fliegender Radkick von oben; Button halten für eine langsamere, stärkere Version."
+
+#. V-Trigger I: HEAT RUSH
+msgid "KEN.vt1"
+msgstr "Zeitlich begrenzt. Seine Drehkicks werden zu Projektil-Treffern, und Feuerbälle können in V-Skills canceln."
+
+#. V-Trigger II: SHINRYUKEN
+msgid "KEN.vt2"
+msgstr "Einmalig. Ein flammendes Shoryuken, das bei Treffer durch Level steigt, wenn du Schlag weiter drückst."
+
+# KRN = Karin
+#. V-Skill I: MYO-OKEN
+msgid "KRN.vs1"
+msgstr "Ein Vorwärtsschlag, der einen Feuerball neutralisiert; Button halten für einen langsameren, härteren Treffer."
+
+#. V-Skill II: FUDO SOSHO
+msgid "KRN.vs2"
+msgstr "Ein Vorwärtsschlag, der einen Feuerball neutralisiert und einen Crush Counter auslöst; Halten erhöht die Kraft."
+
+#. V-Trigger I: GUREN NO KATA
+msgid "KRN.vt1"
+msgstr "Zeitlich begrenzt. Schaltet ihre Rekka-Ketten und eine Reihe von Folgeattacken frei."
+
+#. V-Trigger II: TENHA NO KATA
+msgid "KRN.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Yasha Gaeshi frei, eine Parry-Haltung, in die sie aus anderen Moves canceln kann."
+
+# ZGF = Zangief
+#. V-Skill I: IRON MUSCLE
+msgid "ZGF.vs1"
+msgstr "Eine Haltung mit Rüstung, die Treffer absorbiert und die V-Leiste auflädt; halte sie, um durch Angriffe vorzugehen."
+
+#. V-Skill II: SUPER RUSSIAN KICK
+msgid "ZGF.vs2"
+msgstr "Ein Kick mit Rüstung am Anfang, der für eine stärkere Version gehalten werden kann und ihm hilft, für einen Wurf reinzustürmen."
+
+#. V-Trigger I: CYCLONE LARIAT
+msgid "ZGF.vt1"
+msgstr "Zeitlich begrenzt. Schaltet Cyclone Lariat frei, eine Drehung, die Feuerbälle ignoriert, und gibt Iron Muscle fast endlose Rüstung."
+
+#. V-Trigger II: COSSACK MUSCLE
+msgid "ZGF.vt2"
+msgstr "Zeitlich begrenzt. Erhöht Schaden und Stun von Screw Piledriver und Borscht Dynamite, die aus Specials kombinieren."
+
+# DSM = Dhalsim
+#. V-Skill I: YOGA FLOAT
+msgid "DSM.vs1"
+msgstr "Hebt ihn in die Luft, um zu driften und von oben anzugreifen. Gut, um tiefen Moves auszuweichen und Winkel zu wechseln."
+
+#. V-Skill II: YOGA DEEP BREATH
+msgid "DSM.vs2"
+msgstr "Ein tiefer Atemzug, der seinen nächsten Yoga Fire mit zusätzlichen Treffern, Schaden und Vorteil verstärkt."
+
+#. V-Trigger I: YOGA BURNER
+msgid "DSM.vt1"
+msgstr "Einmalig. Ein Feuerangriff, der einen Feuerteppich auf dem Boden hinterlässt und einen Gegner am Boden verbrennt."
+
+#. V-Trigger II: YOGA SANSARA
+msgid "DSM.vt2"
+msgstr "Zeitlich begrenzt. Platziert eine schwebende Flamme, die zu einem stärkeren Feuerball wächst, wenn seine Feuer-Moves sie berühren."
+
+# NSH = Nash
+#. V-Skill I: BULLET CLEAR
+msgid "NSH.vs1"
+msgstr "Absorbiert einen Feuerball für die Leiste und zieht einen Gegner heran, der vom Schlag getroffen wird oder blockt."
+
+#. V-Skill II: SILENT SHARPNESS
+msgid "NSH.vs2"
+msgstr "Verstärkt seinen nächsten Sonic Scythe mit zusätzlichen Treffern, Schaden und Stun."
+
+#. V-Trigger I: SONIC MOVE
+msgid "NSH.vt1"
+msgstr "Einmalig. Nash verschwindet und taucht an neuer Stelle wieder auf, mit einigen Teleport-Varianten zur Auswahl."
+
+#. V-Trigger II: STEALTH DASH
+msgid "NSH.vt2"
+msgstr "Zeitlich begrenzt. Friert kurz die Zeit ein, während er dasht, dann folgt Stop oder seine neuen Justice-Moves."
+
+# BLR = Vega
+#. V-Skill I: MATADOR TURN
+msgid "BLR.vs1"
+msgstr "Eine ausweichende Drehung, die hohen Treffern und Feuerbällen entgeht und dann angreift. Schwächer, wenn er seine Klaue verloren hat."
+
+#. V-Skill II: MATADOR FLIP
+msgid "BLR.vs2"
+msgstr "Ein Salto, der Schlägen und Feuerbällen ausweicht und in ein Cosmic-Smart-Follow-up übergehen kann."
+
+#. V-Trigger I: BLOODY KISS
+msgid "BLR.vt1"
+msgstr "Einmalig. Wirft eine Rose; trifft sie, stürmt Vega mit einem schneidenden Angriff nach vorn."
+
+#. V-Trigger II: ALEGRIAS
+msgid "BLR.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Flash Arch frei, eine Parry-Haltung, die physische Angriffe mit einem Konter beantwortet."
+
+# JRI = Juri
+#. V-Skill I: KASATSUSHU
+msgid "JRI.vs1"
+msgstr "Ein Kick, der aufgeladen werden kann, um härter zu treffen; die schnelle Stufe braucht kein Aufladen."
+
+#. V-Skill II: FUHA ENZAN
+msgid "JRI.vs2"
+msgstr "Lädt einen langsamen, breiten Feuerball auf, den sie durch erneutes Drücken abfeuert. Gut, um den Raum zu kontrollieren."
+
+#. V-Trigger I: FENG SHUI ENGINE alpha
+msgid "JRI.vt1"
+msgstr "Zeitlich begrenzt. Erlaubt, normale Angriffe von leicht zu schwer zu verketten und Fuharenkyaku ohne Aufladen zu nutzen."
+
+#. V-Trigger II: FENG SHUI ENGINE beta
+msgid "JRI.vt2"
+msgstr "Kurz zeitlich begrenzt. Gibt ihr alle Stocks und zieht der EX-Leiste des Gegners Energie ab, solange beide am Boden sind."
+
+# BRD = Birdie
+#. V-Skill I: BREAK TIME
+msgid "BRD.vs1"
+msgstr "Isst einen Snack, um V-Leiste aufzubauen. Er ist langsam, also nutze ihn, wenn der Gegner weit weg ist."
+
+#. V-Skill II: CHEWING TIME
+msgid "BRD.vs2"
+msgstr "Kaut Kaugummi, um V-Leiste aufzubauen; Button halten, um eine Blase zu blasen, die er abschießen kann."
+
+#. V-Trigger I: ENJOY TIME
+msgid "BRD.vt1"
+msgstr "Zeitlich begrenzt. Mehr Schaden, schnellere Bewegung und stabilere Rüstung bei manchen Specials; Specials verbrauchen den Timer."
+
+#. V-Trigger II: BIRDIE TIME
+msgid "BRD.vt2"
+msgstr "Zeitlich begrenzt. Fügt Bull Swing und Bull Capture hinzu und verstärkt seine Ketten und Bull Revenger-Moves leicht."
+
+# RMK = R. Mika
+#. V-Skill I: HEATED MIC PERFORMANCE
+msgid "RMK.vs1"
+msgstr "Wirft ein Mikrofon, das ihren nächsten Griff oder Super verstärkt; Button halten lädt den Bonus auf."
+
+#. V-Skill II: PUMPED UP!
+msgid "RMK.vs2"
+msgstr "Ein Parry gegen Schläge, das die Leiste füllt und kontert. Feuerbälle und tiefe Angriffe kommen trotzdem durch."
+
+#. V-Trigger I: C'MON NADESHIKO!
+msgid "RMK.vt1"
+msgstr "Einmalig. Ruft Nadeshiko, die bäuchlings von oben davor oder dahinter einspringt."
+
+#. V-Trigger II: STEEL CHAIR
+msgid "RMK.vt2"
+msgstr "Zeitlich begrenzt. Nadeshiko wirft einen Stahlstuhl und kann vor Ablauf der Zeit noch einmal gerufen werden."
+
+# RSD = Rashid
+#. V-Skill I: FRONT FLIP
+msgid "RSD.vs1"
+msgstr "Ein Frontflip, der in Luftkicks oder einen Rollangriff übergeht. Eine schnelle Art, sich zu nähern."
+
+#. V-Skill II: WING STROKE
+msgid "RSD.vs2"
+msgstr "Ein schneller Flügelschlag, am Boden oder im Sprung nutzbar, mit Wing-Spike-Follow-ups."
+
+#. V-Trigger I: YSAAR
+msgid "RSD.vt1"
+msgstr "Einmalig. Schickt einen Windball aus, der Feuerbälle blockt und seine Windangriffe verstärkt, wenn er ihn berührt."
+
+#. V-Trigger II: EASIFA
+msgid "RSD.vt2"
+msgstr "Zeitlich begrenzt. Verbessert Eagle Spike, Whirlwind Shot und Front Flip und fügt den vollbildigen Haboob hinzu."
+
+# FAN = F.A.N.G
+#. V-Skill I: NISHODOKU
+msgid "FAN.vs1"
+msgstr "Ein Giftschuss, der dem Gegner nach dem Treffer noch mehrere Sekunden Schaden zufügt."
+
+#. V-Skill II: SODOKUBU
+msgid "FAN.vs2"
+msgstr "Ein Parry gegen Schläge, das die Leiste füllt und dann zurückschlägt. Feuerbälle und Supers kommen durch."
+
+#. V-Trigger I: DOKUNOMU
+msgid "FAN.vt1"
+msgstr "Zeitlich begrenzt. Eine Giftwolke vergiftet nahe Gegner, und er kann ohne Aufladen in Specials canceln."
+
+#. V-Trigger II: KORYO DOKUDA
+msgid "FAN.vt2"
+msgstr "Zeitlich begrenzt. Verstärkt seine Giftkugeln und die Giftfalle."
+
+# LAR = Laura
+#. V-Skill I: VOLTY LINE
+msgid "LAR.vs1"
+msgstr "Ein Ausfallschritt von oben, der in Dash-Optionen wie Avante, Esquiva und Finta übergeht."
+
+#. V-Skill II: VOLTY SPRINK
+msgid "LAR.vs2"
+msgstr "Ein Sprung, der Springende trifft und mit einem Luft-Feuerball oder Hackenkick nachsetzt."
+
+#. V-Trigger I: SPARK SHOW
+msgid "LAR.vt1"
+msgstr "Zeitlich begrenzt. Schnellere Donnerschläge und stärkere V-Skills, Sunset Wheel und Super."
+
+#. V-Trigger II: SHOCK STANCE
+msgid "LAR.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Matsuda Sway frei, eine ausweichende Haltung, und Shock Choke, einen Griff."
+
+# NCL = Necalli
+#. V-Skill I: CULMINATED POWER
+msgid "NCL.vs1"
+msgstr "Ein Bodenschuss mit drei Reichweiten; er baut bei Treffer Leiste auf."
+
+#. V-Skill II: CRAWLING BEAST
+msgid "NCL.vs2"
+msgstr "Ein tiefes Kriechen, das ein langsames Projektil abfeuert, den meisten Feuerbällen ausweicht und bei Treffer zusammensackt."
+
+#. V-Trigger I: TORRENT OF POWER
+msgid "NCL.vt1"
+msgstr "Zeitlich begrenzt. Schnelleres Gehen und Dash, mehr Schaden und der neue Move Clouded Mirror."
+
+#. V-Trigger II: ERUPTION OF POWER
+msgid "NCL.vt2"
+msgstr "Für die ganze Runde. Gleiche Tempo- und Schadensgewinne wie beim ersten Trigger, plus der Move Heart of Gold."
+
+# CMY = Cammy
+#. V-Skill I: AXEL SPIN KNUCKLE
+msgid "CMY.vs1"
+msgstr "Ein Drehschlag, der Würfen und Feuerbällen ausweicht und aus der Nähe überkreuzen kann."
+
+#. V-Skill II: SPINNING ATTACK
+msgid "CMY.vs2"
+msgstr "Eine hüpfende Drehung, die tiefe Angriffe überspringt und überkreuzen kann; ein Counter-Hit gibt einen Crush Counter."
+
+#. V-Trigger I: DELTA DRIVE
+msgid "CMY.vt1"
+msgstr "Zeitlich begrenzt. Verstärkt Spiral Arrow, Cannon Spike und Cannon Strike."
+
+#. V-Trigger II: DELTA ADVANCE
+msgid "CMY.vt2"
+msgstr "Zeitlich begrenzt. Fügt neue Dash- und Sprung-Follow-ups für schnelle Annäherungen und Mix-ups hinzu."
+
+# GUL = Guile
+#. V-Skill I: SONIC BLADE
+msgid "GUL.vs1"
+msgstr "Wirft einen schnellen Knall, auch aus der Hocke, dem er Sonic Cross folgen lassen kann."
+
+#. V-Skill II: DIVE SONIC
+msgid "GUL.vs2"
+msgstr "Ein Sturzangriff mit Knall, der ihm hilft, näher zu kommen; er geht auch aus der Hocke."
+
+#. V-Trigger I: SOLID PUNCHER
+msgid "GUL.vt1"
+msgstr "Zeitlich begrenzt. Schaltet Sonic Break frei, ein ladungsfreies Projektil mit Follow-ups, und einen stärkeren Super."
+
+#. V-Trigger II: KNIFE EDGE
+msgid "GUL.vt2"
+msgstr "Zeitlich begrenzt. Flash Kicks erhalten ein Projektil und können ohne Aufladung aus Kick-Normals ausgeführt werden."
+
+# IBK = Ibuki
+#. V-Skill I: TENRAI
+msgid "IBK.vs1"
+msgstr "Ein projektilartiger Schlag, der einen Juggle vorbereitet; Button halten für die stärkere volle Version."
+
+#. V-Skill II: MAKIBISHI
+msgid "IBK.vs2"
+msgstr "Streut Krähenfüße auf den Boden, die einen Gegner zu Fall bringen, der darüber läuft."
+
+#. V-Trigger I: ROKUSHAKU HOROKUDAMA
+msgid "IBK.vt1"
+msgstr "Einmalig. Wirft eine Zeitbombe, deren Zündung sich mit der Richtung ändert; ein Kunai kann sie vorzeitig auslösen."
+
+#. V-Trigger II: FUMA SHURIKEN
+msgid "IBK.vt2"
+msgstr "Einmalig. Wirft einen riesigen Shuriken, vorwärts oder nach oben, der auf dem Hin- und Rückweg trifft."
+
+# BSN = Balrog
+#. V-Skill I: KKB
+msgid "BSN.vs1"
+msgstr "Ein Ausweichschritt, der Feuerbällen entgeht und in Schlag-Follow-ups oder Buffalo-Moves übergeht."
+
+#. V-Skill II: FFB
+msgid "BSN.vs2"
+msgstr "Verstärkt seinen nächsten Dash Punch mit zusätzlichem Schaden und Stun; beim Canceln braucht er keine Aufladung."
+
+#. V-Trigger I: CRAZY RUSH
+msgid "BSN.vt1"
+msgstr "Zeitlich begrenzt. Schaltet die Ansturm-Moves Charging Buffalo und Bursting Buffalo frei, bezahlt mit dem V-Timer."
+
+#. V-Trigger II: NO MERCY
+msgid "BSN.vt2"
+msgstr "Zeitlich begrenzt. Fügt B3 hinzu, einen Befehlsgriff mit großem Stun-Schaden, bezahlt mit dem V-Timer."
+
+# URN = Urien
+#. V-Skill I: METALLIC AURA
+msgid "URN.vs1"
+msgstr "Gibt seinem nächsten Chariot Tackle, Violence Knee oder Dangerous Headbutt einen Treffer lang Rüstung."
+
+#. V-Skill II: INDIGNANT THUNDER
+msgid "URN.vs2"
+msgstr "Verstärkt seine nächste Metallic Sphere mit zusätzlichen Treffern, Schaden und einer größeren Hitbox."
+
+#. V-Trigger I: AEGIS REFLECTOR
+msgid "URN.vt1"
+msgstr "Einmalig. Hebt einen Aegis-Schild, der Feuerbälle für einige Sekunden reflektiert."
+
+#. V-Trigger II: TYRANT PRESSURE
+msgid "URN.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Tyrant Blaze frei, einen neuen Angriff, solange es läuft."
+
+# ALX = Alex
+#. V-Skill I: OVERHAUL
+msgid "ALX.vs1"
+msgstr "Macht seinen nächsten Treffer zu einem Hard Hit mit Counter-Hit-Effekten und zusätzlichem Vorteil."
+
+#. V-Skill II: OVERCHAIN
+msgid "ALX.vs2"
+msgstr "Lässt sein nächstes Special bei Treffer oder Block in ein anderes canceln, wie Flash Chop in Elbow Slash."
+
+#. V-Trigger I: RAGE SHIFT
+msgid "ALX.vt1"
+msgstr "Zeitlich begrenzt. Schaltet Sledge Hammer frei, einen aufladbaren schweren Schlag mit Parry-Modus."
+
+#. V-Trigger II: RAGE BOOST
+msgid "ALX.vt2"
+msgstr "Zeitlich begrenzt. Schaltet zwei neue Griffe frei, Flying DDT und Choke Sleeper."
+
+# Z21 = Akuma
+#. V-Skill I: RAKAN
+msgid "Z21.vs1"
+msgstr "Ein Parry gegen Schläge, im Stand oder in der Hocke, das die Leiste füllt und in Folgeangriffe führt."
+
+#. V-Skill II: KIAI
+msgid "Z21.vs2"
+msgstr "Ein Schrei, der seinen nächsten roten Feuerball verstärkt und einen Feuerball neutralisiert."
+
+#. V-Trigger I: DOHATSU SHOTEN
+msgid "Z21.vt1"
+msgstr "Zeitlich begrenzt. Verstärkt seine Feuerbälle und den Drachenhieb und schaltet Shun Goku Satsu frei."
+
+#. V-Trigger II: SHIRETSU HASSHI
+msgid "Z21.vt2"
+msgstr "Zeitlich begrenzt. Erlaubt, Specials in andere Specials zu canceln, bezahlt vom V-Timer statt vom EX-Meter."
+
+# Z20 = Kolin
+#. V-Skill I: INSIDE SLASH
+msgid "Z20.vs1"
+msgstr "Ein Hieb mit Konterfenster: Trifft ein Schlag sie dann, kontert sie mit einem Niederschlag."
+
+#. V-Skill II: GLACIER THROUGH
+msgid "Z20.vs2"
+msgstr "Ein Sprintschlag, der bei Treffer die Stun-Leiste des Gegners einfriert und ihn niederwirft."
+
+#. V-Trigger I: DIAMOND DUST
+msgid "Z20.vt1"
+msgstr "Entfesselt einen Eisstoß, der die Stun-Leiste des Gegners einfriert; ein zweiter Einsatz ist während des Timers möglich."
+
+#. V-Trigger II: ABSOLUTE ZERO
+msgid "Z20.vt2"
+msgstr "Zeitlich begrenzt. Stärkere Schläge und Schneebälle, plus die neuen Moves Frost Edge und Reverse Javelin."
+
+# Z22 = Ed
+#. V-Skill I: PSYCHO SNATCHER
+msgid "Z22.vs1"
+msgstr "Ein langer Schlag; trifft er, zieht sich Ed heran und wirft den Gegner nieder."
+
+#. V-Skill II: PSYCHO SWING
+msgid "Z22.vs2"
+msgstr "Ein tiefer Schwung, der Feuerbällen ausweicht, mit einer härter treffenden Psycho-Smash-Version."
+
+#. V-Trigger I: PSYCHO CANNON
+msgid "Z22.vt1"
+msgstr "Einmalig. Feuert eine riesige Psycho-Explosion mit sieben Treffern ab."
+
+#. V-Trigger II: ENHANCED SNATCHER
+msgid "Z22.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Ultra Snatcher frei, einen stärkeren Psycho Snatcher am Boden oder in der Luft."
+
+# Z23 = Menat
+#. V-Skill I: SOUL REFLECT
+msgid "Z23.vs1"
+msgstr "Absorbiert einen Feuerball für V-Leiste und schickt ihn zurück, dazu ein Schlag auf kurze Distanz."
+
+#. V-Skill II: SOUL SPIRAL
+msgid "Z23.vs2"
+msgstr "Ein Vorwärts-Spiralschlag, der mit ihrem Orb kombiniert werden kann."
+
+#. V-Trigger I: WISDOM OF THOTH
+msgid "Z23.vt1"
+msgstr "Zeitlich begrenzt. Gibt ihr eine Reihe von Orbs, einen pro Button, die sie beim Loslassen dieses Buttons abfeuert."
+
+#. V-Trigger II: PROPHECY OF THOTH
+msgid "Z23.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Judgement of Thoth frei, das alle ihre Orbs gleichzeitig in verschiedenen Bögen abfeuert."
+
+# Z24 = Abigail
+#. V-Skill I: HUNGABEE
+msgid "Z24.vs1"
+msgstr "Eine Parry-Haltung, hoch oder tief, die einen Schlag stoppt und V-Leiste aufbaut. Critical Arts durchbrechen sie."
+
+#. V-Skill II: C'MON SPARE TIRE
+msgid "Z24.vs2"
+msgstr "Lässt vor ihm einen Reifen fallen, den er mit seinen Angriffen auf den Gegner schleudern kann."
+
+#. V-Trigger I: MAX POWER
+msgid "Z24.vt1"
+msgstr "Zeitlich begrenzt. 15 Prozent mehr Schaden, Ladeversionen seiner harten Schläge und stabilere Rüstung bei Lauf-Moves."
+
+#. V-Trigger II: HYBRID CHARGE
+msgid "Z24.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Metro Crash frei, einen aufgeladenen Ansturm, der beim Laden Rüstung hat."
+
+# Z25 = Zeku
+#. V-Skill I: FUKURO
+msgid "Z25.vs1"
+msgstr "Ein aufsteigender Kick, der Luftangriffe abwehrt und überkreuzen kann; bei Treffer wird er zu Young Zeku mit einem zusätzlichen Schlag."
+
+#. V-Skill II: KUCHIYOSE - SHII
+msgid "Z25.vs2"
+msgstr "Ruft einen Adler, der einen Feuerkracher an einer Stelle seiner Wahl abwirft; während er fliegt, kann er die Form wechseln."
+
+#. V-Trigger I: BUSHINRYU SHINGEKIKO
+msgid "Z25.vt1"
+msgstr "Zeitlich begrenzt. Gibt ihm einen einmaligen Dash, Idaten, und einen V-Trigger-Schlag."
+
+#. V-Trigger II: KARURA TENZAN
+msgid "Z25.vt2"
+msgstr "Zeitlich begrenzt. Der unverwundbare Auftakt kehrt als zweite, langsamere Karura Tenzan zurück, solange es läuft."
+
+# Z26 = Sakura
+#. V-Skill I: HARU KAZE
+msgid "Z26.vs1"
+msgstr "Ein Hüpfer mit drei Follow-ups, einem Fallen und zwei Kicks, der Feuerbällen ausweicht, während sie in der Luft ist."
+
+#. V-Skill II: HARU HAYATE
+msgid "Z26.vs2"
+msgstr "Ein schneller Schritt, der aus den meisten Normals gecancelt werden kann, mit einem Angriffs-Follow-up bei gehaltenem Button."
+
+#. V-Trigger I: HARU ARASHI
+msgid "Z26.vt1"
+msgstr "Zeitlich begrenzt. Stärkere Feuerbälle, plus Hogasho, ein neues Special auf HP+HK."
+
+#. V-Trigger II: SAKURA SENPU
+msgid "Z26.vt2"
+msgstr "Zeitlich begrenzt. Verbessert ihren Shoryuken und ihren Drehkick stark."
+
+# Z27 = Blanka
+#. V-Skill I: COWARD CROUCH
+msgid "Z27.vs1"
+msgstr "Duckt sich tief, um hohen Treffern und Feuerbällen auszuweichen, und springt dann mit einem Hochheben oder Sprung-Follow-up heraus."
+
+#. V-Skill II: SHOUT OF EARTH
+msgid "Z27.vs2"
+msgstr "Ein Schrei-Angriff nach vorn, der für eine stärkere zweite Stufe aufgeladen werden kann."
+
+#. V-Trigger I: JUNGLE DYNAMO
+msgid "Z27.vt1"
+msgstr "Zeitlich begrenzt. Verstärkt alle Blanka-Ball-Specials und Electric Thunder und fügt Ground Shave Rolling hinzu."
+
+#. V-Trigger II: LIGHTNING BEAST
+msgid "Z27.vt2"
+msgstr "Zeitlich begrenzt. Erlaubt, Blanka-Ball-Moves in Rolling Cannon zu canceln, eine Rolle in acht Richtungen in der Luft."
+
+# Z28 = Falke
+#. V-Skill I: PSYCHO TROMBE
+msgid "Z28.vs1"
+msgstr "Ein Stabschlag, der einen Feuerball für die Leiste absorbiert und auf Specials folgen kann."
+
+#. V-Skill II: PSYCHO MINE
+msgid "Z28.vs2"
+msgstr "Setzt eine Mine vor sich oder zu ihren Füßen, die explodiert, wenn ihr Stab oder Feuerbälle sie berühren."
+
+#. V-Trigger I: STAERKEN
+msgid "Z28.vt1"
+msgstr "Zeitlich begrenzt. Gibt ihr verstärkte Feuerball-Versionen auf HP+HK, nutzbar aus Specials und V-Skill."
+
+#. V-Trigger II: PSYCHO ANGRIFF
+msgid "Z28.vt2"
+msgstr "Zeitlich begrenzt. Die Aktivierung ist ein Angriff; schaltet Psycho Strum und Psycho Klinge als Follow-ups aus Normals frei."
+
+# Z29 = Cody
+#. V-Skill I: DOUBLE KICK
+msgid "Z29.vs1"
+msgstr "Ein Doppelkick, der vorn und dann hinten trifft. Er ist währenddessen unverwundbar, verliert aber etwas Lebensenergie."
+
+#. V-Skill II: CRIME SWAY
+msgid "Z29.vs2"
+msgstr "Ein Pendeln, das Schlägen und Feuerbällen ausweicht; danach kann er mit Wrench Fist oder Lumber Sweep folgen."
+
+#. V-Trigger I: SIDE ARM
+msgid "Z29.vt1"
+msgstr "Zeitlich begrenzt. Rüstet ein Messer aus, das seine Schläge verändert und Messer-Specials hinzufügt, aber seinen Feuerball deaktiviert."
+
+#. V-Trigger II: DIRTY COACH
+msgid "Z29.vt2"
+msgstr "Zeitlich begrenzt. Rüstet ein Rohr für schwere Schwünge aus, die Feuerbälle reflektieren, dazu ein Steinwurf."
+
+# Z30 = G
+#. V-Skill I: G BARRIER
+msgid "Z30.vs1"
+msgstr "Eine Barriere, die einen Feuerball absorbiert und den Gegner bei Kontakt niederwirft; sie wirkt auch in der Luft."
+
+#. V-Skill II: G PROTECTION
+msgid "Z30.vs2"
+msgstr "Senkt erlittenen Schaden und Stun um 10 Prozent, bis zu dreimal, und behält sein Presidential-Level beim Niederschlag."
+
+#. V-Trigger I: MAXIMUM PRESIDENT
+msgid "Z30.vt1"
+msgstr "Zeitlich begrenzt. Setzt sein Presidential-Level auf Maximum und erlaubt, Specials ineinander zu canceln."
+
+#. V-Trigger II: DANGEROUS PRESIDENT
+msgid "Z30.vt2"
+msgstr "Zeitlich begrenzt. Schaltet G Explosion frei, einen Combo-Verlängerer, und G Rage, einen gepanzerten Befehlsgriff."
+
+# Z31 = Sagat
+#. V-Skill I: ANGRY CHARGE
+msgid "Z31.vs1"
+msgstr "Verstärkt seinen nächsten Tiger Uppercut mit mehr Schaden, Rückstoß und Juggle-Potenzial."
+
+#. V-Skill II: HANUMAN CHARGE
+msgid "Z31.vs2"
+msgstr "Verstärkt sein nächstes Tiger Knee mit besserem Block-Vorteil und Juggle-Potenzial."
+
+#. V-Trigger I: TIGER CHARGE
+msgid "Z31.vt1"
+msgstr "Zeitlich begrenzt. Schaltet Tiger Cannon frei, einen starken Feuerball mit fünf Treffern, der aus Normals canceln kann."
+
+#. V-Trigger II: TIGER ASSAULT
+msgid "Z31.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Tiger-Spike- und Tiger-Rush-Angriffe frei, die auf seine Normals folgen."
+
+# Z32 = Kage
+#. V-Skill I: SENHA KASSATSU
+msgid "Z32.vs1"
+msgstr "Ein haltbarer Schlag mit Rüstung gegen hohe und mittlere Treffer und Feuerbälle, aber nicht gegen tiefe."
+
+#. V-Skill II: SEKIEIKEN
+msgid "Z32.vs2"
+msgstr "Ein Sprungschlag, der einen Gegner am Boden treffen kann; vorwärts halten für mehr Distanz."
+
+#. V-Trigger I: TAIGYAKU MUDO
+msgid "Z32.vt1"
+msgstr "Zeitlich begrenzt. Verstärkt seinen V-Skill stark und fügt Ashura Senku hinzu, einen Teleport-Dash."
+
+#. V-Trigger II: RIKUDO OSATSU
+msgid "Z32.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Misogi frei, einen Teleport-Slam, und den Super Shun Goku Satsu."
+
+# Z33 = Poison
+#. V-Skill I: PERFUME SWING
+msgid "Z33.vs1"
+msgstr "Eine Seilschaukel, die sie nach vorn trägt; die Distanz ist anpassbar und ihre Beine weichen Feuerbällen aus."
+
+#. V-Skill II: CARTWHEEL
+msgid "Z33.vs2"
+msgstr "Ein Rad, das durch den Gegner hindurchgeht; Button halten für ein Angriffs-Follow-up."
+
+#. V-Trigger I: POISON COCKTAIL
+msgid "Z33.vt1"
+msgstr "Zeitlich begrenzt. Schaltet Fire Squall frei, einen Projektilangriff, nutzbar am Boden oder in der Luft."
+
+#. V-Trigger II: TOXIC GLAMOR
+msgid "Z33.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Toxic Hold frei, einen Befehlsgriff, und Toxic Bind."
+
+# Z34 = E. Honda
+#. V-Skill I: NEKO DAMASHI
+msgid "Z34.vs1"
+msgstr "Ein Klatschen, das einen Feuerball neutralisiert und aus vielen Normals gecancelt werden kann."
+
+#. V-Skill II: SUMO SPIRIT
+msgid "Z34.vs2"
+msgstr "Verstärkt seine nächste Hundred Hand Slap und lässt jedes Normal in sie canceln."
+
+#. V-Trigger I: ONIGAWARA
+msgid "Z34.vt1"
+msgstr "Zeitlich begrenzt. Schaltet Oni-Daikaku- und Oni-Muso-Moves frei, bezahlt mit dem V-Timer."
+
+#. V-Trigger II: TAJIKARAO
+msgid "Z34.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Iwato Biraki frei, einen gepanzerten Angriff, der bei jeder Nutzung den V-Timer kostet."
+
+# Z35 = Lucia
+#. V-Skill I: TAP-KICK
+msgid "Z35.vs1"
+msgstr "Eine Mehrtreffer-Kickkette, die bei den späteren Treffern in Specials, Super oder V-Trigger canceln kann."
+
+#. V-Skill II: ARREST HEEL
+msgid "Z35.vs2"
+msgstr "Ein hoher Hüpfer mit Hackenkick, der Feuerbällen und manchen Schlägen ausweicht."
+
+#. V-Trigger I: BURNING FIGHT
+msgid "Z35.vt1"
+msgstr "Zeitlich begrenzt. Verstärkt ihren V-Skill und alle ihre Kick-Specials."
+
+#. V-Trigger II: WEAPON FURY
+msgid "Z35.vt2"
+msgstr "Zeitlich begrenzt. Schaltet Tactical Weapon frei, einen Schwung-Special mit dem Schlagstock."
+
+# Z36 = Gill
+#. V-Skill I: DIVINE COMET
+msgid "Z36.vs1"
+msgstr "Lässt ein Kometen-Projektil entlang dreier Bahnen fallen; es wechselt mit jedem V-Trigger, Feuer oder Eis."
+
+#. V-Skill II: BLOCKING
+msgid "Z36.vs2"
+msgstr "Ein Parry gegen jeden Angriff, auch Critical Arts, der V-Leiste bringt. Ducken für eine tiefe Version."
+
+#. V-Trigger I: PRIMAL FIRE
+msgid "Z36.vt1"
+msgstr "Zeitlich begrenzt. Feuermodus: entzündet Gegner, verstärkt seine Feuerangriffe und fügt drei neue Feuer-Specials hinzu."
+
+#. V-Trigger II: ICE OF DOOM
+msgid "Z36.vt2"
+msgstr "Zeitlich begrenzt. Eismodus: friert die Stun-Leiste des Gegners ein und fügt Tree of Frost und Delay Freeze Lance hinzu."
+
+# Z37 = Seth
+#. V-Skill I: TANDEN ENGINE
+msgid "Z37.vs1"
+msgstr "Ein Saugergriff; mit einem Schlag danach stiehlt er einmalig einen Move des Gegners."
+
+#. V-Skill II: TANDEN BOOSTER
+msgid "Z37.vs2"
+msgstr "Eine Haltung mit mehreren Folgeangriffen, Gleiten, Spirale und Pendel, und früh einem Counter-Hit-Zustand."
+
+#. V-Trigger I: TANDEN IGNITION
+msgid "Z37.vt1"
+msgstr "Zeitlich begrenzt. Schaltet den Teleportschlag Titanomachy, Mad Spin und weitere Follow-ups frei, die aus seinen Moves canceln."
+
+#. V-Trigger II: TANDEN MANEUVER
+msgid "Z37.vt2"
+msgstr "Einmalig. Erzeugt einen Orb, den er bis zu viermal steuert und auslöst, wann er will."
+
+# Z38 = Dan
+#. V-Skill I: SAIKYO-STYLE BURAIRUTEN NO KAMAE
+msgid "Z38.vs1"
+msgstr "Eine provozierende Hocke, die V-Leiste aufbaut und auf seinen Feuerball, Drachenhieb oder Danretsuken folgen kann."
+
+#. V-Skill II: SAIKYO-STYLE OTOKOBOE
+msgid "Z38.vs2"
+msgstr "Ein schneller Taunt, aus dem er aus Normals canceln und dann erneut in andere Angriffe canceln kann."
+
+#. V-Trigger I: HAOH GADOKEN
+msgid "Z38.vt1"
+msgstr "Einmalig. Wirft einen riesigen Feuerball über den Bildschirm; Button halten für eine stärkere, deckungsbrechende Version."
+
+#. V-Trigger II: TENCHI SAIKYO NO KATA
+msgid "Z38.vt2"
+msgstr "Zeitlich begrenzt. Verstärkt sein Gadoken und Koryuken zu Haten Gadoken und Goh Koryuken."
+
+# Z39 = Rose
+#. V-Skill I: SOUL FORTUNE
+msgid "Z39.vs1"
+msgstr "Zieht eine zufällige Tarotkarte für einen Bonus, etwa mehr Schaden, Leiste oder Lebensenergie."
+
+#. V-Skill II: SOUL SATELLITE
+msgid "Z39.vs2"
+msgstr "Beschwört bis zu zwei Orbs, die als Feuerbälle mit einem Treffer wirken und einige Sekunden bleiben."
+
+#. V-Trigger I: SOUL DIMENSION
+msgid "Z39.vt1"
+msgstr "Zeitlich begrenzt. Gibt ihr Teleports am Boden und in der Luft, die aus mehreren Specials canceln."
+
+#. V-Trigger II: SOUL ILLUSION
+msgid "Z39.vt2"
+msgstr "Kurz zeitlich begrenzt. Ein Schattenklon wiederholt ihre Angriffe einen Augenblick später."
+
+# Z40 = Oro
+#. V-Skill I: ONIBI
+msgid "Z40.vs1"
+msgstr "Wirft einen Orb, der über den Bildschirm fliegt; die gehaltene Richtung verändert seine Bahn."
+
+#. V-Skill II: MINOMUSHI
+msgid "Z40.vs2"
+msgstr "Ein Mix-up-Move mit zwei Follow-ups, einem Overhead und einem Luftstachel."
+
+#. V-Trigger I: MANRIKITAN
+msgid "Z40.vt1"
+msgstr "Zeitlich begrenzt. Schaltet zwei Befehlsgriffe frei, Kishinriki und Kishin Kuchu Jigoku Guruma."
+
+#. V-Trigger II: TENGU STONE
+msgid "Z40.vt2"
+msgstr "Zeitlich begrenzt. Beschwört Objekte, die seine Angriffe als zusätzliche Treffer fortsetzen; der Timer schrumpft mit jedem Treffer."
+
+# Z41 = Akira
+#. V-Skill I: KIKO RENSEI
+msgid "Z41.vs1"
+msgstr "Verstärkt ihren nächsten Kiko-Kai-Feuerball."
+
+#. V-Skill II: TSUTENDA
+msgid "Z41.vs2"
+msgstr "Ein aufsteigender Kick, der den Gegner sehr hoch schleudert, mit Luftketten und einem Superspringen-Follow-up."
+
+#. V-Trigger I: OTOKO NO SENAKA
+msgid "Z41.vt1"
+msgstr "Einmalig. Ein Zwei-Treffer-Ansturm, der einen Gegner zusammensacken und dann hochschleudern lässt, sodass er für einen Juggle offen ist."
+
+#. V-Trigger II: HATEN NO KAMAE
+msgid "Z41.vt2"
+msgstr "Zeitlich begrenzt. Nimmt eine Haltung mit Ha-no-Sogeki- und Ha-no-Renbu-Follow-ups ein."
+
+# Z42 = Luke
+#. V-Skill I: HARD SHOT
+msgid "Z42.vs1"
+msgstr "Verstärkt seinen nächsten Flash Knuckle mit besserem Schaden und Vorteil; der Boost bleibt, wenn er niedergeschlagen wird."
+
+#. V-Skill II: SUPPRESSOR
+msgid "Z42.vs2"
+msgstr "Ein zurückgezogener Schlag, der Würfe kontert und bei Erfolg härter trifft."
+
+#. V-Trigger I: FULLY ARMED
+msgid "Z42.vt1"
+msgstr "Zeitlich begrenzt. Seine V-Leiste füllt sich, während er Schaden verursacht; schaltet Rock Smasher und Thermobaric Smash frei."
+
+#. V-Trigger II: VANGUARD
+msgid "Z42.vt2"
+msgstr "Zeitlich begrenzt. Seine Flash Knuckles können in einen anderen Flash Knuckle anderer Stärke canceln."

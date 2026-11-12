@@ -3,14 +3,767 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Language: ko\n"
 
-#. Placeholder entry (step 0 stub): stream D replaces this file with all 180 notes.
+# RYU = Ryu
+#. V-Skill I: MIND'S EYE
 msgid "RYU.vs1"
-msgstr "Stub note for Ryu's first V-Skill."
+msgstr "모든 공격과 장풍을 받아내는 패리 자세입니다. V게이지가 쌓이고 필살기로 캔슬할 수 있습니다."
 
-#. Placeholder entry (step 0 stub).
+#. V-Skill II: THRUST STRIKE
 msgid "RYU.vs2"
-msgstr "Stub note for Ryu's second V-Skill."
+msgstr "공격을 막는 패리가 내장된 전방 펀치입니다. 패리에 성공하면 상대가 벽에 튕겨 나갑니다."
 
-#. Placeholder entry (step 0 stub).
+#. V-Trigger I: DENJIN RENKI
 msgid "RYU.vt1"
-msgstr "Stub note for Ryu's first V-Trigger."
+msgstr "시간제 강화. 번개로 펀치, 장풍, 어퍼컷이 강화되고 슈퍼도 강화됩니다."
+
+#. V-Trigger II: KAKKO FUBATSU
+msgid "RYU.vt2"
+msgstr "시간제 강화. 강화된 패리가 추가되고, 장풍과 승룡권에서 카운터 공격을 쓸 수 있습니다."
+
+# VEG = M. Bison
+#. V-Skill I: PSYCHO REFLECT
+msgid "VEG.vs1"
+msgstr "들어오는 공격 한 번을 흡수하고 되돌려 줄 수 있습니다. 장풍에 효과적인 대응입니다."
+
+#. V-Skill II: HELL'S WARP
+msgid "VEG.vs2"
+msgstr "무릎 공격으로 상대 뒤로 순간이동합니다. 크로스업이나 압박에서 빠져나갈 때 유용합니다."
+
+#. V-Trigger I: PSYCHO POWER
+msgid "VEG.vt1"
+msgstr "시간제 강화. 대시와 필살기가 강화되고, V타이머를 소모해 필살기끼리 캔슬할 수 있습니다."
+
+#. V-Trigger II: PSYCHO NIGHTMARE
+msgid "VEG.vt2"
+msgstr "시간제 강화. 지속 중 Psycho Crusher, Psycho Charge, Psycho Judgement 사용 가능."
+
+# CNL = Chun-Li
+#. V-Skill I: RANKYAKU
+msgid "CNL.vs1"
+msgstr "점프 킥으로 공중에 머물며 공중 공격, 찍기, 벽 점프로 이어집니다."
+
+#. V-Skill II: HAZANSHU
+msgid "CNL.vs2"
+msgstr "장풍을 피하는 플립 킥입니다. V트리거로 캔슬할 수 있습니다. 뒤를 누르고 있으면 더 짧아집니다."
+
+#. V-Trigger I: RENKIKO
+msgid "CNL.vt1"
+msgstr "시간제 강화. 대부분의 기술이 빨라지고 강해지며 스턴 콤보가 가능해집니다."
+
+#. V-Trigger II: KIKOSHO
+msgid "CNL.vt2"
+msgstr "상대를 띄우는 기공파입니다. 이후 잠시 동안 기공파를 더 쏠 수 있습니다."
+
+# KEN = Ken
+#. V-Skill I: QUICK STEP
+msgid "KEN.vs1"
+msgstr "빠르게 앞으로 달려 킥으로 이어질 수 있습니다. 압박과 택을 위한 빠른 이동입니다."
+
+#. V-Skill II: RYUSENKYAKU
+msgid "KEN.vs2"
+msgstr "위에서 날아 내려오는 회전 날아차기입니다. 버튼을 누르고 있으면 느리지만 강한 버전이 됩니다."
+
+#. V-Trigger I: HEAT RUSH
+msgid "KEN.vt1"
+msgstr "시간제 강화. 회전 킥이 장풍형 공격이 되고, 장풍에서 V스킬로 캔슬할 수 있습니다."
+
+#. V-Trigger II: SHINRYUKEN
+msgid "KEN.vt2"
+msgstr "일회성. 적중하면서 펀치를 계속 누르면 단계가 올라가는 불꽃 승룡권입니다."
+
+# KRN = Karin
+#. V-Skill I: MYO-OKEN
+msgid "KRN.vs1"
+msgstr "앞으로 가는 공격으로 장풍 하나를 상쇄합니다. 버튼을 누르고 있으면 느리지만 강한 공격이 됩니다."
+
+#. V-Skill II: FUDO SOSHO
+msgid "KRN.vs2"
+msgstr "앞으로 가는 공격으로 장풍 하나를 상쇄하며 크러시 카운터를 일으킵니다. 누르고 있으면 위력이 늘어납니다."
+
+#. V-Trigger I: GUREN NO KATA
+msgid "KRN.vt1"
+msgstr "시간제 강화. 연속 기술 체인과 후속 공격들을 쓸 수 있게 됩니다."
+
+#. V-Trigger II: TENHA NO KATA
+msgid "KRN.vt2"
+msgstr "시간제 강화. 다른 기술에서 캔슬할 수 있는 패리 자세 Yasha Gaeshi를 쓸 수 있게 됩니다."
+
+# ZGF = Zangief
+#. V-Skill I: IRON MUSCLE
+msgid "ZGF.vs1"
+msgstr "공격을 흡수하는 아머 자세입니다. V게이지가 쌓이고, 누르고 있으면 공격을 맞으며 앞으로 걸어갑니다."
+
+#. V-Skill II: SUPER RUSSIAN KICK
+msgid "ZGF.vs2"
+msgstr "시작부터 아머가 있는 킥입니다. 누르고 있으면 더 강한 버전이 되어 잡기로 파고들기 쉽습니다."
+
+#. V-Trigger I: CYCLONE LARIAT
+msgid "ZGF.vt1"
+msgstr "시간제 강화. 장풍을 무시하는 Cyclone Lariat를 쓸 수 있고, Iron Muscle 아머가 거의 무한해집니다."
+
+#. V-Trigger II: COSSACK MUSCLE
+msgid "ZGF.vt2"
+msgstr "시간제 강화. Screw Piledriver와 Borscht Dynamite의 데미지·스턴 강화, 필살기에서 콤보 연결."
+
+# DSM = Dhalsim
+#. V-Skill I: YOGA FLOAT
+msgid "DSM.vs1"
+msgstr "몸을 공중에 띄워 떠다니며 위에서 공격합니다. 하단 공격을 피하고 각도를 바꾸는 데 좋습니다."
+
+#. V-Skill II: YOGA DEEP BREATH
+msgid "DSM.vs2"
+msgstr "심호흡으로 다음 Yoga Fire를 추가 히트, 데미지, 유리함으로 강화합니다."
+
+#. V-Trigger I: YOGA BURNER
+msgid "DSM.vt1"
+msgstr "일회성. 바닥에 불의 양탄자를 남기는 화염 공격으로, 쓰러진 상대를 태웁니다."
+
+#. V-Trigger II: YOGA SANSARA
+msgid "DSM.vt2"
+msgstr "시간제 강화. 떠다니는 불꽃을 배치하고, 화염 기술이 닿으면 더 강한 장풍으로 자랍니다."
+
+# NSH = Nash
+#. V-Skill I: BULLET CLEAR
+msgid "NSH.vs1"
+msgstr "장풍을 흡수해 게이지를 얻고, 공격을 맞거나 막은 상대를 끌어당깁니다."
+
+#. V-Skill II: SILENT SHARPNESS
+msgid "NSH.vs2"
+msgstr "다음 Sonic Scythe를 추가 히트, 데미지, 스턴으로 강화합니다."
+
+#. V-Trigger I: SONIC MOVE
+msgid "NSH.vt1"
+msgstr "일회성. 내쉬가 사라졌다가 새 위치에 나타납니다. 순간이동 종류를 몇 가지 고를 수 있습니다."
+
+#. V-Trigger II: STEALTH DASH
+msgid "NSH.vt2"
+msgstr "시간제 강화. 대시하는 동안 잠깐 시간을 멈춘 뒤 Stop이나 새 Justice 기술로 이어집니다."
+
+# BLR = Vega
+#. V-Skill I: MATADOR TURN
+msgid "BLR.vs1"
+msgstr "높은 공격과 장풍을 피하며 돌아서 공격하는 회피 턴입니다. 발톱을 잃으면 약해집니다."
+
+#. V-Skill II: MATADOR FLIP
+msgid "BLR.vs2"
+msgstr "공격과 장풍을 피하는 플립으로, Cosmic Smart 후속 공격으로 이어질 수 있습니다."
+
+#. V-Trigger I: BLOODY KISS
+msgid "BLR.vt1"
+msgstr "일회성. 장미를 던집니다. 명중하면 베가가 베는 공격으로 앞으로 튀어 나갑니다."
+
+#. V-Trigger II: ALEGRIAS
+msgid "BLR.vt2"
+msgstr "시간제 강화. 효과 중 Flash Arch를 쓸 수 있습니다. 물리 공격에 반격으로 응하는 패리 자세입니다."
+
+# JRI = Juri
+#. V-Skill I: KASATSUSHU
+msgid "JRI.vs1"
+msgstr "차징해서 더 세게 맞힐 수 있는 킥입니다. 빠른 단계는 차징이 필요 없습니다."
+
+#. V-Skill II: FUHA ENZAN
+msgid "JRI.vs2"
+msgstr "느리고 넓은 장풍을 차징해 두었다가, 다시 눌러 발사합니다. 공간 장악에 좋습니다."
+
+#. V-Trigger I: FENG SHUI ENGINE alpha
+msgid "JRI.vt1"
+msgstr "시간제 강화. 약 공격에서 강 공격으로 일반기를 연결하고, 차징 없이 Fuharenkyaku를 씁니다."
+
+#. V-Trigger II: FENG SHUI ENGINE beta
+msgid "JRI.vt2"
+msgstr "짧은 시간제 강화. 스톡을 모두 얻고, 둘 다 땅에 있는 동안 상대의 EX 게이지를 줄입니다."
+
+# BRD = Birdie
+#. V-Skill I: BREAK TIME
+msgid "BRD.vs1"
+msgstr "간식을 먹어 V게이지를 쌓습니다. 느리므로 상대가 멀리 있을 때 씁니다."
+
+#. V-Skill II: CHEWING TIME
+msgid "BRD.vs2"
+msgstr "껌을 씹어 V게이지를 쌓습니다. 버튼을 누르고 있으면 날려 보낼 수 있는 풍선을 붑니다."
+
+#. V-Trigger I: ENJOY TIME
+msgid "BRD.vt1"
+msgstr "시간제 강화. 일부 필살기의 데미지와 이동 속도가 오르고 아머가 단단해집니다. 필살기는 타이머를 깎습니다."
+
+#. V-Trigger II: BIRDIE TIME
+msgid "BRD.vt2"
+msgstr "시간제 강화. Bull Swing, Bull Capture가 추가되고 연계와 Bull Revenger 기술이 약간 강화됩니다."
+
+# RMK = R. Mika
+#. V-Skill I: HEATED MIC PERFORMANCE
+msgid "RMK.vs1"
+msgstr "마이크를 던져 다음 잡기나 슈퍼를 강화합니다. 버튼을 누르고 있으면 보너스가 차징됩니다."
+
+#. V-Skill II: PUMPED UP!
+msgid "RMK.vs2"
+msgstr "공격을 막아 게이지를 쌓고 반격하는 패리입니다. 장풍과 하단 공격은 통과합니다."
+
+#. V-Trigger I: C'MON NADESHIKO!
+msgid "RMK.vt1"
+msgstr "일회성. Nadeshiko를 불러 앞이나 뒤에서 위로부터 배로 뛰어들게 합니다."
+
+#. V-Trigger II: STEEL CHAIR
+msgid "RMK.vt2"
+msgstr "시간제 강화. Nadeshiko가 철제 의자를 던지며, 시간이 끝나기 전에 한 번 더 부를 수 있습니다."
+
+# RSD = Rashid
+#. V-Skill I: FRONT FLIP
+msgid "RSD.vs1"
+msgstr "앞구르기로 공중 킥이나 구르기 공격으로 이어집니다. 빠르게 접근하는 방법입니다."
+
+#. V-Skill II: WING STROKE
+msgid "RSD.vs2"
+msgstr "땅이나 공중에서 쓸 수 있는 빠른 날개 치기입니다. Wing Spike 후속 공격이 있습니다."
+
+#. V-Trigger I: YSAAR
+msgid "RSD.vt1"
+msgstr "일회성. 장풍을 막는 바람 구체를 날립니다. 닿으면 자신의 바람 공격이 강화됩니다."
+
+#. V-Trigger II: EASIFA
+msgid "RSD.vt2"
+msgstr "시간제 강화. Eagle Spike, Whirlwind Shot, Front Flip 강화, 전체 화면 Haboob 추가."
+
+# FAN = F.A.N.G
+#. V-Skill I: NISHODOKU
+msgid "FAN.vs1"
+msgstr "명중 후 여러 초 동안 상대에게 계속 피해를 주는 독 발사체입니다."
+
+#. V-Skill II: SODOKUBU
+msgid "FAN.vs2"
+msgstr "공격을 막아 게이지를 쌓고 되받아치는 패리입니다. 장풍과 슈퍼는 통과합니다."
+
+#. V-Trigger I: DOKUNOMU
+msgid "FAN.vt1"
+msgstr "시간제 강화. 독 구름이 가까운 적을 중독시키고, 차징 없이 필살기로 캔슬할 수 있습니다."
+
+#. V-Trigger II: KORYO DOKUDA
+msgid "FAN.vt2"
+msgstr "시간제 강화. 독구슬과 독 함정을 강화합니다."
+
+# LAR = Laura
+#. V-Skill I: VOLTY LINE
+msgid "LAR.vs1"
+msgstr "위에서 내려치는 돌진으로, Avante, Esquiva, Finta 같은 대시 행동으로 이어집니다."
+
+#. V-Skill II: VOLTY SPRINK
+msgid "LAR.vs2"
+msgstr "점프 중인 상대를 잡는 도약으로, 공중 장풍이나 힐킥으로 이어갑니다."
+
+#. V-Trigger I: SPARK SHOW
+msgid "LAR.vt1"
+msgstr "시간제 강화. 천둥이 더 빨라지고 V스킬, Sunset Wheel, 슈퍼가 강화됩니다."
+
+#. V-Trigger II: SHOCK STANCE
+msgid "LAR.vt2"
+msgstr "시간제 강화. 회피 자세 Matsuda Sway와 잡기 공격 Shock Choke를 쓸 수 있습니다."
+
+# NCL = Necalli
+#. V-Skill I: CULMINATED POWER
+msgid "NCL.vs1"
+msgstr "거리가 다른 3가지 버전이 있는 지상 사격입니다. 명중하면 게이지가 쌓입니다."
+
+#. V-Skill II: CRAWLING BEAST
+msgid "NCL.vs2"
+msgstr "느린 발사체를 내보내는 낮은 자세입니다. 대부분의 장풍을 피하고, 명중하면 상대가 무너집니다."
+
+#. V-Trigger I: TORRENT OF POWER
+msgid "NCL.vt1"
+msgstr "시간제 강화. 걷기와 대시가 빨라지고 데미지가 늘며, 새 기술 Clouded Mirror를 쓸 수 있습니다."
+
+#. V-Trigger II: ERUPTION OF POWER
+msgid "NCL.vt2"
+msgstr "라운드 내내 강화. 첫 번째 트리거와 같은 속도와 데미지 증가에, Heart of Gold 기술이 추가됩니다."
+
+# CMY = Cammy
+#. V-Skill I: AXEL SPIN KNUCKLE
+msgid "CMY.vs1"
+msgstr "잡기와 장풍을 피하는 회전 펀치입니다. 가까이서는 크로스업이 될 수 있습니다."
+
+#. V-Skill II: SPINNING ATTACK
+msgid "CMY.vs2"
+msgstr "낮은 공격을 넘는 깡충 회전 공격입니다. 크로스업이 가능하며, 카운터 히트하면 크러시 카운터가 됩니다."
+
+#. V-Trigger I: DELTA DRIVE
+msgid "CMY.vt1"
+msgstr "시간제 강화. Spiral Arrow, Cannon Spike, Cannon Strike를 강화합니다."
+
+#. V-Trigger II: DELTA ADVANCE
+msgid "CMY.vt2"
+msgstr "시간제 강화. 빠른 접근과 공격 전환을 위한 새 대시와 점프 후속 공격을 추가합니다."
+
+# GUL = Guile
+#. V-Skill I: SONIC BLADE
+msgid "GUL.vs1"
+msgstr "앉은 상태에서도 빠르게 소닉붐을 쏘고, 이어서 Sonic Cross로 연결할 수 있습니다."
+
+#. V-Skill II: DIVE SONIC
+msgid "GUL.vs2"
+msgstr "소닉붐이 따라오는 급강하 공격으로 접근을 돕습니다. 앉은 상태에서도 할 수 있습니다."
+
+#. V-Trigger I: SOLID PUNCHER
+msgid "GUL.vt1"
+msgstr "시간제 강화. 차징 없이 후속 공격이 있는 발사체 Sonic Break와 더 강한 슈퍼를 쓸 수 있습니다."
+
+#. V-Trigger II: KNIFE EDGE
+msgid "GUL.vt2"
+msgstr "시간제 강화. Flash Kick에 발사체가 추가되고, 킥 일반기에서 차징 없이 쓸 수 있습니다."
+
+# IBK = Ibuki
+#. V-Skill I: TENRAI
+msgid "IBK.vs1"
+msgstr "콤보로 이어지는 장풍형 공격입니다. 버튼을 누르고 있으면 더 강한 완전판이 나옵니다."
+
+#. V-Skill II: MAKIBISHI
+msgid "IBK.vs2"
+msgstr "바닥에 마키비시를 뿌려, 밟은 상대가 넘어지게 합니다."
+
+#. V-Trigger I: ROKUSHAKU HOROKUDAMA
+msgid "IBK.vt1"
+msgstr "일회성. 방향에 따라 도화선이 달라지는 시한폭탄을 던집니다. 쿠나이로 일찍 터뜨릴 수 있습니다."
+
+#. V-Trigger II: FUMA SHURIKEN
+msgid "IBK.vt2"
+msgstr "일회성. 거대한 수리검을 앞이나 위로 던집니다. 가는 길과 오는 길에서 모두 명중합니다."
+
+# BSN = Balrog
+#. V-Skill I: KKB
+msgid "BSN.vs1"
+msgstr "장풍을 피하며 펀치 후속 공격이나 Buffalo 기술로 이어지는 위빙입니다."
+
+#. V-Skill II: FFB
+msgid "BSN.vs2"
+msgstr "다음 Dash Punch를 추가 데미지와 스턴으로 강화합니다. 캔슬로 넣으면 차징이 필요 없습니다."
+
+#. V-Trigger I: CRAZY RUSH
+msgid "BSN.vt1"
+msgstr "시간제 강화. Charging Buffalo와 Bursting Buffalo 돌진을 쓸 수 있으며, V타이머를 소모합니다."
+
+#. V-Trigger II: NO MERCY
+msgid "BSN.vt2"
+msgstr "시간제 강화. 큰 스턴 데미지를 주는 커맨드 잡기 B3를 추가하며, V타이머를 소모합니다."
+
+# URN = Urien
+#. V-Skill I: METALLIC AURA
+msgid "URN.vs1"
+msgstr "다음 Chariot Tackle, Violence Knee, Dangerous Headbutt에 아머 1회분을 줍니다."
+
+#. V-Skill II: INDIGNANT THUNDER
+msgid "URN.vs2"
+msgstr "다음 Metallic Sphere를 추가 히트, 데미지, 더 큰 판정으로 강화합니다."
+
+#. V-Trigger I: AEGIS REFLECTOR
+msgid "URN.vt1"
+msgstr "일회성. Aegis 방패를 펼쳐 몇 초 동안 장풍을 반사합니다."
+
+#. V-Trigger II: TYRANT PRESSURE
+msgid "URN.vt2"
+msgstr "시간제 강화. 효과 중 새 기술 Tyrant Blaze를 쓸 수 있습니다."
+
+# ALX = Alex
+#. V-Skill I: OVERHAUL
+msgid "ALX.vs1"
+msgstr "다음 명중 공격을 하드 히트로 만들어 카운터 히트 효과와 추가 유리함을 줍니다."
+
+#. V-Skill II: OVERCHAIN
+msgid "ALX.vs2"
+msgstr "다음 필살기가 명중하거나 막히면 다른 필살기로 캔슬됩니다. 예: Flash Chop에서 Elbow Slash로."
+
+#. V-Trigger I: RAGE SHIFT
+msgid "ALX.vt1"
+msgstr "시간제 강화. 차징 가능한 강한 일격 Sledge Hammer를 쓸 수 있으며 패리 모드도 있습니다."
+
+#. V-Trigger II: RAGE BOOST
+msgid "ALX.vt2"
+msgstr "시간제 강화. 새 잡기 두 가지, Flying DDT와 Choke Sleeper를 쓸 수 있습니다."
+
+# Z21 = Akuma
+#. V-Skill I: RAKAN
+msgid "Z21.vs1"
+msgstr "서서 또는 앉아서 하는 공격을 막는 패리로, 게이지가 쌓이고 후속 공격으로 이어집니다."
+
+#. V-Skill II: KIAI
+msgid "Z21.vs2"
+msgstr "다음 빨간 장풍을 강화하고 장풍 하나를 상쇄하는 기합입니다."
+
+#. V-Trigger I: DOHATSU SHOTEN
+msgid "Z21.vt1"
+msgstr "시간제 강화. 장풍과 승룡권을 강화하고 Shun Goku Satsu를 쓸 수 있습니다."
+
+#. V-Trigger II: SHIRETSU HASSHI
+msgid "Z21.vt2"
+msgstr "시간제 강화. 필살기를 다른 필살기로 캔슬할 수 있고, EX 게이지 대신 V타이머로 소모합니다."
+
+# Z20 = Kolin
+#. V-Skill I: INSIDE SLASH
+msgid "Z20.vs1"
+msgstr "카운터 유예 시간이 있는 베기입니다. 그 동안 공격이 맞으면 넉다운 카운터로 반격합니다."
+
+#. V-Skill II: GLACIER THROUGH
+msgid "Z20.vs2"
+msgstr "명중 시 상대의 스턴 게이지를 얼리고 넘어뜨리는 대시 공격입니다."
+
+#. V-Trigger I: DIAMOND DUST
+msgid "Z20.vt1"
+msgstr "얼음 폭발을 일으켜 상대의 스턴 게이지를 얼립니다. 타이머 동안 두 번째 사용도 가능합니다."
+
+#. V-Trigger II: ABSOLUTE ZERO
+msgid "Z20.vt2"
+msgstr "시간제 강화. 강해진 펀치와 눈덩이, 새 기술 Frost Edge와 Reverse Javelin을 추가합니다."
+
+# Z22 = Ed
+#. V-Skill I: PSYCHO SNATCHER
+msgid "Z22.vs1"
+msgstr "긴 펀치입니다. 명중하면 Ed가 스스로 끌려가 상대를 넘어뜨립니다."
+
+#. V-Skill II: PSYCHO SWING
+msgid "Z22.vs2"
+msgstr "장풍을 피하는 낮은 휘두르기이며, 더 강한 Psycho Smash 버전도 있습니다."
+
+#. V-Trigger I: PSYCHO CANNON
+msgid "Z22.vt1"
+msgstr "일회성. 7단 거대 사이코 블라스트를 발사합니다."
+
+#. V-Trigger II: ENHANCED SNATCHER
+msgid "Z22.vt2"
+msgstr "시간제 강화. 더 강한 Psycho Snatcher인 Ultra Snatcher를 지상이나 공중에서 쓸 수 있습니다."
+
+# Z23 = Menat
+#. V-Skill I: SOUL REFLECT
+msgid "Z23.vs1"
+msgstr "장풍을 흡수해 V게이지를 얻고 되돌려 보냅니다. 근거리 공격도 나옵니다."
+
+#. V-Skill II: SOUL SPIRAL
+msgid "Z23.vs2"
+msgstr "앞으로 나아가는 나선 공격으로, 오브와 조합할 수 있습니다."
+
+#. V-Trigger I: WISDOM OF THOTH
+msgid "Z23.vt1"
+msgstr "시간제 강화. 버튼마다 오브 하나를 얻고, 그 버튼을 떼면 발사합니다."
+
+#. V-Trigger II: PROPHECY OF THOTH
+msgid "Z23.vt2"
+msgstr "시간제 강화. Judgement of Thoth를 쓸 수 있으며, 모든 오브를 서로 다른 궤도로 동시에 발사합니다."
+
+# Z24 = Abigail
+#. V-Skill I: HUNGABEE
+msgid "Z24.vs1"
+msgstr "상단 또는 하단 패리 자세입니다. 공격 하나를 막고 V게이지를 쌓습니다. 크리티컬 아츠에는 깨집니다."
+
+#. V-Skill II: C'MON SPARE TIRE
+msgid "Z24.vs2"
+msgstr "앞에 타이어를 떨어뜨리고, 공격으로 상대에게 날릴 수 있습니다."
+
+#. V-Trigger I: MAX POWER
+msgid "Z24.vt1"
+msgstr "시간제 강화. 데미지 15% 증가, 강 펀치의 차지 버전, 런 기술의 아머 강화."
+
+#. V-Trigger II: HYBRID CHARGE
+msgid "Z24.vt2"
+msgstr "시간제 강화. 차징 중 아머가 있는 돌진 Metro Crash를 쓸 수 있습니다."
+
+# Z25 = Zeku
+#. V-Skill I: FUKURO
+msgid "Z25.vs1"
+msgstr "솟구치는 킥으로 대공하며 교차할 수 있습니다. 명중하면 Young Zeku로 바뀌어 추가 공격을 합니다."
+
+#. V-Skill II: KUCHIYOSE - SHII
+msgid "Z25.vs2"
+msgstr "독수리를 불러 고른 위치에 폭죽을 떨어뜨립니다. 날아가는 동안 형태를 바꿀 수 있습니다."
+
+#. V-Trigger I: BUSHINRYU SHINGEKIKO
+msgid "Z25.vt1"
+msgstr "시간제 강화. 일회성 대시 Idaten과 V트리거 공격을 얻습니다."
+
+#. V-Trigger II: KARURA TENZAN
+msgid "Z25.vt2"
+msgstr "시간제 강화. 무적 시동 기술이 효과 중 더 느린 2단계 Karura Tenzan으로 돌아옵니다."
+
+# Z26 = Sakura
+#. V-Skill I: HARU KAZE
+msgid "Z26.vs1"
+msgstr "3가지 후속(낙하와 킥 2회)이 있는 점프입니다. 공중에 있는 동안 장풍을 피합니다."
+
+#. V-Skill II: HARU HAYATE
+msgid "Z26.vs2"
+msgstr "대부분의 일반기에서 캔슬로 나가는 빠른 발걸음입니다. 버튼을 누르고 있으면 공격 후속이 나갑니다."
+
+#. V-Trigger I: HARU ARASHI
+msgid "Z26.vt1"
+msgstr "시간제 강화. 장풍이 강해지고, HP+HK로 나가는 새 필살기 Hogasho를 추가합니다."
+
+#. V-Trigger II: SAKURA SENPU
+msgid "Z26.vt2"
+msgstr "시간제 강화. 승룡권과 회전 킥을 크게 강화합니다."
+
+# Z27 = Blanka
+#. V-Skill I: COWARD CROUCH
+msgid "Z27.vs1"
+msgstr "낮게 웅크려 높은 공격과 장풍을 피하고, 들어올리기나 점프 후속 공격으로 튀어 나갑니다."
+
+#. V-Skill II: SHOUT OF EARTH
+msgid "Z27.vs2"
+msgstr "앞으로 지르는 외침 공격입니다. 차징하면 더 강한 2단계가 나옵니다."
+
+#. V-Trigger I: JUNGLE DYNAMO
+msgid "Z27.vt1"
+msgstr "시간제 강화. 블랑카 볼 계열 필살기와 Electric Thunder를 강화하고 Ground Shave Rolling 추가."
+
+#. V-Trigger II: LIGHTNING BEAST
+msgid "Z27.vt2"
+msgstr "시간제 강화. 블랑카 볼 기술을 Rolling Cannon으로 캔슬할 수 있습니다. 8방향 공중 구르기입니다."
+
+# Z28 = Falke
+#. V-Skill I: PSYCHO TROMBE
+msgid "Z28.vs1"
+msgstr "지팡이 공격으로 장풍 하나를 흡수해 게이지를 얻으며, 필살기 후속도 이어집니다."
+
+#. V-Skill II: PSYCHO MINE
+msgid "Z28.vs2"
+msgstr "앞이나 발밑에 지뢰를 설치합니다. 지팡이나 장풍이 닿으면 폭발합니다."
+
+#. V-Trigger I: STAERKEN
+msgid "Z28.vt1"
+msgstr "시간제 강화. HP+HK로 강화된 장풍을 얻으며, 필살기와 V스킬에서 쓸 수 있습니다."
+
+#. V-Trigger II: PSYCHO ANGRIFF
+msgid "Z28.vt2"
+msgstr "시간제 강화. 발동 자체가 공격입니다. 일반기에서 Psycho Strum과 Psycho Klinge 후속을 쓸 수 있습니다."
+
+# Z29 = Cody
+#. V-Skill I: DOUBLE KICK
+msgid "Z29.vs1"
+msgstr "앞과 뒤를 공격하는 이중 킥입니다. 진행 중에는 무적이지만 체력이 조금 줄어듭니다."
+
+#. V-Skill II: CRIME SWAY
+msgid "Z29.vs2"
+msgstr "공격과 장풍을 피하는 흔들기로, 이후 Wrench Fist나 Lumber Sweep으로 이어집니다."
+
+#. V-Trigger I: SIDE ARM
+msgid "Z29.vt1"
+msgstr "시간제 강화. 칼을 들어 펀치를 바꾸고 칼 필살기를 추가하지만, 장풍은 쓸 수 없게 됩니다."
+
+#. V-Trigger II: DIRTY COACH
+msgid "Z29.vt2"
+msgstr "시간제 강화. 장풍을 반사하는 무거운 휘두르기용 파이프를 들고, 돌 던지기가 추가됩니다."
+
+# Z30 = G
+#. V-Skill I: G BARRIER
+msgid "Z30.vs1"
+msgstr "장풍 하나를 흡수하고 닿은 상대를 넘어뜨리는 방벽입니다. 공중에서도 쓸 수 있습니다."
+
+#. V-Skill II: G PROTECTION
+msgid "Z30.vs2"
+msgstr "받는 데미지와 스턴을 10%씩, 최대 3회까지 줄이고, 넘어져도 대통령 레벨이 유지됩니다."
+
+#. V-Trigger I: MAXIMUM PRESIDENT
+msgid "Z30.vt1"
+msgstr "시간제 강화. 대통령 레벨을 최대로 올리고 필살기끼리 캔슬할 수 있습니다."
+
+#. V-Trigger II: DANGEROUS PRESIDENT
+msgid "Z30.vt2"
+msgstr "시간제 강화. 콤보 연장기 G Explosion과 아머가 있는 커맨드 잡기 G Rage를 쓸 수 있습니다."
+
+# Z31 = Sagat
+#. V-Skill I: ANGRY CHARGE
+msgid "Z31.vs1"
+msgstr "다음 Tiger Uppercut을 더 큰 데미지, 넉백, 저글 가능성으로 강화합니다."
+
+#. V-Skill II: HANUMAN CHARGE
+msgid "Z31.vs2"
+msgstr "다음 Tiger Knee를 더 나은 가드 유리와 저글 가능성으로 강화합니다."
+
+#. V-Trigger I: TIGER CHARGE
+msgid "Z31.vt1"
+msgstr "시간제 강화. 일반기에서 캔슬되는 강한 5단 장풍 Tiger Cannon을 쓸 수 있습니다."
+
+#. V-Trigger II: TIGER ASSAULT
+msgid "Z31.vt2"
+msgstr "시간제 강화. 일반기 뒤에 이어지는 Tiger Spike와 Tiger Rush 공격을 쓸 수 있습니다."
+
+# Z32 = Kage
+#. V-Skill I: SENHA KASSATSU
+msgid "Z32.vs1"
+msgstr "상단과 중단 공격, 장풍에 아머가 있는 버튼 유지형 공격입니다. 하단은 막지 못합니다."
+
+#. V-Skill II: SEKIEIKEN
+msgid "Z32.vs2"
+msgstr "지상의 상대도 맞힐 수 있는 도약 공격입니다. 앞을 누르고 있으면 거리가 늘어납니다."
+
+#. V-Trigger I: TAIGYAKU MUDO
+msgid "Z32.vt1"
+msgstr "시간제 강화. V스킬을 크게 강화하고, 순간이동 대시 Ashura Senku를 추가합니다."
+
+#. V-Trigger II: RIKUDO OSATSU
+msgid "Z32.vt2"
+msgstr "시간제 강화. 순간이동 내려찍기 Misogi와 슈퍼 Shun Goku Satsu를 쓸 수 있습니다."
+
+# Z33 = Poison
+#. V-Skill I: PERFUME SWING
+msgid "Z33.vs1"
+msgstr "앞으로 나아가는 밧줄 그네입니다. 거리를 조절할 수 있고, 다리로 장풍을 피합니다."
+
+#. V-Skill II: CARTWHEEL
+msgid "Z33.vs2"
+msgstr "상대를 통과하는 물구나무 옆돌기입니다. 버튼을 누르고 있으면 공격 후속이 나옵니다."
+
+#. V-Trigger I: POISON COCKTAIL
+msgid "Z33.vt1"
+msgstr "시간제 강화. 지상과 공중에서 모두 쓸 수 있는 발사체 Fire Squall을 쓸 수 있습니다."
+
+#. V-Trigger II: TOXIC GLAMOR
+msgid "Z33.vt2"
+msgstr "시간제 강화. 커맨드 잡기 Toxic Hold와 Toxic Bind를 쓸 수 있습니다."
+
+# Z34 = E. Honda
+#. V-Skill I: NEKO DAMASHI
+msgid "Z34.vs1"
+msgstr "박수로 장풍 하나를 상쇄하며, 여러 일반기에서 캔슬로 나갈 수 있습니다."
+
+#. V-Skill II: SUMO SPIRIT
+msgid "Z34.vs2"
+msgstr "다음 Hundred Hand Slap을 강화하고, 모든 일반기에서 캔슬로 넣을 수 있게 합니다."
+
+#. V-Trigger I: ONIGAWARA
+msgid "Z34.vt1"
+msgstr "시간제 강화. Oni-Daikaku와 Oni-Muso 기술을 쓸 수 있으며, V타이머를 소모합니다."
+
+#. V-Trigger II: TAJIKARAO
+msgid "Z34.vt2"
+msgstr "시간제 강화. Iwato Biraki를 쓸 수 있습니다. 아머가 있는 공격이며 사용할 때마다 V타이머를 소모합니다."
+
+# Z35 = Lucia
+#. V-Skill I: TAP-KICK
+msgid "Z35.vs1"
+msgstr "여러 번 맞는 킥 연타로, 뒤쪽 히트에서 필살기, 슈퍼, V트리거로 캔슬할 수 있습니다."
+
+#. V-Skill II: ARREST HEEL
+msgid "Z35.vs2"
+msgstr "장풍과 일부 공격을 피하는 높은 도약에서 나오는 힐킥입니다."
+
+#. V-Trigger I: BURNING FIGHT
+msgid "Z35.vt1"
+msgstr "시간제 강화. V스킬과 모든 킥 필살기를 강화합니다."
+
+#. V-Trigger II: WEAPON FURY
+msgid "Z35.vt2"
+msgstr "시간제 강화. 곤봉 휘두르기 필살기 Tactical Weapon을 쓸 수 있습니다."
+
+# Z36 = Gill
+#. V-Skill I: DIVINE COMET
+msgid "Z36.vs1"
+msgstr "세 가지 다른 궤도로 혜성 발사체를 떨어뜨립니다. V트리거마다 불 또는 얼음으로 바뀝니다."
+
+#. V-Skill II: BLOCKING
+msgid "Z36.vs2"
+msgstr "크리티컬 아츠를 포함한 모든 공격을 막고 V게이지를 얻는 패리입니다. 앉으면 하단 버전이 됩니다."
+
+#. V-Trigger I: PRIMAL FIRE
+msgid "Z36.vt1"
+msgstr "시간제 강화. 화염 모드: 적을 불태우고, 화염 공격을 강화하며, 새 화염 필살기 세 가지를 추가합니다."
+
+#. V-Trigger II: ICE OF DOOM
+msgid "Z36.vt2"
+msgstr "시간제 강화. 빙결 모드: 상대의 스턴 게이지를 얼리고 Tree of Frost, Delay Freeze Lance를 추가."
+
+# Z37 = Seth
+#. V-Skill I: TANDEN ENGINE
+msgid "Z37.vs1"
+msgstr "흡입 잡기입니다. 펀치로 이어서 상대의 기술을 한 번 빼앗을 수 있습니다."
+
+#. V-Skill II: TANDEN BOOSTER
+msgid "Z37.vs2"
+msgstr "여러 후속 공격이 있는 자세로, 글라이드, 스파이럴, 펜듈럼이 있으며 초반에는 카운터 히트 상태입니다."
+
+#. V-Trigger I: TANDEN IGNITION
+msgid "Z37.vt1"
+msgstr "시간제 강화. Titanomachy 순간이동 펀치, Mad Spin과 기술에서 캔슬되는 다른 후속 공격을 쓸 수 있습니다."
+
+#. V-Trigger II: TANDEN MANEUVER
+msgid "Z37.vt2"
+msgstr "일회성. 오브를 소환하고, 최대 4번 조종한 뒤 원할 때 터뜨립니다."
+
+# Z38 = Dan
+#. V-Skill I: SAIKYO-STYLE BURAIRUTEN NO KAMAE
+msgid "Z38.vs1"
+msgstr "도발하며 웅크리는 자세로 V게이지를 쌓고, 장풍, 승룡권 또는 Danretsuken으로 이어집니다."
+
+#. V-Skill II: SAIKYO-STYLE OTOKOBOE
+msgid "Z38.vs2"
+msgstr "일반기에서 캔슬로 들어가는 빠른 도발입니다. 이후 다른 공격으로 다시 캔슬할 수 있습니다."
+
+#. V-Trigger I: HAOH GADOKEN
+msgid "Z38.vt1"
+msgstr "일회성. 화면을 가로지르는 거대한 장풍을 쏩니다. 누르고 있으면 가드를 깨는 강한 버전이 됩니다."
+
+#. V-Trigger II: TENCHI SAIKYO NO KATA
+msgid "Z38.vt2"
+msgstr "시간제 강화. 장풍과 Koryuken을 Haten Gadoken과 Goh Koryuken으로 강화합니다."
+
+# Z39 = Rose
+#. V-Skill I: SOUL FORTUNE
+msgid "Z39.vs1"
+msgstr "무작위 타로 카드를 뽑아 데미지, 게이지, 체력 같은 강화를 얻습니다."
+
+#. V-Skill II: SOUL SATELLITE
+msgid "Z39.vs2"
+msgstr "최대 2개의 오브를 소환합니다. 한 번 맞히는 장풍처럼 작동하며 몇 초간 남습니다."
+
+#. V-Trigger I: SOUL DIMENSION
+msgid "Z39.vt1"
+msgstr "시간제 강화. 지상과 공중의 순간이동을 얻으며, 여러 필살기에서 캔슬할 수 있습니다."
+
+#. V-Trigger II: SOUL ILLUSION
+msgid "Z39.vt2"
+msgstr "짧은 시간제 강화. 그림자 분신이 공격을 한순간 늦게 따라 합니다."
+
+# Z40 = Oro
+#. V-Skill I: ONIBI
+msgid "Z40.vs1"
+msgstr "화면을 가로질러 호를 그리는 구체를 던집니다. 누르는 방향에 따라 궤도가 바뀝니다."
+
+#. V-Skill II: MINOMUSHI
+msgid "Z40.vs2"
+msgstr "두 가지 후속(상단 공격과 공중 내려찍기)을 가진 혼동 기술입니다."
+
+#. V-Trigger I: MANRIKITAN
+msgid "Z40.vt1"
+msgstr "시간제 강화. 두 가지 커맨드 잡기 Kishinriki와 Kishin Kuchu Jigoku Guruma를 쓸 수 있습니다."
+
+#. V-Trigger II: TENGU STONE
+msgid "Z40.vt2"
+msgstr "시간제 강화. 공격 뒤에 추가 히트로 이어지는 물체를 소환하며, 명중할 때마다 타이머가 줄어듭니다."
+
+# Z41 = Akira
+#. V-Skill I: KIKO RENSEI
+msgid "Z41.vs1"
+msgstr "다음 Kiko Kai 장풍을 강화합니다."
+
+#. V-Skill II: TSUTENDA
+msgid "Z41.vs2"
+msgstr "상대를 매우 높이 띄우는 올려차기입니다. 공중 연속 기술과 슈퍼 점프 후속이 있습니다."
+
+#. V-Trigger I: OTOKO NO SENAKA
+msgid "Z41.vt1"
+msgstr "일회성. 무너뜨린 뒤 띄우는 2히트 돌진 공격으로, 상대가 저글에 노출됩니다."
+
+#. V-Trigger II: HATEN NO KAMAE
+msgid "Z41.vt2"
+msgstr "시간제 강화. 자세를 잡아 Ha no Sogeki와 Ha no Renbu 후속 공격을 쓸 수 있습니다."
+
+# Z42 = Luke
+#. V-Skill I: HARD SHOT
+msgid "Z42.vs1"
+msgstr "다음 Flash Knuckle을 더 큰 데미지와 유리함으로 강화합니다. 넘어져도 강화는 유지됩니다."
+
+#. V-Skill II: SUPPRESSOR
+msgid "Z42.vs2"
+msgstr "뒤로 당긴 자세에서 나오는 공격으로, 잡기를 되받아치며 그때는 더 강하게 맞습니다."
+
+#. V-Trigger I: FULLY ARMED
+msgid "Z42.vt1"
+msgstr "시간제 강화. 데미지를 줄 때마다 V게이지 회복. Rock Smasher, Thermobaric Smash를 쓸 수 있습니다."
+
+#. V-Trigger II: VANGUARD
+msgid "Z42.vt2"
+msgstr "시간제 강화. Flash Knuckle이 다른 강도의 Flash Knuckle로 캔슬될 수 있습니다."

@@ -3,14 +3,767 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Language: pt-BR\n"
 
-#. Placeholder entry (step 0 stub): stream D replaces this file with all 180 notes.
+# RYU = Ryu
+#. V-Skill I: MIND'S EYE
 msgid "RYU.vs1"
-msgstr "Stub note for Ryu's first V-Skill."
+msgstr "Postura de parry que pega qualquer golpe ou bola de fogo, enche a barra V e permite cancelar em especiais."
 
-#. Placeholder entry (step 0 stub).
+#. V-Skill II: THRUST STRIKE
 msgid "RYU.vs2"
-msgstr "Stub note for Ryu's second V-Skill."
+msgstr "Soco para frente com parry contra golpes; um golpe aparado lança o oponente em um rebote na parede."
 
-#. Placeholder entry (step 0 stub).
+#. V-Trigger I: DENJIN RENKI
 msgid "RYU.vt1"
-msgstr "Stub note for Ryu's first V-Trigger."
+msgstr "Potencializador temporário. O raio fortalece seus socos, bolas de fogo e uppercuts e melhora seu super."
+
+#. V-Trigger II: KAKKO FUBATSU
+msgid "RYU.vt2"
+msgstr "Potencializador temporário. Adiciona um parry aprimorado e um contra-ataque que pode usar a partir de suas bolas de fogo e Shoryuken."
+
+# VEG = M. Bison
+#. V-Skill I: PSYCHO REFLECT
+msgid "VEG.vs1"
+msgstr "Absorve um golpe que chega e pode devolvê-lo, uma ótima resposta às bolas de fogo."
+
+#. V-Skill II: HELL'S WARP
+msgid "VEG.vs2"
+msgstr "Teletransporta para trás do oponente com um ataque de joelho. Útil para cross up ou para escapar da pressão."
+
+#. V-Trigger I: PSYCHO POWER
+msgid "VEG.vt1"
+msgstr "Potencializador temporário. Melhora seu dash e especiais e permite cancelar um especial em outro, com custo de V-Timer."
+
+#. V-Trigger II: PSYCHO NIGHTMARE
+msgid "VEG.vt2"
+msgstr "Potencializador temporário. Desbloqueia Psycho Crusher, Psycho Charge e Psycho Judgement enquanto dura."
+
+# CNL = Chun-Li
+#. V-Skill I: RANKYAKU
+msgid "CNL.vs1"
+msgstr "Chute de salto que a deixa no ar para ataques aéreos, um pisão ou um salto na parede."
+
+#. V-Skill II: HAZANSHU
+msgid "CNL.vs2"
+msgstr "Chute em mortal que esquiva bolas de fogo e pode ser cancelado em um V-Trigger. Segure para trás para um mais curto."
+
+#. V-Trigger I: RENKIKO
+msgid "CNL.vt1"
+msgstr "Potencializador temporário. A maioria de seus golpes fica mais rápida e forte, e ela ganha combos de atordoamento."
+
+#. V-Trigger II: KIKOSHO
+msgid "CNL.vt2"
+msgstr "Uma explosão de ki que lança o oponente; por um tempo depois ela pode disparar mais dessas."
+
+# KEN = Ken
+#. V-Skill I: QUICK STEP
+msgid "KEN.vs1"
+msgstr "Corrida rápida para frente que pode virar um chute. Movimento veloz para pressionar e fazer mix-ups."
+
+#. V-Skill II: RYUSENKYAKU
+msgid "KEN.vs2"
+msgstr "Chute giratório voador vindo de cima; segure o botão para uma versão mais lenta e forte."
+
+#. V-Trigger I: HEAT RUSH
+msgid "KEN.vt1"
+msgstr "Potencializador temporário. Seus chutes giratórios viram golpes do tipo projétil e as bolas de fogo podem ser canceladas em V-Skills."
+
+#. V-Trigger II: SHINRYUKEN
+msgid "KEN.vt2"
+msgstr "Uso único. Um Shoryuken flamejante que sobe de nível se acertar e você continuar apertando soco."
+
+# KRN = Karin
+#. V-Skill I: MYO-OKEN
+msgid "KRN.vs1"
+msgstr "Golpe para frente que anula uma bola de fogo; segure o botão para um golpe mais lento e forte."
+
+#. V-Skill II: FUDO SOSHO
+msgid "KRN.vs2"
+msgstr "Golpe para frente que anula uma bola de fogo e causa um Crush Counter; segurar aumenta a potência."
+
+#. V-Trigger I: GUREN NO KATA
+msgid "KRN.vt1"
+msgstr "Potencializador temporário. Desbloqueia suas cadeias de rekka e um conjunto de ataques de continuação."
+
+#. V-Trigger II: TENHA NO KATA
+msgid "KRN.vt2"
+msgstr "Potencializador temporário. Desbloqueia Yasha Gaeshi, uma postura de parry na qual pode cancelar a partir de outros golpes."
+
+# ZGF = Zangief
+#. V-Skill I: IRON MUSCLE
+msgid "ZGF.vs1"
+msgstr "Postura com armadura que absorve golpes e enche a barra V; segure para avançar andando através dos ataques."
+
+#. V-Skill II: SUPER RUSSIAN KICK
+msgid "ZGF.vs2"
+msgstr "Chute com armadura no início que pode ser segurado para uma versão mais forte, para invadir e agarrar."
+
+#. V-Trigger I: CYCLONE LARIAT
+msgid "ZGF.vt1"
+msgstr "Potencializador temporário. Desbloqueia Cyclone Lariat, um giro que ignora bolas de fogo, e dá a Iron Muscle armadura quase infinita."
+
+#. V-Trigger II: COSSACK MUSCLE
+msgid "ZGF.vt2"
+msgstr "Potencializador temporário. Aumenta o dano e o atordoamento de Screw Piledriver e Borscht Dynamite, que dão combo a partir de especiais."
+
+# DSM = Dhalsim
+#. V-Skill I: YOGA FLOAT
+msgid "DSM.vs1"
+msgstr "Faz ele flutuar no ar para se deslocar e atacar de cima. Bom para esquivar golpes baixos e mudar de ângulo."
+
+#. V-Skill II: YOGA DEEP BREATH
+msgid "DSM.vs2"
+msgstr "Uma respiração profunda que potencializa seu próximo Yoga Fire com golpes extras, dano e vantagem."
+
+#. V-Trigger I: YOGA BURNER
+msgid "DSM.vt1"
+msgstr "Uso único. Um ataque de fogo que deixa um tapete de fogo no chão, queimando um oponente caído."
+
+#. V-Trigger II: YOGA SANSARA
+msgid "DSM.vt2"
+msgstr "Potencializador temporário. Coloca uma chama flutuante que vira uma bola de fogo mais forte quando seus golpes de fogo a tocam."
+
+# NSH = Nash
+#. V-Skill I: BULLET CLEAR
+msgid "NSH.vs1"
+msgstr "Absorve uma bola de fogo para a barra e puxa o oponente que é atingido ou bloqueia o golpe."
+
+#. V-Skill II: SILENT SHARPNESS
+msgid "NSH.vs2"
+msgstr "Potencializa seu próximo Sonic Scythe com golpes extras, dano e atordoamento."
+
+#. V-Trigger I: SONIC MOVE
+msgid "NSH.vt1"
+msgstr "Uso único. Nash desaparece e reaparece em outro lugar, com várias versões de teletransporte para escolher."
+
+#. V-Trigger II: STEALTH DASH
+msgid "NSH.vt2"
+msgstr "Potencializador temporário. Congela o tempo brevemente enquanto ele corre, e depois segue com Stop ou seus novos golpes Justice."
+
+# BLR = Vega
+#. V-Skill I: MATADOR TURN
+msgid "BLR.vs1"
+msgstr "Um giro de esquiva que passa por cima de golpes altos e bolas de fogo, e então ataca. Mais fraco se ele perdeu a garra."
+
+#. V-Skill II: MATADOR FLIP
+msgid "BLR.vs2"
+msgstr "Um mortal que esquiva golpes e bolas de fogo, e pode virar o seguimento Cosmic Smart."
+
+#. V-Trigger I: BLOODY KISS
+msgid "BLR.vt1"
+msgstr "Uso único. Joga uma rosa; se acertar, Vega avança num ataque de corte."
+
+#. V-Trigger II: ALEGRIAS
+msgid "BLR.vt2"
+msgstr "Potencializador temporário. Desbloqueia Flash Arch, uma postura de parry que responde a ataques físicos com um contra-ataque."
+
+# JRI = Juri
+#. V-Skill I: KASATSUSHU
+msgid "JRI.vs1"
+msgstr "Chute que pode ser carregado para bater mais forte; o nível rápido não precisa de carga."
+
+#. V-Skill II: FUHA ENZAN
+msgid "JRI.vs2"
+msgstr "Carrega uma bola de fogo lenta e larga que ela solta ao apertar de novo. Boa para controlar o espaço."
+
+#. V-Trigger I: FENG SHUI ENGINE alpha
+msgid "JRI.vt1"
+msgstr "Potencializador temporário. Permite encadear normais de leve a forte e usar Fuharenkyaku sem carregar."
+
+#. V-Trigger II: FENG SHUI ENGINE beta
+msgid "JRI.vt2"
+msgstr "Potencializador temporário breve. Concede todos os seus stocks e drena a barra EX do oponente enquanto ambos estão no chão."
+
+# BRD = Birdie
+#. V-Skill I: BREAK TIME
+msgid "BRD.vs1"
+msgstr "Come um lanche para encher a barra V. É lento, então use quando o oponente estiver longe."
+
+#. V-Skill II: CHEWING TIME
+msgid "BRD.vs2"
+msgstr "Mastiga chiclete para encher a barra V; segure o botão para soprar uma bolha que ele pode lançar."
+
+#. V-Trigger I: ENJOY TIME
+msgid "BRD.vt1"
+msgstr "Potencializador temporário. Mais dano, movimento mais rápido e armadura mais resistente em alguns especiais; especiais consomem o timer."
+
+#. V-Trigger II: BIRDIE TIME
+msgid "BRD.vt2"
+msgstr "Potencializador temporário. Adiciona Bull Swing e Bull Capture e fortalece um pouco suas cadeias e os golpes Bull Revenger."
+
+# RMK = R. Mika
+#. V-Skill I: HEATED MIC PERFORMANCE
+msgid "RMK.vs1"
+msgstr "Joga um microfone que potencializa seu próximo agarrão ou super; segurar o botão carrega o bônus."
+
+#. V-Skill II: PUMPED UP!
+msgid "RMK.vs2"
+msgstr "Um parry contra golpes que enche a barra e contra-ataca. Bolas de fogo e ataques baixos ainda passam."
+
+#. V-Trigger I: C'MON NADESHIKO!
+msgid "RMK.vt1"
+msgstr "Uso único. Chama Nadeshiko para cair de barriga do alto, na frente ou atrás."
+
+#. V-Trigger II: STEEL CHAIR
+msgid "RMK.vt2"
+msgstr "Potencializador temporário. Nadeshiko arremessa uma cadeira de aço, e pode ser chamada mais uma vez antes do tempo acabar."
+
+# RSD = Rashid
+#. V-Skill I: FRONT FLIP
+msgid "RSD.vs1"
+msgstr "Um mortal para frente que leva a chutes aéreos ou a um ataque rolando. Um jeito rápido de se aproximar."
+
+#. V-Skill II: WING STROKE
+msgid "RSD.vs2"
+msgstr "Golpe de bater de asas rápido que pode ser usado no chão ou no salto, com seguimentos Wing Spike."
+
+#. V-Trigger I: YSAAR
+msgid "RSD.vt1"
+msgstr "Uso único. Lança uma bola de vento que bloqueia bolas de fogo e potencializa seus ataques de vento se ele a tocar."
+
+#. V-Trigger II: EASIFA
+msgid "RSD.vt2"
+msgstr "Potencializador temporário. Melhora Eagle Spike, Whirlwind Shot e Front Flip e adiciona Haboob, que cobre a tela inteira."
+
+# FAN = F.A.N.G
+#. V-Skill I: NISHODOKU
+msgid "FAN.vs1"
+msgstr "Um disparo de veneno que continua ferindo o oponente por vários segundos depois de acertar."
+
+#. V-Skill II: SODOKUBU
+msgid "FAN.vs2"
+msgstr "Um parry contra golpes que enche a barra e depois revida. Bolas de fogo e supers passam."
+
+#. V-Trigger I: DOKUNOMU
+msgid "FAN.vt1"
+msgstr "Potencializador temporário. Uma nuvem de veneno envenena os inimigos próximos, e ele pode cancelar em especiais sem carregar."
+
+#. V-Trigger II: KORYO DOKUDA
+msgid "FAN.vt2"
+msgstr "Potencializador temporário. Fortalece suas bolas de veneno e sua armadilha de veneno."
+
+# LAR = Laura
+#. V-Skill I: VOLTY LINE
+msgid "LAR.vs1"
+msgstr "Um avanço alto que leva a opções de dash como Avante, Esquiva e Finta."
+
+#. V-Skill II: VOLTY SPRINK
+msgid "LAR.vs2"
+msgstr "Um salto que atinge quem pula e segue com uma bola de fogo aérea ou um chute de calcanhar."
+
+#. V-Trigger I: SPARK SHOW
+msgid "LAR.vt1"
+msgstr "Potencializador temporário. Estrondos de trovão mais rápidos e V-Skills, Sunset Wheel e super mais fortes."
+
+#. V-Trigger II: SHOCK STANCE
+msgid "LAR.vt2"
+msgstr "Potencializador temporário. Desbloqueia Matsuda Sway, uma postura evasiva, e Shock Choke, um agarrão."
+
+# NCL = Necalli
+#. V-Skill I: CULMINATED POWER
+msgid "NCL.vs1"
+msgstr "Um disparo no chão com três versões de alcance; enche a barra ao acertar."
+
+#. V-Skill II: CRAWLING BEAST
+msgid "NCL.vs2"
+msgstr "Um arrastar baixo que solta um projétil lento, esquiva a maioria das bolas de fogo e deixa o oponente cambaleando ao acertar."
+
+#. V-Trigger I: TORRENT OF POWER
+msgid "NCL.vt1"
+msgstr "Potencializador temporário. Andar e dash mais rápidos, mais dano e o novo golpe Clouded Mirror."
+
+#. V-Trigger II: ERUPTION OF POWER
+msgid "NCL.vt2"
+msgstr "Potencializador de round inteiro. Mesmos ganhos de velocidade e dano do primeiro V-Trigger, mais o golpe Heart of Gold."
+
+# CMY = Cammy
+#. V-Skill I: AXEL SPIN KNUCKLE
+msgid "CMY.vs1"
+msgstr "Um soco giratório que esquiva arremessos e bolas de fogo e pode fazer cross up de perto."
+
+#. V-Skill II: SPINNING ATTACK
+msgid "CMY.vs2"
+msgstr "Um giro saltado que passa por cima de ataques baixos e pode fazer cross up; um counter hit dá um Crush Counter."
+
+#. V-Trigger I: DELTA DRIVE
+msgid "CMY.vt1"
+msgstr "Potencializador temporário. Fortalece Spiral Arrow, Cannon Spike e Cannon Strike."
+
+#. V-Trigger II: DELTA ADVANCE
+msgid "CMY.vt2"
+msgstr "Potencializador temporário. Adiciona novos seguimentos de dash e salto para aproximações rápidas e mix-ups."
+
+# GUL = Guile
+#. V-Skill I: SONIC BLADE
+msgid "GUL.vs1"
+msgstr "Lança um boom rápido, mesmo agachado, que pode seguir com Sonic Cross."
+
+#. V-Skill II: DIVE SONIC
+msgid "GUL.vs2"
+msgstr "Um ataque em mergulho com boom que ajuda a se aproximar; pode ser feito agachado."
+
+#. V-Trigger I: SOLID PUNCHER
+msgid "GUL.vt1"
+msgstr "Potencializador temporário. Desbloqueia Sonic Break, um projétil sem carga com seguimentos, e um super mais forte."
+
+#. V-Trigger II: KNIFE EDGE
+msgid "GUL.vt2"
+msgstr "Potencializador temporário. Os Flash Kicks ganham um projétil e podem ser feitos sem carga a partir de normais de chute."
+
+# IBK = Ibuki
+#. V-Skill I: TENRAI
+msgid "IBK.vs1"
+msgstr "Golpe do tipo projétil que prepara um juggle; segure o botão para a versão completa, mais forte."
+
+#. V-Skill II: MAKIBISHI
+msgid "IBK.vs2"
+msgstr "Espalha armadilhas de pregos no chão que derrubam o oponente que passa por cima delas."
+
+#. V-Trigger I: ROKUSHAKU HOROKUDAMA
+msgid "IBK.vt1"
+msgstr "Uso único. Joga uma bomba temporizada cujo pavio muda conforme a direção; um kunai pode detoná-la antes."
+
+#. V-Trigger II: FUMA SHURIKEN
+msgid "IBK.vt2"
+msgstr "Uso único. Arremessa um shuriken gigante, para frente ou para cima, que atinge na ida e na volta."
+
+# BSN = Balrog
+#. V-Skill I: KKB
+msgid "BSN.vs1"
+msgstr "Um esquiva que desvia de bolas de fogo e leva a seguimentos de soco ou golpes Buffalo."
+
+#. V-Skill II: FFB
+msgid "BSN.vs2"
+msgstr "Potencializa seu próximo Dash Punch com dano e atordoamento extras, e não precisa de carga quando cancelado nele."
+
+#. V-Trigger I: CRAZY RUSH
+msgid "BSN.vt1"
+msgstr "Potencializador temporário. Desbloqueia os avanços Charging Buffalo e Bursting Buffalo, pagos com V-Timer."
+
+#. V-Trigger II: NO MERCY
+msgid "BSN.vt2"
+msgstr "Potencializador temporário. Adiciona B3, um agarrão de comando com muito dano de atordoamento, pago com V-Timer."
+
+# URN = Urien
+#. V-Skill I: METALLIC AURA
+msgid "URN.vs1"
+msgstr "Dá ao seu próximo Chariot Tackle, Violence Knee ou Dangerous Headbutt um golpe de armadura."
+
+#. V-Skill II: INDIGNANT THUNDER
+msgid "URN.vs2"
+msgstr "Potencializa sua próxima Metallic Sphere com golpes extras, dano e uma hitbox maior."
+
+#. V-Trigger I: AEGIS REFLECTOR
+msgid "URN.vt1"
+msgstr "Uso único. Ergue um escudo Aegis que reflete bolas de fogo por alguns segundos."
+
+#. V-Trigger II: TYRANT PRESSURE
+msgid "URN.vt2"
+msgstr "Potencializador temporário. Desbloqueia Tyrant Blaze, um ataque novo, enquanto dura."
+
+# ALX = Alex
+#. V-Skill I: OVERHAUL
+msgid "ALX.vs1"
+msgstr "Transforma seu próximo ataque que acertar em um Hard Hit, com efeitos de counter hit e vantagem extra."
+
+#. V-Skill II: OVERCHAIN
+msgid "ALX.vs2"
+msgstr "Permite que seu próximo especial cancele em outro ao acertar ou bloquear, como Flash Chop em Elbow Slash."
+
+#. V-Trigger I: RAGE SHIFT
+msgid "ALX.vt1"
+msgstr "Potencializador temporário. Desbloqueia Sledge Hammer, um golpe pesado carregável que também tem modo parry."
+
+#. V-Trigger II: RAGE BOOST
+msgid "ALX.vt2"
+msgstr "Potencializador temporário. Desbloqueia duas novas agarrações, Flying DDT e Choke Sleeper."
+
+# Z21 = Akuma
+#. V-Skill I: RAKAN
+msgid "Z21.vs1"
+msgstr "Um parry contra golpes, em pé ou agachado, que enche a barra e leva a ataques de continuação."
+
+#. V-Skill II: KIAI
+msgid "Z21.vs2"
+msgstr "Um grito que potencializa sua próxima bola de fogo vermelha e anula uma bola de fogo."
+
+#. V-Trigger I: DOHATSU SHOTEN
+msgid "Z21.vt1"
+msgstr "Potencializador temporário. Fortalece suas bolas de fogo e seu Dragon Punch e desbloqueia Shun Goku Satsu."
+
+#. V-Trigger II: SHIRETSU HASSHI
+msgid "Z21.vt2"
+msgstr "Potencializador temporário. Permite cancelar especiais em outros especiais, pagos com o V-Timer em vez do medidor EX."
+
+# Z20 = Kolin
+#. V-Skill I: INSIDE SLASH
+msgid "Z20.vs1"
+msgstr "Um corte com janela de contra-ataque: se um golpe a atingir nesse momento, ela contra-ataca com derrubada."
+
+#. V-Skill II: GLACIER THROUGH
+msgid "Z20.vs2"
+msgstr "Um golpe de dash que congela a barra de atordoamento do oponente ao acertar e o derruba."
+
+#. V-Trigger I: DIAMOND DUST
+msgid "Z20.vt1"
+msgstr "Lança uma rajada de gelo que congela a barra de atordoamento do oponente; há um segundo lançamento durante o timer."
+
+#. V-Trigger II: ABSOLUTE ZERO
+msgid "Z20.vt2"
+msgstr "Potencializador temporário. Socos e bolas de neve mais fortes, além dos novos golpes Frost Edge e Reverse Javelin."
+
+# Z22 = Ed
+#. V-Skill I: PSYCHO SNATCHER
+msgid "Z22.vs1"
+msgstr "Um soco longo; se acertar, Ed se puxa para perto e derruba o oponente."
+
+#. V-Skill II: PSYCHO SWING
+msgid "Z22.vs2"
+msgstr "Um golpe baixo que esquiva bolas de fogo, com uma versão Psycho Smash que bate mais forte."
+
+#. V-Trigger I: PSYCHO CANNON
+msgid "Z22.vt1"
+msgstr "Uso único. Dispara uma enorme explosão psíquica de sete golpes."
+
+#. V-Trigger II: ENHANCED SNATCHER
+msgid "Z22.vt2"
+msgstr "Potencializador temporário. Desbloqueia Ultra Snatcher, um Psycho Snatcher mais forte no chão ou no ar."
+
+# Z23 = Menat
+#. V-Skill I: SOUL REFLECT
+msgid "Z23.vs1"
+msgstr "Absorve uma bola de fogo para a barra V e a devolve, além de um golpe de curta distância."
+
+#. V-Skill II: SOUL SPIRAL
+msgid "Z23.vs2"
+msgstr "Um golpe giratório para frente que pode ser combinado com seu orbe."
+
+#. V-Trigger I: WISDOM OF THOTH
+msgid "Z23.vt1"
+msgstr "Potencializador temporário. Dá a ela um conjunto de orbes, um por botão, que dispara ao soltar esse botão."
+
+#. V-Trigger II: PROPHECY OF THOTH
+msgid "Z23.vt2"
+msgstr "Potencializador temporário. Desbloqueia Judgement of Thoth, que dispara todos os seus orbes de uma vez em trajetórias diferentes."
+
+# Z24 = Abigail
+#. V-Skill I: HUNGABEE
+msgid "Z24.vs1"
+msgstr "Postura de parry, alta ou baixa, que para um golpe e enche a barra V. Critical Arts a vencem."
+
+#. V-Skill II: C'MON SPARE TIRE
+msgid "Z24.vs2"
+msgstr "Deixa um pneu à sua frente que ele pode lançar no oponente com seus ataques."
+
+#. V-Trigger I: MAX POWER
+msgid "Z24.vt1"
+msgstr "Potencializador temporário. 15% a mais de dano, versões carregadas de seus socos fortes e armadura mais resistente nos golpes de corrida."
+
+#. V-Trigger II: HYBRID CHARGE
+msgid "Z24.vt2"
+msgstr "Potencializador temporário. Desbloqueia Metro Crash, um avanço carregado que tem armadura enquanto carrega."
+
+# Z25 = Zeku
+#. V-Skill I: FUKURO
+msgid "Z25.vs1"
+msgstr "Um chute ascendente antiaéreo que pode fazer cross up; ao acertar, vira Young Zeku com um golpe extra."
+
+#. V-Skill II: KUCHIYOSE - SHII
+msgid "Z25.vs2"
+msgstr "Chama uma águia que solta um rojão onde ele escolher; pode trocar de forma enquanto ela voa."
+
+#. V-Trigger I: BUSHINRYU SHINGEKIKO
+msgid "Z25.vt1"
+msgstr "Potencializador temporário. Dá a ele um dash de uso único, Idaten, e um golpe de V-Trigger."
+
+#. V-Trigger II: KARURA TENZAN
+msgid "Z25.vt2"
+msgstr "Potencializador temporário. A abertura invencível volta como um segundo Karura Tenzan, mais lento, enquanto dura."
+
+# Z26 = Sakura
+#. V-Skill I: HARU KAZE
+msgid "Z26.vs1"
+msgstr "Um pulo com três seguimentos, uma queda e dois chutes, que esquiva bolas de fogo enquanto está no ar."
+
+#. V-Skill II: HARU HAYATE
+msgid "Z26.vs2"
+msgstr "Um passo rápido em que se cancela a partir da maioria dos normais, com seguimento de ataque se o botão for segurado."
+
+#. V-Trigger I: HARU ARASHI
+msgid "Z26.vt1"
+msgstr "Potencializador temporário. Bolas de fogo mais fortes, além de Hogasho, um novo especial em HP+HK."
+
+#. V-Trigger II: SAKURA SENPU
+msgid "Z26.vt2"
+msgstr "Potencializador temporário. Melhora muito seu Shoryuken e seu chute giratório."
+
+# Z27 = Blanka
+#. V-Skill I: COWARD CROUCH
+msgid "Z27.vs1"
+msgstr "Agacha-se para esquivar golpes altos e bolas de fogo, depois salta para fora com um lift ou um seguimento de pulo."
+
+#. V-Skill II: SHOUT OF EARTH
+msgid "Z27.vs2"
+msgstr "Um ataque de grito para frente que pode ser carregado para um segundo nível mais forte."
+
+#. V-Trigger I: JUNGLE DYNAMO
+msgid "Z27.vt1"
+msgstr "Potencializador temporário. Fortalece todos os especiais Blanka Ball e Electric Thunder e adiciona Ground Shave Rolling."
+
+#. V-Trigger II: LIGHTNING BEAST
+msgid "Z27.vt2"
+msgstr "Potencializador temporário. Permite cancelar golpes de Blanka Ball em Rolling Cannon, um rolamento aéreo em oito direções."
+
+# Z28 = Falke
+#. V-Skill I: PSYCHO TROMBE
+msgid "Z28.vs1"
+msgstr "Um golpe com bastão que absorve uma bola de fogo para a barra e pode seguir com especiais."
+
+#. V-Skill II: PSYCHO MINE
+msgid "Z28.vs2"
+msgstr "Coloca uma mina à frente ou aos seus pés que explode ao ser tocada pelo bastão ou pelas bolas de fogo."
+
+#. V-Trigger I: STAERKEN
+msgid "Z28.vt1"
+msgstr "Potencializador temporário. Dá a ela versões aprimoradas de bola de fogo em HP+HK, usáveis a partir de especiais e V-Skill."
+
+#. V-Trigger II: PSYCHO ANGRIFF
+msgid "Z28.vt2"
+msgstr "Potencializador temporário. A ativação é um ataque; desbloqueia os seguimentos Psycho Strum e Psycho Klinge a partir de normais."
+
+# Z29 = Cody
+#. V-Skill I: DOUBLE KICK
+msgid "Z29.vs1"
+msgstr "Um chute duplo que acerta na frente e depois atrás. Ele é invencível durante o golpe, mas recebe algum dano de vida."
+
+#. V-Skill II: CRIME SWAY
+msgid "Z29.vs2"
+msgstr "Um balanço que esquiva golpes e bolas de fogo, e depois ele pode seguir com Wrench Fist ou Lumber Sweep."
+
+#. V-Trigger I: SIDE ARM
+msgid "Z29.vt1"
+msgstr "Potencializador temporário. Equipa uma faca, muda seus socos e adiciona especiais com faca, mas desativa sua bola de fogo."
+
+#. V-Trigger II: DIRTY COACH
+msgid "Z29.vt2"
+msgstr "Potencializador temporário. Equipa um cano para golpes pesados que refletem bolas de fogo, além de um arremesso de pedra."
+
+# Z30 = G
+#. V-Skill I: G BARRIER
+msgid "Z30.vs1"
+msgstr "Uma barreira que absorve uma bola de fogo e derruba o oponente ao contato; também funciona no ar."
+
+#. V-Skill II: G PROTECTION
+msgid "Z30.vs2"
+msgstr "Reduz em 10% o dano e o atordoamento recebidos, até três vezes, e mantém seu nível Presidencial ao cair."
+
+#. V-Trigger I: MAXIMUM PRESIDENT
+msgid "Z30.vt1"
+msgstr "Potencializador temporário. Coloca seu nível Presidencial no máximo e permite cancelar especiais entre si."
+
+#. V-Trigger II: DANGEROUS PRESIDENT
+msgid "Z30.vt2"
+msgstr "Potencializador temporário. Desbloqueia G Explosion, um extensor de combos, e G Rage, um agarrão de comando com armadura."
+
+# Z31 = Sagat
+#. V-Skill I: ANGRY CHARGE
+msgid "Z31.vs1"
+msgstr "Potencializa seu próximo Tiger Uppercut com mais dano, empurrão e potencial de juggle."
+
+#. V-Skill II: HANUMAN CHARGE
+msgid "Z31.vs2"
+msgstr "Potencializa seu próximo Tiger Knee com melhor vantagem no bloqueio e potencial de juggle."
+
+#. V-Trigger I: TIGER CHARGE
+msgid "Z31.vt1"
+msgstr "Potencializador temporário. Desbloqueia Tiger Cannon, uma bola de fogo forte de cinco golpes que cancela a partir de normais."
+
+#. V-Trigger II: TIGER ASSAULT
+msgid "Z31.vt2"
+msgstr "Potencializador temporário. Desbloqueia os ataques Tiger Spike e Tiger Rush, que seguem seus normais."
+
+# Z32 = Kage
+#. V-Skill I: SENHA KASSATSU
+msgid "Z32.vs1"
+msgstr "Golpe que pode ser segurado, com armadura contra golpes altos e médios e bolas de fogo, mas não contra baixos."
+
+#. V-Skill II: SEKIEIKEN
+msgid "Z32.vs2"
+msgstr "Golpe saltado que pode acertar um oponente no chão; segure para frente para mais distância."
+
+#. V-Trigger I: TAIGYAKU MUDO
+msgid "Z32.vt1"
+msgstr "Potencializador temporário. Fortalece muito sua V-Skill e adiciona Ashura Senku, um dash de teletransporte."
+
+#. V-Trigger II: RIKUDO OSATSU
+msgid "Z32.vt2"
+msgstr "Potencializador temporário. Desbloqueia Misogi, um golpe de teletransporte, e o super Shun Goku Satsu."
+
+# Z33 = Poison
+#. V-Skill I: PERFUME SWING
+msgid "Z33.vs1"
+msgstr "Um balanço de corda que a leva para frente; a distância pode ser ajustada e suas pernas esquivam bolas de fogo."
+
+#. V-Skill II: CARTWHEEL
+msgid "Z33.vs2"
+msgstr "Uma estrela que atravessa o oponente; segure o botão para um seguimento de ataque."
+
+#. V-Trigger I: POISON COCKTAIL
+msgid "Z33.vt1"
+msgstr "Potencializador temporário. Desbloqueia Fire Squall, um ataque de projétil que pode ser usado no chão ou no ar."
+
+#. V-Trigger II: TOXIC GLAMOR
+msgid "Z33.vt2"
+msgstr "Potencializador temporário. Desbloqueia Toxic Hold, um agarrão de comando, e Toxic Bind."
+
+# Z34 = E. Honda
+#. V-Skill I: NEKO DAMASHI
+msgid "Z34.vs1"
+msgstr "Um aplauso que anula uma bola de fogo e para o qual se pode cancelar a partir de muitos normais."
+
+#. V-Skill II: SUMO SPIRIT
+msgid "Z34.vs2"
+msgstr "Potencializa seu próximo Hundred Hand Slap e permite que qualquer normal cancele nele."
+
+#. V-Trigger I: ONIGAWARA
+msgid "Z34.vt1"
+msgstr "Potencializador temporário. Desbloqueia os golpes Oni-Daikaku e Oni-Muso, pagos com V-Timer."
+
+#. V-Trigger II: TAJIKARAO
+msgid "Z34.vt2"
+msgstr "Potencializador temporário. Desbloqueia Iwato Biraki, um ataque com armadura que custa V-Timer a cada uso."
+
+# Z35 = Lucia
+#. V-Skill I: TAP-KICK
+msgid "Z35.vs1"
+msgstr "Uma sequência de chutes de vários golpes que pode cancelar em especiais, super ou V-Trigger nos golpes finais."
+
+#. V-Skill II: ARREST HEEL
+msgid "Z35.vs2"
+msgstr "Um pulo alto com chute de calcanhar que evita bolas de fogo e alguns golpes."
+
+#. V-Trigger I: BURNING FIGHT
+msgid "Z35.vt1"
+msgstr "Potencializador temporário. Fortalece sua V-Skill e todos os seus especiais de chute."
+
+#. V-Trigger II: WEAPON FURY
+msgid "Z35.vt2"
+msgstr "Potencializador temporário. Desbloqueia Tactical Weapon, um especial de golpe com cassetete."
+
+# Z36 = Gill
+#. V-Skill I: DIVINE COMET
+msgid "Z36.vs1"
+msgstr "Solta um projétil cometa por três trajetórias diferentes; muda a cada V-Trigger, fogo ou gelo."
+
+#. V-Skill II: BLOCKING
+msgid "Z36.vs2"
+msgstr "Um parry contra qualquer ataque, incluindo Critical Arts, que enche a barra V. Agache-se para uma versão baixa."
+
+#. V-Trigger I: PRIMAL FIRE
+msgid "Z36.vt1"
+msgstr "Potencializador temporário. Modo fogo: incendeia os inimigos, potencializa seus ataques de fogo e adiciona três especiais de fogo."
+
+#. V-Trigger II: ICE OF DOOM
+msgid "Z36.vt2"
+msgstr "Potencializador temporário. Modo gelo: congela a barra de atordoamento do oponente e adiciona Tree of Frost e Delay Freeze Lance."
+
+# Z37 = Seth
+#. V-Skill I: TANDEN ENGINE
+msgid "Z37.vs1"
+msgstr "Um agarrão de sucção; siga com um soco para roubar um golpe do oponente para um uso."
+
+#. V-Skill II: TANDEN BOOSTER
+msgid "Z37.vs2"
+msgstr "Uma postura com vários ataques de seguimento, planar, espiral e pêndulo, e um estado de counter hit no início."
+
+#. V-Trigger I: TANDEN IGNITION
+msgid "Z37.vt1"
+msgstr "Potencializador temporário. Desbloqueia o soco teletransportado Titanomachy, Mad Spin e outros seguimentos cancelados a partir de seus golpes."
+
+#. V-Trigger II: TANDEN MANEUVER
+msgid "Z37.vt2"
+msgstr "Uso único. Gera um orbe que ele direciona até quatro vezes e detona quando quiser."
+
+# Z38 = Dan
+#. V-Skill I: SAIKYO-STYLE BURAIRUTEN NO KAMAE
+msgid "Z38.vs1"
+msgstr "Um agachar provocador que enche a barra V e pode seguir com sua bola de fogo, Dragon Punch ou Danretsuken."
+
+#. V-Skill II: SAIKYO-STYLE OTOKOBOE
+msgid "Z38.vs2"
+msgstr "Uma provocação rápida na qual pode cancelar a partir de normais, e depois cancelar de novo em outros ataques."
+
+#. V-Trigger I: HAOH GADOKEN
+msgid "Z38.vt1"
+msgstr "Uso único. Arremessa uma enorme bola de fogo pela tela toda; segure para uma versão mais forte que quebra a guarda."
+
+#. V-Trigger II: TENCHI SAIKYO NO KATA
+msgid "Z38.vt2"
+msgstr "Potencializador temporário. Fortalece seu Gadoken e Koryuken em Haten Gadoken e Goh Koryuken."
+
+# Z39 = Rose
+#. V-Skill I: SOUL FORTUNE
+msgid "Z39.vs1"
+msgstr "Lança uma carta de tarô aleatória para um impulso, como dano extra, barra ou vida."
+
+#. V-Skill II: SOUL SATELLITE
+msgid "Z39.vs2"
+msgstr "Invoca até dois orbes que atuam como bolas de fogo de um golpe e duram alguns segundos."
+
+#. V-Trigger I: SOUL DIMENSION
+msgid "Z39.vt1"
+msgstr "Potencializador temporário. Dá a ela teletransportes no chão e no ar, cancelados a partir de vários especiais."
+
+#. V-Trigger II: SOUL ILLUSION
+msgid "Z39.vt2"
+msgstr "Potencializador temporário breve. Um clone de sombra repete seus ataques uma fração de segundo depois."
+
+# Z40 = Oro
+#. V-Skill I: ONIBI
+msgid "Z40.vs1"
+msgstr "Arremessa um orbe que faz um arco pela tela; a direção segurada muda sua trajetória."
+
+#. V-Skill II: MINOMUSHI
+msgid "Z40.vs2"
+msgstr "Um golpe de mix-up com dois seguimentos, um golpe alto e um spike aéreo."
+
+#. V-Trigger I: MANRIKITAN
+msgid "Z40.vt1"
+msgstr "Potencializador temporário. Desbloqueia dois agarrões de comando, Kishinriki e Kishin Kuchu Jigoku Guruma."
+
+#. V-Trigger II: TENGU STONE
+msgid "Z40.vt2"
+msgstr "Potencializador temporário. Invoca objetos que seguem seus ataques como golpes extras, e o timer diminui conforme eles acertam."
+
+# Z41 = Akira
+#. V-Skill I: KIKO RENSEI
+msgid "Z41.vs1"
+msgstr "Potencializa sua próxima bola de fogo Kiko Kai."
+
+#. V-Skill II: TSUTENDA
+msgid "Z41.vs2"
+msgstr "Um chute ascendente que lança o oponente bem alto, com cadeias aéreas e um seguimento de super pulo."
+
+#. V-Trigger I: OTOKO NO SENAKA
+msgid "Z41.vt1"
+msgstr "Uso único. Um ataque de avanço de dois golpes que primeiro deixa cambaleando e depois lança, deixando o oponente aberto para um juggle."
+
+#. V-Trigger II: HATEN NO KAMAE
+msgid "Z41.vt2"
+msgstr "Potencializador temporário. Assume uma postura com seguimentos Ha no Sogeki e Ha no Renbu."
+
+# Z42 = Luke
+#. V-Skill I: HARD SHOT
+msgid "Z42.vs1"
+msgstr "Potencializa seu próximo Flash Knuckle com melhor dano e vantagem; o bônus continua se ele for derrubado."
+
+#. V-Skill II: SUPPRESSOR
+msgid "Z42.vs2"
+msgstr "Um golpe recuado que contra-ataca arremessos e bate mais forte quando faz isso."
+
+#. V-Trigger I: FULLY ARMED
+msgid "Z42.vt1"
+msgstr "Potencializador temporário. Sua barra V se reabastece ao causar dano; desbloqueia Rock Smasher e Thermobaric Smash."
+
+#. V-Trigger II: VANGUARD
+msgid "Z42.vt2"
+msgstr "Potencializador temporário. Seus Flash Knuckles podem cancelar em outro Flash Knuckle de força diferente."

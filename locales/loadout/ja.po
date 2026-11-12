@@ -3,14 +3,767 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Language: ja\n"
 
-#. Placeholder entry (step 0 stub): stream D replaces this file with all 180 notes.
+# RYU = Ryu
+#. V-Skill I: MIND'S EYE
 msgid "RYU.vs1"
-msgstr "Stub note for Ryu's first V-Skill."
+msgstr "あらゆる攻撃と飛び道具を受け止めるパリィの構え。Vゲージを溜め、必殺技にキャンセルできる。"
 
-#. Placeholder entry (step 0 stub).
+#. V-Skill II: THRUST STRIKE
 msgid "RYU.vs2"
-msgstr "Stub note for Ryu's second V-Skill."
+msgstr "前方へのパンチに攻撃を弾くパリィが付いている。パリィ成功で相手は壁バウンドする。"
 
-#. Placeholder entry (step 0 stub).
+#. V-Trigger I: DENJIN RENKI
 msgid "RYU.vt1"
-msgstr "Stub note for Ryu's first V-Trigger."
+msgstr "時間制の強化。雷でパンチ、飛び道具、アッパーが強化され、スーパーも強化される。"
+
+#. V-Trigger II: KAKKO FUBATSU
+msgid "RYU.vt2"
+msgstr "時間制の強化。強化パリィが加わり、飛び道具と昇竜拳からカウンター攻撃を出せる。"
+
+# VEG = M. Bison
+#. V-Skill I: PSYCHO REFLECT
+msgid "VEG.vs1"
+msgstr "攻撃を一度吸収し、返すこともできる。飛び道具への有効な対策。"
+
+#. V-Skill II: HELL'S WARP
+msgid "VEG.vs2"
+msgstr "ひざ蹴りで相手の背後にテレポートする。裏回りや攻めの圧からの脱出に便利。"
+
+#. V-Trigger I: PSYCHO POWER
+msgid "VEG.vt1"
+msgstr "時間制の強化。ダッシュと必殺技が強化され、Vタイマーを消費して必殺技同士をキャンセルできる。"
+
+#. V-Trigger II: PSYCHO NIGHTMARE
+msgid "VEG.vt2"
+msgstr "時間制の強化。効果中、Psycho Crusher、Psycho Charge、Psycho Judgementが使える。"
+
+# CNL = Chun-Li
+#. V-Skill I: RANKYAKU
+msgid "CNL.vs1"
+msgstr "ジャンプキックで空中に留まり、空中攻撃、踏みつけ、壁ジャンプにつなげられる。"
+
+#. V-Skill II: HAZANSHU
+msgid "CNL.vs2"
+msgstr "飛び道具を避けるフリップキック。Vトリガーにキャンセルできる。後ろを押し続けると短い版になる。"
+
+#. V-Trigger I: RENKIKO
+msgid "CNL.vt1"
+msgstr "時間制の強化。ほとんどの技が速く強くなり、スタンコンボが可能になる。"
+
+#. V-Trigger II: KIKOSHO
+msgid "CNL.vt2"
+msgstr "相手を打ち上げる気弾。その後しばらくの間、気弾をさらに撃てる。"
+
+# KEN = Ken
+#. V-Skill I: QUICK STEP
+msgid "KEN.vs1"
+msgstr "素早く前に走り、キックにつなげられる。攻めと択のための高速移動。"
+
+#. V-Skill II: RYUSENKYAKU
+msgid "KEN.vs2"
+msgstr "上から飛び込む回転キック。ボタンを押し続けると、遅いが強い版になる。"
+
+#. V-Trigger I: HEAT RUSH
+msgid "KEN.vt1"
+msgstr "時間制の強化。回転キックが飛び道具型の攻撃になり、飛び道具からVスキルにキャンセルできる。"
+
+#. V-Trigger II: SHINRYUKEN
+msgid "KEN.vt2"
+msgstr "単発。命中時にパンチを押し続けるとレベルが上がっていく炎の昇竜拳。"
+
+# KRN = Karin
+#. V-Skill I: MYO-OKEN
+msgid "KRN.vs1"
+msgstr "前方への攻撃で、飛び道具を一つ打ち消す。ボタンを押し続けると、遅いが強い攻撃になる。"
+
+#. V-Skill II: FUDO SOSHO
+msgid "KRN.vs2"
+msgstr "前方への攻撃で一つの飛び道具を打ち消し、クラッシュカウンターを発生させる。押し続けると威力が増す。"
+
+#. V-Trigger I: GUREN NO KATA
+msgid "KRN.vt1"
+msgstr "時間制の強化。連続技と、その後の追撃攻撃が使えるようになる。"
+
+#. V-Trigger II: TENHA NO KATA
+msgid "KRN.vt2"
+msgstr "時間制の強化。他の技からキャンセルできるパリィの構え Yasha Gaeshi が使えるようになる。"
+
+# ZGF = Zangief
+#. V-Skill I: IRON MUSCLE
+msgid "ZGF.vs1"
+msgstr "アーマーで攻撃を受け止める構え。Vゲージが溜まり、押し続けると攻撃を受けながら前進する。"
+
+#. V-Skill II: SUPER RUSSIAN KICK
+msgid "ZGF.vs2"
+msgstr "出始めにアーマーがある蹴り。押し続けるとより強い版になり、掴みに踏み込みやすくなる。"
+
+#. V-Trigger I: CYCLONE LARIAT
+msgid "ZGF.vt1"
+msgstr "時間制の強化。飛び道具を無視するスピン技 Cyclone Lariat が使え、Iron Muscle のアーマーがほぼ無限になる。"
+
+#. V-Trigger II: COSSACK MUSCLE
+msgid "ZGF.vt2"
+msgstr "時間制の強化。Screw Piledriver と Borscht Dynamite の威力とスタン値が上がり、必殺技からコンボにつながる。"
+
+# DSM = Dhalsim
+#. V-Skill I: YOGA FLOAT
+msgid "DSM.vs1"
+msgstr "体を浮かせて空中を漂い、上から攻撃する。低い攻撃を避け、角度を変えるのに役立つ。"
+
+#. V-Skill II: YOGA DEEP BREATH
+msgid "DSM.vs2"
+msgstr "深呼吸で次の Yoga Fire を強化し、追加ヒット、ダメージ、有利を与える。"
+
+#. V-Trigger I: YOGA BURNER
+msgid "DSM.vt1"
+msgstr "単発。床に炎のじゅうたんを残す炎攻撃で、倒れた相手を焼く。"
+
+#. V-Trigger II: YOGA SANSARA
+msgid "DSM.vt2"
+msgstr "時間制の強化。浮かぶ炎を配置し、炎技が触れると、より強い飛び道具に育つ。"
+
+# NSH = Nash
+#. V-Skill I: BULLET CLEAR
+msgid "NSH.vs1"
+msgstr "飛び道具を吸収してゲージを得る。攻撃を受けた、または防いだ相手を引き寄せる。"
+
+#. V-Skill II: SILENT SHARPNESS
+msgid "NSH.vs2"
+msgstr "次の Sonic Scythe を、追加ヒット、ダメージ、スタンで強化する。"
+
+#. V-Trigger I: SONIC MOVE
+msgid "NSH.vt1"
+msgstr "単発。ナッシュが消えて別の場所に現れる。テレポートの種類をいくつか選べる。"
+
+#. V-Trigger II: STEALTH DASH
+msgid "NSH.vt2"
+msgstr "時間制の強化。ダッシュ中に一瞬時間を止め、その後 Stop か新しい Justice 技を続ける。"
+
+# BLR = Vega
+#. V-Skill I: MATADOR TURN
+msgid "BLR.vs1"
+msgstr "上段攻撃と飛び道具をかわしてから攻撃する回避ターン。爪を失うと弱くなる。"
+
+#. V-Skill II: MATADOR FLIP
+msgid "BLR.vs2"
+msgstr "攻撃と飛び道具を避けるフリップ。Cosmic Smart の追撃につなげられる。"
+
+#. V-Trigger I: BLOODY KISS
+msgid "BLR.vt1"
+msgstr "単発。バラを投げる。命中すると、ヴェガが斬撃で前方に飛び出す。"
+
+#. V-Trigger II: ALEGRIAS
+msgid "BLR.vt2"
+msgstr "時間制の強化。Flash Arch を解放。物理攻撃に反撃で応じるパリィの構え。"
+
+# JRI = Juri
+#. V-Skill I: KASATSUSHU
+msgid "JRI.vs1"
+msgstr "溜めて威力を上げられるキック。素早い段階は溜め不要。"
+
+#. V-Skill II: FUHA ENZAN
+msgid "JRI.vs2"
+msgstr "遅く広い飛び道具を溜め、もう一度押すと放つ。間合いの支配に有効。"
+
+#. V-Trigger I: FENG SHUI ENGINE alpha
+msgid "JRI.vt1"
+msgstr "時間制の強化。弱から強へ通常技を連携でき、溜めなしで Fuharenkyaku が使える。"
+
+#. V-Trigger II: FENG SHUI ENGINE beta
+msgid "JRI.vt2"
+msgstr "短時間の強化。ストックをすべて得て、両者が地上にいる間、相手の EX ゲージを減らす。"
+
+# BRD = Birdie
+#. V-Skill I: BREAK TIME
+msgid "BRD.vs1"
+msgstr "おやつを食べて Vゲージを溜める。遅いので相手が遠いときに使う。"
+
+#. V-Skill II: CHEWING TIME
+msgid "BRD.vs2"
+msgstr "ガムを噛んで Vゲージを溜める。ボタンを押し続けると、打ち上げられる泡を吹く。"
+
+#. V-Trigger I: ENJOY TIME
+msgid "BRD.vt1"
+msgstr "時間制の強化。一部の必殺技でダメージ増加、移動速度上昇、強固なアーマー。必殺技はタイマーを削る。"
+
+#. V-Trigger II: BIRDIE TIME
+msgid "BRD.vt2"
+msgstr "時間制の強化。Bull Swing と Bull Capture が加わり、連携と Bull Revenger の技がわずかに強化される。"
+
+# RMK = R. Mika
+#. V-Skill I: HEATED MIC PERFORMANCE
+msgid "RMK.vs1"
+msgstr "マイクを投げ、次の掴みかスーパーを強化する。ボタンを押し続けるとボーナスが溜まる。"
+
+#. V-Skill II: PUMPED UP!
+msgid "RMK.vs2"
+msgstr "攻撃を弾いてゲージを溜め、反撃するパリィ。飛び道具と下段攻撃は通る。"
+
+#. V-Trigger I: C'MON NADESHIKO!
+msgid "RMK.vt1"
+msgstr "単発。Nadeshiko を呼び、前か後ろから上空で腹ばいに飛び込ませる。"
+
+#. V-Trigger II: STEEL CHAIR
+msgid "RMK.vt2"
+msgstr "時間制の強化。Nadeshiko がスチールチェアを投げ、時間切れ前にもう一度呼べる。"
+
+# RSD = Rashid
+#. V-Skill I: FRONT FLIP
+msgid "RSD.vs1"
+msgstr "前方宙返りで、空中キックや回転攻撃につなげる。素早く間合いを詰める手段。"
+
+#. V-Skill II: WING STROKE
+msgid "RSD.vs2"
+msgstr "地上でも空中でも使える速い羽打ち攻撃。Wing Spike の追撃がある。"
+
+#. V-Trigger I: YSAAR
+msgid "RSD.vt1"
+msgstr "単発。風の球を放ち、飛び道具を防ぎ、触れると自身の風技が強化される。"
+
+#. V-Trigger II: EASIFA
+msgid "RSD.vt2"
+msgstr "時間制の強化。Eagle Spike、Whirlwind Shot、Front Flip を強化し、全画面の Haboob を追加。"
+
+# FAN = F.A.N.G
+#. V-Skill I: NISHODOKU
+msgid "FAN.vs1"
+msgstr "命中後、数秒間相手にダメージを与え続ける毒の射撃。"
+
+#. V-Skill II: SODOKUBU
+msgid "FAN.vs2"
+msgstr "攻撃を弾いてゲージを溜め、その後反撃するパリィ。飛び道具とスーパーは通る。"
+
+#. V-Trigger I: DOKUNOMU
+msgid "FAN.vt1"
+msgstr "時間制の強化。毒の雲が近くの敵を毒にし、溜めなしで必殺技にキャンセルできる。"
+
+#. V-Trigger II: KORYO DOKUDA
+msgid "FAN.vt2"
+msgstr "時間制の強化。毒の玉と毒の罠を強化する。"
+
+# LAR = Laura
+#. V-Skill I: VOLTY LINE
+msgid "LAR.vs1"
+msgstr "上段の突進。Avante、Esquiva、Finta などのダッシュ行動につながる。"
+
+#. V-Skill II: VOLTY SPRINK
+msgid "LAR.vs2"
+msgstr "跳躍中の相手を捉える跳び。空中飛び道具かヒールキックで追撃する。"
+
+#. V-Trigger I: SPARK SHOW
+msgid "LAR.vt1"
+msgstr "時間制の強化。雷鳴が速くなり、Vスキル、Sunset Wheel、スーパーが強化される。"
+
+#. V-Trigger II: SHOCK STANCE
+msgid "LAR.vt2"
+msgstr "時間制の強化。回避構えの Matsuda Sway と、掴み攻撃の Shock Choke を解放する。"
+
+# NCL = Necalli
+#. V-Skill I: CULMINATED POWER
+msgid "NCL.vs1"
+msgstr "地上の射撃で、距離の異なる3種類がある。命中するとゲージが溜まる。"
+
+#. V-Skill II: CRAWLING BEAST
+msgid "NCL.vs2"
+msgstr "低い這い姿勢から遅い飛び道具を出し、ほとんどの飛び道具をかわし、命中で相手が崩れる。"
+
+#. V-Trigger I: TORRENT OF POWER
+msgid "NCL.vt1"
+msgstr "時間制の強化。歩きとダッシュが速くなり、ダメージが増え、新技 Clouded Mirror が使える。"
+
+#. V-Trigger II: ERUPTION OF POWER
+msgid "NCL.vt2"
+msgstr "ラウンド中の強化。1つ目のトリガーと同じ速度とダメージ増加に加え、Heart of Gold 技が使える。"
+
+# CMY = Cammy
+#. V-Skill I: AXEL SPIN KNUCKLE
+msgid "CMY.vs1"
+msgstr "投げと飛び道具をかわす回転パンチ。近距離では裏回りになる。"
+
+#. V-Skill II: SPINNING ATTACK
+msgid "CMY.vs2"
+msgstr "小さく跳んで回転する技で、下段攻撃を越える。裏回りができ、カウンターヒットで Crush Counter になる。"
+
+#. V-Trigger I: DELTA DRIVE
+msgid "CMY.vt1"
+msgstr "時間制の強化。Spiral Arrow、Cannon Spike、Cannon Strike を強化する。"
+
+#. V-Trigger II: DELTA ADVANCE
+msgid "CMY.vt2"
+msgstr "時間制の強化。素早い接近と崩しのため、新しいダッシュと跳びからの追撃を追加する。"
+
+# GUL = Guile
+#. V-Skill I: SONIC BLADE
+msgid "GUL.vs1"
+msgstr "しゃがみからでも素早くソニックブームを出し、Sonic Cross につなげられる。"
+
+#. V-Skill II: DIVE SONIC
+msgid "GUL.vs2"
+msgstr "ソニックブームを伴う降下攻撃で、間合いを詰めるのに役立つ。しゃがんだ状態からもできる。"
+
+#. V-Trigger I: SOLID PUNCHER
+msgid "GUL.vt1"
+msgstr "時間制の強化。溜めなしで撃てる追撃付きの飛び道具 Sonic Break と、より強いスーパーを解放する。"
+
+#. V-Trigger II: KNIFE EDGE
+msgid "GUL.vt2"
+msgstr "時間制の強化。Flash Kick に飛び道具が加わり、キック系の通常技から溜めなしでできる。"
+
+# IBK = Ibuki
+#. V-Skill I: TENRAI
+msgid "IBK.vs1"
+msgstr "飛び道具型の攻撃でコンボの土台になる。ボタンを押し続けると、より強い完全版になる。"
+
+#. V-Skill II: MAKIBISHI
+msgid "IBK.vs2"
+msgstr "地面に撒菱をまき、踏んだ相手をつまずかせる。"
+
+#. V-Trigger I: ROKUSHAKU HOROKUDAMA
+msgid "IBK.vt1"
+msgstr "単発。方向で導火線が変わる時限爆弾を投げる。クナイで早めに起爆できる。"
+
+#. V-Trigger II: FUMA SHURIKEN
+msgid "IBK.vt2"
+msgstr "単発。巨大な手裏剣を前か上に投げる。行きと戻りの両方で命中する。"
+
+# BSN = Balrog
+#. V-Skill I: KKB
+msgid "BSN.vs1"
+msgstr "飛び道具をかわすウィービング。パンチの追撃か Buffalo 技につながる。"
+
+#. V-Skill II: FFB
+msgid "BSN.vs2"
+msgstr "次の Dash Punch を追加ダメージとスタンで強化する。キャンセルで入れると溜め不要。"
+
+#. V-Trigger I: CRAZY RUSH
+msgid "BSN.vt1"
+msgstr "時間制の強化。Charging Buffalo と Bursting Buffalo の突進を解放。V タイマーを消費する。"
+
+#. V-Trigger II: NO MERCY
+msgid "BSN.vt2"
+msgstr "時間制の強化。大きなスタンダメージを与える掴み技 B3 を追加。V タイマーを消費する。"
+
+# URN = Urien
+#. V-Skill I: METALLIC AURA
+msgid "URN.vs1"
+msgstr "次の Chariot Tackle、Violence Knee、Dangerous Headbutt にアーマー1回分を与える。"
+
+#. V-Skill II: INDIGNANT THUNDER
+msgid "URN.vs2"
+msgstr "次の Metallic Sphere を追加ヒット、ダメージ、より大きな判定で強化する。"
+
+#. V-Trigger I: AEGIS REFLECTOR
+msgid "URN.vt1"
+msgstr "単発。Aegis の盾を展開し、数秒間飛び道具を反射する。"
+
+#. V-Trigger II: TYRANT PRESSURE
+msgid "URN.vt2"
+msgstr "時間制の強化。効果中、新技 Tyrant Blaze が使える。"
+
+# ALX = Alex
+#. V-Skill I: OVERHAUL
+msgid "ALX.vs1"
+msgstr "次に当てた攻撃をハードヒットにし、カウンターヒットの効果と追加の有利を与える。"
+
+#. V-Skill II: OVERCHAIN
+msgid "ALX.vs2"
+msgstr "次の必殺技が命中かガードされた時、別の必殺技にキャンセルできる。Flash Chop から Elbow Slash のように。"
+
+#. V-Trigger I: RAGE SHIFT
+msgid "ALX.vt1"
+msgstr "時間制の強化。溜めて出せる強打 Sledge Hammer を解放。パリィモードもある。"
+
+#. V-Trigger II: RAGE BOOST
+msgid "ALX.vt2"
+msgstr "時間制の強化。新しい掴み技2種、Flying DDT と Choke Sleeper を解放する。"
+
+# Z21 = Akuma
+#. V-Skill I: RAKAN
+msgid "Z21.vs1"
+msgstr "立ちでもしゃがみでも攻撃を弾くパリィ。ゲージが溜まり、後続攻撃につながる。"
+
+#. V-Skill II: KIAI
+msgid "Z21.vs2"
+msgstr "次の赤い飛び道具を強化し、飛び道具を一つ打ち消す掛け声。"
+
+#. V-Trigger I: DOHATSU SHOTEN
+msgid "Z21.vt1"
+msgstr "時間制の強化。飛び道具と竜巻旋風脚ではなく昇竜拳を強化し、Shun Goku Satsu を解放する。"
+
+#. V-Trigger II: SHIRETSU HASSHI
+msgid "Z21.vt2"
+msgstr "時間制の強化。必殺技同士をキャンセルでき、EXゲージではなく Vタイマーから消費する。"
+
+# Z20 = Kolin
+#. V-Skill I: INSIDE SLASH
+msgid "Z20.vs1"
+msgstr "カウンターの猶予時間がある斬撃。その間に攻撃を受けると、ダウンさせるカウンターを出す。"
+
+#. V-Skill II: GLACIER THROUGH
+msgid "Z20.vs2"
+msgstr "命中時に相手のスタンゲージを凍らせ、ダウンさせるダッシュ攻撃。"
+
+#. V-Trigger I: DIAMOND DUST
+msgid "Z20.vt1"
+msgstr "氷の爆発を放ち、相手のスタンゲージを凍らせる。タイマー中に2回目も撃てる。"
+
+#. V-Trigger II: ABSOLUTE ZERO
+msgid "Z20.vt2"
+msgstr "時間制の強化。パンチと雪玉が強くなり、新技 Frost Edge と Reverse Javelin が加わる。"
+
+# Z22 = Ed
+#. V-Skill I: PSYCHO SNATCHER
+msgid "Z22.vs1"
+msgstr "長いパンチ。命中すると Ed が自分を引き寄せ、相手をダウンさせる。"
+
+#. V-Skill II: PSYCHO SWING
+msgid "Z22.vs2"
+msgstr "飛び道具をかわす低い振り。より威力の高い Psycho Smash 版もある。"
+
+#. V-Trigger I: PSYCHO CANNON
+msgid "Z22.vt1"
+msgstr "単発。7ヒットの巨大なサイコブラストを放つ。"
+
+#. V-Trigger II: ENHANCED SNATCHER
+msgid "Z22.vt2"
+msgstr "時間制の強化。地上でも空中でも使える、より強い Psycho Snatcher の Ultra Snatcher を解放する。"
+
+# Z23 = Menat
+#. V-Skill I: SOUL REFLECT
+msgid "Z23.vs1"
+msgstr "飛び道具を吸収して Vゲージを得て送り返す。近距離の攻撃も出せる。"
+
+#. V-Skill II: SOUL SPIRAL
+msgid "Z23.vs2"
+msgstr "前方への螺旋攻撃で、オーブと組み合わせられる。"
+
+#. V-Trigger I: WISDOM OF THOTH
+msgid "Z23.vt1"
+msgstr "時間制の強化。ボタンごとにオーブが一つ生まれ、そのボタンを離すと発射する。"
+
+#. V-Trigger II: PROPHECY OF THOTH
+msgid "Z23.vt2"
+msgstr "時間制の強化。Judgement of Thoth を解放し、すべてのオーブを異なる弧を描いて同時に発射する。"
+
+# Z24 = Abigail
+#. V-Skill I: HUNGABEE
+msgid "Z24.vs1"
+msgstr "上段か下段の弾き構え。攻撃を1回止め、Vゲージを溜める。クリティカルアーツには破られる。"
+
+#. V-Skill II: C'MON SPARE TIRE
+msgid "Z24.vs2"
+msgstr "前方にタイヤを落とし、攻撃で相手に向けて飛ばせる。"
+
+#. V-Trigger I: MAX POWER
+msgid "Z24.vt1"
+msgstr "時間制の強化。ダメージ15%増加、強パンチのチャージ版、ラン技のアーマー強化。"
+
+#. V-Trigger II: HYBRID CHARGE
+msgid "Z24.vt2"
+msgstr "時間制の強化。Metro Crash を解放。チャージ中はアーマーがある突進技。"
+
+# Z25 = Zeku
+#. V-Skill I: FUKURO
+msgid "Z25.vs1"
+msgstr "上昇する蹴りで対空でき、裏回りもできる。命中すると Young Zeku に変わり追加攻撃を出す。"
+
+#. V-Skill II: KUCHIYOSE - SHII
+msgid "Z25.vs2"
+msgstr "鷲を呼び、選んだ位置に爆竹を落とす。鷲が飛んでいる間に形態を変えられる。"
+
+#. V-Trigger I: BUSHINRYU SHINGEKIKO
+msgid "Z25.vt1"
+msgstr "時間制の強化。一度だけ使えるダッシュ Idaten と、V トリガー攻撃を得る。"
+
+#. V-Trigger II: KARURA TENZAN
+msgid "Z25.vt2"
+msgstr "時間制の強化。無敵の始動技が、効果中は遅い第2版 Karura Tenzan として戻る。"
+
+# Z26 = Sakura
+#. V-Skill I: HARU KAZE
+msgid "Z26.vs1"
+msgstr "3種の後続（下降と2回のキック）がある跳び。空中にいる間は飛び道具をかわす。"
+
+#. V-Skill II: HARU HAYATE
+msgid "Z26.vs2"
+msgstr "ほとんどの通常技からキャンセルで出せる素早い踏み込み。ボタンを押し続けると攻撃の追撃が出る。"
+
+#. V-Trigger I: HARU ARASHI
+msgid "Z26.vt1"
+msgstr "時間制の強化。飛び道具が強くなり、HP+HK で出る新必殺技 Hogasho を追加。"
+
+#. V-Trigger II: SAKURA SENPU
+msgid "Z26.vt2"
+msgstr "時間制の強化。昇竜拳と回転キックを大きく強化する。"
+
+# Z27 = Blanka
+#. V-Skill I: COWARD CROUCH
+msgid "Z27.vs1"
+msgstr "低く屈んで高い攻撃と飛び道具を避け、リフトかジャンプの追撃で飛び出す。"
+
+#. V-Skill II: SHOUT OF EARTH
+msgid "Z27.vs2"
+msgstr "前方への叫び攻撃。溜めると、より強い第2段階が出せる。"
+
+#. V-Trigger I: JUNGLE DYNAMO
+msgid "Z27.vt1"
+msgstr "時間制の強化。Blanka Ball系の必殺技とElectric Thunderを強化し、Ground Shave Rollingを追加。"
+
+#. V-Trigger II: LIGHTNING BEAST
+msgid "Z27.vt2"
+msgstr "時間制の強化。Blanka Ball 技を Rolling Cannon にキャンセルできる。8方向の空中ローリング。"
+
+# Z28 = Falke
+#. V-Skill I: PSYCHO TROMBE
+msgid "Z28.vs1"
+msgstr "杖の攻撃で飛び道具を1回吸収してゲージを得る。必殺技からの追撃もできる。"
+
+#. V-Skill II: PSYCHO MINE
+msgid "Z28.vs2"
+msgstr "前方か足元に地雷を設置。杖か飛び道具が触れると爆発する。"
+
+#. V-Trigger I: STAERKEN
+msgid "Z28.vt1"
+msgstr "時間制の強化。HP+HK で強化された飛び道具を得る。必殺技と V スキルから使える。"
+
+#. V-Trigger II: PSYCHO ANGRIFF
+msgid "Z28.vt2"
+msgstr "時間制の強化。発動自体が攻撃。通常技から Psycho Strum と Psycho Klinge の追撃を解放する。"
+
+# Z29 = Cody
+#. V-Skill I: DOUBLE KICK
+msgid "Z29.vs1"
+msgstr "前と後ろを攻撃する二段蹴り。途中は無敵だが、体力が少し減る。"
+
+#. V-Skill II: CRIME SWAY
+msgid "Z29.vs2"
+msgstr "攻撃と飛び道具をかわす揺れ。その後 Wrench Fist か Lumber Sweep につなげられる。"
+
+#. V-Trigger I: SIDE ARM
+msgid "Z29.vt1"
+msgstr "時間制の強化。ナイフを装備してパンチを変え、ナイフ必殺技を加えるが、飛び道具は使えなくなる。"
+
+#. V-Trigger II: DIRTY COACH
+msgid "Z29.vt2"
+msgstr "時間制の強化。パイプを装備して飛び道具を反射する重い振りを使い、岩投げが加わる。"
+
+# Z30 = G
+#. V-Skill I: G BARRIER
+msgid "Z30.vs1"
+msgstr "飛び道具を1回吸収し、接触した相手をダウンさせるバリア。空中でも使える。"
+
+#. V-Skill II: G PROTECTION
+msgid "Z30.vs2"
+msgstr "受けるダメージとスタンを10%ずつ、最大3回まで減らし、ダウン時も大統領レベルを保つ。"
+
+#. V-Trigger I: MAXIMUM PRESIDENT
+msgid "Z30.vt1"
+msgstr "時間制の強化。大統領レベルを最大にし、必殺技同士をキャンセルできる。"
+
+#. V-Trigger II: DANGEROUS PRESIDENT
+msgid "Z30.vt2"
+msgstr "時間制の強化。コンボ延長の G Explosion と、アーマーがある掴み技 G Rage を解放する。"
+
+# Z31 = Sagat
+#. V-Skill I: ANGRY CHARGE
+msgid "Z31.vs1"
+msgstr "次の Tiger Uppercut を、ダメージ、ノックバック、浮かせ能力の向上で強化する。"
+
+#. V-Skill II: HANUMAN CHARGE
+msgid "Z31.vs2"
+msgstr "次の Tiger Knee を、ガード時の有利と浮かせ能力の向上で強化する。"
+
+#. V-Trigger I: TIGER CHARGE
+msgid "Z31.vt1"
+msgstr "時間制の強化。通常技からキャンセルできる強力な5段の飛び道具 Tiger Cannon を解放する。"
+
+#. V-Trigger II: TIGER ASSAULT
+msgid "Z31.vt2"
+msgstr "時間制の強化。通常技の後に続く Tiger Spike と Tiger Rush の攻撃を解放する。"
+
+# Z32 = Kage
+#. V-Skill I: SENHA KASSATSU
+msgid "Z32.vs1"
+msgstr "上段と中段の攻撃、飛び道具にアーマーで耐える、ボタン保持型の攻撃。下段は防げない。"
+
+#. V-Skill II: SEKIEIKEN
+msgid "Z32.vs2"
+msgstr "地上の相手にも当てられる跳び攻撃。前を押し続けると距離が伸びる。"
+
+#. V-Trigger I: TAIGYAKU MUDO
+msgid "Z32.vt1"
+msgstr "時間制の強化。V スキルを大きく強化し、瞬間移動ダッシュ Ashura Senku を追加する。"
+
+#. V-Trigger II: RIKUDO OSATSU
+msgid "Z32.vt2"
+msgstr "時間制の強化。瞬間移動で叩きつける Misogi と、スーパーの Shun Goku Satsu を解放する。"
+
+# Z33 = Poison
+#. V-Skill I: PERFUME SWING
+msgid "Z33.vs1"
+msgstr "前へ運ぶロープスイング。距離は調整でき、脚で飛び道具を避ける。"
+
+#. V-Skill II: CARTWHEEL
+msgid "Z33.vs2"
+msgstr "相手をすり抜けるカートホイール。ボタンを押し続けると攻撃の追撃が出る。"
+
+#. V-Trigger I: POISON COCKTAIL
+msgid "Z33.vt1"
+msgstr "時間制の強化。地上でも空中でも使える飛び道具攻撃 Fire Squall を解放する。"
+
+#. V-Trigger II: TOXIC GLAMOR
+msgid "Z33.vt2"
+msgstr "時間制の強化。掴み技 Toxic Hold と Toxic Bind を解放する。"
+
+# Z34 = E. Honda
+#. V-Skill I: NEKO DAMASHI
+msgid "Z34.vs1"
+msgstr "拍手で飛び道具を1回打ち消す。多くの通常技からキャンセルできる。"
+
+#. V-Skill II: SUMO SPIRIT
+msgid "Z34.vs2"
+msgstr "次の Hundred Hand Slap を強化し、どの通常技からもキャンセルで入れられるようにする。"
+
+#. V-Trigger I: ONIGAWARA
+msgid "Z34.vt1"
+msgstr "時間制の強化。Oni-Daikaku と Oni-Muso の技を解放し、Vタイマーを消費する。"
+
+#. V-Trigger II: TAJIKARAO
+msgid "Z34.vt2"
+msgstr "時間制の強化。Iwato Biraki を解放。アーマーがある攻撃で、使うたびに Vタイマーを消費する。"
+
+# Z35 = Lucia
+#. V-Skill I: TAP-KICK
+msgid "Z35.vs1"
+msgstr "多段の蹴り連携。後半のヒットで必殺技、スーパー、Vトリガーにキャンセルできる。"
+
+#. V-Skill II: ARREST HEEL
+msgid "Z35.vs2"
+msgstr "飛び道具や一部の攻撃を避ける高い跳びからのヒールキック。"
+
+#. V-Trigger I: BURNING FIGHT
+msgid "Z35.vt1"
+msgstr "時間制の強化。V スキルと、すべてのキック系必殺技を強化する。"
+
+#. V-Trigger II: WEAPON FURY
+msgid "Z35.vt2"
+msgstr "時間制の強化。警棒を振る必殺技 Tactical Weapon を解放する。"
+
+# Z36 = Gill
+#. V-Skill I: DIVINE COMET
+msgid "Z36.vs1"
+msgstr "3つの異なる軌道で彗星の飛び道具を落とす。Vトリガーごとに、炎か氷に変わる。"
+
+#. V-Skill II: BLOCKING
+msgid "Z36.vs2"
+msgstr "クリティカルアーツを含むあらゆる攻撃を防ぎ、Vゲージを得る弾き構え。しゃがむと下段版になる。"
+
+#. V-Trigger I: PRIMAL FIRE
+msgid "Z36.vt1"
+msgstr "時間制の強化。炎モード：敵を燃やし、炎攻撃を強化し、新しい炎の必殺技を3つ加える。"
+
+#. V-Trigger II: ICE OF DOOM
+msgid "Z36.vt2"
+msgstr "時間制の強化。氷モード：相手のスタンゲージを凍らせ、Tree of Frost と Delay Freeze Lance を加える。"
+
+# Z37 = Seth
+#. V-Skill I: TANDEN ENGINE
+msgid "Z37.vs1"
+msgstr "吸い込み掴み。続けてパンチを出すと、相手の技を1回だけ盗める。"
+
+#. V-Skill II: TANDEN BOOSTER
+msgid "Z37.vs2"
+msgstr "複数の後続攻撃を持つ構え。グライド、スパイラル、ペンデュラムがあり、序盤はカウンターヒット状態になる。"
+
+#. V-Trigger I: TANDEN IGNITION
+msgid "Z37.vt1"
+msgstr "時間制の強化。Titanomachy の瞬間移動パンチ、Mad Spin と、技からキャンセルできる他の後続攻撃を解放する。"
+
+#. V-Trigger II: TANDEN MANEUVER
+msgid "Z37.vt2"
+msgstr "単発。オーブを出し、最大4回操作して、好きなタイミングで起爆させる。"
+
+# Z38 = Dan
+#. V-Skill I: SAIKYO-STYLE BURAIRUTEN NO KAMAE
+msgid "Z38.vs1"
+msgstr "挑発するようにしゃがみ、Vゲージを溜める。飛び道具、昇竜拳、Danretsuken に続けられる。"
+
+#. V-Skill II: SAIKYO-STYLE OTOKOBOE
+msgid "Z38.vs2"
+msgstr "通常技からキャンセルで入れる素早い挑発。さらに別の攻撃にキャンセルできる。"
+
+#. V-Trigger I: HAOH GADOKEN
+msgid "Z38.vt1"
+msgstr "単発。画面をまたぐ巨大な飛び道具を放つ。溜めるとガードを崩す強い版になる。"
+
+#. V-Trigger II: TENCHI SAIKYO NO KATA
+msgid "Z38.vt2"
+msgstr "時間制の強化。飛び道具と Koryuken を強化し、Haten Gadoken と Goh Koryuken にする。"
+
+# Z39 = Rose
+#. V-Skill I: SOUL FORTUNE
+msgid "Z39.vs1"
+msgstr "ランダムなタロットカードを引き、ダメージ、ゲージ、体力などの強化を得る。"
+
+#. V-Skill II: SOUL SATELLITE
+msgid "Z39.vs2"
+msgstr "最大2つのオーブを呼び出す。1ヒットの飛び道具として働き、数秒間残る。"
+
+#. V-Trigger I: SOUL DIMENSION
+msgid "Z39.vt1"
+msgstr "時間制の強化。地上と空中の瞬間移動を得て、複数の必殺技からキャンセルできる。"
+
+#. V-Trigger II: SOUL ILLUSION
+msgid "Z39.vt2"
+msgstr "短時間の強化。影の分身が、攻撃を一瞬遅れて繰り返す。"
+
+# Z40 = Oro
+#. V-Skill I: ONIBI
+msgid "Z40.vs1"
+msgstr "画面を弧を描いて飛ぶ球を投げる。押した方向で軌道が変わる。"
+
+#. V-Skill II: MINOMUSHI
+msgid "Z40.vs2"
+msgstr "2つの後続（上段攻撃と空中の叩きつけ）を持つ崩し技。"
+
+#. V-Trigger I: MANRIKITAN
+msgid "Z40.vt1"
+msgstr "時間制の強化。2つの掴み技 Kishinriki と Kishin Kuchu Jigoku Guruma を解放する。"
+
+#. V-Trigger II: TENGU STONE
+msgid "Z40.vt2"
+msgstr "時間制の強化。攻撃の後に追加ヒットとして続く物体を呼び出す。命中するたびに時間が縮む。"
+
+# Z41 = Akira
+#. V-Skill I: KIKO RENSEI
+msgid "Z41.vs1"
+msgstr "次の Kiko Kai の飛び道具を強化する。"
+
+#. V-Skill II: TSUTENDA
+msgid "Z41.vs2"
+msgstr "相手を非常に高く打ち上げる上昇キック。空中の連続技と、スーパージャンプの追撃がある。"
+
+#. V-Trigger I: OTOKO NO SENAKA
+msgid "Z41.vt1"
+msgstr "単発。2ヒットの突進攻撃で、崩してから打ち上げ、相手をジャグルできる状態にする。"
+
+#. V-Trigger II: HATEN NO KAMAE
+msgid "Z41.vt2"
+msgstr "時間制の強化。構えを取り、Ha no Sogeki と Ha no Renbu の後続攻撃を出せる。"
+
+# Z42 = Luke
+#. V-Skill I: HARD SHOT
+msgid "Z42.vs1"
+msgstr "次の Flash Knuckle を、ダメージと有利の向上で強化する。ダウンしても強化は残る。"
+
+#. V-Skill II: SUPPRESSOR
+msgid "Z42.vs2"
+msgstr "後ろに引いた姿勢から出る打撃。投げを返し、返した時はより強く当たる。"
+
+#. V-Trigger I: FULLY ARMED
+msgid "Z42.vt1"
+msgstr "時間制の強化。ダメージを与えるたびに V ゲージが回復し、Rock Smasher と Thermobaric Smash を解放する。"
+
+#. V-Trigger II: VANGUARD
+msgid "Z42.vt2"
+msgstr "時間制の強化。Flash Knuckle が、別の強さの Flash Knuckle にキャンセルできる。"

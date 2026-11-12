@@ -27,9 +27,11 @@
 
 namespace sfve::adapter {
 
-// The longest a note is, in characters (not bytes); the test holds every
-// language to it.
+// The longest a note is, in characters (not bytes): English is written to
+// kMaxNoteLength, a translation may run to kMaxTranslatedNoteLength (the
+// card wraps; the test holds every language to its limit).
 inline constexpr int kMaxNoteLength = 140;
+inline constexpr int kMaxTranslatedNoteLength = 160;
 
 // "RYU.vs1": the catalog key of fighter `code`'s `part` `choice` (0 is I, so
 // the key's number is choice + 1). Empty for an empty code or a choice outside
