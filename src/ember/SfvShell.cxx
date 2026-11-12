@@ -160,8 +160,9 @@ public:
 		const bool kept = !dummy && sf4e::room::KeepsFighter(room, room.localMember);
 		// The Size row only in a room whose host allowed tiny fighters
 		// (the snapshot's room is empty out of a room: Training, Home).
-		shown_ = dummy ? &dummyScreen_ : &screen_;
-		shown_->Draw(snapshot.canEditSelection, stage && !dummy, error, snapshot.unavailableStages, room.tinyFighters, kept);
+		SfvSelectionScreen& shown = dummy ? dummyScreen_ : screen_;
+		shown_ = &shown;
+		shown.Draw(snapshot.canEditSelection, stage && !dummy, error, snapshot.unavailableStages, room.tinyFighters, kept);
 	}
 
 	// The pick screen last drawn (the player's or the dummy's), its page and
