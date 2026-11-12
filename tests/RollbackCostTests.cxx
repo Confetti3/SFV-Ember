@@ -70,7 +70,13 @@ struct LossyPair {
 				b.onCheckpoint = [this](int frame, uint64_t hash) { reportsB[frame].push_back(hash); };
 				if (configure) configure(a, b);
 			});
-		pair->pump = [this] { link->Pump(); };
+		// Losses once both sessions run (LossyLink::Lose: GGPO's handshake
+		// retries a lost datagram only after 0.5 to 2 s, past the pair's
+		// one-second disconnect timeout).
+		pair->pump = [this] {
+			link->Lose(pair->a.Running() && pair->b.Running());
+			link->Pump();
+		};
 	}
 };
 
@@ -85,7 +91,10 @@ bool RunPaced(LoopbackPair& pair, int frames, double settleMs = 300, double dead
 	double settledFrom = -1;
 	for (;;) {
 		const double now = LossyLink::NowMs();
-		if (now - start > deadlineMs) return false;
+		if (now - start > deadlineMs) {
+			MESSAGE("deadline: A at frame " << pair.a.Frame() << ", B at frame " << pair.b.Frame());
+			return false;
+		}
 		if (pair.pump) pair.pump();
 		bool done = true;
 		for (int p = 0; p < 2; p++) {
@@ -101,7 +110,12 @@ bool RunPaced(LoopbackPair& pair, int frames, double settleMs = 300, double dead
 			} else {
 				s.Poll();
 			}
-			if (s.Failed()) return false;
+			if (s.Failed()) {
+				MESSAGE((p == 0 ? "A" : "B") << " failed at frame " << s.Frame() << ": " << s.FailureReason()
+											 << " (A at frame " << pair.a.Frame() << ", B at frame " << pair.b.Frame()
+											 << ")");
+				return false;
+			}
 		}
 		if (done) {
 			if (settledFrom < 0) settledFrom = now;

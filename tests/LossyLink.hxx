@@ -59,6 +59,13 @@ public:
 	uint16_t PortForB() const { return forB_; }
 	uint64_t Passed() const { return passed_; }
 	uint64_t Lost() const { return lost_; }
+	// Datagrams are lost (Shape::lossPercent) only from Lose(true) on. GGPO
+	// sends its handshake's next datagram again only after 0.5 to 2 s
+	// (udp_proto.cpp: SYNC_FIRST_RETRY_INTERVAL, SYNC_RETRY_INTERVAL), so one
+	// lost in it can hold a peer back past the other's disconnect timeout:
+	// a link loses only once both sessions run, as a game's would not lose
+	// its handshake for a test's sake. Lag and jitter apply throughout.
+	void Lose(bool on) { losing_ = on; }
 
 	void Pump()
 	{
@@ -129,7 +136,7 @@ private:
 				if (WSAGetLastError() == WSAECONNRESET) continue;
 				return;
 			}
-			if (shape_.lossPercent > 0 && (int)(Random() % 100) < shape_.lossPercent) {
+			if (losing_ && shape_.lossPercent > 0 && (int)(Random() % 100) < shape_.lossPercent) {
 				lost_++;
 				continue;
 			}
@@ -164,6 +171,7 @@ private:
 	uint16_t forA_ = 0, forB_ = 0;
 	Direction toB_, toA_;
 	uint64_t passed_ = 0, lost_ = 0;
+	bool losing_ = false;
 };
 
 } // namespace sfve::testbed
