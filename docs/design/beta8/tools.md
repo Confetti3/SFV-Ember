@@ -118,21 +118,26 @@ Mika's). Hold at `start` (150); per move: the plate (the fighter scaled to 0.001
 back), 20 frames for the cloth, the standing grab, `booth play <side> MP+MK:4` (or `HP+HK:4`), then a
 burst: `booth run 4` and a grab, up to 120 frames after the press (`auto` in
 `tools/booth/loadout-frames.json`); `booth run 150` before the side's next move. The picture is
-chosen from the burst by `tools/boothburst.py` (no one picks frames): the camera and flashes are
-judged on the top fifth of the frame only, above the fighters (each grab's pan against the standing
-grab lined up by phase correlation; a band that still differs by more than 5 %, or whose brightness
-jumps, makes the grab unusable); the score is the move, not the place: the fighter and its
-effects in the grab (where it differs from the plate, specks and lines left out) moved so its feet
-stand where they stood in the standing grab (within 2 shrunk pixels, the best placing), and the
-share of the two fighters' pixels that then differ, against the fighter's own size (a dash that
-ends standing as before scores nothing, a pose or an aura scores); no grab before 12 frames after the press is chosen; of the rest the peak, the first grab
-whose stable score (the least of it and its two neighbours) reaches 95 % of the best. Nothing usable
-or nothing moving: the grab nearest `default` (V-Skill 20, V-Trigger 45 frames after the press).
-`fighters` in the JSON holds exact frames as overrides only, for a move the chooser gets wrong. The
-picture is framed as SF4 Ember's Ultra pictures: a 16:9 window centred on the fighter and its
-effects (where the chosen grab differs from the plate, specks and lines left out, the outermost 1 %
-of those pixels left out),
-the subject filling 85 % of its height, kept inside the frame. The master's
+chosen from the burst by `tools/boothburst.py` (no one picks frames). SFV's camera follows the
+fighter, so a burst grab sees the stage from elsewhere and the floor moves more than the far wall: no
+2D shift lines the plate up (the first full run, 2026-11-12, framed most pictures far too wide that
+way). The plate is grabbed with its depth, and the plate, the standing grab and every burst grab
+with the camera they were drawn through (`peek CameraUnit[0]+0x100.presentation 112 40`: the point
+it looks at, its eye, the horizontal field of view; `tools/boothcamera.py`); the plate is put back
+in the world by its depth (reversed Z, near plane 10) and seen through each grab's camera, so it
+lines up with the grab everywhere it reaches. What then differs is the subject: the fighter, its
+effects and its shadow (specks and thin lines left out, and small pieces far from the rest, such as
+the cloth a scaled-away fighter leaves on the floor). A grab is unusable when the stage is dimmed or
+flashed (its brightness 12 % off the plate's as a whole, as a V-Trigger's activation dims it, or 10
+levels off around the subject), when more than 5 % of the stage around the subject still differs,
+or when the plate reaches less than 60 % of the picture. The score is the subject's size against the
+standing fighter's, so a place scores nothing and a spreading pose, an aura or a projectile scores;
+the picture is the usable grab with the largest subject (the first within 95 % of it), never before
+12 frames after the press. Nothing usable: the grab nearest `default` (V-Skill 20, V-Trigger 45
+frames after the press). `fighters` in the JSON holds exact frames as overrides only, for a move the
+chooser gets wrong. The picture is framed as SF4 Ember's Ultra pictures: a 16:9 window centred on
+the subject (the outermost 0.5 % of its pixels left out on each side), the subject filling 85 % of
+its height, kept inside the frame. The master's
 sidecar keeps the frame, how it was chosen (`auto`, `override`, `default`) and every grab's score.
 `--burst` writes every grab, scored (`<move>-t<frames>-s<score x 1000>[-chosen|-unused].jpg`), to
 `<store>\burst\<CODE>` for review. `boothsheet.py` writes `contact\loadout.png`: a row per fighter
