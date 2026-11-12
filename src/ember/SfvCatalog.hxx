@@ -151,13 +151,25 @@ std::vector<std::int64_t> MissingStages();
 // runtime's unavailableStages: this copy's missing stages, and at a table the
 // opponent's as well; the two are told apart here alone. EMBER_LIBRARY.md
 // sections 41 and 43.
-enum class StageOffer { Playable, OpponentLacks };
+// Banned: the room bans it (room::Snapshot::bannedStages, docs/design/beta8/stageban.md):
+// listed with a tag and the reason, never chosen; Random never rolls it.
+enum class StageOffer { Playable, OpponentLacks, Banned };
 struct StageOption {
 	int id = 0;
 	StageOffer offer = StageOffer::Playable;
 	bool operator==(const StageOption&) const = default;
 };
-std::vector<StageOption> StageOptions(const std::vector<std::int64_t>& unavailable);
+// `banned` is the room's Banned stages, ascending: an offered stage in it is
+// Banned (before it is judged for the opponent's lack), Random is never one.
+std::vector<StageOption> StageOptions(const std::vector<std::int64_t>& unavailable, const std::vector<std::int64_t>& banned = {});
+// The stages a room's host may ban, in the universe's order, with the shell's
+// names for them: every stage but the Training stage, which stands in for a
+// banned one (GameState::BannableStages).
+std::vector<sf4e::StageChoice> BannableStages();
+// The Training stage's id (code "TRN"), -1 where the universe has none
+// (GameState::TrainingStage): what a banned pick, and Random with every stage
+// banned, is sent as.
+std::int64_t TrainingStage();
 // The options that can be chosen, in order: what Left and Right step through
 // and what a choice must be. Random and the Playable stages, the stages the
 // catalog's resolveStage rolls Random over.

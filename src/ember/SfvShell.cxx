@@ -174,7 +174,7 @@ public:
 		// (the snapshot's room is empty out of a room: Training, Home).
 		SfvSelectionScreen& shown = dummy ? dummyScreen_ : screen_;
 		shown_ = &shown;
-		shown.Draw(snapshot.canEditSelection, stage && !dummy, error, snapshot.unavailableStages, room.tinyFighters, kept);
+		shown.Draw(snapshot.canEditSelection, stage && !dummy, error, snapshot.unavailableStages, room.tinyFighters, kept, room.bannedStages);
 	}
 
 	// The pick screen last drawn (the player's or the dummy's), its page and

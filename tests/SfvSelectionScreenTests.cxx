@@ -672,6 +672,36 @@ TEST_CASE("a stage card stores the stage; P2, a watcher and a stage the opponent
 	CHECK(pick.stage == picks::kRandomStage);
 }
 
+TEST_CASE("a stage the room bans is listed tagged and dimmed with the reason, never chosen, and Random stays choosable")
+{
+	FillTestCatalog();
+	using Answer = SfvSelectionScreen::StageAnswer;
+	const std::vector<StageOption> stages = StageOptions({}, {2});
+	PlayerPick pick = PlayerPickOf(kRyu, kOneOne);
+	pick.stage = 0;
+	const std::vector<MenuEntry> cards = SfvSelectionScreen::StageCards(pick, true, true, stages);
+	CHECK(IdsOf(cards) == std::vector<std::string>{"stage-255", "stage-0", "stage-2"});
+	// The banned card's caption carries the tag; the others are as before.
+	CHECK(RowOf(cards, "stage-2").label == std::string("Stage Twenty-five (") + sf4e::loc::T("room.banned_stages.tag") + ")");
+	CHECK(RowOf(cards, "stage-0").label == "Stage One");
+	CHECK_FALSE(RowOf(cards, "stage-2").enabled);
+	CHECK(RowOf(cards, "stage-2").detail == sf4e::loc::T("selection.stage_banned"));
+	CHECK(RowOf(cards, "stage-2").hint.empty());
+	CHECK(RowOf(cards, "stage-0").enabled);
+	CHECK(RowOf(cards, "stage-255").enabled);
+	// Select on it stores nothing and says why; Random and a stage allowed are chosen.
+	CHECK(SfvSelectionScreen::ChooseStage("stage-2", pick, true, true, stages) == Answer::Banned);
+	CHECK(pick.stage == 0);
+	CHECK(SfvSelectionScreen::ChooseStage("stage-255", pick, true, true, stages) == Answer::Stored);
+	CHECK(pick.stage == picks::kRandomStage);
+	// P2 and a watcher are told only P1 chooses (the ban is not theirs to hear about).
+	CHECK(SfvSelectionScreen::ChooseStage("stage-2", pick, true, false, stages) == Answer::OnlyP1);
+	CHECK(SfvSelectionScreen::ChooseStage("stage-2", pick, false, false, stages) == Answer::Locked);
+	// A stored stage the room bans afterwards stays as stored: P1's Ready sends the Training stage for it.
+	pick.stage = 2;
+	CHECK(SfvSelectionScreen::ChooseStage("stage-0", pick, true, true, stages) == Answer::Stored);
+}
+
 TEST_CASE("Random takes each roll once into the player's pick, in the fighter's remembered look, and leaves the dummy alone")
 {
 	FillTestCatalog();
