@@ -39,9 +39,15 @@ battle by one `SfvAdapter::Advance` with its own inputs or does nothing (held), 
 - `run n`: target = fight frame + n. `play s steps`: target = fight frame + the steps' frames,
   the steps played from the current frame. Both: `error no battle`, `error the fight has not
   started`, `error a play is running`.
-- `leave`: the battle stands still from the next frame; the booth scale and the HUD movie are
-  forgotten and `mod::LeaveBattle()` is asked every frame until it takes (as `NetplayMode::Leave`),
-  from the battle frame, not from the game-thread queue (whose work must not end a battle).
+- `leave`: the booth scale, the HUD movie and the HUD parts are forgotten and `mod::LeaveBattle()`
+  is asked every frame until it takes (as `NetplayMode::Leave`), from the battle frame, not from
+  the game-thread queue (whose work must not end a battle). Until the menu replaces it the battle
+  runs on with neutral pads, as the game's own Exit leaves it running; `leave still` stands it
+  still instead.
+- A launch on the same stage less than about 2 s after a leave never finishes loading (the jump
+  state stays for good; laptop 2026-11-12: 1.8 s after the leave it hung, a different stage
+  loaded at once, 4 s and 8 s after it three same-stage loads in a row loaded). The stage just
+  left is still being unloaded. The driver waits 4 s on the main menu (`runbooth --menu-settle`).
 
 All of this is bookkeeping under the mode's mutex; the pipe thread never touches the game.
 
@@ -84,13 +90,56 @@ All of this is bookkeeping under the mode's mutex; the pipe thread never touches
   game's immediate context (read from the swap chain's device) count. Each bound depth-stencil
   view's texture is a target (held by reference for a frame), with its draws. At each present the
   frame's list becomes the report (`booth depth`) and a new frame starts with the bound target.
-- `depth=auto` takes the target with the most draws among those of the back buffer's size and
-  single-sampled, else the most draws of all (a shadow atlas may out-draw the scene); `depth=<n>`
-  the n-th by first use. The texture is copied to staging in its typeless family (D32 ->
+- `depth=auto` takes the scene's depth: of the single-sampled targets of the back buffer's size
+  that were drawn into, the one drawn into first in the frame (else the earliest drawn of all);
+  `depth=<n>` the n-th by first use; `depth=all` the chosen one to `<path>.depth` and every target
+  to `<path>.depth.<index>`. Each target in the report has its texture's address (`id`), its
+  first and last draw and its clears with the depth cleared to. Measured on the laptop
+  (2026-11-12, TRN, 1920x1080): the frame draws (1) the scene's depth, R24G8, cleared to 0
+  (reversed-Z: the fighters read larger than the plate on 95 % of the pixels where they differ),
+  draws 1-109; (2) a fighters-only R24G8 target (UE4's custom depth: 88 % zero, non-zero exactly
+  on the fighters), draws 39-56; (3) the shadow map, R16 1024x1024, absent when no fighter casts
+  one; (0, 4) the HUD's stencil targets, last. The pilot's failure: with the fighters away the
+  HUD's targets out-drew the scene's, so "most draws" took another texture for grab B than for
+  grab A. The order of first draws does not change; the scene's target was the same texture in
+  grabs A, B, C and D, and A against the plate differs exactly on the fighters (shadows
+  excluded). boothpack also refuses a depth pair whose sidecars name different textures.
+  The texture is copied to staging in its typeless family (D32 ->
   R32_TYPELESS, D24S8 -> R24G8_TYPELESS, D32S8X24 -> R32G8X24_TYPELESS, D16 -> R16_TYPELESS) and
   written as one little-endian uint32 per texel, rows packed: float bits (D32, and D32S8X24's
   depth word), depth in the low 24 bits with stencil in the top 8 (D24S8), zero-extended (D16).
 - If the probe cannot be hooked, grabs have colour only and `depthProbe` is false.
+
+## HUD switch (`booth hudhide on|off`, HudText)
+
+The battle shows and hides its HUD through each HUD part's "HudBasePart PostUpdate" task (rva
+0x41A910, registered by rva 0x407DA0): the part's answer (its id set in both masks of rva
+0x2F7730's result for the part's +0xB0, and its enabled flag at +0x108) is compared with its last
+(+0x10C); on a change each of the part's movies (a vector at +0xC0..+0xC8) gets it through the
+movie player's SetVisible (rva 0xEEE8C0: player +0x30 -> the movie view's virtual +0x48). In
+booth mode only, the mod hooks that PostUpdate: it remembers every HUD part it runs for, and while
+the switch is on hides the part's movies after the game's update; `booth hudhide on` also hides
+every remembered part's movies at once (a held frame runs no update); `off` gives each the game's
+last answer. Between battles it only sets the switch (the parts then are the last battle's). The
+switch stays on across battles. Laptop: 7 parts; every bar, plate, name and gauge is gone, also
+mid Critical Art (SFV keeps its HUD up during one, dimmed).
+
+## Plate (`booth hide <p1> <p2>`, TinyFighters)
+
+`AActor::SetActorHiddenInGame(bool)` on each side's fighter actor (the visual part's +0xA90; the
+actor's virtual +0x220, the slot the reflection's exec thunk rva 0x20A8010 calls, registered as
+"SetActorHiddenInGame" by rva 0x1F57822). It hides every component: meshes, cloth and the
+shadow. The 0.001 scale left the cloth (Ryu's gi, wraps) lying on the floor in the plate. The
+plate and a loadout picture's opponent use it.
+
+- The battle's updates show an actor again, so a hidden side is hidden again after each
+  per-frame update (CharaVisualUpdate) until it is shown or the battle ends.
+- A side can have more than one visual part: R. Mika's V-Trigger partner has one of her own on
+  Mika's side, with its actor kept hidden by the game until it calls her. Scale and hide reach
+  every part of a side (up to four, remembered per battle). Showing a side again shows every
+  part's actor, the partner's too, so the capture never shows a side it hid: the plate is the
+  last grab of a load, a loadout picture's opponent stays hidden, its own side is scaled away
+  for the crop's plate and back, and each side's loadout pictures get a battle of their own.
 
 ## HUD probe (HudText)
 
@@ -130,7 +179,25 @@ order. IDA (laptop, rva 0x55A9B0): with `+96` clear the list is handed to the ar
 0x5156A0, whose element copy rva 0x4E1F30 walks 16-byte `FString`s: the entries are fighter codes
 only, with no slot, row or column fields.
 
-## Not verified (no build or game run on this branch yet)
+## Throughput (laptop, 2026-11-12)
+
+- 2 copies, fight frame 300: 10 loads (20 looks) in 2.3 min with boot; about 3.5 loads/min a
+  copy once running.
+- 4 copies, fight frame 300: 16 loads in 3.7 min with boot, about 2.6 loads/min a copy.
+- 4 copies, fight frame 60: 24 loads (48 looks) in 3.8 min with boot, 0 failures; about 3.5-4
+  loads/min a copy once running, 14-15 loads/min (28-30 looks/min) together. Two of the 24
+  loads hit the same-stage hang and were caught by the driver's 25 s stuck check (relaunch,
+  load again).
+- At that rate the 6,426 looks (3,213 loads) take about 3.5-4 h on the laptop; phase 1 (875
+  looks) about 30 min. More copies on a second PC divide it.
+
+## Laptop pilot, 2026-11-12
+
+Built and run on the laptop (7/7 ctest). Verified: booth mode, hold, `play` (a Critical Art
+from a scripted motion), grabs (colour and every depth target), the HUD switch, `hide`, `scale`,
+`leave`, the `launch` field; the depth rule above; the stuck same-stage reload and its 4 s cure.
+
+## Not verified when this file was first written (kept for the record)
 
 - Compiles /WX on MSVC; the tests (PhotoBoothTests, TinyFightersTests, BuildKindTests) pass.
 - That a held battle presents a stable frame (no camera drift, no idle animation: the battle's

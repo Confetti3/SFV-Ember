@@ -58,4 +58,24 @@ void ForgetHudMovie();
 // A movie is known for HudCall. Any thread.
 bool HudMovieKnown();
 
+// The photo booth's HUD switch (development builds, `booth hudhide on|off`):
+// the battle hides its HUD for a cinematic by telling each HUD part's movies
+// they are not visible (sfv::kHudPartPostUpdate). The booth does the same.
+// InstallHudHide (BoothMode's install only) hooks the parts' PostUpdate,
+// which then remembers every HUD part it runs for and, while the HUD is to be
+// hidden, hides that part's movies after the game's own update.
+bool InstallHudHide(uintptr_t imageBase);
+// Hides (or shows again, as each part's last answer says) every remembered
+// part's movies now when `now` (a battle is in hand: its parts are alive),
+// and keeps them so in each PostUpdate from then on. Game thread (checked).
+// The number of parts it reached; -1 when not installed or off the game
+// thread.
+int SetHudHidden(bool hidden, bool now = true);
+// A battle left or a new one: the remembered parts are the last battle's.
+// The hidden switch stays as it was set. Any thread.
+void ForgetHudParts();
+// The HUD parts remembered, and whether the HUD is to be hidden. Any thread.
+int HudPartsKnown();
+bool HudHidden();
+
 } // namespace sfve::mod

@@ -550,6 +550,7 @@ TEST_CASE("the booth's scale now is refused outside the booth, unbound, or off t
 	mod::SetFighterScaleAllowed(true);
 	CHECK_FALSE(mod::ApplyFighterScaleNow(0.001f, 0.001f));
 	CHECK_FALSE(mod::ApplyFighterScaleNow(0.0f, 1.0f));
+	CHECK_FALSE(mod::SetFightersHiddenNow(true, true));
 	CHECK_FALSE(mod::TinyFightersNow().Any());
 	mod::ForgetFighterScale();
 	mod::SetFighterScaleAllowed(false);

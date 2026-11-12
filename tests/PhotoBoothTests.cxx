@@ -8,10 +8,12 @@
 
 #include "mod/BoothMode.hxx"
 #include "mod/GameInput.hxx"
+#include "mod/SfvOffsets.hxx"
 #include "overlay/FrameGrab.hxx"
 
 #include <dxgiformat.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <optional>
@@ -44,7 +46,7 @@ std::uint16_t U16(const std::vector<std::uint8_t>& bytes, size_t at)
 
 constexpr size_t kPixels = 14 + 108; // where a grab's BMP's pixels start
 
-grab::DepthCandidate Candidate(int index, int width, int height, std::uint32_t draws, int samples = 1)
+grab::DepthCandidate Candidate(int index, int width, int height, std::uint32_t draws, int samples = 1, std::uint32_t firstDraw = 0)
 {
 	grab::DepthCandidate c;
 	c.index = index;
@@ -53,6 +55,7 @@ grab::DepthCandidate Candidate(int index, int width, int height, std::uint32_t d
 	c.height = height;
 	c.samples = samples;
 	c.draws = draws;
+	c.firstDraw = draws ? (firstDraw ? firstDraw : (std::uint32_t)index * 100 + 1) : 0;
 	return c;
 }
 
@@ -142,10 +145,23 @@ TEST_CASE("booth commands as the protocol writes them")
 	CHECK(c->verb == booth::Verb::Depth);
 	REQUIRE((c = Parse("leave")));
 	CHECK(c->verb == booth::Verb::Leave);
+	CHECK_FALSE(c->on);
+	REQUIRE((c = Parse("leave still")));
+	CHECK(c->on);
 	REQUIRE((c = Parse("hudlog on")));
 	CHECK(c->verb == booth::Verb::HudLog);
 	CHECK(c->on);
 	REQUIRE((c = Parse("hudlog off")));
+	CHECK_FALSE(c->on);
+	REQUIRE((c = Parse("hide 1 1")));
+	CHECK(c->verb == booth::Verb::Hide);
+	CHECK(c->side == 3);
+	REQUIRE((c = Parse("hide 0 1")));
+	CHECK(c->side == 2);
+	REQUIRE((c = Parse("hudhide on")));
+	CHECK(c->verb == booth::Verb::HudHide);
+	CHECK(c->on);
+	REQUIRE((c = Parse("hudhide off")));
 	CHECK_FALSE(c->on);
 	REQUIRE((c = Parse("hud SetVisiblePlayerInfo 0")));
 	CHECK(c->verb == booth::Verb::Hud);
@@ -178,7 +194,7 @@ TEST_CASE("a grab: its path, how many presents later, and which depth")
 	CHECK(c->grab.path == "C:/my renders/a b.bmp");
 	CHECK(c->grab.depth.mode == grab::DepthMode::Auto);
 
-	for (const char* bad : {"grab", "grab a.bmp after=", "grab a.bmp after=-1", "grab a.bmp after=x", "grab a.bmp depth=all",
+	for (const char* bad : {"grab", "grab a.bmp after=", "grab a.bmp after=-1", "grab a.bmp after=x", "grab a.bmp depth=every",
 			 "grab a.bmp depth=-2", "grab a.bmp size=2", "grab \"a.bmp", "grab \"\"", "grab \"a\"b"}) {
 		CAPTURE(bad);
 		CHECK_FALSE(Parse(bad));
@@ -190,7 +206,7 @@ TEST_CASE("a malformed booth command is refused with a reason")
 	for (const char* bad : {"", "   ", "freeze 3", "Hold 3", "hold", "hold -1", "hold x", "hold 3 4", "hold 1.5", "run 0", "run",
 			 "play 2 MP", "play 0", "play 0 MP extra", "play x MP", "scale 1", "scale 0 1", "scale -1 1", "scale 1 inf",
 			 "scale nan 1", "scale 1 1 1", "depth now", "leave now", "hudlog", "hudlog yes", "hud", "hud SetWins",
-			 "hud SetWins x", "hud Set-Wins 1", "hud SetWins nan"}) {
+			 "hud SetWins x", "hud Set-Wins 1", "hud SetWins nan", "hudhide", "hudhide 1", "hudhide on off", "hide", "hide 1", "hide 2 0", "hide 1 1 1"}) {
 		CAPTURE(bad);
 		CHECK_FALSE(Parse(bad));
 	}
@@ -203,6 +219,8 @@ TEST_CASE("a depth choice is auto, off or a target's number")
 	CHECK(choice.mode == grab::DepthMode::Auto);
 	CHECK(grab::ParseDepthChoice("off", choice));
 	CHECK(choice.mode == grab::DepthMode::Off);
+	CHECK(grab::ParseDepthChoice("all", choice));
+	CHECK(choice.mode == grab::DepthMode::All);
 	CHECK(grab::ParseDepthChoice("0", choice));
 	CHECK(choice.mode == grab::DepthMode::Index);
 	CHECK(choice.index == 0);
@@ -300,13 +318,22 @@ TEST_CASE("a picture a grab cannot encode is no BMP")
 
 TEST_CASE("the depth target a grab copies")
 {
-	// A shadow map with more draws than the scene, the scene's depth at the
-	// back buffer's size, a small one, and a multisampled one at that size.
+	// A shadow map drawn first, the scene's depth at the back buffer's size,
+	// a small one, and a multisampled one at that size.
 	const std::vector<grab::DepthCandidate> targets = {Candidate(0, 2048, 2048, 900), Candidate(1, 1920, 1080, 400),
 		Candidate(2, 960, 540, 20), Candidate(3, 1920, 1080, 800, 4)};
 	grab::DepthChoice choice;
 	CHECK(grab::ChooseDepthTarget(targets, choice, 1920, 1080) == 1); // auto: the back buffer's size first
-	CHECK(grab::ChooseDepthTarget(targets, choice, 1280, 720) == 0);  // none that size: the most draws
+	CHECK(grab::ChooseDepthTarget(targets, choice, 1280, 720) == 0);  // none that size: the earliest drawn
+	// The probe's frame (2026-11-12): HUD stencil targets with more draws than
+	// the scene once the fighters are away, a custom depth drawn later, the
+	// shadow map gone: the scene's, drawn first, whatever the counts.
+	const std::vector<grab::DepthCandidate> plate = {Candidate(0, 1920, 1080, 25, 1, 120), Candidate(1, 1920, 1080, 45, 1, 1),
+		Candidate(2, 1920, 1080, 18, 1, 39), Candidate(3, 1920, 1080, 50, 1, 130)};
+	CHECK(grab::ChooseDepthTarget(plate, choice, 1920, 1080) == 1);
+	const std::vector<grab::DepthCandidate> shuffled = {Candidate(0, 1920, 1080, 50, 1, 130), Candidate(1, 1920, 1080, 18, 1, 39),
+		Candidate(2, 1920, 1080, 69, 1, 1)};
+	CHECK(grab::ChooseDepthTarget(shuffled, choice, 1920, 1080) == 2);
 	choice.mode = grab::DepthMode::Index;
 	choice.index = 2;
 	CHECK(grab::ChooseDepthTarget(targets, choice, 1920, 1080) == 2);
@@ -321,7 +348,7 @@ TEST_CASE("the depth target a grab copies")
 
 	const std::string json = grab::DepthTargetsJson({Candidate(0, 1920, 1080, 123)});
 	CHECK(json == "{\"targets\":[{\"index\":0,\"format\":\"R24G8_TYPELESS\",\"width\":1920,\"height\":1080,\"samples\":1,"
-				  "\"draws\":123}]}");
+				  "\"draws\":123,\"id\":0,\"firstDraw\":1,\"lastDraw\":0,\"clears\":0,\"clearDepth\":-1.000000}]}");
 	CHECK(grab::DepthTargetsJson({}) == "{\"targets\":[]}");
 }
 
@@ -376,4 +403,15 @@ TEST_CASE("a grab needs a path, and one waits at a time")
 	CHECK_FALSE(grab::QueueGrab(request, error));
 	CHECK(error == "grab pending");
 	CHECK(grab::DepthReport() == "{\"targets\":[]}");
+}
+
+TEST_CASE("the HUD switch's sites are the ones the exe was read for, and in the build table")
+{
+	CHECK(sfv::kHudPartPostUpdate.rva == 0x41A910);
+	CHECK(sfv::kMovieSetVisible.rva == 0xEEE8C0);
+	CHECK(sfv::hudpart::kMoviePlayer == 0x318);
+	const GameBuild* build = sfv::VerifiedBuild();
+	for (const CodeSite* site : {&sfv::kHudPartPostUpdate, &sfv::kMovieSetVisible}) {
+		CHECK(std::any_of(build->sites, build->sites + build->siteCount, [site](const CodeSite& listed) { return listed.rva == site->rva; }));
+	}
 }

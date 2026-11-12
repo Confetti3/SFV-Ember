@@ -40,14 +40,17 @@ namespace sfve::overlay::grab {
 enum class PixelFormat { Unsupported, R8G8B8A8, B8G8R8A8, R10G10B10A2 };
 
 // Which depth target a grab copies.
-enum class DepthMode { Auto, Index, Off };
+// All: the chosen target (as Auto) to <path>.depth as usual, and every
+// target of the frame to <path>.depth.<index>, for finding which is the
+// scene's (development: the booth pilot).
+enum class DepthMode { Auto, Index, Off, All };
 struct DepthChoice {
 	DepthMode mode = DepthMode::Auto;
 	int index = 0; // Index's target, from 0 by first use in the frame
 };
 
-// "auto", "off", or a number from 0: the booth command's `depth=` value. False
-// (and `choice` untouched) for any other text.
+// "auto", "off", "all", or a number from 0: the booth command's `depth=`
+// value. False (and `choice` untouched) for any other text.
 bool ParseDepthChoice(const std::string& text, DepthChoice& choice);
 
 // Pure. The layout a DXGI_FORMAT (its number) is encoded from: the 8-bit
@@ -66,14 +69,32 @@ struct DepthCandidate {
 	int height = 0;
 	int samples = 1;
 	std::uint32_t draws = 0;
+	// The texture's address, the same from frame to frame while the game
+	// keeps the texture: what pairs one grab's targets with another's when
+	// the order of first use differs.
+	std::uint64_t id = 0;
+	// The frame's draws are numbered from 1 in order: the first and the last
+	// one made into this target (0: none).
+	std::uint32_t firstDraw = 0;
+	std::uint32_t lastDraw = 0;
+	// ClearDepthStencilView calls on it in the frame, and the depth the last
+	// one cleared to (-1: none cleared the depth); 0 for a reversed-Z far.
+	std::uint32_t clears = 0;
+	float clearDepth = -1.0f;
 };
 
 // Pure. The candidate a grab's depth choice takes, by its index in
 // `candidates`; -1 for none (Off, an index past the list, or no candidate
-// with a draw). Auto: the target with the most draws among those of the back
-// buffer's size (`backWidth` x `backHeight`), single-sampled; when none is,
-// the one with the most draws of all (a shadow map can have more draws than
-// the scene, so the size comes first). Ties go to the first used.
+// with a draw). Auto: the scene's depth, which the frame draws into first:
+// of the targets of the back buffer's size (`backWidth` x `backHeight`),
+// single-sampled and drawn into, the one with the earliest first draw; when
+// none is that size, the earliest drawn of all. Measured on the laptop
+// (2026-11-12, docs/design/beta8/booth.md): SFV's frame draws the scene's
+// depth first (cleared to 0, reversed-Z), then a fighters-only target (UE4's
+// custom depth), the shadow map (R16, gone when no fighter casts one) and
+// the HUD's stencil targets last; draw counts change with what is on screen
+// (the HUD's can pass the scene's once the fighters are away), the order
+// does not.
 int ChooseDepthTarget(const std::vector<DepthCandidate>& candidates, const DepthChoice& choice, int backWidth, int backHeight);
 
 // Pure. `{"targets":[...]}` for DepthReport and the depth sidecar.
