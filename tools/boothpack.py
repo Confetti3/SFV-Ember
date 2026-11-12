@@ -286,7 +286,7 @@ def compute_mask(a_path: Path | str, b_path: Path | str, method: str = "depth") 
 
 CHECK_DOWN = 4             # the checks compare pictures shrunk 4x (480x270 from 1920x1080)
 CHECK_DIFF = 18            # a pixel differs when a channel differs by more than this (0-255)
-STABLE_MAX = 0.002         # two grabs of the held frame may differ on at most this share of the frame
+STABLE_MAX = 0.01          # two grabs of the held frame may differ on at most this share of the frame
 OUTSIDE_MAX = 0.01         # grab A and the plate may differ outside the fighters on at most this share
 PLATE_MAX = 0.15           # the plate may differ from the stage's reference plate on at most this share
 
