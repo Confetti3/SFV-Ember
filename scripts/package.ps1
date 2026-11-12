@@ -3,7 +3,7 @@
 # .sha256 beside it. Nothing is published.
 #
 #   scripts\package.ps1 -RenderStore <dir> [-BuildDir D:\sfv-ember-build-player] [-OutDir D:\sfv-ember-dist] [-VersionLabel <label>]
-#       [-MinColourCoverage 1.0] [-OldPackageCheck <sfve_package_check.exe of an earlier beta>] [-NoRenders]
+#       [-MinColourCoverage 0] [-OldPackageCheck <sfve_package_check.exe of an earlier beta>] [-NoRenders]
 #
 # The build must be scripts\build.ps1's player build (-Player), with its tests
 # passed, and the helper scripts\build-helper.ps1's from the same Ember
@@ -33,7 +33,10 @@
 # A player package needs it. Before anything is staged every file is checked
 # against the manifest's size and SHA-256 and against the pick space, every
 # costume's first colour must be there (or a listed exception) and the other
-# colours must reach -MinColourCoverage (default 1.0, all of them). The files
+# colours must reach -MinColourCoverage (default 0: beta.8 ships each
+# costume's first colour only; the coverage is still reported). Every loadout
+# picture (a V-Skill and V-Trigger of every fighter) is required too, or a
+# listed exception. The files
 # are staged under assets\selection\, the manifest beside them, the package's
 # PackageInventory.inc lists each one (an installed updater of an earlier
 # beta refuses files it does not know unless the package's own inventory
@@ -50,7 +53,7 @@ param(
 	[string]$OutDir = 'D:\sfv-ember-dist',
 	[string]$VersionLabel = '',
 	[string]$RenderStore = '',
-	[ValidateRange(0.0, 1.0)][double]$MinColourCoverage = 1.0,
+	[ValidateRange(0.0, 1.0)][double]$MinColourCoverage = 0.0,
 	[string]$OldPackageCheck = '',
 	[switch]$NoRenders
 )
@@ -145,6 +148,7 @@ function Read-RenderStore([string]$Store, [double]$MinCoverage) {
 	$files = [Collections.Generic.List[object]]::new()
 	$seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 	$present = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+	$loadoutPresent = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 	[long]$totalBytes = 0
 	$cutouts = 0
 	$loadouts = 0
@@ -172,7 +176,7 @@ function Read-RenderStore([string]$Store, [double]$MinCoverage) {
 		if ($item.Length -le 0) { throw "Render file is empty: $path" }
 		if ((Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash -ne $entry.sha256.ToUpperInvariant()) { throw "Render file does not match its manifest hash: $path" }
 		$totalBytes += $item.Length
-		if ($part[0] -eq 'cutout') { $null = $present.Add("$($part[1]) $($part[2]) $($part[3])") }
+		if ($part[0] -eq 'cutout') { $null = $present.Add("$($part[1]) $($part[2]) $($part[3])") } else { $null = $loadoutPresent.Add("$($part[1]) $($part[2]) $($part[3])") }
 		$files.Add([pscustomobject]@{ Path = $path; Native = $native; Relative = ($path -replace '/', '\') })
 	}
 	# Nothing in the pack the manifest does not vouch for.
@@ -186,15 +190,25 @@ function Read-RenderStore([string]$Store, [double]$MinCoverage) {
 
 	# Coverage: every costume's first colour, or a listed exception; the other colours by -MinColourCoverage.
 	$excepted = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+	$loadoutExcepted = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 	foreach ($exception in @($manifest.exceptions)) {
 		if ($null -eq $exception) { continue }
+		if (!$exception.reason -or $exception.reason -isnot [string]) { throw "Render manifest: an exception for $($exception.fighter) has no reason" }
+		if ($null -ne $exception.part) {
+			# A loadout picture: fighter, part ("vskill" or "vtrigger") and choice (1 or 2).
+			$key = "$($exception.fighter) $($exception.part) $($exception.choice)"
+			$suffix = if ($exception.part -eq 'vskill') { 'vs' } elseif ($exception.part -eq 'vtrigger') { 'vt' } else { '' }
+			if (!$suffix -or !$allowed.ContainsKey("assets/selection/$($exception.fighter)/$suffix$($exception.choice).jpg")) { throw "Render manifest: an exception names a loadout picture the pick space lacks: $key" }
+			if ($loadoutPresent.Contains($key)) { throw "Render manifest: $key is both excepted and rendered" }
+			$null = $loadoutExcepted.Add($key)
+			continue
+		}
 		$first = $firstColours | Where-Object { $_.Fighter -eq $exception.fighter -and $_.Costume -eq $exception.costume } | Select-Object -First 1
 		if (!$first) { throw "Render manifest: an exception names a costume the pick space lacks: $($exception.fighter) $($exception.costume)" }
 		$colour = if ($null -ne $exception.colour) { [int]$exception.colour } else { $first.Colour }
 		$key = "$($exception.fighter) $($exception.costume) $colour"
 		if (!$allowed.ContainsKey("assets/selection/$($exception.fighter)/costume-$($exception.costume)/color-$colour-cutout.png")) { throw "Render manifest: an exception names a colour the costume lacks: $key" }
 		if ($present.Contains($key)) { throw "Render manifest: $key is both excepted and rendered" }
-		if (!$exception.reason -or $exception.reason -isnot [string]) { throw "Render manifest: the exception for $key has no reason" }
 		$null = $excepted.Add($key)
 	}
 	$missing = @($firstColours | Where-Object { $k = "$($_.Fighter) $($_.Costume) $($_.Colour)"; !$present.Contains($k) -and !$excepted.Contains($k) } |
@@ -207,12 +221,15 @@ function Read-RenderStore([string]$Store, [double]$MinCoverage) {
 	if ($coverage + 1e-9 -lt $MinCoverage) {
 		throw ("Colour coverage is {0:P2} ({1} of {2} looks, {3} excepted); -MinColourCoverage asks for {4:P2}" -f $coverage, $cutouts, $wanted, $excepted.Count, $MinCoverage)
 	}
-	if ($loadouts -lt $loadoutTotal) { Write-Warning "Only $loadouts of $loadoutTotal loadout pictures are in the render store; the loadout cards fall back to the game's marks." }
+	$loadoutMissing = @($allowed.Values | Where-Object { $_.StartsWith('loadout ') } | ForEach-Object { $_.Substring(8) } | Where-Object { !$loadoutPresent.Contains($_) -and !$loadoutExcepted.Contains($_) })
+	if ($loadoutMissing.Count) {
+		throw "The renders lack $($loadoutMissing.Count) of $loadoutTotal loadout picture(s) (list them as manifest exceptions or capture them): $((@($loadoutMissing | Select-Object -First 20)) -join '; ')$(if ($loadoutMissing.Count -gt 20) { '; ...' })"
+	}
 	# The updater's zip reader has no zip64 and a 16-bit entry count.
 	if ($files.Count + 200 -gt 60000 -or $totalBytes -gt 3GB) { throw "The renders ($($files.Count) files, $totalBytes bytes) do not fit the updater's zip reader (no zip64, 16-bit entry count)" }
 	[pscustomobject]@{
 		Pack = $pack; ManifestPath = $manifestPath; ManifestHash = $manifestHash; Manifest = $manifest; Files = $files
-		Cutouts = $cutouts; Loadouts = $loadouts; LoadoutTotal = $loadoutTotal; Looks = $lookCount; Excepted = $excepted.Count
+		Cutouts = $cutouts; Loadouts = $loadouts; LoadoutTotal = $loadoutTotal; Looks = $lookCount; Excepted = $excepted.Count; LoadoutExcepted = $loadoutExcepted.Count
 		Coverage = $coverage; Bytes = $totalBytes
 	}
 }
@@ -328,6 +345,7 @@ $provenance.renders = if ($renders) {
 		loadoutPicturesPossible = $renders.LoadoutTotal
 		looks = $renders.Looks
 		looksExcepted = $renders.Excepted
+		loadoutPicturesExcepted = $renders.LoadoutExcepted
 		bytes = $renders.Bytes
 		colourCoverage = [math]::Round($renders.Coverage, 6)
 		minColourCoverage = $MinColourCoverage

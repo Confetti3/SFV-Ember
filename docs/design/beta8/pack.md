@@ -62,7 +62,7 @@ package ships exists. Costume and colour numbers come from the catalog (`Costume
 ## Package steps (`scripts/package.ps1`)
 
 ```
-scripts\package.ps1 -RenderStore D:\sfv-ember-renders [-MinColourCoverage 1.0]
+scripts\package.ps1 -RenderStore D:\sfv-ember-renders [-MinColourCoverage 0]
     [-OldPackageCheck D:\keep\beta7\sfve_package_check.exe] [-NoRenders]
 ```
 
@@ -75,8 +75,10 @@ scripts\package.ps1 -RenderStore D:\sfv-ember-renders [-MinColourCoverage 1.0]
    SHA-256 (case-insensitive hex); each file's `look` agrees with its path; no file in
    `<store>\pack\assets\selection` is missing from the manifest; every costume's first colour
    (the first entry of its `colours` array) has a cutout or a listed exception; the cutouts
-   reach `-MinColourCoverage` of the looks (see below); loadout pictures missing are warned
-   about, not refused; the file count and bytes fit the updater's zip reader (no zip64,
+   reach `-MinColourCoverage` of the looks (default 0: beta.8 ships each costume's first colour
+   only, colours being picked with swatch chips; the coverage is still reported in the
+   receipt); every loadout picture of the pick space (180 now: each fighter's V-Skill and
+   V-Trigger choices) has a file or a listed exception, else the package is refused; the file count and bytes fit the updater's zip reader (no zip64,
    16-bit entry count: under 59,800 files and 3 GB).
 3. Stage each render under `assets\selection\<CODE>\...` and the manifest as
    `assets\selection\manifest.json`.
@@ -92,8 +94,13 @@ scripts\package.ps1 -RenderStore D:\sfv-ember-renders [-MinColourCoverage 1.0]
    inventory), then the zip download check, as before.
 
 Coverage: `colourCoverage = cutouts / (looks - exceptions)` over every costume x colour of the
-pick space (6,426 looks, 875 costumes in the current space). The first colour of every costume
-is required whatever `-MinColourCoverage` says. An exception removes its look from both sides.
+pick space (6,426 looks, 875 costumes in the current space; a first-colour-only pack is
+about 13.6%). The first colour of every costume and every loadout picture are required
+whatever `-MinColourCoverage` says. A cutout exception removes its look from both sides.
+
+With first colours only, `Character` falls back from the missing look to the costume's first
+colour (the intended path), and `Appearance` for any other colour is missing, so the pane uses
+`Character` then `PartCharacter` then the banner.
 
 ## Manifest format (the capture contract)
 
@@ -108,7 +115,8 @@ holds the files. Paths in JSON use forward slashes and are relative to `pack\`.
   "pipeline": "runbooth 1.0 / boothpack 1.0",
   "generatedAt": "2026-11-12T03:00:00Z",
   "exceptions": [
-    { "fighter": "RYU", "costume": 3, "colour": 5, "reason": "capture failed: costume does not load" }
+    { "fighter": "RYU", "costume": 3, "reason": "capture failed: costume does not load" },
+    { "fighter": "RYU", "part": "vtrigger", "choice": 2, "reason": "no usable frame" }
   ],
   "files": [
     {
@@ -139,9 +147,11 @@ Fields:
 - `modRevision`: git revision (7 to 40 lowercase hex) of the mod that captured.
 - `pipeline`: non-empty string naming the tools and versions.
 - `generatedAt`: ISO 8601 UTC, informational.
-- `exceptions` (optional): looks deliberately left out. `fighter` and `costume` must be in the
-  pick space; `colour` is that costume's colour, and when omitted means its first colour;
-  `reason` is required text. A look that is excepted must not also have a file.
+- `exceptions` (optional): pictures deliberately left out, each with required `reason` text. A
+  cutout exception names `fighter` and `costume` (in the pick space) and optionally `colour`
+  (omitted means the costume's first colour). A loadout exception names `fighter`, `part`
+  (`"vskill"` or `"vtrigger"`) and `choice` (1 or 2) that the fighter has. An excepted picture
+  must not also have a file.
 - `files[]`, each exactly once: `path` (one of the two per-file forms above, in the pick space,
   case-exact), `sha256` (hex of the file's bytes), `bytes` (positive, equal to the size), `look`
   (cutout: `fighter`, `costume`, `colour`; loadout: `fighter`, `part` = `"vskill"` or
