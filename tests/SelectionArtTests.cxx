@@ -33,7 +33,8 @@ TEST_CASE("the pick labels are the game's names, from the catalog")
 	CHECK(StageLabel(9) == "9");
 	CHECK(StageLabel(sfve::picks::kRandomStage) == sf4e::loc::T("selection.random"));
 	CHECK(CostumeLabel(PickOf(0, 4)) == "Nostalgia");
-	CHECK(CostumeLabel(PickOf(0, 1)) == "1"); // the game gave no name
+	// The game gave no name: the shared word and the costume's number.
+	CHECK(CostumeLabel(PickOf(0, 1)) == std::string(sf4e::loc::T("selection.costume")) + " 1");
 	CHECK(ShortCostumeLabel(PickOf(0, 4)) == "Nostalgia");
 	CHECK(ShortAppearanceLabel(PickOf(0, 4, 100)) == "Nostalgia, color EX01");
 	CHECK(ColourName(0) == "01");

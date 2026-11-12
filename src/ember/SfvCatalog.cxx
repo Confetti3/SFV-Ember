@@ -6,6 +6,7 @@
 #include "mod/SfvOffsets.hxx"
 
 #include "common/GameCatalog.hxx"
+#include "common/Localization.hxx"
 #include "common/StageCatalog.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
 
@@ -509,7 +510,18 @@ void FitLookWithin(sf4e::selection::Pick& pick)
 std::string CostumeName(std::int64_t fighter, int costume)
 {
 	const mod::CostumeContent* content = CostumeAt(fighter, costume);
-	return content && !content->name.empty() ? content->name : std::to_string(costume);
+	return ShownCostumeName(content ? content->name : std::string(), costume);
+}
+
+std::string ShownCostumeName(const std::string& gameName, int costume)
+{
+	// The game's text lookup answers a text it has no words for with the
+	// text's id: "ID_" and letters, digits and underscores, never a name.
+	const bool textId = gameName.rfind("ID_", 0) == 0 && std::all_of(gameName.begin(), gameName.end(), [](char c) {
+		return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+	});
+	if (!gameName.empty() && !textId) return gameName;
+	return std::string(sf4e::loc::T("selection.costume")) + " " + std::to_string(costume);
 }
 
 std::string ColourName(int colour)
