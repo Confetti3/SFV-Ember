@@ -3,14 +3,767 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Language: cs\n"
 
-#. Placeholder entry (step 0 stub): stream D replaces this file with all 180 notes.
+# RYU = Ryu
+#. V-Skill I: MIND'S EYE
 msgid "RYU.vs1"
-msgstr "Stub note for Ryu's first V-Skill."
+msgstr "Parry postoj, který zachytí libovolný úder nebo ohnivou kouli, nabije V-Gauge a umožní přechod do speciálů."
 
-#. Placeholder entry (step 0 stub).
+#. V-Skill II: THRUST STRIKE
 msgid "RYU.vs2"
-msgstr "Stub note for Ryu's second V-Skill."
+msgstr "Úder vpřed s vestavěným parry proti úderům; zachycený zásah pošle soupeře do odrazu od zdi."
 
-#. Placeholder entry (step 0 stub).
+#. V-Trigger I: DENJIN RENKI
 msgid "RYU.vt1"
-msgstr "Stub note for Ryu's first V-Trigger."
+msgstr "Časové vylepšení. Blesk posiluje jeho údery, ohnivé koule a uppercuty a vylepšuje jeho super."
+
+#. V-Trigger II: KAKKO FUBATSU
+msgid "RYU.vt2"
+msgstr "Časové vylepšení. Přidává vylepšené parry a protiúder, který lze použít z jeho ohnivých koulí a Shoryuken."
+
+# VEG = M. Bison
+#. V-Skill I: PSYCHO REFLECT
+msgid "VEG.vs1"
+msgstr "Pohltí jeden přicházející zásah a může ho odrazit zpět, dobrá odpověď na ohnivé koule."
+
+#. V-Skill II: HELL'S WARP
+msgid "VEG.vs2"
+msgstr "Teleportuje za soupeře s útokem kolenem. Hodí se na cross-up nebo k úniku z tlaku."
+
+#. V-Trigger I: PSYCHO POWER
+msgid "VEG.vt1"
+msgstr "Časové vylepšení. Zlepšuje jeho dash a speciály a umožňuje rušit jeden speciál do jiného za cenu V-Timeru."
+
+#. V-Trigger II: PSYCHO NIGHTMARE
+msgid "VEG.vt2"
+msgstr "Časové vylepšení. Po dobu trvání odemyká Psycho Crusher, Psycho Charge a Psycho Judgement."
+
+# CNL = Chun-Li
+#. V-Skill I: RANKYAKU
+msgid "CNL.vs1"
+msgstr "Skákavý kop, po kterém zůstává ve vzduchu pro útoky ze vzduchu, dupnutí nebo skok od zdi."
+
+#. V-Skill II: HAZANSHU
+msgid "CNL.vs2"
+msgstr "Salto kopem, které uhne ohnivým koulím a lze z něj rušit do V-Triggeru. Podržení dozadu dá kratší verzi."
+
+#. V-Trigger I: RENKIKO
+msgid "CNL.vt1"
+msgstr "Časové vylepšení. Většina jejích pohybů je rychlejší a silnější a získává kombinace s omráčením."
+
+#. V-Trigger II: KIKOSHO
+msgid "CNL.vt2"
+msgstr "Chi výboj, který vynese soupeře; chvíli poté může vypálit další."
+
+# KEN = Ken
+#. V-Skill I: QUICK STEP
+msgid "KEN.vs1"
+msgstr "Rychlý běh vpřed, který může přejít v kop. Rychlý pohyb pro tlak a mix-upy."
+
+#. V-Skill II: RYUSENKYAKU
+msgid "KEN.vs2"
+msgstr "Letící kolový kop shora; podržením tlačítka získáte pomalejší, silnější verzi."
+
+#. V-Trigger I: HEAT RUSH
+msgid "KEN.vt1"
+msgstr "Časové vylepšení. Jeho kopy s otočkou se stávají zásahy typu projektil a ohnivé koule lze rušit do V-Skillů."
+
+#. V-Trigger II: SHINRYUKEN
+msgid "KEN.vt2"
+msgstr "Jednorázové. Plápolající Shoryuken, který při zásahu stoupá přes úrovně, pokud dál držíte úder."
+
+# KRN = Karin
+#. V-Skill I: MYO-OKEN
+msgid "KRN.vs1"
+msgstr "Úder vpřed, který zneutralizuje jednu ohnivou kouli; podržením tlačítka získáte pomalejší, tvrdší zásah."
+
+#. V-Skill II: FUDO SOSHO
+msgid "KRN.vs2"
+msgstr "Úder vpřed, který zneutralizuje jednu ohnivou kouli a způsobí Crush Counter; držením přidá sílu."
+
+#. V-Trigger I: GUREN NO KATA
+msgid "KRN.vt1"
+msgstr "Časové vylepšení. Odemyká její řetězy rekka a sadu navazujících útoků."
+
+#. V-Trigger II: TENHA NO KATA
+msgid "KRN.vt2"
+msgstr "Časové vylepšení. Odemyká Yasha Gaeshi, parry postoj, do kterého může přejít z jiných pohybů."
+
+# ZGF = Zangief
+#. V-Skill I: IRON MUSCLE
+msgid "ZGF.vs1"
+msgstr "Postoj s pancířem, který pohlcuje zásahy a nabíjí V-Gauge; podržením jde vpřed skrze útoky."
+
+#. V-Skill II: SUPER RUSSIAN KICK
+msgid "ZGF.vs2"
+msgstr "Kop s pancířem na začátku, který lze podržet pro silnější verzi a pomáhá mu prosadit se k chvatu."
+
+#. V-Trigger I: CYCLONE LARIAT
+msgid "ZGF.vt1"
+msgstr "Časové vylepšení. Odemyká Cyclone Lariat, otočku, která ignoruje ohnivé koule, a dává Iron Muscle téměř nekonečný pancíř."
+
+#. V-Trigger II: COSSACK MUSCLE
+msgid "ZGF.vt2"
+msgstr "Časové vylepšení. Zvyšuje poškození a omráčení Screw Piledriver a Borscht Dynamite a ty navazují na speciály."
+
+# DSM = Dhalsim
+#. V-Skill I: YOGA FLOAT
+msgid "DSM.vs1"
+msgstr "Vznese ho do vzduchu, kde se může snášet a útočit shora. Dobré k úhybu nízkým pohybům a změně úhlů."
+
+#. V-Skill II: YOGA DEEP BREATH
+msgid "DSM.vs2"
+msgstr "Hluboký nádech, který posílí jeho další Yoga Fire o další zásahy, poškození a výhodu."
+
+#. V-Trigger I: YOGA BURNER
+msgid "DSM.vt1"
+msgstr "Jednorázové. Ohnivý útok, který na zemi nechá ohnivý koberec a pálí ležícího soupeře."
+
+#. V-Trigger II: YOGA SANSARA
+msgid "DSM.vt2"
+msgstr "Časové vylepšení. Umístí plovoucí plamen, který se při dotyku jeho ohnivých pohybů změní v silnější ohnivou kouli."
+
+# NSH = Nash
+#. V-Skill I: BULLET CLEAR
+msgid "NSH.vs1"
+msgstr "Pohltí ohnivou kouli za V-Gauge a přitáhne soupeře, který zásah dostal nebo ho zablokoval."
+
+#. V-Skill II: SILENT SHARPNESS
+msgid "NSH.vs2"
+msgstr "Posílí jeho další Sonic Scythe o další zásahy, poškození a omráčení."
+
+#. V-Trigger I: SONIC MOVE
+msgid "NSH.vt1"
+msgstr "Jednorázové. Nash zmizí a objeví se na novém místě; na výběr je několik verzí teleportu."
+
+#. V-Trigger II: STEALTH DASH
+msgid "NSH.vt2"
+msgstr "Časové vylepšení. Při dashi krátce zastaví čas a poté naváže Stopem nebo jeho novými Justice pohyby."
+
+# BLR = Vega
+#. V-Skill I: MATADOR TURN
+msgid "BLR.vs1"
+msgstr "Uhybný obrat, který proklouzne kolem vysokých zásahů a ohnivých koulí a pak zaútočí. Slabší, pokud přišel o svůj dráp."
+
+#. V-Skill II: MATADOR FLIP
+msgid "BLR.vs2"
+msgstr "Salto, které uhne úderům a ohnivým koulím a může přejít v navazující Cosmic Smart."
+
+#. V-Trigger I: BLOODY KISS
+msgid "BLR.vt1"
+msgstr "Jednorázové. Hodí růži; pokud zasáhne, Vega se vrhne vpřed v sekajícím útoku."
+
+#. V-Trigger II: ALEGRIAS
+msgid "BLR.vt2"
+msgstr "Časové vylepšení. Odemyká Flash Arch, parry postoj, který na fyzické útoky odpovídá protiúderem."
+
+# JRI = Juri
+#. V-Skill I: KASATSUSHU
+msgid "JRI.vs1"
+msgstr "Kop, který lze nabít pro silnější úder; rychlá úroveň nabíjení nevyžaduje."
+
+#. V-Skill II: FUHA ENZAN
+msgid "JRI.vs2"
+msgstr "Nabije pomalou, širokou ohnivou kouli, kterou vypustí opětovným stiskem. Dobré na kontrolu prostoru."
+
+#. V-Trigger I: FENG SHUI ENGINE alpha
+msgid "JRI.vt1"
+msgstr "Časové vylepšení. Umožňuje řetězit normály od lehkých k těžkým a používat Fuharenkyaku bez nabíjení."
+
+#. V-Trigger II: FENG SHUI ENGINE beta
+msgid "JRI.vt2"
+msgstr "Krátké časové vylepšení. Udělí jí všechny její zásoby a vyčerpává EX gauge soupeře, dokud jsou oba na zemi."
+
+# BRD = Birdie
+#. V-Skill I: BREAK TIME
+msgid "BRD.vs1"
+msgstr "Sní svačinu a nabíjí V-Gauge. Je pomalá, proto ji použijte, když je soupeř daleko."
+
+#. V-Skill II: CHEWING TIME
+msgid "BRD.vs2"
+msgstr "Žvýká žvýkačku a nabíjí V-Gauge; podržením tlačítka nafoukne bublinu, kterou může vystřelit."
+
+#. V-Trigger I: ENJOY TIME
+msgid "BRD.vt1"
+msgstr "Časové vylepšení. Více poškození, rychlejší pohyb a odolnější pancíř u některých speciálů; speciály ubírají časovač."
+
+#. V-Trigger II: BIRDIE TIME
+msgid "BRD.vt2"
+msgstr "Časové vylepšení. Přidává Bull Swing a Bull Capture a mírně posiluje jeho řetězy a pohyby Bull Revenger."
+
+# RMK = R. Mika
+#. V-Skill I: HEATED MIC PERFORMANCE
+msgid "RMK.vs1"
+msgstr "Hodí mikrofon, který posílí její další chvat nebo super; podržením tlačítka se bonus nabíjí."
+
+#. V-Skill II: PUMPED UP!
+msgid "RMK.vs2"
+msgstr "Parry proti úderům, které nabíjí V-Gauge a protiúderem odpovídá. Ohnivé koule a nízké útoky stále projdou."
+
+#. V-Trigger I: C'MON NADESHIKO!
+msgid "RMK.vt1"
+msgstr "Jednorázové. Přivolá Nadeshiko, která shora dopadne bříškem, před ní nebo za ní."
+
+#. V-Trigger II: STEEL CHAIR
+msgid "RMK.vt2"
+msgstr "Časové vylepšení. Nadeshiko hodí ocelovou židli a lze ji ještě jednou přivolat, než vyprší čas."
+
+# RSD = Rashid
+#. V-Skill I: FRONT FLIP
+msgid "RSD.vs1"
+msgstr "Salto vpřed, které vede do kopů ve vzduchu nebo do valivého útoku. Rychlý způsob přiblížení."
+
+#. V-Skill II: WING STROKE
+msgid "RSD.vs2"
+msgstr "Rychlý úder mávnutím, použitelný na zemi i ve skoku, s navazujícími Wing Spike."
+
+#. V-Trigger I: YSAAR
+msgid "RSD.vt1"
+msgstr "Jednorázové. Vyšle větrnou kouli, která blokuje ohnivé koule a posílí jeho větrné útoky, pokud se jí dotkne."
+
+#. V-Trigger II: EASIFA
+msgid "RSD.vt2"
+msgstr "Časové vylepšení. Zlepšuje Eagle Spike, Whirlwind Shot a Front Flip a přidává celoobrazovkový Haboob."
+
+# FAN = F.A.N.G
+#. V-Skill I: NISHODOKU
+msgid "FAN.vs1"
+msgstr "Otrávený výstřel, který soupeře po zásahu několik sekund dál poškozuje."
+
+#. V-Skill II: SODOKUBU
+msgid "FAN.vs2"
+msgstr "Parry proti úderům, které nabíjí V-Gauge a pak vrací úder. Ohnivé koule a supery projdou."
+
+#. V-Trigger I: DOKUNOMU
+msgid "FAN.vt1"
+msgstr "Časové vylepšení. Jedovatý oblak otráví blízké soupeře a může rušit do speciálů bez nabíjení."
+
+#. V-Trigger II: KORYO DOKUDA
+msgid "FAN.vt2"
+msgstr "Časové vylepšení. Posiluje jeho jedovaté koule a jedovatou past."
+
+# LAR = Laura
+#. V-Skill I: VOLTY LINE
+msgid "LAR.vs1"
+msgstr "Výpad shora, který vede k možnostem úskoku jako Avante, Esquiva a Finta."
+
+#. V-Skill II: VOLTY SPRINK
+msgid "LAR.vs2"
+msgstr "Skok, který zasáhne skákající soupeře a naváže ohnivou koulí ve vzduchu nebo kopem patou."
+
+#. V-Trigger I: SPARK SHOW
+msgid "LAR.vt1"
+msgstr "Časové vylepšení. Rychlejší údery hromu a silnější V-Skilly, Sunset Wheel a super."
+
+#. V-Trigger II: SHOCK STANCE
+msgid "LAR.vt2"
+msgstr "Časové vylepšení. Odemyká Matsuda Sway, úhybný postoj, a Shock Choke, chvatový útok."
+
+# NCL = Necalli
+#. V-Skill I: CULMINATED POWER
+msgid "NCL.vs1"
+msgstr "Výstřel po zemi ve třech verzích dostřelu; při zásahu nabíjí V-Gauge."
+
+#. V-Skill II: CRAWLING BEAST
+msgid "NCL.vs2"
+msgstr "Nízké plazení, které vyšle pomalý projektil, uhne většině ohnivých koulí a při zásahu složí soupeře."
+
+#. V-Trigger I: TORRENT OF POWER
+msgid "NCL.vt1"
+msgstr "Časové vylepšení. Rychlejší chůze a dash, více poškození a nový pohyb Clouded Mirror."
+
+#. V-Trigger II: ERUPTION OF POWER
+msgid "NCL.vt2"
+msgstr "Vylepšení na celé kolo. Stejné zrychlení a přírůstek poškození jako u prvního V-Triggeru a navíc pohyb Heart of Gold."
+
+# CMY = Cammy
+#. V-Skill I: AXEL SPIN KNUCKLE
+msgid "CMY.vs1"
+msgstr "Úder s otočkou, který uhne hodům a ohnivým koulím a zblízka může dát cross-up."
+
+#. V-Skill II: SPINNING ATTACK
+msgid "CMY.vs2"
+msgstr "Poskakující otočka, která přeskočí nízké útoky a může dát cross-up; kontrazásah dá Crush Counter."
+
+#. V-Trigger I: DELTA DRIVE
+msgid "CMY.vt1"
+msgstr "Časové vylepšení. Posiluje Spiral Arrow, Cannon Spike a Cannon Strike."
+
+#. V-Trigger II: DELTA ADVANCE
+msgid "CMY.vt2"
+msgstr "Časové vylepšení. Přidává nové navazující pohyby dashem a skokem pro rychlé přiblížení a mix-upy."
+
+# GUL = Guile
+#. V-Skill I: SONIC BLADE
+msgid "GUL.vs1"
+msgstr "Rychle vypustí boom, i z podřepu, a může navázat Sonic Crossem."
+
+#. V-Skill II: DIVE SONIC
+msgid "GUL.vs2"
+msgstr "Útok v pádu s boomem, který mu pomáhá přiblížit se; lze jej provést z podřepu."
+
+#. V-Trigger I: SOLID PUNCHER
+msgid "GUL.vt1"
+msgstr "Časové vylepšení. Odemyká Sonic Break, projektil bez nabíjení s navazujícími pohyby, a silnější super."
+
+#. V-Trigger II: KNIFE EDGE
+msgid "GUL.vt2"
+msgstr "Časové vylepšení. Flash Kicks přidají projektil a lze je provést bez nabíjení z normálních kopů."
+
+# IBK = Ibuki
+#. V-Skill I: TENRAI
+msgid "IBK.vs1"
+msgstr "Úder typu projektil, který připraví juggle; podržením tlačítka získáte silnější plnou verzi."
+
+#. V-Skill II: MAKIBISHI
+msgid "IBK.vs2"
+msgstr "Rozhodí na zem ježky, o které zakopne soupeř, který po nich přejde."
+
+#. V-Trigger I: ROKUSHAKU HOROKUDAMA
+msgid "IBK.vt1"
+msgstr "Jednorázové. Hodí časovanou bombu, jejíž doba zážehu se mění podle směru; kunaj ji může odpálit dřív."
+
+#. V-Trigger II: FUMA SHURIKEN
+msgid "IBK.vt2"
+msgstr "Jednorázové. Hodí obří shuriken vpřed nebo vzhůru, který zasáhne cestou tam i zpět."
+
+# BSN = Balrog
+#. V-Skill I: KKB
+msgid "BSN.vs1"
+msgstr "Úhyb, který uhne ohnivým koulím a navazuje na údery nebo pohyby Buffalo."
+
+#. V-Skill II: FFB
+msgid "BSN.vs2"
+msgstr "Posílí jeho další Dash Punch o extra poškození a omráčení; při rušení do něj není potřeba nabíjení."
+
+#. V-Trigger I: CRAZY RUSH
+msgid "BSN.vt1"
+msgstr "Časové vylepšení. Odemyká rushe Charging Buffalo a Bursting Buffalo, za něž se platí V-Timerem."
+
+#. V-Trigger II: NO MERCY
+msgid "BSN.vt2"
+msgstr "Časové vylepšení. Přidává B3, command grab s velkým omráčením, za který se platí V-Timerem."
+
+# URN = Urien
+#. V-Skill I: METALLIC AURA
+msgid "URN.vs1"
+msgstr "Dá jeho dalšímu Chariot Tackle, Violence Knee nebo Dangerous Headbuttu jeden zásah pancířem."
+
+#. V-Skill II: INDIGNANT THUNDER
+msgid "URN.vs2"
+msgstr "Posílí jeho další Metallic Sphere o další zásahy, poškození a větší hitbox."
+
+#. V-Trigger I: AEGIS REFLECTOR
+msgid "URN.vt1"
+msgstr "Jednorázové. Vztyčí štít Aegis, který několik sekund odráží ohnivé koule."
+
+#. V-Trigger II: TYRANT PRESSURE
+msgid "URN.vt2"
+msgstr "Časové vylepšení. Po dobu trvání odemyká Tyrant Blaze, nový útok."
+
+# ALX = Alex
+#. V-Skill I: OVERHAUL
+msgid "ALX.vs1"
+msgstr "Udělá z jeho dalšího zasazeného útoku Hard Hit s efekty counter hitu a extra výhodou."
+
+#. V-Skill II: OVERCHAIN
+msgid "ALX.vs2"
+msgstr "Umožní jeho dalšímu speciálu rušit do jiného při zásahu nebo bloku, například Flash Chop do Elbow Slash."
+
+#. V-Trigger I: RAGE SHIFT
+msgid "ALX.vt1"
+msgstr "Časové vylepšení. Odemyká Sledge Hammer, těžký úder, který lze nabíjet a který má také režim parry."
+
+#. V-Trigger II: RAGE BOOST
+msgid "ALX.vt2"
+msgstr "Časové vylepšení. Odemyká dva nové chvaty, Flying DDT a Choke Sleeper."
+
+# Z21 = Akuma
+#. V-Skill I: RAKAN
+msgid "Z21.vs1"
+msgstr "Parry proti úderům ve stoje i v podřepu, které nabíjí V-Gauge a vede do navazujících útoků."
+
+#. V-Skill II: KIAI
+msgid "Z21.vs2"
+msgstr "Výkřik, který posílí jeho další červenou ohnivou kouli a zneutralizuje jednu ohnivou kouli."
+
+#. V-Trigger I: DOHATSU SHOTEN
+msgid "Z21.vt1"
+msgstr "Časové vylepšení. Posiluje jeho ohnivé koule a Dragon Punch a odemyká Shun Goku Satsu."
+
+#. V-Trigger II: SHIRETSU HASSHI
+msgid "Z21.vt2"
+msgstr "Časové vylepšení. Umožňuje rušit speciály do jiných speciálů, placených z V-Timeru místo z EX meteru."
+
+# Z20 = Kolin
+#. V-Skill I: INSIDE SLASH
+msgid "Z20.vs1"
+msgstr "Sek s oknem pro kontru: pokud ji v tu chvíli zasáhne úder, odpoví protiúderem s knockdownem."
+
+#. V-Skill II: GLACIER THROUGH
+msgid "Z20.vs2"
+msgstr "Úder z dashe, který při zásahu zmrazí omračovací lištu soupeře a srazí ho k zemi."
+
+#. V-Trigger I: DIAMOND DUST
+msgid "Z20.vt1"
+msgstr "Vyšle ledový výbuch, který zmrazí omračovací lištu soupeře; druhé seslání je dostupné během časovače."
+
+#. V-Trigger II: ABSOLUTE ZERO
+msgid "Z20.vt2"
+msgstr "Časové vylepšení. Silnější údery a sněhové koule, plus nové pohyby Frost Edge a Reverse Javelin."
+
+# Z22 = Ed
+#. V-Skill I: PSYCHO SNATCHER
+msgid "Z22.vs1"
+msgstr "Dlouhý úder; pokud zasáhne, Ed se přitáhne a soupeře srazí k zemi."
+
+#. V-Skill II: PSYCHO SWING
+msgid "Z22.vs2"
+msgstr "Nízký švih, který uhne ohnivým koulím, s silnější verzí Psycho Smash."
+
+#. V-Trigger I: PSYCHO CANNON
+msgid "Z22.vt1"
+msgstr "Jednorázové. Vypálí obrovský psycho výboj o sedmi zásazích."
+
+#. V-Trigger II: ENHANCED SNATCHER
+msgid "Z22.vt2"
+msgstr "Časové vylepšení. Odemyká Ultra Snatcher, silnější Psycho Snatcher na zemi i ve vzduchu."
+
+# Z23 = Menat
+#. V-Skill I: SOUL REFLECT
+msgid "Z23.vs1"
+msgstr "Pohltí ohnivou kouli za V-Gauge a pošle ji zpět, a navíc má úder na krátkou vzdálenost."
+
+#. V-Skill II: SOUL SPIRAL
+msgid "Z23.vs2"
+msgstr "Úder vpřed ve spirále, který lze kombinovat s jejím orbem."
+
+#. V-Trigger I: WISDOM OF THOTH
+msgid "Z23.vt1"
+msgstr "Časové vylepšení. Dá jí sadu orbů, po jednom na každé tlačítko, které vypálí uvolněním daného tlačítka."
+
+#. V-Trigger II: PROPHECY OF THOTH
+msgid "Z23.vt2"
+msgstr "Časové vylepšení. Odemyká Judgement of Thoth, který vypálí všechny její orby najednou v různých obloucích."
+
+# Z24 = Abigail
+#. V-Skill I: HUNGABEE
+msgid "Z24.vs1"
+msgstr "Parry postoj, vysoký nebo nízký, který zastaví jeden úder a nabíjí V-Gauge. Critical Arts ho přebijí."
+
+#. V-Skill II: C'MON SPARE TIRE
+msgid "Z24.vs2"
+msgstr "Shodí před sebe pneumatiku, kterou může svými útoky vystřelit na soupeře."
+
+#. V-Trigger I: MAX POWER
+msgid "Z24.vt1"
+msgstr "Časové vylepšení. O 15 procent více poškození, nabíjecí verze jeho silných úderů a odolnější pancíř u pohybů při běhu."
+
+#. V-Trigger II: HYBRID CHARGE
+msgid "Z24.vt2"
+msgstr "Časové vylepšení. Odemyká Metro Crash, nabíjený rush, který má během nabíjení pancíř."
+
+# Z25 = Zeku
+#. V-Skill I: FUKURO
+msgid "Z25.vs1"
+msgstr "Vzletný antivzdušný kop, který může dát cross-up; při zásahu se změní na Young Zeku s extra úderem."
+
+#. V-Skill II: KUCHIYOSE - SHII
+msgid "Z25.vs2"
+msgstr "Přivolá orla, který shodí petardu, kam si zvolí; během letu může měnit formy."
+
+#. V-Trigger I: BUSHINRYU SHINGEKIKO
+msgid "Z25.vt1"
+msgstr "Časové vylepšení. Dá mu jednorázový dash, Idaten, a úder z V-Triggeru."
+
+#. V-Trigger II: KARURA TENZAN
+msgid "Z25.vt2"
+msgstr "Časové vylepšení. Nezranitelný úvodní útok se po dobu trvání vrací jako druhý, pomalejší Karura Tenzan."
+
+# Z26 = Sakura
+#. V-Skill I: HARU KAZE
+msgid "Z26.vs1"
+msgstr "Poskok se třemi navazujícími pohyby, pádem a dvěma kopy, který uhne ohnivým koulím, zatímco je ve vzduchu."
+
+#. V-Skill II: HARU HAYATE
+msgid "Z26.vs2"
+msgstr "Rychlý krok, do kterého lze přejít z většiny normálů, s navazujícím útokem, pokud je tlačítko podrženo."
+
+#. V-Trigger I: HARU ARASHI
+msgid "Z26.vt1"
+msgstr "Časové vylepšení. Silnější ohnivé koule a navíc Hogasho, nový speciál na HP+HK."
+
+#. V-Trigger II: SAKURA SENPU
+msgid "Z26.vt2"
+msgstr "Časové vylepšení. Výrazně zlepšuje její Shoryuken a její kop s otočkou."
+
+# Z27 = Blanka
+#. V-Skill I: COWARD CROUCH
+msgid "Z27.vs1"
+msgstr "Přikrčí se nízko, aby uhnul vysokým zásahům a ohnivým koulím, a pak vyskočí s navazujícím zvednutím nebo skokem."
+
+#. V-Skill II: SHOUT OF EARTH
+msgid "Z27.vs2"
+msgstr "Výkřikový útok vpřed, který lze nabít na silnější druhou úroveň."
+
+#. V-Trigger I: JUNGLE DYNAMO
+msgid "Z27.vt1"
+msgstr "Časové vylepšení. Posiluje všechny speciály Blanka Ball a Electric Thunder a přidává Ground Shave Rolling."
+
+#. V-Trigger II: LIGHTNING BEAST
+msgid "Z27.vt2"
+msgstr "Časové vylepšení. Umožňuje rušit pohyby Blanka Ball do Rolling Cannon, vzdušného valení do osmi směrů."
+
+# Z28 = Falke
+#. V-Skill I: PSYCHO TROMBE
+msgid "Z28.vs1"
+msgstr "Úder holí, který pohltí jednu ohnivou kouli za V-Gauge a může navázat na speciály."
+
+#. V-Skill II: PSYCHO MINE
+msgid "Z28.vs2"
+msgstr "Položí minu před sebe nebo k nohám, která vybuchne, když se jí dotkne její hůl nebo ohnivé koule."
+
+#. V-Trigger I: STAERKEN
+msgid "Z28.vt1"
+msgstr "Časové vylepšení. Dá jí vylepšené verze ohnivých koulí na HP+HK, použitelné ze speciálů a V-Skillu."
+
+#. V-Trigger II: PSYCHO ANGRIFF
+msgid "Z28.vt2"
+msgstr "Časové vylepšení. Aktivace je útok; odemyká navazující Psycho Strum a Psycho Klinge z normálů."
+
+# Z29 = Cody
+#. V-Skill I: DOUBLE KICK
+msgid "Z29.vs1"
+msgstr "Dvojitý kop, který zasáhne nejdřív před něj a pak za něj. Je během něj nezranitelný, ale část zdraví přesto ztrácí."
+
+#. V-Skill II: CRIME SWAY
+msgid "Z29.vs2"
+msgstr "Uhnutí, které uhne úderům a ohnivým koulím, a pak může navázat Wrench Fist nebo Lumber Sweep."
+
+#. V-Trigger I: SIDE ARM
+msgid "Z29.vt1"
+msgstr "Časové vylepšení. Vybaví nůž, mění jeho údery a přidává speciály s nožem, ale vypíná jeho ohnivou kouli."
+
+#. V-Trigger II: DIRTY COACH
+msgid "Z29.vt2"
+msgstr "Časové vylepšení. Vybaví trubku pro těžké švihy, které odrážejí ohnivé koule, a navíc hod kamenem."
+
+# Z30 = G
+#. V-Skill I: G BARRIER
+msgid "Z30.vs1"
+msgstr "Bariéra, která pohltí jednu ohnivou kouli a při kontaktu srazí soupeře k zemi; funguje i ve vzduchu."
+
+#. V-Skill II: G PROTECTION
+msgid "Z30.vs2"
+msgstr "Snižuje přijaté poškození a omráčení o 10 procent, až třikrát, a při knockdownu si zachová svou prezidentskou úroveň."
+
+#. V-Trigger I: MAXIMUM PRESIDENT
+msgid "Z30.vt1"
+msgstr "Časové vylepšení. Nastaví jeho prezidentskou úroveň na maximum a umožní rušit speciály do sebe navzájem."
+
+#. V-Trigger II: DANGEROUS PRESIDENT
+msgid "Z30.vt2"
+msgstr "Časové vylepšení. Odemyká G Explosion, prodlužovač comba, a G Rage, command grab s pancířem."
+
+# Z31 = Sagat
+#. V-Skill I: ANGRY CHARGE
+msgid "Z31.vs1"
+msgstr "Posílí jeho další Tiger Uppercut o více poškození, odhození a potenciál juggle."
+
+#. V-Skill II: HANUMAN CHARGE
+msgid "Z31.vs2"
+msgstr "Posílí jeho další Tiger Knee o lepší výhodu při blocku a potenciál juggle."
+
+#. V-Trigger I: TIGER CHARGE
+msgid "Z31.vt1"
+msgstr "Časové vylepšení. Odemyká Tiger Cannon, silnou ohnivou kouli o pěti zásazích, do které lze rušit z normálů."
+
+#. V-Trigger II: TIGER ASSAULT
+msgid "Z31.vt2"
+msgstr "Časové vylepšení. Odemyká útoky Tiger Spike a Tiger Rush, které navazují na jeho normály."
+
+# Z32 = Kage
+#. V-Skill I: SENHA KASSATSU
+msgid "Z32.vs1"
+msgstr "Úder, který lze podržet, s pancířem proti vysokým a středním zásahům a ohnivým koulím, ale ne proti nízkým."
+
+#. V-Skill II: SEKIEIKEN
+msgid "Z32.vs2"
+msgstr "Skokový úder, který může zasáhnout soupeře na zemi; podržením vpřed získáte větší dosah."
+
+#. V-Trigger I: TAIGYAKU MUDO
+msgid "Z32.vt1"
+msgstr "Časové vylepšení. Výrazně posiluje jeho V-Skill a přidává Ashura Senku, teleportující dash."
+
+#. V-Trigger II: RIKUDO OSATSU
+msgid "Z32.vt2"
+msgstr "Časové vylepšení. Odemyká Misogi, teleportový smash, a super Shun Goku Satsu."
+
+# Z33 = Poison
+#. V-Skill I: PERFUME SWING
+msgid "Z33.vs1"
+msgstr "Lanový švih, který ji nese vpřed; vzdálenost lze upravit a její nohy uhnou ohnivým koulím."
+
+#. V-Skill II: CARTWHEEL
+msgid "Z33.vs2"
+msgstr "Kolo, které projde skrz soupeře; podržením tlačítka získáte navazující útok."
+
+#. V-Trigger I: POISON COCKTAIL
+msgid "Z33.vt1"
+msgstr "Časové vylepšení. Odemyká Fire Squall, projektilový útok použitelný na zemi i ve vzduchu."
+
+#. V-Trigger II: TOXIC GLAMOR
+msgid "Z33.vt2"
+msgstr "Časové vylepšení. Odemyká Toxic Hold, command grab, a Toxic Bind."
+
+# Z34 = E. Honda
+#. V-Skill I: NEKO DAMASHI
+msgid "Z34.vs1"
+msgstr "Tlesknutí, které zneutralizuje jednu ohnivou kouli a do kterého lze přejít z mnoha normálů."
+
+#. V-Skill II: SUMO SPIRIT
+msgid "Z34.vs2"
+msgstr "Posílí jeho další Hundred Hand Slap a umožní jakémukoli normálu přejít do něj."
+
+#. V-Trigger I: ONIGAWARA
+msgid "Z34.vt1"
+msgstr "Časové vylepšení. Odemyká pohyby Oni-Daikaku a Oni-Muso, placené V-Timerem."
+
+#. V-Trigger II: TAJIKARAO
+msgid "Z34.vt2"
+msgstr "Časové vylepšení. Odemyká Iwato Biraki, útok s pancířem, který při každém použití stojí V-Timer."
+
+# Z35 = Lucia
+#. V-Skill I: TAP-KICK
+msgid "Z35.vs1"
+msgstr "Řetěz kopů s více zásahy, který může na svých pozdějších zásazích přejít do speciálů, supera nebo V-Triggeru."
+
+#. V-Skill II: ARREST HEEL
+msgid "Z35.vs2"
+msgstr "Vysoký skok s kopem patou, který uhýbá ohnivým koulím a některým úderům."
+
+#. V-Trigger I: BURNING FIGHT
+msgid "Z35.vt1"
+msgstr "Časové vylepšení. Posiluje její V-Skill a všechny její kopací speciály."
+
+#. V-Trigger II: WEAPON FURY
+msgid "Z35.vt2"
+msgstr "Časové vylepšení. Odemyká Tactical Weapon, speciál s obuškem."
+
+# Z36 = Gill
+#. V-Skill I: DIVINE COMET
+msgid "Z36.vs1"
+msgstr "Shodí kometový projektil po třech různých drahách; mění se podle V-Triggeru: oheň nebo led."
+
+#. V-Skill II: BLOCKING
+msgid "Z36.vs2"
+msgstr "Parry proti jakémukoli útoku, včetně Critical Arts, které nabíjí V-Gauge. Podřepem získáte nízkou verzi."
+
+#. V-Trigger I: PRIMAL FIRE
+msgid "Z36.vt1"
+msgstr "Časové vylepšení. Ohnivý režim: zapaluje soupeře, posiluje jeho ohnivé útoky a přidává tři nové ohnivé speciály."
+
+#. V-Trigger II: ICE OF DOOM
+msgid "Z36.vt2"
+msgstr "Časové vylepšení. Ledový režim: zmrazí omračovací lištu soupeře a přidává Tree of Frost a Delay Freeze Lance."
+
+# Z37 = Seth
+#. V-Skill I: TANDEN ENGINE
+msgid "Z37.vs1"
+msgstr "Chvat se sáním; navažte úderem, abyste soupeři jednorázově ukradli jeden pohyb."
+
+#. V-Skill II: TANDEN BOOSTER
+msgid "Z37.vs2"
+msgstr "Postoj s několika navazujícími útoky, plachtěním, spirálou a kyvadlem a stavem counter hitu na začátku."
+
+#. V-Trigger I: TANDEN IGNITION
+msgid "Z37.vt1"
+msgstr "Časové vylepšení. Odemyká teleportující úder Titanomachy, Mad Spin a další navazující pohyby rušené z jeho pohybů."
+
+#. V-Trigger II: TANDEN MANEUVER
+msgid "Z37.vt2"
+msgstr "Jednorázové. Vytvoří orb, který může řídit až čtyřikrát a odpálit, kdy si zvolí."
+
+# Z38 = Dan
+#. V-Skill I: SAIKYO-STYLE BURAIRUTEN NO KAMAE
+msgid "Z38.vs1"
+msgstr "Provokující podřep, který nabíjí V-Gauge a může navázat na jeho ohnivou kouli, dragon punch nebo Danretsuken."
+
+#. V-Skill II: SAIKYO-STYLE OTOKOBOE
+msgid "Z38.vs2"
+msgstr "Rychlá provokace, do které může přejít z normálů a pak znovu přejít do jiných útoků."
+
+#. V-Trigger I: HAOH GADOKEN
+msgid "Z38.vt1"
+msgstr "Jednorázové. Hodí obrovskou ohnivou kouli přes celou obrazovku; podržením získáte silnější verzi, která prolamuje blok."
+
+#. V-Trigger II: TENCHI SAIKYO NO KATA
+msgid "Z38.vt2"
+msgstr "Časové vylepšení. Posiluje jeho Gadoken a Koryuken na Haten Gadoken a Goh Koryuken."
+
+# Z39 = Rose
+#. V-Skill I: SOUL FORTUNE
+msgid "Z39.vs1"
+msgstr "Vytáhne náhodnou tarotovou kartu jako posílení, například extra poškození, V-Gauge nebo zdraví."
+
+#. V-Skill II: SOUL SATELLITE
+msgid "Z39.vs2"
+msgstr "Přivolá až dva orby, které fungují jako ohnivé koule na jeden zásah a vydrží několik sekund."
+
+#. V-Trigger I: SOUL DIMENSION
+msgid "Z39.vt1"
+msgstr "Časové vylepšení. Dává jí teleporty po zemi a ve vzduchu, rušené z několika speciálů."
+
+#. V-Trigger II: SOUL ILLUSION
+msgid "Z39.vt2"
+msgstr "Krátké časové vylepšení. Stínový klon opakuje její útoky o zlomek sekundy později."
+
+# Z40 = Oro
+#. V-Skill I: ONIBI
+msgid "Z40.vs1"
+msgstr "Hodí orb, který se klene přes obrazovku; směr, který držíte, mění jeho dráhu."
+
+#. V-Skill II: MINOMUSHI
+msgid "Z40.vs2"
+msgstr "Mix-up pohyb se dvěma navazujícími útoky, shora a vzdušným smečem."
+
+#. V-Trigger I: MANRIKITAN
+msgid "Z40.vt1"
+msgstr "Časové vylepšení. Odemyká dva command grab chvaty, Kishinriki a Kishin Kuchu Jigoku Guruma."
+
+#. V-Trigger II: TENGU STONE
+msgid "Z40.vt2"
+msgstr "Časové vylepšení. Přivolá předměty, které jeho útoky doplňují jako extra zásahy, a časovač se zkracuje, jak zasahují."
+
+# Z41 = Akira
+#. V-Skill I: KIKO RENSEI
+msgid "Z41.vs1"
+msgstr "Posílí její další ohnivou kouli Kiko Kai."
+
+#. V-Skill II: TSUTENDA
+msgid "Z41.vs2"
+msgstr "Vzletný kop, který soupeře vynese velmi vysoko, s vzdušnými řetězy a navazujícím super skokem."
+
+#. V-Trigger I: OTOKO NO SENAKA
+msgid "Z41.vt1"
+msgstr "Jednorázové. Dvouzásahový rush, který nejdřív srazí a pak vynese, a nechá soupeře otevřeného pro juggle."
+
+#. V-Trigger II: HATEN NO KAMAE
+msgid "Z41.vt2"
+msgstr "Časové vylepšení. Zaujme postoj s navazujícími Ha no Sogeki a Ha no Renbu."
+
+# Z42 = Luke
+#. V-Skill I: HARD SHOT
+msgid "Z42.vs1"
+msgstr "Posílí jeho další Flash Knuckle lepším poškozením a výhodou; posílení zůstane, i když ho srazí k zemi."
+
+#. V-Skill II: SUPPRESSOR
+msgid "Z42.vs2"
+msgstr "Úder s odtažením, který kontruje hody a když to udělá, zasáhne silněji."
+
+#. V-Trigger I: FULLY ARMED
+msgid "Z42.vt1"
+msgstr "Časové vylepšení. Jeho V-Gauge se doplňuje, jak způsobuje poškození; odemyká Rock Smasher a Thermobaric Smash."
+
+#. V-Trigger II: VANGUARD
+msgid "Z42.vt2"
+msgstr "Časové vylepšení. Jeho Flash Knuckle mohou přejít do dalšího Flash Knuckle jiné síly."

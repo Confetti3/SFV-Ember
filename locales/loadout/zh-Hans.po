@@ -3,14 +3,767 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Language: zh-Hans\n"
 
-#. Placeholder entry (step 0 stub): stream D replaces this file with all 180 notes.
+# RYU = Ryu
+#. V-Skill I: MIND'S EYE
 msgid "RYU.vs1"
-msgstr "Stub note for Ryu's first V-Skill."
+msgstr "弹反任何攻击或飞行道具的姿态，积累V计量表，并可取消至必杀技。"
 
-#. Placeholder entry (step 0 stub).
+#. V-Skill II: THRUST STRIKE
 msgid "RYU.vs2"
-msgstr "Stub note for Ryu's second V-Skill."
+msgstr "前方出拳，内置对攻击的弹反；弹反成功会让对手撞墙弹起。"
 
-#. Placeholder entry (step 0 stub).
+#. V-Trigger I: DENJIN RENKI
 msgid "RYU.vt1"
-msgstr "Stub note for Ryu's first V-Trigger."
+msgstr "限时强化。雷电强化拳击、飞行道具和上勾拳，并升级超必杀。"
+
+#. V-Trigger II: KAKKO FUBATSU
+msgid "RYU.vt2"
+msgstr "限时强化。新增强化弹反，并可从飞行道具和昇龙拳中使用反击攻击。"
+
+# VEG = M. Bison
+#. V-Skill I: PSYCHO REFLECT
+msgid "VEG.vs1"
+msgstr "吸收一次来袭攻击并可将其反弹，是应对飞行道具的好办法。"
+
+#. V-Skill II: HELL'S WARP
+msgid "VEG.vs2"
+msgstr "以膝击瞬移至对手身后。适合跨越式攻击，或摆脱压制。"
+
+#. V-Trigger I: PSYCHO POWER
+msgid "VEG.vt1"
+msgstr "限时强化。强化冲刺和必杀技，并可让必杀技互相取消，需消耗V计时器。"
+
+#. V-Trigger II: PSYCHO NIGHTMARE
+msgid "VEG.vt2"
+msgstr "限时强化。效果持续期间解锁 Psycho Crusher、Psycho Charge 与 Psycho Judgement。"
+
+# CNL = Chun-Li
+#. V-Skill I: RANKYAKU
+msgid "CNL.vs1"
+msgstr "跳踢使她滞空，可接空中攻击、踩踏或蹬墙跳。"
+
+#. V-Skill II: HAZANSHU
+msgid "CNL.vs2"
+msgstr "躲避飞行道具的翻身踢，可取消接 V触发。向后键可缩短动作。"
+
+#. V-Trigger I: RENKIKO
+msgid "CNL.vt1"
+msgstr "限时强化。大多数招式更快更强，并可打出眩晕连段。"
+
+#. V-Trigger II: KIKOSHO
+msgid "CNL.vt2"
+msgstr "将对手击飞的气功波。之后一段时间内可继续发射。"
+
+# KEN = Ken
+#. V-Skill I: QUICK STEP
+msgid "KEN.vs1"
+msgstr "快速向前冲刺，可接踢击。用于施压和二择的快速移动。"
+
+#. V-Skill II: RYUSENKYAKU
+msgid "KEN.vs2"
+msgstr "从上方飞下的旋转踢。长按按钮可得到速度较慢但更强的版本。"
+
+#. V-Trigger I: HEAT RUSH
+msgid "KEN.vt1"
+msgstr "限时强化。旋转踢变为飞行道具式攻击，飞行道具可取消接 V技能。"
+
+#. V-Trigger II: SHINRYUKEN
+msgid "KEN.vt2"
+msgstr "一次性。燃烧的昇龙拳，若命中并持续按拳，可逐级升级。"
+
+# KRN = Karin
+#. V-Skill I: MYO-OKEN
+msgid "KRN.vs1"
+msgstr "前方攻击，可抵消一次飞行道具；长按按钮可得到速度较慢但更强的攻击。"
+
+#. V-Skill II: FUDO SOSHO
+msgid "KRN.vs2"
+msgstr "前方攻击，可抵消一次飞行道具并造成压制反击；长按可增加威力。"
+
+#. V-Trigger I: GUREN NO KATA
+msgid "KRN.vt1"
+msgstr "限时强化。解锁她的连击链和一组后续攻击。"
+
+#. V-Trigger II: TENHA NO KATA
+msgid "KRN.vt2"
+msgstr "限时强化。解锁 Yasha Gaeshi，这是一个可从其他招式取消进入的弹反姿态。"
+
+# ZGF = Zangief
+#. V-Skill I: IRON MUSCLE
+msgid "ZGF.vs1"
+msgstr "带有护甲、可吸收攻击并积累V计量表的姿态；长按可在承受攻击的同时向前走。"
+
+#. V-Skill II: SUPER RUSSIAN KICK
+msgid "ZGF.vs2"
+msgstr "起手带护甲的踢击，可长按得到更强版本，助他迅速逼近抓投。"
+
+#. V-Trigger I: CYCLONE LARIAT
+msgid "ZGF.vt1"
+msgstr "限时强化。解锁无视飞行道具的旋转技 Cyclone Lariat，并使 Iron Muscle 的护甲近乎无限。"
+
+#. V-Trigger II: COSSACK MUSCLE
+msgid "ZGF.vt2"
+msgstr "限时强化。提升 Screw Piledriver 和 Borscht Dynamite 的伤害与眩晕，并可从必杀技连入。"
+
+# DSM = Dhalsim
+#. V-Skill I: YOGA FLOAT
+msgid "DSM.vs1"
+msgstr "使他浮空，可在空中漂浮并从上方攻击。有助于躲避下段攻击和改变角度。"
+
+#. V-Skill II: YOGA DEEP BREATH
+msgid "DSM.vs2"
+msgstr "深呼吸，为他的下一次 Yoga Fire 增加额外段数、伤害和优势。"
+
+#. V-Trigger I: YOGA BURNER
+msgid "DSM.vt1"
+msgstr "一次性。发出火焰攻击，在地面留下火毯，烧伤倒地的对手。"
+
+#. V-Trigger II: YOGA SANSARA
+msgid "DSM.vt2"
+msgstr "限时强化。放置一团漂浮火焰，火焰招式接触后会成长为更强的飞行道具。"
+
+# NSH = Nash
+#. V-Skill I: BULLET CLEAR
+msgid "NSH.vs1"
+msgstr "吸收飞行道具以获得计量，并将被击中或防御该攻击的对手拉过来。"
+
+#. V-Skill II: SILENT SHARPNESS
+msgid "NSH.vs2"
+msgstr "为他的下一次 Sonic Scythe 增加额外段数、伤害和眩晕。"
+
+#. V-Trigger I: SONIC MOVE
+msgid "NSH.vt1"
+msgstr "一次性。纳什消失并在新位置出现，可从几种瞬移版本中选择。"
+
+#. V-Trigger II: STEALTH DASH
+msgid "NSH.vt2"
+msgstr "限时强化。冲刺时短暂停止时间，随后接 Stop 或新的 Justice 招式。"
+
+# BLR = Vega
+#. V-Skill I: MATADOR TURN
+msgid "BLR.vs1"
+msgstr "躲闪转身，可穿过高位攻击和飞行道具后攻击。若失去爪子则变弱。"
+
+#. V-Skill II: MATADOR FLIP
+msgid "BLR.vs2"
+msgstr "躲避攻击与飞行道具的翻身，可接 Cosmic Smart 追击。"
+
+#. V-Trigger I: BLOODY KISS
+msgid "BLR.vt1"
+msgstr "一次性。投出玫瑰；若命中，维加会向前以斩击冲出。"
+
+#. V-Trigger II: ALEGRIAS
+msgid "BLR.vt2"
+msgstr "限时强化。解锁 Flash Arch，这是以反击回应物理攻击的弹反姿态。"
+
+# JRI = Juri
+#. V-Skill I: KASATSUSHU
+msgid "JRI.vs1"
+msgstr "可蓄力以提高威力的踢击，快速段不需蓄力。"
+
+#. V-Skill II: FUHA ENZAN
+msgid "JRI.vs2"
+msgstr "蓄力后发出缓慢而宽阔的飞行道具，再次按下即可释放。适合控制空间。"
+
+#. V-Trigger I: FENG SHUI ENGINE alpha
+msgid "JRI.vt1"
+msgstr "限时强化。可将普通技从轻连到重，并无需蓄力即可使用 Fuharenkyaku。"
+
+#. V-Trigger II: FENG SHUI ENGINE beta
+msgid "JRI.vt2"
+msgstr "短时强化。获得全部 Stock，并在双方都在地面时消耗对手的 EX 计量表。"
+
+# BRD = Birdie
+#. V-Skill I: BREAK TIME
+msgid "BRD.vs1"
+msgstr "吃零食积累V计量表。速度较慢，适合对手较远时使用。"
+
+#. V-Skill II: CHEWING TIME
+msgid "BRD.vs2"
+msgstr "嚼口香糖积累V计量表；长按按钮可吹出可被弹飞的泡泡。"
+
+#. V-Trigger I: ENJOY TIME
+msgid "BRD.vt1"
+msgstr "限时强化。部分必杀技伤害提升、移动更快、护甲更坚固；必杀技会消耗计时器。"
+
+#. V-Trigger II: BIRDIE TIME
+msgid "BRD.vt2"
+msgstr "限时强化。加入 Bull Swing 和 Bull Capture，并小幅强化他的连段与 Bull Revenger 招式。"
+
+# RMK = R. Mika
+#. V-Skill I: HEATED MIC PERFORMANCE
+msgid "RMK.vs1"
+msgstr "投出麦克风，强化她的下一次投技或超必杀；长按按钮可蓄积奖励。"
+
+#. V-Skill II: PUMPED UP!
+msgid "RMK.vs2"
+msgstr "格挡攻击并积累计量、反击的弹反。飞行道具和下段攻击仍会穿过。"
+
+#. V-Trigger I: C'MON NADESHIKO!
+msgid "RMK.vt1"
+msgstr "一次性。召唤 Nadeshiko 从上方腹部朝下扑击，可从前方或后方出现。"
+
+#. V-Trigger II: STEEL CHAIR
+msgid "RMK.vt2"
+msgstr "限时强化。Nadeshiko 投出钢椅，并可在时间耗尽前再召唤一次。"
+
+# RSD = Rashid
+#. V-Skill I: FRONT FLIP
+msgid "RSD.vs1"
+msgstr "前空翻，可接空中踢或翻滚攻击。快速接近的方式。"
+
+#. V-Skill II: WING STROKE
+msgid "RSD.vs2"
+msgstr "地面或空中都能使用的快速拍翅攻击，可接 Wing Spike 追击。"
+
+#. V-Trigger I: YSAAR
+msgid "RSD.vt1"
+msgstr "一次性。发出风球，可挡住飞行道具；若他接触到风球，其风系攻击会增强。"
+
+#. V-Trigger II: EASIFA
+msgid "RSD.vt2"
+msgstr "限时强化。强化 Eagle Spike、Whirlwind Shot 和 Front Flip，并加入全屏的 Haboob。"
+
+# FAN = F.A.N.G
+#. V-Skill I: NISHODOKU
+msgid "FAN.vs1"
+msgstr "命中后会在数秒内持续伤害对手的毒射击。"
+
+#. V-Skill II: SODOKUBU
+msgid "FAN.vs2"
+msgstr "格挡攻击并积累计量、随后反击的弹反。飞行道具和超必杀仍会穿过。"
+
+#. V-Trigger I: DOKUNOMU
+msgid "FAN.vt1"
+msgstr "限时强化。毒雾会毒化附近的敌人，并可无需蓄力即可取消接必杀技。"
+
+#. V-Trigger II: KORYO DOKUDA
+msgid "FAN.vt2"
+msgstr "限时强化。强化他的毒球与毒陷阱。"
+
+# LAR = Laura
+#. V-Skill I: VOLTY LINE
+msgid "LAR.vs1"
+msgstr "上段突进，可接 Avante、Esquiva、Finta 等冲刺选择。"
+
+#. V-Skill II: VOLTY SPRINK
+msgid "LAR.vs2"
+msgstr "跃起攻击空中的对手，之后接空中飞行道具或后跟踢。"
+
+#. V-Trigger I: SPARK SHOW
+msgid "LAR.vt1"
+msgstr "限时强化。雷鸣更快，并强化 V技能、Sunset Wheel 与超必杀。"
+
+#. V-Trigger II: SHOCK STANCE
+msgid "LAR.vt2"
+msgstr "限时强化。解锁回避姿态 Matsuda Sway 与投技 Shock Choke。"
+
+# NCL = Necalli
+#. V-Skill I: CULMINATED POWER
+msgid "NCL.vs1"
+msgstr "地面射击，有三种距离版本；命中时积累计量。"
+
+#. V-Skill II: CRAWLING BEAST
+msgid "NCL.vs2"
+msgstr "低姿匍匐，发出缓慢的飞行道具，可躲过大多数飞行道具，命中时使对手崩溃。"
+
+#. V-Trigger I: TORRENT OF POWER
+msgid "NCL.vt1"
+msgstr "限时强化。行走和冲刺更快，伤害增加，并获得新招式 Clouded Mirror。"
+
+#. V-Trigger II: ERUPTION OF POWER
+msgid "NCL.vt2"
+msgstr "整局强化。与第一个触发相同的速度和伤害提升，并加入 Heart of Gold 招式。"
+
+# CMY = Cammy
+#. V-Skill I: AXEL SPIN KNUCKLE
+msgid "CMY.vs1"
+msgstr "旋转拳，可躲避投技和飞行道具，近身时可形成交叉。"
+
+#. V-Skill II: SPINNING ATTACK
+msgid "CMY.vs2"
+msgstr "跳跃旋转，可越过下段攻击，并可形成交叉；反击命中会造成 Crush Counter。"
+
+#. V-Trigger I: DELTA DRIVE
+msgid "CMY.vt1"
+msgstr "限时强化。强化 Spiral Arrow、Cannon Spike 与 Cannon Strike。"
+
+#. V-Trigger II: DELTA ADVANCE
+msgid "CMY.vt2"
+msgstr "限时强化。加入新的冲刺与跳跃追击，用于快速接近和二择。"
+
+# GUL = Guile
+#. V-Skill I: SONIC BLADE
+msgid "GUL.vs1"
+msgstr "即使蹲着也能迅速发出音速波，并可接 Sonic Cross。"
+
+#. V-Skill II: DIVE SONIC
+msgid "GUL.vs2"
+msgstr "带音速波的俯冲攻击，有助于接近；可在蹲下时使用。"
+
+#. V-Trigger I: SOLID PUNCHER
+msgid "GUL.vt1"
+msgstr "限时强化。解锁无需蓄力、可接追击的 Sonic Break，并获得更强的超必杀。"
+
+#. V-Trigger II: KNIFE EDGE
+msgid "GUL.vt2"
+msgstr "限时强化。Flash Kick 加上飞行道具，并可在踢类普通技后无需蓄力使用。"
+
+# IBK = Ibuki
+#. V-Skill I: TENRAI
+msgid "IBK.vs1"
+msgstr "飞行道具式攻击，可接连段；长按按钮可得到更强的完整版本。"
+
+#. V-Skill II: MAKIBISHI
+msgid "IBK.vs2"
+msgstr "在地面撒下铁蒺藜，踩上的对手会被绊倒。"
+
+#. V-Trigger I: ROKUSHAKU HOROKUDAMA
+msgid "IBK.vt1"
+msgstr "一次性。投出定时炸弹，引信随方向变化；苦无可提前引爆。"
+
+#. V-Trigger II: FUMA SHURIKEN
+msgid "IBK.vt2"
+msgstr "一次性。向前或向上投出巨大手里剑，去程和回程都会命中。"
+
+# BSN = Balrog
+#. V-Skill I: KKB
+msgid "BSN.vs1"
+msgstr "躲闪飞行道具的摇摆，可接拳击追击或 Buffalo 招式。"
+
+#. V-Skill II: FFB
+msgid "BSN.vs2"
+msgstr "为他的下一次 Dash Punch 增加额外伤害与眩晕；以取消接入时无需蓄力。"
+
+#. V-Trigger I: CRAZY RUSH
+msgid "BSN.vt1"
+msgstr "限时强化。解锁 Charging Buffalo 与 Bursting Buffalo 冲撞，需消耗 V计时器。"
+
+#. V-Trigger II: NO MERCY
+msgid "BSN.vt2"
+msgstr "限时强化。加入 B3，这是一个造成大量眩晕伤害的投技，需消耗 V计时器。"
+
+# URN = Urien
+#. V-Skill I: METALLIC AURA
+msgid "URN.vs1"
+msgstr "为他的下一次 Chariot Tackle、Violence Knee 或 Dangerous Headbutt 提供一次护甲。"
+
+#. V-Skill II: INDIGNANT THUNDER
+msgid "URN.vs2"
+msgstr "为他的下一次 Metallic Sphere 增加段数、伤害和更大的判定。"
+
+#. V-Trigger I: AEGIS REFLECTOR
+msgid "URN.vt1"
+msgstr "一次性。举起 Aegis 盾牌，数秒内反射飞行道具。"
+
+#. V-Trigger II: TYRANT PRESSURE
+msgid "URN.vt2"
+msgstr "限时强化。效果期间解锁新招式 Tyrant Blaze。"
+
+# ALX = Alex
+#. V-Skill I: OVERHAUL
+msgid "ALX.vs1"
+msgstr "使他的下一次命中攻击变为 Hard Hit，并带来反击命中效果与额外优势。"
+
+#. V-Skill II: OVERCHAIN
+msgid "ALX.vs2"
+msgstr "命中或防御后，允许他的下一个必杀技取消接入另一个必杀技，例如 Flash Chop 接 Elbow Slash。"
+
+#. V-Trigger I: RAGE SHIFT
+msgid "ALX.vt1"
+msgstr "限时强化。解锁可蓄力的重击 Sledge Hammer，也有弹反模式。"
+
+#. V-Trigger II: RAGE BOOST
+msgid "ALX.vt2"
+msgstr "限时强化。解锁两个新投技 Flying DDT 与 Choke Sleeper。"
+
+# Z21 = Akuma
+#. V-Skill I: RAKAN
+msgid "Z21.vs1"
+msgstr "站立或蹲下都能弹反攻击，积累计量，并可接后续攻击。"
+
+#. V-Skill II: KIAI
+msgid "Z21.vs2"
+msgstr "强化他的下一个红色飞行道具，并抵消一次飞行道具的喊声。"
+
+#. V-Trigger I: DOHATSU SHOTEN
+msgid "Z21.vt1"
+msgstr "限时强化。强化飞行道具与升龙拳，并解锁 Shun Goku Satsu。"
+
+#. V-Trigger II: SHIRETSU HASSHI
+msgid "Z21.vt2"
+msgstr "限时强化。可将必杀技互相取消，消耗 V计时器而非 EX 计量表。"
+
+# Z20 = Kolin
+#. V-Skill I: INSIDE SLASH
+msgid "Z20.vs1"
+msgstr "带反击时机的斩击：若此时被攻击命中，她会以击倒反击。"
+
+#. V-Skill II: GLACIER THROUGH
+msgid "Z20.vs2"
+msgstr "命中时冻结对手眩晕槽并将其击倒的冲刺攻击。"
+
+#. V-Trigger I: DIAMOND DUST
+msgid "Z20.vt1"
+msgstr "释放冰爆，冻结对手的眩晕槽；计时期间可再次释放。"
+
+#. V-Trigger II: ABSOLUTE ZERO
+msgid "Z20.vt2"
+msgstr "限时强化。拳击与雪球更强，并加入新招式 Frost Edge 与 Reverse Javelin。"
+
+# Z22 = Ed
+#. V-Skill I: PSYCHO SNATCHER
+msgid "Z22.vs1"
+msgstr "长拳；若命中，Ed 会把自己拉近并将对手击倒。"
+
+#. V-Skill II: PSYCHO SWING
+msgid "Z22.vs2"
+msgstr "躲避飞行道具的低位挥击，另有威力更大的 Psycho Smash 版本。"
+
+#. V-Trigger I: PSYCHO CANNON
+msgid "Z22.vt1"
+msgstr "一次性。发出一道七段的巨大精神冲击波。"
+
+#. V-Trigger II: ENHANCED SNATCHER
+msgid "Z22.vt2"
+msgstr "限时强化。解锁 Ultra Snatcher，可在地面或空中使用的更强 Psycho Snatcher。"
+
+# Z23 = Menat
+#. V-Skill I: SOUL REFLECT
+msgid "Z23.vs1"
+msgstr "吸收飞行道具获得V计量表并将其送回，同时也有近距离攻击。"
+
+#. V-Skill II: SOUL SPIRAL
+msgid "Z23.vs2"
+msgstr "前方螺旋攻击，可与她的宝珠组合。"
+
+#. V-Trigger I: WISDOM OF THOTH
+msgid "Z23.vt1"
+msgstr "限时强化。每个按键获得一颗宝珠，松开对应按键即可发射。"
+
+#. V-Trigger II: PROPHECY OF THOTH
+msgid "Z23.vt2"
+msgstr "限时强化。解锁 Judgement of Thoth，同时以不同弧线发射所有宝珠。"
+
+# Z24 = Abigail
+#. V-Skill I: HUNGABEE
+msgid "Z24.vs1"
+msgstr "上段或下段的弹反姿态，可挡下一次攻击并积累V计量表。会被暴击技破解。"
+
+#. V-Skill II: C'MON SPARE TIRE
+msgid "Z24.vs2"
+msgstr "在身前放下轮胎，可用攻击将其射向对手。"
+
+#. V-Trigger I: MAX POWER
+msgid "Z24.vt1"
+msgstr "限时强化。伤害提升15%，强拳获得蓄力版本，移动类招式护甲更强。"
+
+#. V-Trigger II: HYBRID CHARGE
+msgid "Z24.vt2"
+msgstr "限时强化。解锁 Metro Crash，蓄力冲撞时拥有护甲。"
+
+# Z25 = Zeku
+#. V-Skill I: FUKURO
+msgid "Z25.vs1"
+msgstr "上勾式踢击，可对空并可形成交叉；命中后变为 Young Zeku 并追加一击。"
+
+#. V-Skill II: KUCHIYOSE - SHII
+msgid "Z25.vs2"
+msgstr "召唤鹰在他选择的位置投下爆竹；鹰飞行时他可切换形态。"
+
+#. V-Trigger I: BUSHINRYU SHINGEKIKO
+msgid "Z25.vt1"
+msgstr "限时强化。获得一次性冲刺 Idaten 和一次 V触发攻击。"
+
+#. V-Trigger II: KARURA TENZAN
+msgid "Z25.vt2"
+msgstr "限时强化。无敌的起手技回归，在效果期间变为更慢的第二段 Karura Tenzan。"
+
+# Z26 = Sakura
+#. V-Skill I: HARU KAZE
+msgid "Z26.vs1"
+msgstr "跳跃并有三种后续：下落与两次踢击；她在空中时可躲避飞行道具。"
+
+#. V-Skill II: HARU HAYATE
+msgid "Z26.vs2"
+msgstr "多数普通技可取消接入的快速步伐；按住按钮可接攻击后续。"
+
+#. V-Trigger I: HARU ARASHI
+msgid "Z26.vt1"
+msgstr "限时强化。飞行道具更强，并加入 HP+HK 的新必杀技 Hogasho。"
+
+#. V-Trigger II: SAKURA SENPU
+msgid "Z26.vt2"
+msgstr "限时强化。大幅强化她的升龙拳和旋转踢。"
+
+# Z27 = Blanka
+#. V-Skill I: COWARD CROUCH
+msgid "Z27.vs1"
+msgstr "低身蹲伏躲避高位攻击与飞行道具，随后以抬起或跳跃追击弹出。"
+
+#. V-Skill II: SHOUT OF EARTH
+msgid "Z27.vs2"
+msgstr "前方的吼叫攻击，可蓄力得到更强的第二段。"
+
+#. V-Trigger I: JUNGLE DYNAMO
+msgid "Z27.vt1"
+msgstr "限时强化。强化所有 Blanka Ball 必杀技与 Electric Thunder，并加入 Ground Shave Rolling。"
+
+#. V-Trigger II: LIGHTNING BEAST
+msgid "Z27.vt2"
+msgstr "限时强化。可将 Blanka Ball 招式取消接入 Rolling Cannon，即八向空中翻滚。"
+
+# Z28 = Falke
+#. V-Skill I: PSYCHO TROMBE
+msgid "Z28.vs1"
+msgstr "杖击吸收一次飞行道具获得计量，并可接必杀技。"
+
+#. V-Skill II: PSYCHO MINE
+msgid "Z28.vs2"
+msgstr "在身前或脚下放置地雷，被她的杖或飞行道具接触时爆炸。"
+
+#. V-Trigger I: STAERKEN
+msgid "Z28.vt1"
+msgstr "限时强化。获得 HP+HK 的强化飞行道具，可从必杀技与 V技能中使用。"
+
+#. V-Trigger II: PSYCHO ANGRIFF
+msgid "Z28.vt2"
+msgstr "限时强化。发动本身即为攻击；解锁 Psycho Strum 和 Psycho Klinge，可从普通技接入。"
+
+# Z29 = Cody
+#. V-Skill I: DOUBLE KICK
+msgid "Z29.vs1"
+msgstr "前后各踢一次的双踢。过程中无敌，但会损失少量体力。"
+
+#. V-Skill II: CRIME SWAY
+msgid "Z29.vs2"
+msgstr "躲避攻击与飞行道具的摇摆，之后可接 Wrench Fist 或 Lumber Sweep。"
+
+#. V-Trigger I: SIDE ARM
+msgid "Z29.vt1"
+msgstr "限时强化。装备小刀，改变拳击并加入小刀必杀技，但会失去飞行道具。"
+
+#. V-Trigger II: DIRTY COACH
+msgid "Z29.vt2"
+msgstr "限时强化。装备水管进行重挥击，可反弹飞行道具，并加入投石。"
+
+# Z30 = G
+#. V-Skill I: G BARRIER
+msgid "Z30.vs1"
+msgstr "吸收一次飞行道具的屏障，接触的对手会被击倒；空中也可使用。"
+
+#. V-Skill II: G PROTECTION
+msgid "Z30.vs2"
+msgstr "受到的伤害与眩晕各减少10%，最多三次，倒地后仍保持总统等级。"
+
+#. V-Trigger I: MAXIMUM PRESIDENT
+msgid "Z30.vt1"
+msgstr "限时强化。将总统等级提至最高，并可让必杀技互相取消。"
+
+#. V-Trigger II: DANGEROUS PRESIDENT
+msgid "Z30.vt2"
+msgstr "限时强化。解锁连段延长技 G Explosion 与带护甲的投技 G Rage。"
+
+# Z31 = Sagat
+#. V-Skill I: ANGRY CHARGE
+msgid "Z31.vs1"
+msgstr "强化他的下一次 Tiger Uppercut，增加伤害、击退和浮空可能。"
+
+#. V-Skill II: HANUMAN CHARGE
+msgid "Z31.vs2"
+msgstr "强化他的下一次 Tiger Knee，提升防御优势和浮空可能。"
+
+#. V-Trigger I: TIGER CHARGE
+msgid "Z31.vt1"
+msgstr "限时强化。解锁 Tiger Cannon，一种可从普通技取消的强力五段飞行道具。"
+
+#. V-Trigger II: TIGER ASSAULT
+msgid "Z31.vt2"
+msgstr "限时强化。解锁跟随普通技的 Tiger Spike 与 Tiger Rush 攻击。"
+
+# Z32 = Kage
+#. V-Skill I: SENHA KASSATSU
+msgid "Z32.vs1"
+msgstr "可长按的攻击，对上段、中段攻击和飞行道具有护甲，但挡不住下段。"
+
+#. V-Skill II: SEKIEIKEN
+msgid "Z32.vs2"
+msgstr "可命中地面对手的跃起攻击；长按前方可增加距离。"
+
+#. V-Trigger I: TAIGYAKU MUDO
+msgid "Z32.vt1"
+msgstr "限时强化。大幅强化他的 V技能，并加入瞬移冲刺 Ashura Senku。"
+
+#. V-Trigger II: RIKUDO OSATSU
+msgid "Z32.vt2"
+msgstr "限时强化。解锁瞬移猛击 Misogi 与超必杀 Shun Goku Satsu。"
+
+# Z33 = Poison
+#. V-Skill I: PERFUME SWING
+msgid "Z33.vs1"
+msgstr "向前荡的绳索摆动；距离可调节，她的腿可躲避飞行道具。"
+
+#. V-Skill II: CARTWHEEL
+msgid "Z33.vs2"
+msgstr "穿过对手的翻手倒立；长按按钮可衔接攻击后续。"
+
+#. V-Trigger I: POISON COCKTAIL
+msgid "Z33.vt1"
+msgstr "限时强化。解锁飞行道具攻击 Fire Squall，可在地面或空中使用。"
+
+#. V-Trigger II: TOXIC GLAMOR
+msgid "Z33.vt2"
+msgstr "限时强化。解锁投技 Toxic Hold 与 Toxic Bind。"
+
+# Z34 = E. Honda
+#. V-Skill I: NEKO DAMASHI
+msgid "Z34.vs1"
+msgstr "拍掌抵消一次飞行道具，并可从许多普通技取消接入。"
+
+#. V-Skill II: SUMO SPIRIT
+msgid "Z34.vs2"
+msgstr "强化他的下一次 Hundred Hand Slap，并让任意普通技可取消接入。"
+
+#. V-Trigger I: ONIGAWARA
+msgid "Z34.vt1"
+msgstr "限时强化。解锁 Oni-Daikaku 与 Oni-Muso 招式，需消耗 V计时器。"
+
+#. V-Trigger II: TAJIKARAO
+msgid "Z34.vt2"
+msgstr "限时强化。解锁 Iwato Biraki，一种带护甲的攻击，每次使用消耗 V计时器。"
+
+# Z35 = Lucia
+#. V-Skill I: TAP-KICK
+msgid "Z35.vs1"
+msgstr "多段踢连击，后段可取消接入必杀技、超必杀或 V触发。"
+
+#. V-Skill II: ARREST HEEL
+msgid "Z35.vs2"
+msgstr "高跳并以后跟踢攻击，可躲避飞行道具和部分攻击。"
+
+#. V-Trigger I: BURNING FIGHT
+msgid "Z35.vt1"
+msgstr "限时强化。强化她的 V技能与所有踢系必杀技。"
+
+#. V-Trigger II: WEAPON FURY
+msgid "Z35.vt2"
+msgstr "限时强化。解锁 Tactical Weapon，一种挥棍必杀技。"
+
+# Z36 = Gill
+#. V-Skill I: DIVINE COMET
+msgid "Z36.vs1"
+msgstr "沿三条不同轨迹投下彗星飞行道具；每次 V触发会在火与冰之间变化。"
+
+#. V-Skill II: BLOCKING
+msgid "Z36.vs2"
+msgstr "防御任何攻击（包括暴击技）并获得V计量表的弹反。蹲下为下段版本。"
+
+#. V-Trigger I: PRIMAL FIRE
+msgid "Z36.vt1"
+msgstr "限时强化。火焰模式：点燃敌人，强化他的火焰攻击，并加入三个新的火焰必杀技。"
+
+#. V-Trigger II: ICE OF DOOM
+msgid "Z36.vt2"
+msgstr "限时强化。冰封模式：冻结对手的眩晕槽，并加入 Tree of Frost 与 Delay Freeze Lance。"
+
+# Z37 = Seth
+#. V-Skill I: TANDEN ENGINE
+msgid "Z37.vs1"
+msgstr "吸附式抓投；接一次拳击可盗取对手的一个招式，仅限一次使用。"
+
+#. V-Skill II: TANDEN BOOSTER
+msgid "Z37.vs2"
+msgstr "带有多个后续攻击的姿态，包括滑翔、螺旋与钟摆，前期处于反击命中状态。"
+
+#. V-Trigger I: TANDEN IGNITION
+msgid "Z37.vt1"
+msgstr "限时强化。解锁 Titanomachy 瞬移拳、Mad Spin，以及从其招式取消的其他后续攻击。"
+
+#. V-Trigger II: TANDEN MANEUVER
+msgid "Z37.vt2"
+msgstr "一次性。生成一个球，他可操控最多四次，并在选择的时机引爆。"
+
+# Z38 = Dan
+#. V-Skill I: SAIKYO-STYLE BURAIRUTEN NO KAMAE
+msgid "Z38.vs1"
+msgstr "挑衅式蹲伏，积累V计量表，可接他的飞行道具、升龙拳或 Danretsuken。"
+
+#. V-Skill II: SAIKYO-STYLE OTOKOBOE
+msgid "Z38.vs2"
+msgstr "快速挑衅，可从普通技取消接入，之后还能再次取消接入其他攻击。"
+
+#. V-Trigger I: HAOH GADOKEN
+msgid "Z38.vt1"
+msgstr "一次性。发出横跨全屏的巨大飞行道具；长按可得到破防的更强版本。"
+
+#. V-Trigger II: TENCHI SAIKYO NO KATA
+msgid "Z38.vt2"
+msgstr "限时强化。将他的气功波与 Koryuken 强化为 Haten Gadoken 与 Goh Koryuken。"
+
+# Z39 = Rose
+#. V-Skill I: SOUL FORTUNE
+msgid "Z39.vs1"
+msgstr "抽取随机塔罗牌获得增益，如额外伤害、计量或体力。"
+
+#. V-Skill II: SOUL SATELLITE
+msgid "Z39.vs2"
+msgstr "召唤至多两个宝珠，其作用如同一击飞行道具，并持续数秒。"
+
+#. V-Trigger I: SOUL DIMENSION
+msgid "Z39.vt1"
+msgstr "限时强化。获得地面与空中瞬移，可从多个必杀技取消接入。"
+
+#. V-Trigger II: SOUL ILLUSION
+msgid "Z39.vt2"
+msgstr "短时强化。影子分身会在稍后的瞬间重复她的攻击。"
+
+# Z40 = Oro
+#. V-Skill I: ONIBI
+msgid "Z40.vs1"
+msgstr "投出沿弧线飞过画面的球；按住的方向会改变其轨迹。"
+
+#. V-Skill II: MINOMUSHI
+msgid "Z40.vs2"
+msgstr "包含两段后续（上段攻击与空中下劈）的混淆技。"
+
+#. V-Trigger I: MANRIKITAN
+msgid "Z40.vt1"
+msgstr "限时强化。解锁两个投技 Kishinriki 与 Kishin Kuchu Jigoku Guruma。"
+
+#. V-Trigger II: TENGU STONE
+msgid "Z40.vt2"
+msgstr "限时强化。召唤物体，在他的攻击后作为额外段数跟进；每次命中会缩短计时器。"
+
+# Z41 = Akira
+#. V-Skill I: KIKO RENSEI
+msgid "Z41.vs1"
+msgstr "强化她的下一个 Kiko Kai 飞行道具。"
+
+#. V-Skill II: TSUTENDA
+msgid "Z41.vs2"
+msgstr "将对手高高挑起的上踢，可接空中连段和超级跳追击。"
+
+#. V-Trigger I: OTOKO NO SENAKA
+msgid "Z41.vt1"
+msgstr "一次性。两段冲撞攻击，先击溃再击飞，使对手可被连段。"
+
+#. V-Trigger II: HATEN NO KAMAE
+msgid "Z41.vt2"
+msgstr "限时强化。进入架势，可使用 Ha no Sogeki 与 Ha no Renbu 后续。"
+
+# Z42 = Luke
+#. V-Skill I: HARD SHOT
+msgid "Z42.vs1"
+msgstr "强化他的下一个 Flash Knuckle，伤害和优势提升；被击倒后强化仍保留。"
+
+#. V-Skill II: SUPPRESSOR
+msgid "Z42.vs2"
+msgstr "向后拉回的攻击，可反击投技，并在反击时造成更大伤害。"
+
+#. V-Trigger I: FULLY ARMED
+msgid "Z42.vt1"
+msgstr "限时强化。造成伤害时 V计量表会回充；解锁 Rock Smasher 与 Thermobaric Smash。"
+
+#. V-Trigger II: VANGUARD
+msgid "Z42.vt2"
+msgstr "限时强化。他的 Flash Knuckle 可取消接入另一个不同强度的 Flash Knuckle。"

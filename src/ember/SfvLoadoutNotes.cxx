@@ -1,8 +1,13 @@
 #include "ember/SfvLoadoutNotes.hxx"
 
+#include "common/Localization.hxx"
 #include "ember/SfvCatalog.hxx"
 
 #include <optional>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
 
 namespace sfve::adapter {
 
@@ -22,6 +27,45 @@ struct EmbeddedCatalog {
 // the LoadoutCatalogs table of them.
 #include "SfvLoadoutCatalogs.inc"
 
+constexpr const char* kEnglishTag = "en";
+
+// The embedded text of one catalog, every part run together.
+std::string CatalogSource(const EmbeddedCatalog& catalog)
+{
+	std::string text;
+	for (const char* const* part = catalog.parts; *part; ++part) text += *part;
+	return text;
+}
+
+// Every embedded catalog parsed once, by tag. A catalog that does not parse
+// stays out of the map (the tests parse every catalog too, so that cannot ship).
+const std::unordered_map<std::string, sf4e::loc::Catalog>& ParsedCatalogs()
+{
+	static const std::unordered_map<std::string, sf4e::loc::Catalog> catalogs = [] {
+		std::unordered_map<std::string, sf4e::loc::Catalog> parsed;
+		for (const EmbeddedCatalog* catalog = LoadoutCatalogs; catalog->tag; ++catalog) {
+			sf4e::loc::Catalog entries;
+			std::string error;
+			if (sf4e::loc::testing::ParsePo(CatalogSource(*catalog), entries, error)) {
+				parsed.emplace(catalog->tag, std::move(entries));
+			}
+		}
+		return parsed;
+	}();
+	return catalogs;
+}
+
+// The note under `key` in the catalog for `tag`; empty when that catalog or
+// its entry is missing or empty.
+std::string NoteIn(std::string_view tag, const std::string& key)
+{
+	const auto& catalogs = ParsedCatalogs();
+	const auto catalog = catalogs.find(std::string(tag));
+	if (catalog == catalogs.end()) return {};
+	const auto entry = catalog->second.find(key);
+	return entry == catalog->second.end() ? std::string() : entry->second;
+}
+
 } // namespace
 
 std::string LoadoutNoteKey(std::string_view fighterCode, picks::LoadoutPart part, int choice)
@@ -33,11 +77,13 @@ std::string LoadoutNoteKey(std::string_view fighterCode, picks::LoadoutPart part
 	return key;
 }
 
-// Stream D: the lookup (the active language's catalog, then English). Until
-// then every note is empty.
-std::string LoadoutNoteFor(std::string_view, picks::LoadoutPart, int)
+std::string LoadoutNoteFor(std::string_view fighterCode, picks::LoadoutPart part, int choice)
 {
-	return {};
+	const std::string key = LoadoutNoteKey(fighterCode, part, choice);
+	if (key.empty()) return {};
+	std::string note = NoteIn(sf4e::loc::Tag(sf4e::loc::Active()), key);
+	if (note.empty()) note = NoteIn(kEnglishTag, key);
+	return note;
 }
 
 std::string LoadoutNote(int fighter, picks::LoadoutPart part, int choice)
@@ -49,9 +95,7 @@ std::optional<std::string> LoadoutCatalogText(std::string_view tag)
 {
 	for (const EmbeddedCatalog* catalog = LoadoutCatalogs; catalog->tag; ++catalog) {
 		if (tag != catalog->tag) continue;
-		std::string text;
-		for (const char* const* part = catalog->parts; *part; ++part) text += *part;
-		return text;
+		return CatalogSource(*catalog);
 	}
 	return std::nullopt;
 }
