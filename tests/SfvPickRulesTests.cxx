@@ -513,11 +513,13 @@ TEST_CASE("this player's stored pick falls back to one they can ready, and Rando
 	CHECK(rolled.costume == 0);
 }
 
-// The only test that picks a dummy: until one is picked, the dummy follows
-// the player's pick, which no other test relies on.
+// Until a dummy is picked, the dummy follows the player's pick. Other tests
+// in this process pick dummies (the Random and Eleven cases), so this one
+// starts from no dummy picked, whatever ran before it.
 TEST_CASE("Training's dummy is a pick of its own, fitted as the player's, and the player's until one is picked")
 {
 	FillTestCatalog();
+	ForgetDummyForTest();
 	PlayerPick player;
 	player.pick = PickOf(1, 0, 1);
 	player.stage = 2;

@@ -715,6 +715,8 @@ TEST_CASE("Random takes each roll once into the player's pick, in the fighter's 
 	CHECK_FALSE(PickRandom());
 	// The dummy's screen has no Random card.
 	CHECK_FALSE(HasRow(SfvSelectionScreen::BoardRows(CurrentDummy(), false, true, false, false), "random-fighter"));
+	// No dummy picked, as the other tests expect to find it.
+	ForgetDummyForTest();
 }
 
 TEST_CASE("the board places the shipped table's tiles where the game's own select screen draws them")

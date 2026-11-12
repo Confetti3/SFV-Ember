@@ -48,6 +48,9 @@ PlayerPick SetPick(const PlayerPick& pick);
 // pick is not saved either.
 PlayerPick CurrentDummy();
 PlayerPick SetDummy(const PlayerPick& dummy);
+// For the tests, which share one process: no dummy picked, so the dummy is
+// the player's pick again until SetDummy.
+void ForgetDummyForTest();
 
 // The pick in a room command (Ready, the room's pick updates), as the wire
 // carries it, with this copy's player's voice for its fighter (SfvCatalog's
