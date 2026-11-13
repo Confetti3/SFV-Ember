@@ -646,7 +646,9 @@ TEST_CASE("in a battle nothing loads, nothing grows, and the pictures go once it
 	for (int i = 0; i < 60 * 30; i++) {
 		step(false);
 		CHECK(cycle.Alive() <= aliveAtStart);
-		CHECK_FALSE(watch.DrawnLastFrame());
+		// The battle's first frame still has the menu's last frame, which was
+		// drawn, as the one just presented; from the second on it is not drawn.
+		if (i > 0) CHECK_FALSE(watch.DrawnLastFrame());
 	}
 	CHECK(loads == loadsAtStart);
 	CHECK(cycle.Alive() == 0);
