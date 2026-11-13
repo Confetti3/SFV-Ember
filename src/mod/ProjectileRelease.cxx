@@ -5,6 +5,7 @@
 #include "mod/Log.hxx"
 #include "mod/ModConfig.hxx"
 #include "mod/SfvOffsets.hxx"
+#include "mod/VersusLaunch.hxx"
 
 #include <map>
 #include <string>
@@ -44,15 +45,22 @@ constexpr uint32_t kTickPhases = 2 | 4; // Tick and PostTick: the battle's simul
 uint64_t h_AddBattleTask(void* list, const void* task, uint32_t order, uint32_t phases, const char* name, int32_t gameThread)
 {
 	int32_t thread = ProjectileTaskThread(name, gameThread);
-	const int placement = Config().battleTasks;
-	if (placement >= 1 && (phases & kTickPhases) != 0) thread = 1;
-	if (placement == 2 && name && strncmp(name, "Chara ", 6) == 0) {
+	// The battle's units register their tasks while it is set up, on the game
+	// thread, before it binds: a room's or a replay's launch is still loading
+	// it then (LaunchedBattleLoading), which tells it from Training.
+	const ModConfig& config = Config();
+	const bool session = SessionBattleSetUp(config.mode, config.room, LaunchedBattleLoading());
+	const TickTasks placement = ChooseTickTasks(config, session);
+	if (placement != TickTasks::AsTheGamePlaces && (phases & kTickPhases) != 0) thread = 1;
+	if (placement == TickTasks::P2First && name && strncmp(name, "Chara ", 6) == 0) {
 		const int count = ++s_fighterTaskCount[name];
 		if (count % 2 == 1 && (order & 0xF) < 0xF) order++; // P1's: after P2's in the same group
 	}
-	if (placement >= 1 && name && strcmp(name, "Chara PreInput") == 0) {
-		Log("tasks: %s (order %08x, phases %u) placed on the battle's thread%s", name, order, phases,
-			placement == 2 ? ", P2's fighter tasks first" : "");
+	// One line per fighter unit a battle sets up (its first fighter task).
+	if (name && strcmp(name, "Chara PreInput") == 0) {
+		Log("tasks: %s (order %08x, phases %u): the tick's tasks %s (%s%s)", name, order, phases, TickTasksName(placement),
+			session ? "a battle that rolls back" : "a battle of this copy's own",
+			config.battleTasks >= 0 && config.battleTasks <= 2 ? "; -sfve_tasks" : "");
 	}
 	return o_addBattleTask(list, task, order, phases, name, thread);
 }
