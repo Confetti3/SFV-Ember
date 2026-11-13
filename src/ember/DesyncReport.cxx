@@ -522,9 +522,13 @@ PointerCensus TakeCensus(const Facts& facts, PointerEnv& env, bool (*looksLikeAd
 			} else if (!target.module.empty()) {
 				word.cls = PointerClass::Module;
 				word.reference = value - target.moduleBase;
-				const auto found = std::find(census.modules.begin(), census.modules.end(), target.module);
+				// Another module is named by its size only: its file name (a
+				// driver, an overlay, an antivirus hook) says what this PC runs
+				// and is not the report's to carry.
+				const std::string label = "module, " + std::to_string(target.allocSize) + " bytes";
+				const auto found = std::find(census.modules.begin(), census.modules.end(), label);
 				word.refIndex = static_cast<std::uint32_t>(found - census.modules.begin());
-				if (found == census.modules.end()) census.modules.push_back(target.module);
+				if (found == census.modules.end()) census.modules.push_back(label);
 			} else if (const Extent* in = within(regions, value)) {
 				word.cls = PointerClass::Region;
 				word.reference = value - in->address;

@@ -685,7 +685,8 @@ TEST_CASE("the pointer census classes every address-like word of a peer-hashed r
 	CHECK(w[5].cls == PointerClass::Module);
 	CHECK(w[5].reference == 0x1000);
 	REQUIRE(census.modules.size() == 1);
-	CHECK(census.modules[0] == "foo.dll");
+	// Its size, not its file name.
+	CHECK(census.modules[0] == "module, 1048576 bytes");
 	CHECK(w[6].region == 3);
 	CHECK(w[6].offset == 4);
 	CHECK(w[6].cls == PointerClass::Heap);
@@ -703,9 +704,10 @@ TEST_CASE("the pointer census classes every address-like word of a peer-hashed r
 	CHECK(FileValue(file, at + 22, 8) == 0x800);
 	at += 30;
 	CHECK(FileValue(file, at, 4) == 1); // one module
-	CHECK(FileValue(file, at + 4, 2) == 7);
-	CHECK(file.substr(at + 6, 7) == "foo.dll");
-	at += 13;
+	CHECK(FileValue(file, at + 4, 2) == 21);
+	CHECK(file.substr(at + 6, 21) == "module, 1048576 bytes");
+	CHECK(file.find("foo.dll") == std::string::npos);
+	at += 27;
 	CHECK(FileValue(file, at, 8) == 0x7FF600000000ull);
 	CHECK(FileValue(file, at + 8, 8) == 0x100000);
 	CHECK(FileValue(file, at + 16, 1) == 0); // not truncated

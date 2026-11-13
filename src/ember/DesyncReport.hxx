@@ -196,7 +196,7 @@ std::vector<ScriptFacts> ScriptsAt(const Facts& facts);
 enum class PointerClass : std::uint8_t {
 	Unmapped = 0, // not mapped in this process when the census was taken
 	Image = 1,    // in the exe: reference is the rva
-	Module = 2,   // in another module: reference the rva, refIndex the module's number in modules
+	Module = 2,   // in another module: reference the offset in it, refIndex the module's number in modules (its size is its name)
 	Region = 3,   // in a region of the saved state: reference the offset, refIndex the region's number
 	Object = 4,   // in a named object (RegionNames): reference the offset, refIndex the object's number
 	Heap = 5,     // anywhere else mapped: reference the offset from the allocation's base
@@ -215,7 +215,7 @@ struct CensusWord {
 };
 struct PointerCensus {
 	std::vector<CensusObject> objects;
-	std::vector<std::string> modules; // names of the modules words point into (class Module)
+	std::vector<std::string> modules; // the modules words point into (class Module), each "module, <size> bytes": never a file name
 	std::uint64_t imageBase = 0;
 	std::uint64_t imageSize = 0;
 	bool truncated = false; // more words than kCensusWords: the rest are not listed
