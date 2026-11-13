@@ -340,4 +340,37 @@ bool Cycle::Exhausted() const
 	return entries_ == 0 || failedCount_ >= entries_;
 }
 
+void DrawWatch::Presented(std::uint64_t frame, double now)
+{
+	frame_ = frame;
+	now_ = now;
+}
+
+void DrawWatch::Asked()
+{
+	asked_ = true;
+	askedAt_ = now_;
+}
+
+void DrawWatch::Drawn()
+{
+	drawn_ = true;
+	drawnFrame_ = frame_;
+}
+
+bool DrawWatch::DrawnLastFrame() const
+{
+	return drawn_ && frame_ - drawnFrame_ <= 1;
+}
+
+bool DrawWatch::AskedWithin(double seconds, double now) const
+{
+	return asked_ && now - askedAt_ <= seconds;
+}
+
+bool DrawWatch::IdleFor(double seconds, double now) const
+{
+	return !asked_ || now - askedAt_ >= seconds;
+}
+
 } // namespace sfve::backdrop

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <functional>
 #include <iterator>
@@ -545,4 +546,114 @@ TEST_CASE("a picture covers the screen at its own shape")
 	CHECK(uv.u1 == 1.f);
 	uv = CoverFit(1920, 1080, 0, 1080);
 	CHECK(uv.v1 == 1.f);
+}
+
+TEST_CASE("drawn means drawn in the frame just presented, and goes false once a frame passes without a draw")
+{
+	DrawWatch watch;
+	CHECK_FALSE(watch.DrawnLastFrame());
+	CHECK_FALSE(watch.AskedWithin(kAskedSeconds, 0));
+	CHECK(watch.IdleFor(kIdleReleaseSeconds, 0));
+	// Shown at the menu: asked and drawn each frame.
+	double now = 100;
+	std::uint64_t frame = 0;
+	for (int i = 0; i < 60; i++) {
+		watch.Presented(++frame, now += kFrame);
+		watch.Asked();
+		watch.Drawn();
+		CHECK(watch.DrawnLastFrame());
+	}
+	// The next frame presented, its draw not made yet: the frame just
+	// presented was drawn.
+	watch.Presented(++frame, now += kFrame);
+	CHECK(watch.DrawnLastFrame());
+	// A frame without a draw (the shell closed, a battle): no longer drawn,
+	// and it stays so however long nothing is drawn.
+	watch.Presented(++frame, now += kFrame);
+	CHECK_FALSE(watch.DrawnLastFrame());
+	for (int i = 0; i < 600; i++) {
+		watch.Presented(++frame, now += kFrame);
+		CHECK_FALSE(watch.DrawnLastFrame());
+	}
+}
+
+TEST_CASE("asked for but with nothing to draw yet, the backdrop is wanted, not drawn")
+{
+	DrawWatch watch;
+	watch.Presented(1, 5);
+	watch.Asked();
+	CHECK_FALSE(watch.DrawnLastFrame());
+	CHECK(watch.AskedWithin(kAskedSeconds, 5.5));
+	CHECK_FALSE(watch.IdleFor(kIdleReleaseSeconds, 9));
+}
+
+TEST_CASE("the loader's gate and the release go by the wall clock, which runs on when nothing is drawn")
+{
+	DrawWatch watch;
+	watch.Presented(10, 50);
+	watch.Asked();
+	watch.Drawn();
+	CHECK(watch.AskedWithin(kAskedSeconds, 50.9));
+	CHECK(watch.AskedWithin(kAskedSeconds, 51.0));
+	CHECK_FALSE(watch.AskedWithin(kAskedSeconds, 51.1));
+	CHECK_FALSE(watch.IdleFor(kIdleReleaseSeconds, 54.9));
+	CHECK(watch.IdleFor(kIdleReleaseSeconds, 55.0));
+	// Shown again: wanted again, not idle.
+	watch.Presented(400, 60);
+	watch.Asked();
+	CHECK(watch.AskedWithin(kAskedSeconds, 60.5));
+	CHECK_FALSE(watch.IdleFor(kIdleReleaseSeconds, 61));
+	CHECK(kAskedSeconds <= 1.0);
+	CHECK(kIdleReleaseSeconds > kAskedSeconds);
+}
+
+TEST_CASE("in a battle nothing loads, nothing grows, and the pictures go once it has not been shown for a while")
+{
+	// As SfvBackdrop runs the two: the shell's frames ask for the backdrop and
+	// move the cycle; the loader loads only while the frame allows it and it
+	// was asked within the last second; a frame finding it idle lets
+	// everything go.
+	Cycle cycle(8, 5, Timing{4, 0.5, 0.5, 0.5});
+	DrawWatch watch;
+	std::set<int> alive;
+	double now = 0;
+	std::uint64_t frame = 0;
+	int loads = 0;
+	const auto step = [&](bool shown) {
+		watch.Presented(++frame, now += kFrame);
+		if ((cycle.Current() >= 0 || cycle.NextReady()) && watch.IdleFor(kIdleReleaseSeconds, now)) cycle.Reset();
+		for (int entry : cycle.TakeReleases()) CHECK(alive.erase(entry) == 1);
+		if (shown && watch.AskedWithin(kAskedSeconds, now)) {
+			if (const std::optional<int> wanted = cycle.Wanted()) {
+				cycle.Started(*wanted);
+				loads++;
+				if (cycle.Loaded(*wanted, true)) alive.insert(*wanted);
+			}
+		}
+		if (shown) {
+			watch.Asked();
+			cycle.Advance(kFrame);
+			for (int entry : cycle.TakeReleases()) CHECK(alive.erase(entry) == 1);
+			if (!cycle.Shown().Empty()) watch.Drawn();
+		}
+		CHECK(cycle.Alive() <= 2);
+	};
+	for (int i = 0; i < 60 * 20; i++) step(true);
+	REQUIRE(cycle.Current() >= 0);
+	const int aliveAtStart = cycle.Alive();
+	// The battle: frames presented, the backdrop never asked for.
+	const int loadsAtStart = loads;
+	for (int i = 0; i < 60 * 30; i++) {
+		step(false);
+		CHECK(cycle.Alive() <= aliveAtStart);
+		CHECK_FALSE(watch.DrawnLastFrame());
+	}
+	CHECK(loads == loadsAtStart);
+	CHECK(cycle.Alive() == 0);
+	CHECK(alive.empty());
+	CHECK(cycle.Shown().Empty());
+	// Back at the menu: the next picture loads and fades in.
+	for (int i = 0; i < 60 * 5; i++) step(true);
+	CHECK(cycle.Current() >= 0);
+	CHECK(watch.DrawnLastFrame());
 }

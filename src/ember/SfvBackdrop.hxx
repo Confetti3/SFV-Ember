@@ -14,8 +14,12 @@
 //   loads the fighters' faces; its Direct3D texture is kept with a reference
 //   of ours and the game's object is not (the game's garbage collection may
 //   take it, the pixels stay ours until let go). At most two pictures are
-//   alive, the one shown and the next; the one faded out is let go at once.
-//   A picture that does not load, or loads smaller than 640x360, is skipped.
+//   alive, the one shown and the next; the one faded out is let go at once,
+//   and both go once the backdrop has not been asked for in 5 s (the shell
+//   closed, a battle). A picture that does not load, or loads smaller than
+//   640x360, is skipped. When it was last asked for and drawn is kept on
+//   the presented frames and the wall clock (backdrop::DrawWatch), never on
+//   the cycle's clock, which stops while nothing is drawn.
 // - Drawing: behind the shell's pages (ui::SetMenuBackdropDrawer), only
 //   where the shell allows it this frame (BackdropFrame), on the render
 //   thread. Where nothing has loaded yet, or the setting is off, the shell's
@@ -26,12 +30,14 @@
 //   settings folder.
 // - The pipe (development builds): `backdrop step` fades to the next picture
 //   as soon as it has loaded, `backdrop on|off` sets the setting, and
-//   `backdrop report [sheets] <folder>` tries every path of the art set
-//   (used or not) and writes backdrop-report.tsv there (path, loaded or why
-//   not, width, height, format, load time), with `sheets` also small
-//   contact sheets of the pictures as the main menu shows them
-//   (backdrop-sheet-NN.bmp, 144 tiles of 128x72 each). Nothing the report
-//   reads is kept. Status field "backdrop".
+//   `backdrop report [sheets|plain] <folder>` tries every path of the art
+//   set (used or not) and writes backdrop-report.tsv there (path, loaded or
+//   why not, width, height, format, load time), with `sheets` also small
+//   contact sheets of the pictures as the main menu shows them, with
+//   `plain` as they are (no scrim, no tint) (backdrop-sheet-NN.bmp, 144
+//   tiles of 128x72 each). Nothing the report reads is kept. Status field
+//   "backdrop": "drawn" is drawn in the frame just presented, "hasPicture"
+//   a picture ready to show, "loads" the loads started this session.
 
 #include <string>
 

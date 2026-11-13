@@ -48,9 +48,11 @@ using backdrop::Cycle;
 constexpr int kResourceFrames = 120;
 // Smaller than this is not a full-screen picture: skipped.
 constexpr int kLeastWidth = 640, kLeastHeight = 360;
-// The backdrop counts as on screen this long after the shell last drew it:
-// the loader loads only then.
-constexpr ULONGLONG kWantedMs = 1000;
+// The wall clock, in seconds, for the draw watch (backdrop::DrawWatch).
+double Seconds()
+{
+	return (double)GetTickCount64() / 1000.0;
+}
 
 // --- The player's choice (interface.json) ---
 
@@ -112,8 +114,12 @@ std::map<int, Picture> s_pictures;
 bool s_allowed = false; // render thread: the shell allows the backdrop this frame
 std::string s_screen;   // render thread: the shell's screen this frame
 int s_advancedFrame = -1;
-std::atomic<ULONGLONG> s_wantedAt{0};
+// When the backdrop was last asked for and drawn, by presented frame and wall
+// clock (render thread writes; the loader and the status read).
+backdrop::DrawWatch s_watch;
+std::uint64_t s_presented = 0;
 double s_lastLoadMs = 0;
+int s_loadsStarted = 0;
 // The scrim, easing from one kind of page's to another's (render thread).
 backdrop::Scrim s_scrim, s_scrimFrom, s_scrimTo;
 float s_scrimProgress = 1;
@@ -234,7 +240,7 @@ bool DrawBackdrop(ImDrawList* draw, ImVec2 min, ImVec2 max)
 	// The clock runs once a frame, while the backdrop is on screen.
 	if (ImGui::GetFrameCount() != s_advancedFrame) {
 		s_advancedFrame = ImGui::GetFrameCount();
-		s_wantedAt = GetTickCount64();
+		s_watch.Asked();
 		const float seconds = ImGui::GetIO().DeltaTime;
 		s_cycle.Advance(seconds);
 		// What the step let go was not drawn this frame: the first draw is this one.
@@ -255,6 +261,7 @@ bool DrawBackdrop(ImDrawList* draw, ImVec2 min, ImVec2 max)
 	}
 	draw->AddRectFilledMultiColor(min, max, Ink(s_scrim.topLeft), Ink(s_scrim.topRight), Ink(s_scrim.bottomRight),
 		Ink(s_scrim.bottomLeft));
+	s_watch.Drawn();
 	return true;
 }
 
@@ -278,7 +285,7 @@ struct ReportRow {
 };
 
 struct Report {
-	bool running = false, sheets = false, loadingNow = false;
+	bool running = false, sheets = false, plain = false, loadingNow = false;
 	std::filesystem::path folder;
 	std::vector<backdrop::ListedPath> paths;
 	size_t next = 0;
@@ -343,10 +350,11 @@ void CloseReportLocked()
 }
 
 // Render thread: one picture as the main menu shows it (cover fit, the art's
-// tint, the column page's scrim over the theme's ink), averaged down into its
-// tile. False (the tile left dark) for a format other than 8-bit RGBA or
-// BGRA, or a copy that cannot be read.
-bool SampleTile(const mod::GameTexture& texture, std::vector<uint8_t>& sheet, int cell, std::string& why)
+// tint, the column page's scrim over the theme's ink), or with `plain` as it
+// is (cover fit only), averaged down into its tile. False (the tile left
+// dark) for a format other than 8-bit RGBA or BGRA, or a copy that cannot be
+// read.
+bool SampleTile(const mod::GameTexture& texture, std::vector<uint8_t>& sheet, int cell, bool plain, std::string& why)
 {
 	const overlay::grab::PixelFormat layout = overlay::grab::PixelFormatOf(texture.format);
 	if (layout != overlay::grab::PixelFormat::B8G8R8A8 && layout != overlay::grab::PixelFormat::R8G8B8A8) {
@@ -378,7 +386,7 @@ bool SampleTile(const mod::GameTexture& texture, std::vector<uint8_t>& sheet, in
 		const backdrop::Tint tint = backdrop::kArtTint;
 		const unsigned ink = ::ember::ProductTheme().ink;
 		const float inkRgb[3] = {(float)(ink >> 16 & 255), (float)(ink >> 8 & 255), (float)(ink & 255)};
-		const float tintRgb[3] = {tint.r / 255.f, tint.g / 255.f, tint.b / 255.f};
+		const float tintRgb[3] = {plain ? 1.f : tint.r / 255.f, plain ? 1.f : tint.g / 255.f, plain ? 1.f : tint.b / 255.f};
 		const int cellX = cell % kSheetColumns * kTileWidth, cellY = cell / kSheetColumns * kTileHeight;
 		for (int ty = 0; ty < kTileHeight; ty++) {
 			const float v0 = uv.v0 + (uv.v1 - uv.v0) * ty / kTileHeight, v1 = uv.v0 + (uv.v1 - uv.v0) * (ty + 1) / kTileHeight;
@@ -399,7 +407,7 @@ bool SampleTile(const mod::GameTexture& texture, std::vector<uint8_t>& sheet, in
 					}
 				}
 				const double count = (double)(y1 - y0) * (x1 - x0);
-				const float a = backdrop::ScrimAt(scrim, (tx + .5f) / kTileWidth, (ty + .5f) / kTileHeight);
+				const float a = plain ? 0.f : backdrop::ScrimAt(scrim, (tx + .5f) / kTileWidth, (ty + .5f) / kTileHeight);
 				uint8_t* out = &sheet[((size_t)(cellY + ty) * kSheetWidth + (size_t)(cellX + tx)) * 4];
 				for (int c = 0; c < 3; c++) {
 					const float art = (float)(sum[c] / count) * tintRgb[c];
@@ -426,15 +434,17 @@ void ReportRenderWork()
 	std::optional<mod::GameTexture> tile;
 	ReportRow row;
 	int cell = 0;
+	bool plain = false;
 	{
 		std::lock_guard lock(s_reportMutex);
 		if (!s_report.running || !s_report.tile) return;
 		tile = s_report.tile;
 		row = s_report.row;
 		cell = s_report.cells;
+		plain = s_report.plain;
 	}
 	std::string why;
-	const bool sampled = SampleTile(*tile, s_report.sheet, cell, why);
+	const bool sampled = SampleTile(*tile, s_report.sheet, cell, plain, why);
 	tile->texture->Release();
 	std::lock_guard lock(s_reportMutex);
 	if (sampled) {
@@ -522,13 +532,17 @@ std::string StartReport(const std::string& args)
 		return "error the load report is for development builds";
 	} else {
 		std::string rest = args;
-		bool sheets = false;
+		// sheets: the pictures as Home shows them; plain: as they are.
+		bool sheets = false, plain = false;
 		if (rest.rfind("sheets ", 0) == 0) {
 			sheets = true;
 			rest = rest.substr(7);
+		} else if (rest.rfind("plain ", 0) == 0) {
+			sheets = plain = true;
+			rest = rest.substr(6);
 		}
 		while (!rest.empty() && rest.front() == ' ') rest.erase(rest.begin());
-		if (rest.empty()) return "error usage: backdrop report [sheets] <folder>";
+		if (rest.empty()) return "error usage: backdrop report [sheets|plain] <folder>";
 		std::lock_guard lock(s_reportMutex);
 		if (s_report.running) return "error a report is running";
 		std::wstring wide((size_t)MultiByteToWideChar(CP_UTF8, 0, rest.data(), (int)rest.size(), nullptr, 0), L'\0');
@@ -539,6 +553,7 @@ std::string StartReport(const std::string& args)
 		Report fresh;
 		fresh.folder = folder;
 		fresh.sheets = sheets;
+		fresh.plain = plain;
 		fresh.paths = backdrop::AllPaths(backdrop::EmbeddedArtSet());
 		if (sheets) fresh.sheet.assign((size_t)kSheetWidth * kSheetHeight * 4, 0);
 		std::ofstream file(folder / L"backdrop-report.tsv", std::ios::binary | std::ios::trunc);
@@ -547,7 +562,8 @@ std::string StartReport(const std::string& args)
 		file.close();
 		fresh.running = true;
 		s_report = std::move(fresh);
-		mod::Log("backdrop: report of %zu paths into %ls%s", s_report.paths.size(), folder.c_str(), sheets ? ", with contact sheets" : "");
+		mod::Log("backdrop: report of %zu paths into %ls%s", s_report.paths.size(), folder.c_str(),
+			plain ? ", with plain contact sheets" : sheets ? ", with contact sheets" : "");
 		return "ok " + std::to_string(s_report.paths.size()) + " paths";
 	}
 }
@@ -623,11 +639,17 @@ void Pump()
 		}
 		// One load at a time, only while the backdrop is on screen and the
 		// game loads nothing, and none while the report runs.
-		if (inFlight || !s_enabled || gameLoading || GetTickCount64() - s_wantedAt.load() > kWantedMs || reporting) return;
+		// The shell allowed the backdrop in the frame just presented and asked
+		// for it within the last second (DrawWatch, on the present and wall
+		// clocks, which never stop with the backdrop's own).
+		if (inFlight || !s_enabled || gameLoading || reporting || !s_allowed ||
+			!s_watch.AskedWithin(backdrop::kAskedSeconds, Seconds()))
+			return;
 		const std::optional<int> wanted = s_cycle.Wanted();
 		if (!wanted) return;
 		entry = *wanted;
 		s_cycle.Started(entry);
+		s_loadsStarted++;
 		path = backdrop::ObjectPathOf(PathOf(entry));
 	}
 	const auto started = std::chrono::steady_clock::now();
@@ -659,7 +681,7 @@ std::string Command(const std::string& args)
 		return ShowSfvBackdrop(args == "on") ? "ok " + args : "error the choice could not be saved";
 	}
 	if (args.rfind("report", 0) == 0) return StartReport(args.size() > 6 ? args.substr(7) : std::string());
-	return "error usage: backdrop step | on | off | report [sheets] <folder>";
+	return "error usage: backdrop step | on | off | report [sheets|plain] <folder>";
 }
 
 std::string StatusJson()
@@ -672,7 +694,8 @@ std::string StatusJson()
 		snprintf(numbers, sizeof numbers, ",\"held\":%.1f,\"alive\":%d,\"failed\":%d,\"entries\":%d,\"lastLoadMs\":%.1f", s_cycle.Held(),
 			s_cycle.Alive(), s_cycle.Failed(), s_cycle.Entries(), s_lastLoadMs);
 		json = std::string("{\"enabled\":") + (s_enabled ? "true" : "false") + ",\"allowed\":" + (s_allowed ? "true" : "false") +
-			",\"drawn\":" + (frame.Empty() ? "false" : "true") + ",\"current\":" + mod::JsonString(PathOf(s_cycle.Current())) +
+			",\"drawn\":" + (s_watch.DrawnLastFrame() ? "true" : "false") + ",\"hasPicture\":" + (frame.Empty() ? "false" : "true") +
+			",\"loads\":" + std::to_string(s_loadsStarted) + ",\"current\":" + mod::JsonString(PathOf(s_cycle.Current())) +
 			",\"next\":" + mod::JsonString(PathOf(s_cycle.Next())) + ",\"nextReady\":" + (s_cycle.NextReady() ? "true" : "false") +
 			",\"fading\":" + (s_cycle.Fading() ? "true" : "false") + numbers + ",\"exhausted\":" + (s_cycle.Exhausted() ? "true" : "false") +
 			",\"page\":" + mod::JsonString(backdrop::PageKindName(backdrop::PageKindOf(s_screen)));
@@ -715,8 +738,15 @@ void BackdropFrame(bool allowed, const std::string& screen)
 {
 	{
 		std::lock_guard lock(s_mutex);
+		s_watch.Presented(++s_presented, Seconds());
 		s_allowed = allowed;
 		s_screen = screen;
+		// Not asked for a while (the shell closed, a battle): both pictures go,
+		// and the next fades in from the plain ground when the backdrop is back.
+		if ((s_cycle.Current() >= 0 || s_cycle.NextReady()) && s_watch.IdleFor(backdrop::kIdleReleaseSeconds, Seconds())) {
+			s_cycle.Reset();
+			mod::Log("backdrop: not shown for %.0f s; its pictures let go", backdrop::kIdleReleaseSeconds);
+		}
 		SettleLocked();
 	}
 	ReportRenderWork();

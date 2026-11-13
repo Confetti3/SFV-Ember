@@ -202,4 +202,38 @@ private:
 	std::vector<int> releases_;
 };
 
+// When the backdrop was last asked for and last drawn, on two clocks the
+// cycle's own does not stop: the frames the game presents (counted by the
+// render thread each frame, before the shell draws) and the wall clock.
+// Asked is the drawer called while the shell allows the backdrop, whether or
+// not it had a picture to draw; drawn is it drawing one. Not thread-safe:
+// SfvBackdrop holds it under its lock.
+class DrawWatch {
+public:
+	// Each presented frame, before the shell draws: its number (rising) and
+	// the wall clock in seconds.
+	void Presented(std::uint64_t frame, double now);
+	void Asked();
+	void Drawn();
+	// Drawn in the frame being drawn or in the one just presented: what the
+	// status calls drawn. Never after a frame without a draw has gone by.
+	bool DrawnLastFrame() const;
+	// Asked within `seconds` before `now` on the wall clock (the loader's
+	// gate, read on the game thread with its own reading of the clock).
+	bool AskedWithin(double seconds, double now) const;
+	// Neither asked for nor drawn for at least `seconds` before `now` on the
+	// wall clock, or never asked for (a draw is always asked for first).
+	bool IdleFor(double seconds, double now) const;
+
+private:
+	std::uint64_t frame_ = 0, drawnFrame_ = 0;
+	double now_ = 0, askedAt_ = 0;
+	bool asked_ = false, drawn_ = false;
+};
+// The backdrop asked for this long ago still lets the loader load.
+inline constexpr double kAskedSeconds = 1.0;
+// Not asked for this long (the shell closed, a battle), both pictures are let
+// go; the next one fades in from the plain ground when the backdrop is back.
+inline constexpr double kIdleReleaseSeconds = 5.0;
+
 } // namespace sfve::backdrop
