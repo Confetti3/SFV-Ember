@@ -144,10 +144,10 @@ struct Run {
 };
 // The pose key: the unit's animation state (its CharaMotionPart's two
 // registered runs, sfv::fighter::kMotionRun and kMotionRun2), its facing
-// (sfv::fighter::kMirrored) and whether its side is drawn small. The bytes
-// are hashed as they are, pointers included: the key is only ever compared
-// within this process, where a motion asset's address names that asset.
-// Never 0.
+// (sfv::fighter::kMirrored) and whether its side is drawn small. Every
+// 8-byte-aligned word of the runs that looks like an address (LooksLikeAddress)
+// is hashed as zero, as the state hashes do: a pointer to per-instance heap
+// differs between a play and its replay, and the key must not. Never 0.
 uint64_t MakePoseKey(const Run motion[2], int32_t facing, bool tiny);
 // The root key: where the unit stands (CharaUnit's kUnitRun and kPlaceRun),
 // leaving out kPlaceRun's bone 28 bytes [kPlaceBoneFrom, kPlaceBoneTo).

@@ -16,6 +16,7 @@
 #include <bit>
 #include <iterator>
 #include <mutex>
+#include <vector>
 
 namespace sfve::mod {
 
@@ -386,12 +387,30 @@ uint64_t Mix(uint64_t h, const uint8_t* bytes, size_t size)
 	return XXH3_64bits_withSeed(&n, sizeof(n), h);
 }
 
+// A run's bytes with every 8-byte-aligned word that looks like an address
+// read as zero, as the state hashes do (StateLayout::ZeroAddresses: aligned
+// by the word's real address, so the same words are zeroed on every copy): a
+// heap pointer in the run differs between a play and its replay.
+uint64_t MixWithoutAddresses(uint64_t h, const uint8_t* bytes, size_t size)
+{
+	if (!bytes || !size) return Mix(h, bytes, size);
+	thread_local std::vector<uint8_t> masked;
+	masked.assign(bytes, bytes + size);
+	const size_t first = (8 - (reinterpret_cast<uintptr_t>(bytes) & 7)) & 7;
+	for (size_t at = first; at + 8 <= size; at += 8) {
+		uint64_t word;
+		memcpy(&word, masked.data() + at, sizeof(word));
+		if (LooksLikeAddress(word)) memset(masked.data() + at, 0, sizeof(word));
+	}
+	return Mix(h, masked.data(), size);
+}
+
 } // namespace
 
 uint64_t MakePoseKey(const Run motion[2], int32_t facing, bool tiny)
 {
 	uint64_t h = 0x9E3779B97F4A7C15ull;
-	for (int i = 0; i < 2; i++) h = Mix(h, motion[i].bytes, motion[i].size);
+	for (int i = 0; i < 2; i++) h = MixWithoutAddresses(h, motion[i].bytes, motion[i].size);
 	h = Mix(h, reinterpret_cast<const uint8_t*>(&facing), sizeof(facing));
 	const uint8_t small = tiny ? 1 : 0;
 	h = Mix(h, &small, sizeof(small));

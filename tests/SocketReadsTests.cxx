@@ -209,6 +209,31 @@ TEST_CASE("what decides the pose key, and what does not")
 	CHECK(socket_reads::MakePoseKey(ab, 0, false) != socket_reads::MakePoseKey(cd, 0, false));
 }
 
+TEST_CASE("the pose key does not see a per-instance address in the motion part")
+{
+	using socket_reads::Run;
+	// 8-byte aligned images (the rule aligns by the real address).
+	std::vector<uint64_t> a(sfv::fighter::kMotionRunSize / 8 + 1, 0), b = a;
+	std::vector<uint64_t> second(sfv::fighter::kMotionRun2Size / 8, 0);
+	a[3] = 0x00007FF612345670ull; // a heap or code address of one process
+	b[3] = 0x00007FF698765430ull; // the same state in another one
+	const auto key = [&](const std::vector<uint64_t>& image) {
+		const Run runs[2] = {{reinterpret_cast<const uint8_t*>(image.data()), sfv::fighter::kMotionRunSize},
+			{reinterpret_cast<const uint8_t*>(second.data()), sfv::fighter::kMotionRun2Size}};
+		return socket_reads::MakePoseKey(runs, 0, false);
+	};
+	CHECK(key(a) == key(b));
+	// A value word that is not an address still decides it.
+	std::vector<uint64_t> c = a, d = a;
+	c[5] = 0x1234;
+	d[5] = 0x1235;
+	CHECK(key(c) != key(d));
+	CHECK(key(c) != key(a));
+	// An address and a plain value in the same word are not alike.
+	b[3] = 0x1234;
+	CHECK(key(a) != key(b));
+}
+
 TEST_CASE("what decides the root key: where the unit stands and its hitstop, not its bone 28")
 {
 	using socket_reads::Run;
