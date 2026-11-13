@@ -910,6 +910,9 @@ TEST_CASE("an intake that does not take the state part is sent the report once m
 {
 	CHECK(Judge(Answer(400, false, R"({"reason":"unknown_part"})"), true, true).verdict == Verdict::WithoutState);
 	CHECK(Judge(Answer(413, false), true, true).verdict == Verdict::WithoutState);
+	// The courier turns the part off only for the first (reason unknown_part); a 413 skips one report's state.
+	CHECK(Judge(Answer(400, false, R"({"reason":"unknown_part"})"), true, true).reason == "unknown_part");
+	CHECK(Judge(Answer(413, false), true, true).reason != "unknown_part");
 	// Without a state in the upload the same answers are the report's own refusals.
 	CHECK(Judge(Answer(400, false, R"({"reason":"unknown_part"})"), true, false).verdict == Verdict::Refused);
 	CHECK(Judge(Answer(413, false), true, false).verdict == Verdict::Refused);

@@ -26,6 +26,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -130,6 +131,25 @@ std::string InstalledBuildId()
 	} catch (...) {
 		return {};
 	}
+}
+
+// The installed module's size and modification time: the installed build id
+// is hashed again when either changes (an update replaces the DLL while the
+// launcher may still run), so a report of the freshly updated build is not
+// deleted as another build's.
+struct ModuleStamp {
+	std::uintmax_t size = 0;
+	fs::file_time_type time{};
+	bool operator==(const ModuleStamp&) const = default;
+};
+std::optional<ModuleStamp> StampOf(const fs::path& dll)
+{
+	std::error_code ec;
+	const std::uintmax_t size = fs::file_size(dll, ec);
+	if (ec) return std::nullopt;
+	const fs::file_time_type time = fs::last_write_time(dll, ec);
+	if (ec) return std::nullopt;
+	return ModuleStamp{size, time};
 }
 
 // The state file a report names: the report's own name with the state's
@@ -261,28 +281,56 @@ private:
 	{
 		const std::wstring settings = sf4e::netplay::SettingsStore::DefaultDirectory();
 		if (settings.empty()) return;
+		// Paused or at a cap: nothing is read or parsed this pass (the next
+		// one looks again), where the sends below would all stop anyway.
+		if (Now() < pauseUntil_) return;
+		const std::int64_t wait = Wait(settings);
+		if (wait > 0) {
+			if (!limitLogged_) {
+				spdlog::info("Desync reports: the sending limit is reached; they wait {} s", wait);
+				limitLogged_ = true;
+			}
+			return;
+		}
+		limitLogged_ = false;
 		const fs::path folder = fs::path(settings) / desync::kSpoolFolder;
 		std::vector<fs::path> files;
+		std::map<std::wstring, std::pair<std::uintmax_t, fs::file_time_type>> stamps;
 		std::error_code ec;
 		const std::wstring extension = desync::kSpoolExtension;
 		for (fs::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec)) {
 			const std::wstring name = it->path().filename().wstring();
 			if (name.size() > extension.size() && name.compare(name.size() - extension.size(), extension.size(), extension) == 0) {
 				files.push_back(it->path());
+				std::error_code stat;
+				const std::uintmax_t size = it->file_size(stat);
+				const fs::file_time_type time = stat ? fs::file_time_type{} : it->last_write_time(stat);
+				if (!stat) stamps[name] = {size, time};
 			}
 		}
+		// Headers kept for the files that are still there.
+		for (auto it = headers_.begin(); it != headers_.end();) it = stamps.count(it->first) ? std::next(it) : headers_.erase(it);
 		if (files.empty()) return;
 		// Named by the time they were written: oldest first.
 		std::sort(files.begin(), files.end());
 
 		// Which are sent, in what order, and which are dropped unsent
 		// (desync::PlanSends): the installed build's reports, newest first.
-		if (installedBuild_.empty()) installedBuild_ = InstalledBuildId();
+		RefreshInstalledBuild();
 		// `paths[i]` is `waiting[i]`'s file.
 		std::vector<desync::Waiting> waiting;
 		std::vector<fs::path> paths;
 		std::vector<fs::path> unreadable;
 		for (const fs::path& path : files) {
+			const std::wstring name = path.filename().wstring();
+			const auto stamp = stamps.find(name);
+			const auto kept = headers_.find(name);
+			if (stamp != stamps.end() && kept != headers_.end() && kept->second.size == stamp->second.first &&
+				kept->second.time == stamp->second.second) {
+				waiting.push_back(kept->second.waiting); // read before, and not touched since
+				paths.push_back(path);
+				continue;
+			}
 			const std::optional<desync::Spooled> spooled = Peek(path);
 			if (!spooled) {
 				unreadable.push_back(path); // Deliver deletes what is not a report, and skips what another launcher holds
@@ -290,6 +338,7 @@ private:
 			}
 			waiting.push_back({spooled->time, spooled->buildId});
 			paths.push_back(path);
+			if (stamp != stamps.end()) headers_[name] = {stamp->second.first, stamp->second.second, waiting.back()};
 		}
 		const desync::SendPlan plan = desync::PlanSends(waiting, installedBuild_, Now());
 		for (const std::size_t i : plan.otherBuild) {
@@ -312,12 +361,12 @@ private:
 			if (tries >= kTriesPerRun) continue;
 			if (Now() < pauseUntil_) return;
 			// The caps are checked before every send: the day's (a flood guard
-			// over a session) and the intake's own pace.
-			const std::int64_t wait = Wait(settings);
-			if (wait > 0) {
+			// over a session) and the intake's own pace (also before the pass).
+			const std::int64_t waitMore = Wait(settings);
+			if (waitMore > 0) {
 				if (!limitLogged_) {
 					spdlog::info("Desync report {}: the sending limit is reached; it waits {} s",
-						sf4e::platform::WideToUtf8(path.filename().wstring()), wait);
+						sf4e::platform::WideToUtf8(path.filename().wstring()), waitMore);
 				}
 				limitLogged_ = true;
 				return; // every other waiting report hits the same limit
@@ -325,6 +374,19 @@ private:
 			limitLogged_ = false;
 			if (!Deliver(path, settings)) tries++;
 		}
+	}
+
+	// Hashes the installed module again when it is not the one installedBuild_
+	// came from (or that could not be read).
+	void RefreshInstalledBuild()
+	{
+		wchar_t path[MAX_PATH] = {};
+		const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
+		std::optional<ModuleStamp> stamp;
+		if (length && length < MAX_PATH) stamp = StampOf(fs::path(path).parent_path() / ember::Product().gameModule);
+		if (!installedBuild_.empty() && stamp && installedStamp_ == stamp) return;
+		installedBuild_ = InstalledBuildId();
+		installedStamp_ = installedBuild_.empty() ? std::nullopt : stamp;
 	}
 
 	// A report's parsed file without holding it; nothing when it is gone,
@@ -438,8 +500,14 @@ private:
 		// counted send.
 		for (int again = 0; again < 2; ++again) {
 			if (outcome.verdict == desync::Verdict::WithoutState && !state.empty()) {
-				spdlog::info("Desync report {}: the intake does not take the state yet; sent again without it", name);
-				stateAccepted_ = false;
+				// Only an intake that does not know the part turns it off; a
+				// 413 is this report's state being too large for it.
+				if (outcome.reason == "unknown_part") {
+					spdlog::info("Desync report {}: the intake does not take the state yet; sent again without it", name);
+					stateAccepted_ = false;
+				} else {
+					spdlog::info("Desync report {}: the intake refused its state ({}); sent again without it", name, outcome.reason);
+				}
 				state.clear();
 			} else if (outcome.verdict == desync::Verdict::WithoutLog && withLog) {
 				spdlog::info("Desync report {}: the intake does not take {} yet; sent again without it", name, report.logs[0].name);
@@ -514,7 +582,16 @@ private:
 	std::atomic<bool> cancelled_{false};
 	// The courier's thread only from here.
 	std::map<std::wstring, int> tries_;
-	std::string installedBuild_; // InstalledBuildId, read at the first pass that can
+	// A waiting report's parsed header by file name, valid while its size and
+	// time are as they were.
+	struct Header {
+		std::uintmax_t size = 0;
+		fs::file_time_type time{};
+		desync::Waiting waiting;
+	};
+	std::map<std::wstring, Header> headers_;
+	std::string installedBuild_; // InstalledBuildId, hashed again when the module's size or time changes
+	std::optional<ModuleStamp> installedStamp_; // the module as installedBuild_ was hashed
 	std::int64_t pauseUntil_ = 0;
 	bool limitLogged_ = false;
 	bool stateAccepted_ = true; // false once the intake refused a state part
