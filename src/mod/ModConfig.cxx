@@ -200,6 +200,9 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 		if (!_wcsicmp(moveSet, L"supers")) c.script.moveSet = input::MoveSet::Supers;
 		else if (!_wcsicmp(moveSet, L"cody")) c.script.moveSet = input::MoveSet::Cody;
 		else if (!_wcsicmp(moveSet, L"projectiles")) c.script.moveSet = input::MoveSet::Projectiles;
+		else if (!_wcsicmp(moveSet, L"luke")) c.script.moveSet = input::MoveSet::Luke;
+		else if (!_wcsicmp(moveSet, L"akira")) c.script.moveSet = input::MoveSet::Akira;
+		else if (!_wcsicmp(moveSet, L"targets")) c.script.moveSet = input::MoveSet::Targets;
 		if (c.script.moveSet != input::MoveSet::System) c.script.script = input::Script::Moves;
 	}
 	const long idle = options.Number(L"sfve_idle", -1);

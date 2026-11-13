@@ -15,7 +15,8 @@
 //   -sfve_mash_pad=1     ...and the pad's input before F (a test's scripted presses first)
 //   -sfve_moves=1        ...playing the game's system moves (input::Script::Moves)
 //   -sfve_moveset=S      ...from a set of moves: system (default), supers, cody,
-//                        projectiles (input::MoveSet; any but system implies -sfve_moves=1)
+//                        projectiles, luke, akira, targets (input::MoveSet; any but
+//                        system implies -sfve_moves=1)
 //   -sfve_idle=P         the scripted player P (0 P1, 1 P2) stands still; the other
 //                        walks forward at the start of each block of moves
 //   -sfve_tiny=MASK      test: a launch that is no room's or replay's (the pipe's, for a

@@ -28,6 +28,9 @@ void SyncTestMode::NewBattle(SfvAdapter& adapter)
 			: config_.script.moveSet == input::MoveSet::Supers      ? ", Critical Arts"
 			: config_.script.moveSet == input::MoveSet::Cody        ? ", Z29's items"
 			: config_.script.moveSet == input::MoveSet::Projectiles ? ", projectiles"
+			: config_.script.moveSet == input::MoveSet::Luke        ? ", Luke's target combos"
+			: config_.script.moveSet == input::MoveSet::Akira       ? ", Akira's V-Skill"
+			: config_.script.moveSet == input::MoveSet::Targets     ? ", target combos"
 																	: ", system moves",
 		config_.script.idle == 0 ? ", P1 idle" : config_.script.idle == 1 ? ", P2 idle" : "");
 	// Training's refilling gauges before anything is simulated, as a Practice
