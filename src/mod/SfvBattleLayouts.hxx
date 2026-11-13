@@ -195,6 +195,14 @@ constexpr uint32_t kFlowUnitType = 0x3A65188; // data: FlowUnit's type id (the r
 constexpr uint32_t kVersusRuleUnitType = 0x3A723E0;
 constexpr uint32_t kReplayUnitType = 0x3A69C48; // data: ReplayUnit's type id (vtable rva 0x2C6FF70)
 constexpr uint32_t kCharaUnitType = 0x3A647C0;  // data: CharaUnit's type id, a fighter
+// The fighter units a battle may hold: the two fighters (CharaUnit 0 and 1,
+// in the battle's order) and their partners. Akira (Z41) brings one more
+// CharaUnit per side (2026-11-13 mirror: CharaUnit[2] side 0 and [3] side 1,
+// with an action, motion, visual and material part each and no status or
+// command part); no other fighter was seen with one. A bound with room to
+// spare: a unit past it is not given LOD 0, keys or outside-state runs, and
+// the adapter logs that.
+constexpr uint32_t kMostCharaUnits = 8;
 } // namespace unit
 
 // The rule unit judges a round over in its task (rva 0x487CD0): state 2 is

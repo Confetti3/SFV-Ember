@@ -8,6 +8,8 @@
 #include "ember/SfvRoomBuild.hxx"
 #include "mod/SfvLayoutRules.hxx"
 
+#include <stdint.h>
+
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -28,6 +30,29 @@ TEST_CASE("the layout id is one build's own: 16 hex digits, the same wherever th
 	sfve::mod::AddStateOutsideTheGameSnapshot(other, {0x9000, 0x8000, 0x7000, 0x6000, 0x5000});
 	CHECK(one.LayoutId() == other.LayoutId());
 	CHECK(one.Regions().size() == other.Regions().size());
+}
+
+TEST_CASE("every fighter unit's parts keep their state outside the snapshot, a partner's too")
+{
+	// Akira's partners are CharaUnit[2] and [3] (sfv::unit::kMostCharaUnits);
+	// a unit without the part (0) gets no run.
+	sfve::mod::OutsideState where{0x1000, 0x2000, 0x3000, 0x4000, 0x5000};
+	where.fighterParts[0][0] = 0x10000;
+	where.fighterParts[2][0] = 0x20000;
+	where.fighterParts[sfve::mod::kMaxFighterUnits - 1][1] = 0x30000;
+	sfve::StateLayout layout;
+	sfve::mod::AddStateOutsideTheGameSnapshot(layout, where);
+	const auto at = [&](const std::string& name) -> uintptr_t {
+		for (const sfve::StateRegion& r : layout.Regions()) {
+			if (r.name == name) return reinterpret_cast<uintptr_t>(r.ptr);
+		}
+		return 0;
+	};
+	CHECK(at("CharaUnit[0].CharaStatusPart.holds") == 0x10000 + 0x338);
+	CHECK(at("CharaUnit[2].CharaStatusPart.holds") == 0x20000 + 0x338);
+	CHECK(at("CharaUnit[7].CharaUniquePart@0x3A682D0.delay") == 0x30000 + 0x61C);
+	CHECK(at("CharaUnit[1].CharaStatusPart.holds") == 0);
+	CHECK(at("CharaUnit[3].CharaStatusPart.holds") == 0);
 }
 
 TEST_CASE("a room build is the pick build and the layout id, and gives the layout id back")

@@ -23,16 +23,19 @@ namespace sfve::mod {
 
 // Where one battle keeps the state its snapshot leaves out: the rule unit,
 // the match data, the battle frame, the input unit, the exe's base and each
-// fighter's parts that sfv::kPartRunsOutsideSnapshot names, by its row (0:
-// the fighter has no such part).
+// fighter unit's parts that sfv::kPartRunsOutsideSnapshot names, by the
+// unit's place among the battle's CharaUnits (partners after the two
+// fighters, sfv::unit::kMostCharaUnits) and the row (0: the unit has no such
+// part).
 constexpr size_t kMaxPartRuns = 4;
+constexpr size_t kMaxFighterUnits = 8; // sfv::unit::kMostCharaUnits (checked in SfvLayoutRules.cxx)
 struct OutsideState {
 	uintptr_t ruleUnit = 0;
 	uintptr_t battleData = 0;
 	uintptr_t battleFrame = 0;
 	uintptr_t inputUnit = 0;
 	uintptr_t base = 0;
-	uintptr_t fighterParts[2][kMaxPartRuns] = {};
+	uintptr_t fighterParts[kMaxFighterUnits][kMaxPartRuns] = {};
 };
 
 // Adds what a battle tick changes that the game's snapshot leaves out: its
@@ -48,9 +51,10 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 // masks AddStateOutsideTheGameSnapshot adds, laid out at fixed made-up
 // addresses (their offsets, sizes, flags and masks); and of the flow
 // record's rules (its size, sfv::flowstate's base and every class's size,
-// own fields and leftover words); and of the two rules no table shows, the
-// address rule's version (kAddressRuleVersion) and the CRT math of the modes
-// that roll back (kRollbackCrtMath). The same for every copy of one build;
+// own fields and leftover words); and of the rules no table shows, the
+// address rule's version (kAddressRuleVersion), the CRT math of the modes
+// that roll back (kRollbackCrtMath) and where their battles run the tick's
+// tasks (kRollbackTickTasks). The same for every copy of one build;
 // any change to a table or rule that decides what is saved, restored,
 // computed or compared changes it, and a new one must feed it too.
 const std::string& LayoutRulesId();

@@ -32,6 +32,12 @@
 //
 // Hooked only in the modes that roll back (synctest, netplay); offline play
 // is left as the game does it.
+//
+// The same task hook places the tick's other tasks (ModConfig's
+// ChooseTickTasks): in a battle a session plays (a room's match, a watcher's,
+// a replay's, the synctest's) every tick and post-tick task runs on the
+// battle's thread in list order, so no two fighters' tasks race on a shared
+// write; Training and the player's own battles keep the game's placement.
 
 #include <stdint.h>
 #include <string.h>

@@ -1,4 +1,4 @@
-param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash = 31337, [int]$mashFrom = 600, [int]$distance = 8, [int]$schedule = 1, [int]$frames = 7000, [int]$waitSeconds = 420, [switch]$keep, [int]$learn = 1, [switch]$moves, [switch]$practice, [string]$moveset = '', [int]$idle = -1, [switch]$tiny, [int]$tinySides = 3, [switch]$socketLog, [switch]$rngAudit, [switch]$check, [int]$fma3 = -1)
+param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash = 31337, [int]$mashFrom = 600, [int]$distance = 8, [int]$schedule = 1, [int]$frames = 7000, [int]$waitSeconds = 420, [switch]$keep, [int]$learn = 1, [switch]$moves, [switch]$practice, [string]$moveset = '', [int]$idle = -1, [switch]$tiny, [int]$tinySides = 3, [switch]$socketLog, [switch]$rngAudit, [switch]$check, [int]$fma3 = -1, [int]$tasks = -1)
 # One copy in synctest mode: both players mash, every rolled-back stretch is
 # first played with wrong inputs, rollbacks of random depth and spacing (up
 # to -distance, from seed -schedule; 0 for the fixed schedule), learning
@@ -27,6 +27,9 @@ param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash 
 # -fma3 0|1 plays on the CRT math's SSE2 (0) or FMA3 (1) code (-sfve_fma3;
 # without it SSE2, as every mode that rolls back takes;
 # docs/design/beta8/rollback-fixes.md); the `crt:` line says which ran.
+# -tasks 0|1|2 places the tick's tasks as the game does (0), on the battle's
+# thread (1, the synctest's own without it) or so with P2's first (2)
+# (-sfve_tasks; ModConfig's ChooseTickTasks); the `tasks:` lines say which.
 # -check ends with PASS (the run reached -frames, 0 failures, no conflicting
 # socket read, and with -rngAudit no generator outside the rollback state)
 # or FAIL, and the exit code says the same.
@@ -39,6 +42,7 @@ if ($tiny) { $extra += "-sfve_tiny=$tinySides" }
 if ($socketLog) { $extra += '-sfve_socket_log=1' }
 if ($rngAudit) { $extra += '-sfve_rng_audit=1' }
 if ($fma3 -ge 0) { $extra += "-sfve_fma3=$fma3" }
+if ($tasks -ge 0) { $extra += "-sfve_tasks=$tasks" }
 python -I tools\sfve.py launch 0 --mode synctest -- '-sfve_pads=01' '-sfve_background=1' "-sfve_mash=$mash" "-sfve_mash_from=$mashFrom" "-sfve_distance=$distance" '-sfve_perturb=1' "-sfve_learn=$learn" "-sfve_schedule=$schedule" "-sfve_moves=$([int][bool]$moves)" "-sfve_practice=$([int][bool]$practice)" $extra | Out-Null
 for ($k = 0; $k -lt 60; $k++) { Start-Sleep 2; if ((python -I tools\sfve.py ctl 0 status) -match '"scene":"0x2D98660"') { break } }
 Start-Sleep 3
@@ -55,7 +59,7 @@ while ((Get-Date) -lt $deadline) {
 $i = $s.IndexOf('"mode":{"ok"')
 if ($i -ge 0) { $s.Substring($i, [Math]::Min(700, $s.Length - $i)) } else { 'no synctest report' }
 $log = Join-Path $env:APPDATA 'SFVEmber\logs\sfv_ember.log'
-$pattern = if ($socketLog) { 'synctest:|learn:|adapter: (expected|no |socket|input unit)|socket:|sockets:|tiny:|rng audit|costs:|crt:' } else { 'synctest:|learn:|adapter: (expected|no |socket|input unit)|sockets:|tiny:|rng audit|costs:|crt:' }
+$pattern = if ($socketLog) { 'synctest:|learn:|adapter: (expected|no |socket|input unit)|socket:|sockets:|tiny:|rng audit|costs:|crt:|tasks:|actions:' } else { 'synctest:|learn:|adapter: (expected|no |socket|input unit)|sockets:|tiny:|rng audit|costs:|crt:|tasks:|actions:' }
 Select-String -Path $log -Pattern $pattern | ForEach-Object { $_.Line.Substring(24) }
 if (!$keep) { python -I tools\sfve.py kill | Out-Null }
 if ($check) {

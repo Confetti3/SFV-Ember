@@ -12,6 +12,8 @@
 
 namespace sfve::mod {
 
+static_assert(kMaxFighterUnits == sfv::unit::kMostCharaUnits, "every fighter unit the adapter binds has its outside runs");
+
 namespace {
 
 void* At(uintptr_t object, uint32_t offset)
@@ -56,8 +58,10 @@ std::string MakeLayoutRulesId()
 	// What every copy must do alike that no table above shows
 	// (docs/design/beta8/rollback-fixes.md): which words the hashes test for
 	// addresses (core/StateRegions.hxx; also inside the outside state's
-	// LayoutId), and the CRT math the modes that roll back take (ModConfig.hxx).
-	text += "; address rule " + std::to_string(kAddressRuleVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath);
+	// LayoutId), the CRT math the modes that roll back take, and where a
+	// battle that rolls back runs its tick's tasks (ModConfig.hxx).
+	text += "; address rule " + std::to_string(kAddressRuleVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath) +
+		"; rollback tick tasks " + TickTasksName(kRollbackTickTasks);
 	return Hex(XXH3_64bits(text.data(), text.size()));
 }
 

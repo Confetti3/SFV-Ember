@@ -89,7 +89,16 @@ constexpr uint32_t kUniquePartBaseRva = 0x3A64B40;
 constexpr uint32_t kPartsBegin = 192;
 constexpr uint32_t kPartsEnd = 200;
 constexpr size_t kMaxParts = 256;
-constexpr uint32_t kMaxUnitsOfAType = 64;
+// Units of one type are looked up by index until the battle has no more
+// (GameFindUnit); this only bounds the loop. It was 64, which named the
+// first 64 ProjectileUnits only: Akira's partners (CharaUnit[2] and [3])
+// bring projectile groups of their own, and in the 2026-11-13 mirror (state
+// 1794589647-24364-1380) the units past [63] registered 8 action parts
+// (15808), 8 timelines (224), 8 unit runs (208) and 9 visual parts (44 and
+// 136) that were left as game.N: hashed whole, though a projectile visual
+// part's runs are presentation that drifts on replay (sfv::manager::kRunRules,
+// ProjectileVisualPart +0xC0 and +0xF0), and not repairable at the start.
+constexpr uint32_t kMaxUnitsOfAType = 256;
 // A type object: +8 its parent type.
 constexpr uint32_t kTypeParent = 8;
 // How far past an object's start an unowned entry is still reported as

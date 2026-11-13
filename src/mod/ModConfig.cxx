@@ -226,7 +226,7 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.replayCheck = (int)options.Number(L"sfve_replay_check", 0);
 	c.replayLag = (int)options.Number(L"sfve_replay_lag", 0);
 	c.crtFma3 = (int)options.Number(L"sfve_fma3", -1);
-	c.battleTasks = (int)options.Number(L"sfve_tasks", 0);
+	c.battleTasks = (int)options.Number(L"sfve_tasks", -1);
 	c.replayLagJitter = (uint32_t)options.Number(L"sfve_replay_jitter", 0);
 	c.replayLagPlayer = (int)options.Number(L"sfve_replay_lag_player", 0) == 1 ? 1 : 0;
 	c.room = options.Number(L"sfve_room", 0) != 0;
@@ -291,6 +291,14 @@ CrtMathChoice ChooseCrtMath(const ModConfig& config, BuildKind kind)
 		return {config.crtFma3 ? CrtMath::Fma3 : CrtMath::Sse2, true};
 	}
 	return {RollsBack(config.mode) ? kRollbackCrtMath : CrtMath::AsStarted, false};
+}
+
+TickTasks ChooseTickTasks(const ModConfig& config, bool sessionBattle, BuildKind kind)
+{
+	if (kind == BuildKind::Development && config.battleTasks >= 0 && config.battleTasks <= 2) {
+		return static_cast<TickTasks>(config.battleTasks);
+	}
+	return sessionBattle ? kRollbackTickTasks : TickTasks::AsTheGamePlaces;
 }
 
 } // namespace sfve::mod

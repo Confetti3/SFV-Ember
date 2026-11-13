@@ -636,7 +636,7 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kScriptPosture, kStartAction, kProjectileDie, kDamage,
 	// The fighter's picture, for Tiny fighters (TinyFighters), and the fight's
 	// reads of its model (SocketReads).
-	kCharaVisualUpdate, kSetWorldScale3D, kActorSetMeshTransform, kSocketWorldPosition,
+	kCharaVisualUpdate, kSetWorldScale3D, kActorSetMeshTransform, kSocketWorldPosition, kMakeName, kSocketTransform,
 	// The random generators' draw, for the development audit (RngAudit).
 	kRandomDraw,
 	// The fighters' boxes and the camera, for the hitbox viewer (SfvBoxOffsets.hxx).

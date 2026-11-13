@@ -36,7 +36,9 @@
 //   -sfve_replay_check=N    replay playback: also make rollbacks up to N frames deep and log
 //                        what they leave different (random spacing from -sfve_schedule)
 //   -sfve_tasks=0|1|2    test: battle tasks as the game places them (0), all of the tick on
-//                        the battle's thread (1), and P2's fighter tasks before P1's (2)
+//                        the battle's thread (1), and P2's fighter tasks before P1's (2);
+//                        without it, 1 in a battle that rolls back, 0 in any other
+//                        (ChooseTickTasks)
 //   -sfve_fma3=0|1       test: the game's CRT math (msvcr120) on its SSE2 (0) or FMA3 (1)
 //                        code; without it, SSE2 in the modes that roll back (ChooseCrtMath)
 //   -sfve_replay_lag=N      replay playback: play as a fighter's copy does when P1's inputs
@@ -184,10 +186,9 @@ struct ModConfig {
 	// its SSE2 code, 1 its FMA3 code where the CPU has it, -1 (not given) the
 	// mode's own: SSE2 in the modes that roll back.
 	int crtFma3 = -1;
-	// Where the battle's tick tasks run (ProjectileRelease's task hook, the
-	// modes that roll back): 0 as the game places them, 1 all on the battle's
-	// thread in the scheduler's order, 2 as 1 with P2's fighter tasks first.
-	int battleTasks = 0;
+	// Where the battle's tick tasks run, as a test asks (-sfve_tasks; TickTasks'
+	// numbers); -1 (not given): the battle's own placement (ChooseTickTasks).
+	int battleTasks = -1;
 	int replayLagPlayer = 0;
 	// Nonzero: the lagged replay's delay wanders up to replayLag, seeded from
 	// this plus the playback's number in this process (-sfve_replay_jitter).
@@ -276,5 +277,53 @@ struct CrtMathChoice {
 	bool byTest = false;
 };
 CrtMathChoice ChooseCrtMath(const ModConfig& config, BuildKind kind = kBuildKind);
+
+// Where a battle's tick and post-tick tasks run (ProjectileRelease's hook on
+// sfv::kAddBattleTask, installed in the modes that roll back). The game's
+// scheduler (rva 0x4CD420) lets its job workers run one order group's tasks
+// at once, both fighters' among them, so a write two tasks of a group both
+// make lands in whichever order the threads take: the combo count at
+// CharaStatusPart +0x2C0/+0x2C4 differed between a play and its replay for
+// that reason and is masked (sfv::manager::kRunRules), and any other such
+// write would be a race no mask should cover. On the battle's thread the
+// tasks run in list order, the same on every copy and in every replay
+// (EMBER_LIBRARY.md section 56: replays played back equal with 1 and 2).
+enum class TickTasks {
+	AsTheGamePlaces = 0, // job workers take what the game lets them
+	BattleThread = 1,    // every tick and post-tick task on the battle's thread, in list order
+	P2First = 2,         // as BattleThread, with each P2 fighter task before P1's of its group (a test's)
+};
+// What a battle that rolls back takes. Part of the room's build
+// (mod::LayoutRulesId), as two builds that order the fight's writes
+// differently could compute it differently.
+constexpr TickTasks kRollbackTickTasks = TickTasks::BattleThread;
+
+constexpr const char* TickTasksName(TickTasks tasks)
+{
+	switch (tasks) {
+	case TickTasks::BattleThread: return "on the battle's thread";
+	case TickTasks::P2First: return "on the battle's thread, P2's first";
+	case TickTasks::AsTheGamePlaces: break;
+	}
+	return "as the game places them";
+}
+
+// Whether the battle being set up now (its units registering their tasks,
+// on the game thread before it binds) is one a session plays or must
+// reproduce exactly: every battle of the synctest; in netplay without rooms
+// every battle (a linked test's); with rooms a room's match (fighting or
+// watching) or a replay's, which VersusLaunch's linked or replay launch is
+// loading (`launchedBattleLoading`). Training and the player's own battles
+// are none. No other mode installs the hook.
+constexpr bool SessionBattleSetUp(ModMode mode, bool rooms, bool launchedBattleLoading)
+{
+	return mode == ModMode::SyncTest || (mode == ModMode::Netplay && (!rooms || launchedBattleLoading));
+}
+
+// The placement for a battle being set up: -sfve_tasks where a development
+// build was given 0, 1 or 2 (0 keeps the game's placement in a session's
+// battle too, for A/B runs), else kRollbackTickTasks for a session's battle
+// and the game's own for any other. A player build never reads the option.
+TickTasks ChooseTickTasks(const ModConfig& config, bool sessionBattle, BuildKind kind = kBuildKind);
 
 } // namespace sfve::mod

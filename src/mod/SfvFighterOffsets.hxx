@@ -111,6 +111,30 @@ constexpr CodeSite kActorSetMeshTransform{"ActorSetMeshTransform", 0xE5BD90,
 // straight play's value for the same state.
 constexpr CodeSite kSocketWorldPosition{"SocketWorldPosition", 0x3919D0,
 	{0x48, 0x89, 0x5C, 0x24, 0x20, 0x57, 0x48, 0x83, 0xEC, 0x70, 0x48, 0x8B, 0x05, 0x9F, 0x08, 0x63}};
+// The two calls kSocketWorldPosition makes, which SocketReads makes again to
+// see the transforms the read came from. Called, not hooked.
+// FName* MakeName(FName* out, const wchar_t* name, int find) (__fastcall): UE's
+// FName from a name (find 1: add it if new), 8 bytes; a null name gives
+// NAME_None (0). The socket read passes find 1 (and 1 in r9, unread).
+constexpr CodeSite kMakeName{"MakeName", 0x11AC010,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x48, 0x8B, 0xD9, 0x48, 0x85, 0xD2, 0x74, 0x21, 0x45, 0x8B}};
+// void SocketTransform(AActor*, const FName*, FTransform* out) (__fastcall): the
+// actor's mesh (visual::kActorMesh), when it is a skeletal mesh component
+// (mesh::kSkeletalMeshComponentFlag) with a mesh asset (+0x4E0), gives the
+// socket's world transform through its virtual +0x358 (GetSocketTransform,
+// space 0: world) into `out`, 16-byte aligned: rotation quaternion,
+// translation, scale, 16 bytes each. Otherwise `out` is not written. UE4's
+// GetSocketTransform starts from the component's own world transform and
+// changes it only for a named socket or bone, so NAME_None gives the mesh
+// component's own world transform (an assumption from the engine's source;
+// the virtual itself was not found in this database).
+constexpr CodeSite kSocketTransform{"SocketTransform", 0xE58F10,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x60, 0x48, 0x8B, 0x05, 0x63, 0x93, 0xB6, 0x02, 0x48, 0x33, 0xC4}};
+// What kSocketWorldPosition does with the translation (rva 0x391A51..0x391A8E):
+// x * 0.01f, z * 0.01f, y * -0.01f into out[0..2] (mulss with the constants
+// at rva 0x2C4ED38, 0x3C23D70A, and rva 0x2C4F9AC, 0xBC23D70A), out[3] = 1.
+constexpr uint32_t kCentimetresToFightBits = 0x3C23D70A;
+constexpr uint32_t kCentimetresToFightNegatedBits = 0xBC23D70A;
 
 namespace visual {
 
@@ -199,12 +223,60 @@ constexpr uint32_t kScriptPlayer = 0xD8;
 // 0x2FB820 compares it with 1, rva 0x2F9310 returns it); fight state, in the
 // action part's registered run (rva 0x2E8D30: its controller's +15824).
 constexpr uint32_t kMirrored = 0x3E90;
+// The action part's command queue, outside the snapshot (its controller,
+// part +0xC0, +15832: a std::vector of Command*, begin and end). The fighter's
+// code queues heap copies of script commands into it (rva 0x342AC0, vtable
+// rva 0x3231618; from rva 0x36AC30 through 0x35F590, from 0x34A500 through
+// 0x35C010, and from 0x4843B0); the controller's virtual rva 0x30D530 runs
+// them (rva 0x302A30, mask 0x80000010) and frees them (rva 0x2F3330), and
+// the part's reset (rva 0x305500) frees what is left. Whether it is ever not
+// empty between two updates (a rollback would then keep an abandoned
+// timeline's commands) was not settled in IDA: SfvAdapter logs it.
+// Saving its bytes would restore pointers to freed copies, so it can never be
+// a kPartRunsOutsideSnapshot row.
+constexpr uint32_t kCommandQueueBegin = 0x3E98;
+constexpr uint32_t kCommandQueueEnd = 0x3EA0;
+// Part +0x3EB4 is a copy of kMirrored that Chara Prepare (rva 0x37DED6) and
+// rva 0x4705C0 take each tick, read later in the tick (rva 0x2FBB50,
+// 0x36AC30): the facing as the tick began, recomputed from the snapshot's
+// +0x3E90 by the tick's first fighter task.
 constexpr uint32_t kScriptHeader = 0x40;    // const int32[3]: first attack frame, last (exclusive), interrupt; -1 none
 constexpr uint32_t kScriptNumber = 0x48;    // int: the script (action) played
 constexpr uint32_t kScriptFrame = 0x4C;     // 16.16
 constexpr uint32_t kScriptTimeScale = 0x64; // 16.16: 0 while another fighter's freeze holds this one
 constexpr uint32_t kHeaderTotalShort = 0x0C; // the game reads the total as int16
 constexpr uint32_t kHeaderPosture = 0x2E;   // int16: 0 standing, 1 crouching, 2 airborne, 3 lying, 4 knocked into the air
+
+// What decides a fighter unit's pose and where its model stands, for the
+// socket reads' record (SocketReads; docs/design/beta8/desync.md, "Beta.9").
+// All of it is in the game's snapshot, so a restore brings it back with the
+// state an update starts from. What the model is given is not: the visual
+// part's layer block (+2144..+2400, two layers of 128 bytes) and the actor
+// position it keeps at +2400 lie past its registered run (+1752/392), and
+// the update's visual task (rva 0x3A06C0) hands them over at the update's
+// end: each layer a motion and a time (rva 0xE5F7D0 -> 0xE5F6E0), the actor
+// its position (its virtual +1744). CharaMotionPart is the fighter's
+// animation state: rva 0x33FB00
+// copies its current motions (+13320/+13328, +13432/+13440) into the visual
+// part (rva 0x3A40D0, 0x3A4210). Its registered runs, as RegionNames lists
+// them (+192/13092 and +13288/192):
+constexpr uint32_t kMotionPartType = 0x3A64750;
+constexpr uint32_t kMotionRun = 0xC0;
+constexpr uint32_t kMotionRunSize = 13092;
+constexpr uint32_t kMotionRun2 = 0x33E8;
+constexpr uint32_t kMotionRun2Size = 192;
+// Where the unit stands: CharaUnit's registered runs +248/40 (ActionUnit's,
+// holding the hitstop, kHitStopElapsed and kHitStopTotal, while which a
+// struck model may be shaken; included so a shake cannot pass for a pose) and
+// +1892/300 (its positions, offsets and position against the fighters'
+// centre; manager::kRunRules), the latter without its bone 28 words
+// [88, 112), the socket read's own result kept for the camera.
+constexpr uint32_t kUnitRun = 0xF8;
+constexpr uint32_t kUnitRunSize = 40;
+constexpr uint32_t kPlaceRun = 0x764;
+constexpr uint32_t kPlaceRunSize = 300;
+constexpr uint32_t kPlaceBoneFrom = 88;
+constexpr uint32_t kPlaceBoneTo = 112;
 
 // CharaStatusPart (type below).
 constexpr uint32_t kStatusPartType = 0x3A64B08;
