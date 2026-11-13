@@ -147,15 +147,15 @@ void RegionNames::AddObject(const std::string& name, uint8_t* object, const Owne
 	for (const RunSpec& r : spec.runs) extent = (std::max)(extent, size_t(r.offset) + r.size);
 	for (const SubObjectSpec& s : spec.subObjects) extent = (std::max)(extent, size_t(s.pointerAt) + sizeof(void*));
 	objects_.push_back({base, name, extent});
-	for (const RunSpec& r : spec.runs) runs_[base + r.offset] = {{name + "+" + Hex(r.offset), spec.name, r.offset}, r.size};
+	for (const RunSpec& r : spec.runs) runs_[base + r.offset] = {{RunName(name, r.offset), spec.name, r.offset}, r.size};
 	for (const SubObjectSpec& s : spec.subObjects) {
 		uint8_t* sub = nullptr;
 		if (!TryRead(object + s.pointerAt, &sub) || !sub) continue;
-		const std::string subName = name + "->" + Hex(s.pointerAt);
+		const std::string subName = SubObjectName(name, s.pointerAt);
 		objects_.push_back({reinterpret_cast<uintptr_t>(sub), subName, size_t(s.run.offset) + s.run.size});
 		// A sub-object's runs belong to their own object, not the owner's
 		// layout: they carry no owner type, so no owner rule applies.
-		runs_[reinterpret_cast<uintptr_t>(sub) + s.run.offset] = {{subName + "+" + Hex(s.run.offset), nullptr, s.run.offset},
+		runs_[reinterpret_cast<uintptr_t>(sub) + s.run.offset] = {{RunName(subName, s.run.offset), nullptr, s.run.offset},
 			s.run.size};
 	}
 }

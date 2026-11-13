@@ -8,6 +8,7 @@
 
 #include "ember/DesyncReport.hxx"
 #include "ember/DesyncTrace.hxx"
+#include "mod/SfvRegionNames.hxx"
 
 #include <nlohmann/json.hpp>
 
@@ -444,14 +445,16 @@ Facts FighterState()
 	const Fighter fighters[2] = {{0, 0x20000010000ull, 0x20000050000ull, 1200, 200 * 65536 + 32768, 1},
 		{1, 0x20000020000ull, 0x20000060000ull, 212, 0, 0}};
 	for (int i = 0; i < 2; ++i) {
+		// The names as RegionNames spells them (its RunName / SubObjectName), which ScriptsAt looks up.
 		const std::string unit = "CharaUnit[" + std::to_string(i) + "]";
-		const std::size_t part = region(unit + ".CharaActionPart+0xD8", 15808, fighters[i].part);
+		const std::string action = unit + ".CharaActionPart";
+		const std::size_t part = region(sfve::mod::RunName(action, 0xD8), 15808, fighters[i].part);
 		PutLittle(state, part, fighters[i].timeline, 8); // the script player now playing
 		PutLittle(state, part + 0x3E90 - 0xD8, static_cast<std::uint32_t>(fighters[i].facing), 4);
-		const std::size_t slot = region(unit + "+0xF8", 16, 0x20000030000ull + i * 0x1000);
+		const std::size_t slot = region(sfve::mod::RunName(unit, 0xF8), 16, 0x20000030000ull + i * 0x1000);
 		PutLittle(state, slot + 8, static_cast<std::uint32_t>(fighters[i].side), 4);
 		// The timeline object's run starts 0x30 into it: its script number is object +0x48, its frame +0x4C.
-		const std::size_t timeline = region("CharaUnit[" + std::to_string(i) + "].CharaActionPart->0x3EC8+0x30", 0x40,
+		const std::size_t timeline = region(sfve::mod::RunName(sfve::mod::SubObjectName(action, 0x3EC8), 0x30), 0x40,
 			fighters[i].timeline + 0x30);
 		PutLittle(state, timeline + 0x18, static_cast<std::uint32_t>(fighters[i].script), 4);
 		PutLittle(state, timeline + 0x1C, static_cast<std::uint32_t>(fighters[i].frame16), 4);

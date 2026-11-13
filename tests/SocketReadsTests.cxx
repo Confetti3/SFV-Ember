@@ -15,6 +15,7 @@
 #include <cmath>
 #include <limits>
 #include <optional>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -609,6 +610,61 @@ TEST_CASE("with the grid on, a rebuild gives the snapped value and is compared w
 	second.out = socket_reads::SnapPosition(second.out);
 	CHECK(cache.Record(key, second) == Recorded::New);
 	CHECK(cache.Rebuilding(key));
+}
+
+
+TEST_CASE("CertifiedSum: whenever it certifies, every float that could have made the recorded sum gives the returned one")
+{
+	// A fixed seed, the same run everywhere. r is the engine's own value (a bone's translation in the parent's frame),
+	// T the root it added at when the sum was recorded, T' the root now.
+	std::mt19937 gen(20261113);
+	const auto uniform = [&](float low, float high) {
+		return low + (high - low) * (float)(gen() >> 8) / (float)(1u << 24);
+	};
+	int certified = 0, refused = 0;
+	for (int round = 0; round < 3000; round++) {
+		const float r = uniform(-400.0f, 400.0f);
+		// Roots that share a binade with T most of the time (the case that certifies), some far apart, some centred.
+		const float T = round % 7 == 0 ? uniform(-2.0f, 2.0f) : uniform(-600.0f, 600.0f);
+		const float shift = round % 3 == 0 ? 0.0f : round % 3 == 1 ? uniform(-4.0f, 4.0f) : uniform(-600.0f, 600.0f);
+		const float Tnow = T + shift;
+		const float sum = r + T; // one single-precision add, as the engine's
+		float out = 0.0f;
+		if (!socket_reads::CertifiedSum(sum, T, Tnow, &out)) {
+			refused++;
+			continue;
+		}
+		certified++;
+		// The run of floats the recorded sum could have come from: r' with fl(r' + T) == sum, found by stepping out from r
+		// (a sum never decreases as r grows, so it is one run). A run too long to step through is skipped.
+		const auto sumOf = [&](float x, float root) { return x + root; };
+		std::vector<float> run = {r};
+		bool tooLong = false;
+		for (const float direction : {INFINITY, -INFINITY}) {
+			float x = r;
+			for (int step = 0;; step++) {
+				const float next = std::nextafter(x, direction);
+				if (!std::isfinite(next) || std::bit_cast<uint32_t>(sumOf(next, T)) != std::bit_cast<uint32_t>(sum)) break;
+				if (step >= 4000) {
+					tooLong = true;
+					break;
+				}
+				x = next;
+				run.push_back(x);
+			}
+		}
+		// The returned value is what r itself gives at the new root...
+		CHECK(std::bit_cast<uint32_t>(sumOf(r, Tnow)) == std::bit_cast<uint32_t>(out));
+		// ...and what every other float in the run gives (all of a run that fits; the ends and a sample of one that does not).
+		if (tooLong) {
+			for (size_t i = 0; i < run.size(); i += 37) CHECK(std::bit_cast<uint32_t>(sumOf(run[i], Tnow)) == std::bit_cast<uint32_t>(out));
+		} else {
+			for (const float other : run) CHECK(std::bit_cast<uint32_t>(sumOf(other, Tnow)) == std::bit_cast<uint32_t>(out));
+		}
+	}
+	// Both outcomes happen in the sample, so the property was tested and the refusals are not all there is.
+	CHECK(certified > 300);
+	CHECK(refused > 100);
 }
 
 TEST_CASE("every skeletal mesh of a fighter's actor is kept at LOD 0")

@@ -17,12 +17,33 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace sfve::mod {
+
+// How a run's and a sub-object's names are spelled, in one place: the names
+// RegionNames gives, which the desync report's readers (ScriptsAt) look up
+// and the tests build theirs from.
+inline std::string RegionHex(uintptr_t value)
+{
+	char text[24];
+	snprintf(text, sizeof(text), "0x%llX", static_cast<unsigned long long>(value));
+	return text;
+}
+// "CharaUnit[1].CharaStatusPart+0x238": the run of `object` that starts at `offset`.
+inline std::string RunName(const std::string& object, uintptr_t offset)
+{
+	return object + "+" + RegionHex(offset);
+}
+// "CharaUnit[0].CharaActionPart->0x3EC8": the sub-object `object` points to at `pointerAt`.
+inline std::string SubObjectName(const std::string& object, uintptr_t pointerAt)
+{
+	return object + "->" + RegionHex(pointerAt);
+}
 
 struct OwnerSpec; // an owner type's registered runs (SfvRegionNames.cxx)
 
