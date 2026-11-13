@@ -115,9 +115,14 @@ is) or a game run (below).
   RoundOver touches the bit. The bit therefore clears by itself when the presentation ends,
   whether or not Finish was cut; the Finish gate waits for exactly that, and cannot deadlock on
   a flow that has stopped.
-- The reader of the bit is `0x46E110` (the pause menu's detector, `0x1404D1F50(frame, 0x20)`:
-  set in +400 and not in +404) and the generic helpers; `BattleFrameUpdate`'s pause test is
-  not this bit.
+- The readers: `0x4D1F50(frame, mask)` ("mask set in +400 and not in +404"; `0x46E110`, the
+  pause menu's detector, asks it for 0x20, and `0x485240` before it sets the bit) and
+  `BattleFrameUpdate` (`0x4DC6A0`), which ticks only while +400 is 0 or +404 is not 0 (the
+  whole dwords, so any bit in +0x190 pauses the ticks unless +0x194 has a bit). `0x4DC290(frame,
+  mask)` ORs `mask` into +404 when it is in +400, and `0x4D5DE0` clears a bit from both. Who
+  sets +0x194 for the KO's 0x20 was not read (callers of `0x4DC290`: `0x463F42`, `0x463F7F`,
+  `0x487B86`), so whether ticks run with 0x20 set is not settled here; the game plays it
+  through in a normal round either way.
 - Critical Art gauge: the EX parameter (24) value 2 starts every round with the gauge full
   (`0x357540`) and has no per-tick effect (`0x362AC0` handles 3, 4 and 5 only): `-startEx`.
 
