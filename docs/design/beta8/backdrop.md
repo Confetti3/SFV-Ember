@@ -90,6 +90,17 @@ load on the game thread while the player is moving through the board.
 - **Two alive at most.** The cycle holds the one shown and the next; the one faded out is let go at
   the end of the fade, before anything is drawn in the next frame (ImGui's draw list of the frame
   that drew it has been rendered; Direct3D keeps a released resource alive for work in flight).
+- **Let go when not shown.** Once the backdrop has not been asked for in 5 s (`kIdleReleaseSeconds`:
+  the shell closed, a battle, a page without the backdrop), both pictures are let go (about 8 MB of
+  GPU memory each), so a match holds none. Back at the menu the next picture loads once the game has
+  finished loading and fades in from the plain ground over 1.2 s: no pop, a plain ground for a moment
+  and one load's stall (about 17 ms, at most about 115 ms) shortly after the menu returns. Making the
+  constant very large keeps them instead.
+- **When it was asked for and drawn** (`DrawWatch`): kept on the presented frames (counted each
+  frame before the shell draws) and the wall clock, never on the cycle's own clock, which stops while
+  nothing is drawn. The status's `drawn` is drawn in the frame just presented; `hasPicture` is a
+  picture ready to show; `loads` counts the loads started. The loader needs the frame just presented
+  to allow the backdrop and the backdrop to have been asked for within 1 s of the wall clock.
   A picture turned off while still loading is refused when it arrives and let go; nothing else loads
   until it has (`Cycle::Alive` counts it).
 - **Garbage collection.** As SfvArt does: the game's `UTexture2D` is used only until its Direct3D 11
@@ -120,20 +131,30 @@ a menu without its backdrop or a flyout, unset is as before); `shell_settings_jo
 
 ## Verification hooks (development builds)
 
-- Status field `backdrop`: enabled, allowed, drawn, current, next, nextReady, fading, held, alive,
-  failed, entries, lastLoadMs, exhausted, page (column or dense) and the report's progress.
+- Status field `backdrop`: enabled, allowed (this frame), drawn (in the frame just presented),
+  hasPicture, loads, current, next, nextReady, fading, held, alive, failed, entries, lastLoadMs,
+  exhausted, page (column or dense) and the report's progress. Until this fix `drawn` meant a picture
+  was ready (the cycle's frame not empty), so it stayed true in a battle with a picture held.
 - Pipe `backdrop step`: fade to the next picture as soon as it has loaded. `backdrop on|off`: the
-  setting, saved as the row saves it. `backdrop report [sheets] <folder>`: every path of the file,
+  setting, saved as the row saves it. `backdrop report [sheets|plain] <folder>`: every path of the file,
   used or not, loaded in turn at the main menu (one every other frame while the game loads nothing;
   the cycle waits), `<folder>\backdrop-report.tsv` (index, family, use, path, result, width,
   height, DXGI format, load ms, sheet, cell), and with `sheets` `backdrop-sheet-NN.bmp`, 12x12 tiles
-  of 128x72, each picture as Home shows it (cover fit, tint, Home's scrim). Each picture is let go
+  of 128x72, each picture as Home shows it (cover fit, tint, Home's scrim); with `plain` the same
+  tiles as the pictures are (cover fit only), to judge the families that are off. Each picture is let go
   as soon as it is sampled; nothing is written anywhere else. The pipe of a player build answers
   only ping and status, and the report refuses outside a development build.
 - `tools/runbackdrop.py`: one copy; `--report [--sheets]` runs the report and prints what loaded,
   at which sizes, by family, the slowest loads and every used path that did not load (sheets
   converted to PNG where Pillow is installed); `--shots` the pages, stepped between shots.
   `tools/runshell.py --step-backdrop` steps it before each of its shots (the room pages).
+
+### Laptop results (2026-11-12, ff1ca44 on 3515bca6f)
+
+Both branches built, 8 of 8 test suites passed. 1223 of 1223 paths loaded: 1084 at 1920x1080, 139 at
+1920x1106, all format 90 (B8G8R8A8_TYPELESS); a load about 17 ms, the slowest 114.5 ms. Every page
+shot as intended; `runshell.py --step-backdrop` passed. The battle check failed on a stale `drawn`
+(see above), fixed with the idle release and a stricter battle check.
 
 ### Laptop commands
 
@@ -142,19 +163,21 @@ From the sfv-ember checkout, a development build of `b8/backdrop` on the library
 
 ```
 python tools\runbackdrop.py --out D:\sfv-re\backdrop-run --report --sheets --shots
+python tools\runbackdrop.py --out D:\sfv-re\backdrop-plain --report --plain-sheets
 python tools\runshell.py --shots D:\sfv-re\backdrop-run\room --step-backdrop
 ```
 
 ### What the run must show
 
 1. The report: the used families' pictures load at 1920x1080, format 87 or 91 (B8G8R8A8) or 28/29
-   (R8G8B8A8); `load_ms` small enough that a load once every 25 s is not felt (look at the
+   (R8G8B8A8) (measured: all format 90, see above); `load_ms` small enough that a load once every 25 s is not felt (look at the
    slowest); which paths fail and why.
 2. The sheets: which pictures work as wallpaper under Home's scrim. Curate `data/menu-art.json`
    from them (and decide `gallery-mode03` and `story`).
 3. The shots: every page as readable as on the plain ground (cards, headers, the hint bar), a
    different picture on each, Look's row On/Off, Off exactly the old plain ground, nothing in the
-   Training battle (`bd-14`), and the room pages (`runshell.py`).
+   Training battle (`bd-14`: not allowed, not drawn, no load, no more pictures held, none after
+   5 s), and the room pages (`runshell.py`).
 4. The log: `backdrop: <path>: loaded in N ms` only at the main menu, never during a battle; after a
    fade the old picture is let go (`status.backdrop.alive` stays at 2 or less).
 5. Watch a fade in the game: about a second, no flicker, no hitch at its start.

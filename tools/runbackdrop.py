@@ -1,6 +1,6 @@
 """The menu's artwork backdrop on one copy (docs/design/beta8/backdrop.md).
 
-  python tools/runbackdrop.py --out DIR [--report] [--sheets] [--shots] [--keep]
+  python tools/runbackdrop.py --out DIR [--report [--sheets | --plain-sheets]] [--shots] [--keep]
 
 One copy (development build), its virtual pad 0 driving Ember's shell as a
 physical pad does, the pipe reading the status ("backdrop") and sending the
@@ -15,14 +15,18 @@ backdrop's test command:
           Pillow is installed), 12 x 12 tiles of 128 x 72, each picture as
           the main menu shows it (cover fit, the art's tint, Home's scrim);
           the TSV's sheet and cell (row,column) say which tile is which.
+--plain-sheets  with --report: the same sheets with each picture as it is
+          (cover fit only: no scrim, no tint), to judge the families that are
+          off.
 --shots   DIR/bd-*.png: Ember's pages with the backdrop, the picture stepped
           between them (`backdrop step`, then the fade waited out): Home,
           Online play, Settings > Interface > Look with the Background
           artwork row (on, then off, then on again), Profile, Replays,
           Training select, the dummy's board, its costume and V-Skill and
           V-Trigger cards, the stage cards; Home with the backdrop off; and
-          SFV's Training battle, where the backdrop must be neither drawn
-          nor loaded.
+          SFV's Training battle: from Ember closing on, the backdrop is not
+          allowed or drawn, starts no load, holds no more pictures, and has
+          let them all go 5 s after Ember closed.
 
 The pictures are Capcom's: DIR stays on this PC, out of the repository and
 any package. Prints PASS or FAIL; closes the copy unless --keep. Takes the
@@ -87,8 +91,9 @@ def home() -> None:
     expect(0, "home")
 
 
-def report(out: Path, sheets: bool) -> None:
-    reply = lib.request(0, f"backdrop report {'sheets ' if sheets else ''}{out}")
+def report(out: Path, sheets: str) -> None:
+    """`sheets` is "", "sheets" (as Home shows them) or "plain" (as they are)."""
+    reply = lib.request(0, f"backdrop report {sheets + ' ' if sheets else ''}{out}")
     print("report:", reply)
     if not reply.startswith("ok"):
         raise lib.SfveError(f"the report did not start: {reply}")
@@ -225,23 +230,58 @@ def pages(out: Path) -> None:
     shot(out, "bd-13-home-off", step=False)
     print("backdrop on:", lib.request(0, "backdrop on"))
     wait_for("the backdrop on again", 60, lambda: backdrop(0)["drawn"])
-    # SFV's Training battle: no backdrop drawn, none loaded.
-    loads = lib.count_log(0, "backdrop: ")
+    battle(out)
+
+
+# The backdrop's pictures are let go once it has not been asked for this long
+# (SfvBackdropRules' kIdleReleaseSeconds), checked with this much to spare.
+IDLE_RELEASE_S = 5
+CHECK_S = 12
+
+
+def backdrop_loads_logged() -> int:
+    path = lib.log_path(0)
+    lines = path.read_text(errors="replace").splitlines() if path.exists() else []
+    return sum("backdrop: " in line and ": loaded in " in line for line in lines)
+
+
+def battle(out: Path) -> None:
+    """SFV's Training battle: from the shell closing on, the backdrop is not
+    allowed, not drawn, starts no load, holds no more pictures than it did
+    and lets them all go within IDLE_RELEASE_S; the log has no load."""
     reach("training")
     press(0, "A")
     wait_for("Training select", 20, lambda: shell(0)["shown"] and shell(0)["screen"] == "training")
     seek(0, "training-start", ["DOWN"], 6)
     press(0, "A")
-    wait_for("SFV's Training battle", 90, lambda: training_steps.scene(0) == training_steps.TRAINING_SCENE and not shell(0)["shown"])
-    time.sleep(5)
+    wait_for("Ember to close for the battle", 20, lambda: not shell(0)["shown"])
+    closed_at = time.time()
+    first = backdrop(0)
+    loads, alive = first["loads"], first["alive"]
+    log_loads = backdrop_loads_logged()
+    print(f"battle: shell closed, backdrop {json.dumps(first)}")
+    wait_for("SFV's Training battle", 90, lambda: training_steps.scene(0) == training_steps.TRAINING_SCENE)
+    released = False
+    while time.time() - closed_at < max(CHECK_S, IDLE_RELEASE_S + 3):
+        b = backdrop(0)
+        if b["allowed"] or b["drawn"]:
+            note(f"the backdrop is allowed or drawn with Ember closed for the battle: {json.dumps(b)}")
+            break
+        if b["alive"] > alive:
+            note(f"the backdrop's pictures grew in the battle: {alive} -> {b['alive']}")
+            break
+        if b["loads"] != loads:
+            note(f"a backdrop load started in the battle: {loads} -> {b['loads']} ({b['next']})")
+            break
+        released = released or b["alive"] == 0
+        time.sleep(0.5)
     b = backdrop(0)
     lib.screenshot(lib.status_pid(0), out / "bd-14-training-battle.png")
-    if b["allowed"] or b["drawn"]:
-        note(f"the backdrop is allowed or drawn in the Training battle: {json.dumps(b)}")
-    after = [line for line in lib.log_path(0).read_text(errors="replace").splitlines() if "backdrop: " in line]
-    loaded_in_battle = [line for line in after[loads:] if "loaded in" in line]
-    if loaded_in_battle:
-        note(f"pictures loaded around the Training battle: {loaded_in_battle}")
+    print(f"battle: {time.time() - closed_at:.0f} s after the shell closed, backdrop {json.dumps(b)}")
+    if not released:
+        note(f"the backdrop still holds {b['alive']} pictures {IDLE_RELEASE_S} s after the shell closed")
+    if backdrop_loads_logged() != log_loads:
+        note("the log has a backdrop load during the battle")
 
 
 def main(argv: list[str]) -> int:
@@ -249,6 +289,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--report", action="store_true")
     p.add_argument("--sheets", action="store_true")
+    p.add_argument("--plain-sheets", action="store_true", help="the sheets' pictures as they are: no scrim, no tint")
     p.add_argument("--shots", action="store_true")
     p.add_argument("--keep", action="store_true")
     a = p.parse_args(argv)
@@ -268,7 +309,7 @@ def main(argv: list[str]) -> int:
         wait_for("the backdrop's first picture", 90, lambda: backdrop(0)["drawn"])
         print("backdrop:", json.dumps(backdrop(0)))
         if a.report:
-            report(a.out, a.sheets)
+            report(a.out, "plain" if a.plain_sheets else "sheets" if a.sheets else "")
             wait_for("the backdrop after the report", 60, lambda: backdrop(0)["drawn"])
         if a.shots:
             pages(a.out)
