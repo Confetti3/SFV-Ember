@@ -109,4 +109,9 @@ std::optional<std::pair<uint32_t, uint32_t>> ColourSwatch(const std::string& fig
 	return std::make_pair(colours[0], colours[1]);
 }
 
+bool GameIsLoading()
+{
+	return At<bool (*)()>(sfv::kIsAsyncLoading)();
+}
+
 } // namespace sfve::mod

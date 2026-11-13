@@ -39,4 +39,9 @@ std::optional<GameTexture> TakeGameTexture(uint8_t* texture, bool* pending, std:
 // costume. May load the costume's preview data asset.
 std::optional<std::pair<uint32_t, uint32_t>> ColourSwatch(const std::string& fighterCode, int costume, int colour);
 
+// SFV's own "is anything still loading" (sfv::kIsAsyncLoading): a load of
+// ours waits while the game loads, so the two never stall the frame together.
+// Game thread.
+bool GameIsLoading();
+
 } // namespace sfve::mod
