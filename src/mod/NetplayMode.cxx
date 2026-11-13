@@ -1,6 +1,7 @@
 #include "mod/NetplayMode.hxx"
 
 #include "ember/DesyncReporter.hxx"
+#include "ember/DesyncTrace.hxx"
 #include "ember/EmberHost.hxx"
 #include "ember/RoomCommands.hxx"
 #include "ember/SfvFrameMeter.hxx"
@@ -495,8 +496,17 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 		recorder_.Start();
 		recording_ = {};
 		recordingWhole_ = false;
-		c.onFrame = [this](int frame, const RecordedFrame& played) { recorder_.OnFrame(frame, played); };
 		c.onCheckpoint = [this](int frame, uint64_t hash) { recorder_.OnCheckpoint(frame, hash); };
+	}
+	// A desync's report needs the inputs of the frames before it whether or not
+	// the battle is recorded (ember/DesyncTrace.hxx), so every room battle's
+	// frames go to the trace as well; the recorder's call is as it was.
+	sfve::adapter::Trace().Reset();
+	if (room_.Active()) {
+		c.onFrame = [this, record](int frame, const RecordedFrame& played) {
+			if (record) recorder_.OnFrame(frame, played);
+			sfve::adapter::Trace().NoteFrame(frame, played);
+		};
 	}
 	std::string error;
 	const bool started = session_->Start(c, &error);
