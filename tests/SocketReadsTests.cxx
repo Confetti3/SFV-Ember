@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <limits>
 #include <optional>
 #include <string>
