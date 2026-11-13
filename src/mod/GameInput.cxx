@@ -109,6 +109,52 @@ constexpr Step kQcbK[] = {kNeutral, {D, 0, 2}, {D | B, 0, 2}, {B, kHK, 4}};
 constexpr Step kChargeBfP[] = {{B, 0, 45}, {F, kHP, 4}};
 constexpr Step kDpP[] = {kNeutral, {F, 0, 2}, {D, 0, 2}, {D | F, kHP, 4}};
 
+// Target combos and chained buttons (MoveSet::Luke, Akira, Targets). A step's
+// frames are counted from the press's first frame, so "MP at +10" is a 4-frame
+// press, six neutral frames, and the next press. Where a chain's gaps are
+// named, they are press to press: kLukeSlow is LP at frame 0, MP at +10, HP at
+// +31 (a player's, from the field), kLukeTight LP, MP at +8, HP at +18.
+constexpr Step kLukeSlow[] = {kNeutral, {0, kLP, 4}, {0, 0, 6}, {0, kMP, 4}, {0, 0, 17}, {0, kHP, 4}, {0, 0, 40}};
+constexpr Step kLukeTight[] = {kNeutral, {0, kLP, 4}, {0, 0, 4}, {0, kMP, 4}, {0, 0, 6}, {0, kHP, 4}, {0, 0, 40}};
+// ...then QCB+LP, the field replay's follow-up (the motion's last direction
+// carries the press, as every motion here does).
+constexpr Step kLukeSlowQcb[] = {kNeutral, {0, kLP, 4}, {0, 0, 6}, {0, kMP, 4}, {0, 0, 17}, {0, kHP, 4}, {0, 0, 30},
+	{D, 0, 2}, {D | B, 0, 2}, {B, kLP, 4}};
+constexpr Step kLukeTightQcb[] = {kNeutral, {0, kLP, 4}, {0, 0, 4}, {0, kMP, 4}, {0, 0, 6}, {0, kHP, 4}, {0, 0, 30},
+	{D, 0, 2}, {D | B, 0, 2}, {B, kLP, 4}};
+constexpr Step kLukeQcb[] = {kNeutral, {D, 0, 2}, {D | B, 0, 2}, {B, kLP, 4}};
+
+// Akira's V-Skill (MP+MK): taps at varying gaps and the 13-frame hold the field
+// showed, then one attack after a hold or a tap, which is what the launcher
+// of V-Skill I reads (which attack it takes is for the run to show).
+constexpr Step kAkiraTapsShort[] = {kNeutral, {0, kMP | kMK, 4}, {0, 0, 6}, {0, kMP | kMK, 4}, {0, 0, 9}, {0, kMP | kMK, 4}};
+constexpr Step kAkiraTapsLong[] = {kNeutral, {0, kMP | kMK, 4}, {0, 0, 21}, {0, kMP | kMK, 4}, {0, 0, 38}, {0, kMP | kMK, 4}};
+constexpr Step kAkiraHold13[] = {kNeutral, {0, kMP | kMK, 13}};
+constexpr Step kAkiraHold13Tap[] = {kNeutral, {0, kMP | kMK, 13}, {0, 0, 12}, {0, kMP | kMK, 4}};
+constexpr Step kAkiraHold13Lp[] = {kNeutral, {0, kMP | kMK, 13}, {0, 0, 8}, {0, kLP, 4}};
+constexpr Step kAkiraHold13Mp[] = {kNeutral, {0, kMP | kMK, 13}, {0, 0, 8}, {0, kMP, 4}};
+constexpr Step kAkiraHold13Hp[] = {kNeutral, {0, kMP | kMK, 13}, {0, 0, 8}, {0, kHP, 4}};
+constexpr Step kAkiraHold13Lk[] = {kNeutral, {0, kMP | kMK, 13}, {0, 0, 8}, {0, kLK, 4}};
+constexpr Step kAkiraHold13Mk[] = {kNeutral, {0, kMP | kMK, 13}, {0, 0, 8}, {0, kMK, 4}};
+constexpr Step kAkiraHold13Hk[] = {kNeutral, {0, kMP | kMK, 13}, {0, 0, 8}, {0, kHK, 4}};
+constexpr Step kAkiraTapLpLate[] = {kNeutral, {0, kMP | kMK, 4}, {0, 0, 24}, {0, kLP, 4}, {0, 0, 10}, {0, kHP, 4}};
+
+// Chained buttons at 6-12 frame gaps, press to press neutral frames between
+// (MoveSet::Targets). Each press is four frames.
+constexpr Step kLpMp6[] = {kNeutral, {0, kLP, 4}, {0, 0, 6}, {0, kMP, 4}};
+constexpr Step kLpMp12[] = {kNeutral, {0, kLP, 4}, {0, 0, 12}, {0, kMP, 4}};
+constexpr Step kMpHp8[] = {kNeutral, {0, kMP, 4}, {0, 0, 8}, {0, kHP, 4}};
+constexpr Step kMpHp11[] = {kNeutral, {0, kMP, 4}, {0, 0, 11}, {0, kHP, 4}};
+constexpr Step kLkMk9[] = {kNeutral, {0, kLK, 4}, {0, 0, 9}, {0, kMK, 4}};
+constexpr Step kLkMk6[] = {kNeutral, {0, kLK, 4}, {0, 0, 6}, {0, kMK, 4}};
+constexpr Step kLpMpHp6_10[] = {kNeutral, {0, kLP, 4}, {0, 0, 6}, {0, kMP, 4}, {0, 0, 10}, {0, kHP, 4}};
+constexpr Step kLpMpHp12_8[] = {kNeutral, {0, kLP, 4}, {0, 0, 12}, {0, kMP, 4}, {0, 0, 8}, {0, kHP, 4}};
+constexpr Step kMkHk7[] = {kNeutral, {0, kMK, 4}, {0, 0, 7}, {0, kHK, 4}};
+constexpr Step kMkHk12[] = {kNeutral, {0, kMK, 4}, {0, 0, 12}, {0, kHK, 4}};
+// The same chains from a crouch (a direction held down is still grounded).
+constexpr Step kCrLpMp8[] = {kNeutral, {D, kLP, 4}, {D, 0, 8}, {D, kMP, 4}};
+constexpr Step kCrLkMk8[] = {kNeutral, {D, kLK, 4}, {D, 0, 8}, {D, kMK, 4}};
+
 struct Move {
 	const char* name;
 	std::span<const Step> steps;
@@ -183,9 +229,52 @@ constexpr Move kProjectiles[] = {
 	{"critical art qcf qcf p", kQcfQcfP, kSuperBlockFrames},
 };
 
+// Block lengths: a chain with its recovery, long enough for the hits to
+// land and the fighter to stand again before the next block.
+constexpr int kTargetBlock = 120;
+constexpr Move kLuke[] = {
+	{"luke target lp mp hp (field gaps)", kLukeSlow, kTargetBlock},
+	{"luke target lp mp hp (tight)", kLukeTight, kTargetBlock},
+	{"luke target lp mp hp (field gaps) then qcb lp", kLukeSlowQcb, 200},
+	{"luke target lp mp hp (tight) then qcb lp", kLukeTightQcb, 200},
+	{"luke qcb lp", kLukeQcb, 120},
+};
+
+constexpr Move kAkira[] = {
+	{"akira v-skill taps (short gaps)", kAkiraTapsShort, 160},
+	{"akira v-skill taps (long gaps)", kAkiraTapsLong, 160},
+	{"akira v-skill hold 13", kAkiraHold13, 120},
+	{"akira v-skill hold 13 then tap", kAkiraHold13Tap, 160},
+	{"akira v-skill hold 13 then lp", kAkiraHold13Lp, 160},
+	{"akira v-skill hold 13 then mp", kAkiraHold13Mp, 160},
+	{"akira v-skill hold 13 then hp", kAkiraHold13Hp, 160},
+	{"akira v-skill hold 13 then lk", kAkiraHold13Lk, 160},
+	{"akira v-skill hold 13 then mk", kAkiraHold13Mk, 160},
+	{"akira v-skill hold 13 then hk", kAkiraHold13Hk, 160},
+	{"akira v-skill tap then lp, hp", kAkiraTapLpLate, 160},
+};
+
+constexpr Move kTargets[] = {
+	{"lp>mp (gap 6)", kLpMp6, kTargetBlock},
+	{"lp>mp (gap 12)", kLpMp12, kTargetBlock},
+	{"mp>hp (gap 8)", kMpHp8, kTargetBlock},
+	{"mp>hp (gap 11)", kMpHp11, kTargetBlock},
+	{"lk>mk (gap 9)", kLkMk9, kTargetBlock},
+	{"lk>mk (gap 6)", kLkMk6, kTargetBlock},
+	{"lp>mp>hp (gaps 6, 10)", kLpMpHp6_10, kTargetBlock},
+	{"lp>mp>hp (gaps 12, 8)", kLpMpHp12_8, kTargetBlock},
+	{"mk>hk (gap 7)", kMkHk7, kTargetBlock},
+	{"mk>hk (gap 12)", kMkHk12, kTargetBlock},
+	{"crouching lp>mp (gap 8)", kCrLpMp8, kTargetBlock},
+	{"crouching lk>mk (gap 8)", kCrLkMk8, kTargetBlock},
+};
+
 constexpr std::span<const Move> MovesOf(MoveSet set)
 {
 	switch (set) {
+	case MoveSet::Luke: return kLuke;
+	case MoveSet::Akira: return kAkira;
+	case MoveSet::Targets: return kTargets;
 	case MoveSet::Supers: return kSupers;
 	case MoveSet::Cody: return kCody;
 	case MoveSet::Projectiles: return kProjectiles;
@@ -196,7 +285,8 @@ constexpr std::span<const Move> MovesOf(MoveSet set)
 
 consteval bool EveryMoveFitsItsBlock()
 {
-	for (const MoveSet set : {MoveSet::System, MoveSet::Supers, MoveSet::Cody, MoveSet::Projectiles}) {
+	for (const MoveSet set : {MoveSet::System, MoveSet::Supers, MoveSet::Cody, MoveSet::Projectiles, MoveSet::Luke,
+		     MoveSet::Akira, MoveSet::Targets}) {
 		for (const Move& move : MovesOf(set)) {
 			int frames = 0;
 			for (const Step& step : move.steps) frames += step.frames;

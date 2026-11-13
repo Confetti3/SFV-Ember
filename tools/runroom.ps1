@@ -34,8 +34,12 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # (SFVE_RES for that copy's launch), as two players' screens differ.
 # -moves: each copy mashes the game's system moves (input::Moves: V-Skill,
 # V-Trigger, V-Reversal, Critical Art motions, EX, throws).
-# -moveset supers|cody|projectiles: one set of moves instead (input::MoveSet;
-# implies -moves). -idle 0|1: that side's player stands still, and the other
+# -moveset supers|cody|projectiles|luke|akira|targets: one set of moves instead
+# (input::MoveSet; implies -moves). luke: Luke's LP>MP>HP target combo with the
+# field's gaps and a tight chain, alone and then QCB+LP; akira: V-Skill taps at
+# varying gaps, a 13-frame hold and the presses after it (the V-Skill I or II
+# is the pick's loadout: the pick Z41:c:col:1:x or :2:); targets: chained
+# buttons at 6-12 frame gaps for any fighter (docs/design/beta9/skip.md). -idle 0|1: that side's player stands still, and the other
 # walks forward at the start of each block of moves. Every block faces the
 # way its fighter does. -socketLog: each copy logs the fight's reads of the
 # fighters' models (SocketReads); the lines are printed per copy at the end.
@@ -392,7 +396,10 @@ foreach ($i in $copies) {
   if ($unowned[$i]) { $marks += "-sfve_unowned=$($unowned[$i])" }
   if ($gateOff[$i]) { $marks += '-sfve_ownership=0' }
   if ($uninstalled[$i]) { $marks += "-sfve_uninstalled=$($uninstalled[$i])" }
-  if ($moveset) { $marks += "-sfve_moveset=$moveset" }
+  if ($moveset) {
+    if ('supers','cody','projectiles','luke','akira','targets' -notcontains $moveset) { throw "-moveset $moveset is not a set of moves (an unknown name would silently play single buttons)" }
+    $marks += "-sfve_moveset=$moveset"
+  }
   if ($idle -ge 0) { $marks += "-sfve_idle=$idle" }
   if ($socketLog) { $marks += '-sfve_socket_log=1' }
   if ($rngAudit) { $marks += '-sfve_rng_audit=1' }

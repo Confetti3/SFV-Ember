@@ -51,7 +51,8 @@ TEST_CASE("a block of moves starts on the script's first frame")
 
 namespace {
 
-constexpr MoveSet kSets[] = {MoveSet::System, MoveSet::Supers, MoveSet::Cody, MoveSet::Projectiles};
+constexpr MoveSet kSets[] = {MoveSet::System, MoveSet::Supers, MoveSet::Cody, MoveSet::Projectiles, MoveSet::Luke,
+	MoveSet::Akira, MoveSet::Targets};
 
 // A script's inputs for `frames` frames from `from`, played in order.
 std::vector<PackedInput> Play(ScriptedInput& script, int from, int frames, std::optional<bool> facing = std::nullopt)
@@ -128,7 +129,8 @@ TEST_CASE("a block's forward is the fighter's facing at the block's first frame"
 			CHECK((l[i] == r[i] || l[i] == mirrored));
 			turned |= l[i] == mirrored && r[i] != l[i];
 		}
-		CHECK(turned);
+		// Akira's and the target chains hold no forward or back: nothing to turn.
+		if (set != MoveSet::Akira && set != MoveSet::Targets) CHECK(turned);
 	}
 }
 
@@ -173,4 +175,118 @@ TEST_CASE("a script read out of order plays the same frames as one read in order
 	const std::vector<PackedInput> frames = Play(ordered, 10, 4000);
 	ScriptedInput jumping(config, 1);
 	for (const int frame : {3000, 20, 2500, 10, 3999}) CHECK(*jumping.At(frame + 10) == frames[frame]);
+}
+
+namespace {
+
+// The inputs of the first block of `set` named `name` (some seed in a few
+// plays it), from the block's first frame, facing right.
+std::vector<PackedInput> BlockOf(MoveSet set, const std::string& name)
+{
+	for (uint32_t seed = 1; seed <= 8; seed++) {
+		ScriptedInput script({seed, 0, false, Script::Moves, set}, 0);
+		std::vector<PackedInput> inputs;
+		bool inside = false;
+		for (int frame = 0; frame < 40000; frame++) {
+			const PackedInput in = *script.At(frame, true);
+			const Planned& block = script.Block();
+			if (name == block.move && frame >= block.start) {
+				inside = true;
+				inputs.push_back(in);
+			} else if (inside) {
+				return inputs;
+			}
+		}
+	}
+	return {};
+}
+
+// The frames at which an attack bit starts (it was not down the frame before).
+std::vector<std::pair<int, PackedInput>> Presses(const std::vector<PackedInput>& block, int upTo)
+{
+	std::vector<std::pair<int, PackedInput>> presses;
+	for (int i = 0; i < upTo && i < (int)block.size(); i++) {
+		const PackedInput now = block[i] & kInputBits & ~(kUp | kDown | kLeft | kRight);
+		const PackedInput before = i ? block[i - 1] & kInputBits & ~(kUp | kDown | kLeft | kRight) : 0;
+		if (now & ~before) presses.push_back({i, now & ~before});
+	}
+	return presses;
+}
+
+} // namespace
+
+TEST_CASE("Luke's target combo comes with the field's gaps: LP, MP at +10, HP at +31, then QCB+LP")
+{
+	const std::vector<PackedInput> slow = BlockOf(MoveSet::Luke, "luke target lp mp hp (field gaps)");
+	REQUIRE(slow.size() >= 40);
+	const auto presses = Presses(slow, 40);
+	REQUIRE(presses.size() == 3);
+	CHECK(presses[0].second == kLP);
+	CHECK(presses[1].second == kMP);
+	CHECK(presses[2].second == kHP);
+	CHECK(presses[1].first - presses[0].first == 10);
+	CHECK(presses[2].first - presses[0].first == 31);
+	// Each press is four frames, nothing else is down and nothing moves while the chain plays.
+	for (const auto& [at, bit] : presses) {
+		for (int i = 0; i < 4; i++) CHECK(slow[at + i] == bit);
+	}
+	CHECK(slow[0] == PackedInput(0));
+
+	const std::vector<PackedInput> tight = BlockOf(MoveSet::Luke, "luke target lp mp hp (tight)");
+	REQUIRE(tight.size() >= 40);
+	const auto tightPresses = Presses(tight, 40);
+	REQUIRE(tightPresses.size() == 3);
+	CHECK(tightPresses[1].first - tightPresses[0].first == 8);
+	CHECK(tightPresses[2].first - tightPresses[1].first == 10);
+
+	// Then a quarter circle back facing right: down, down-left, left with the punch.
+	const std::vector<PackedInput> qcb = BlockOf(MoveSet::Luke, "luke target lp mp hp (field gaps) then qcb lp");
+	REQUIRE(qcb.size() >= 80);
+	CHECK(qcb[presses[2].first + 4 + 30] == kDown);
+	CHECK(qcb[presses[2].first + 4 + 32] == (kDown | kLeft));
+	CHECK(qcb[presses[2].first + 4 + 34] == (kLeft | kLP));
+}
+
+TEST_CASE("Akira's V-Skill is MP+MK: taps at varying gaps and a 13-frame hold, loadout apart")
+{
+	const std::vector<PackedInput> hold = BlockOf(MoveSet::Akira, "akira v-skill hold 13");
+	REQUIRE(hold.size() >= 20);
+	int held = 0;
+	for (const PackedInput in : hold) held += in == (kMP | kMK);
+	CHECK(held >= 13);
+	for (int i = 2; i < 15; i++) CHECK(hold[i] == (kMP | kMK));
+	CHECK(hold[15] != (kMP | kMK)); // the mash after the steps is no hold
+	const std::vector<PackedInput> taps = BlockOf(MoveSet::Akira, "akira v-skill taps (long gaps)");
+	REQUIRE(taps.size() >= 80);
+	const auto presses = Presses(taps, 73);
+	REQUIRE(presses.size() == 3);
+	CHECK(presses[1].first - presses[0].first == 25);
+	CHECK(presses[2].first - presses[1].first == 42);
+	// The follow-up after a hold is one attack, a fixed gap later.
+	const std::vector<PackedInput> then = BlockOf(MoveSet::Akira, "akira v-skill hold 13 then hp");
+	REQUIRE(then.size() >= 40);
+	CHECK(then[2 + 13 + 8] == kHP);
+}
+
+TEST_CASE("the target chains press their buttons at 6-12 frame gaps, grounded, for any fighter")
+{
+	const std::vector<PackedInput> triple = BlockOf(MoveSet::Targets, "lp>mp>hp (gaps 6, 10)");
+	REQUIRE(triple.size() >= 40);
+	const auto presses = Presses(triple, 30);
+	REQUIRE(presses.size() == 3);
+	CHECK(presses[0].second == kLP);
+	CHECK(presses[1].second == kMP);
+	CHECK(presses[2].second == kHP);
+	CHECK(presses[1].first - presses[0].first == 10); // four-frame press plus the gap of 6
+	CHECK(presses[2].first - presses[1].first == 14);
+	const std::vector<PackedInput> kicks = BlockOf(MoveSet::Targets, "mk>hk (gap 12)");
+	const auto kickPresses = Presses(kicks, 22);
+	REQUIRE(kickPresses.size() == 2);
+	CHECK(kickPresses[0].second == kMK);
+	CHECK(kickPresses[1].second == kHK);
+	CHECK(kickPresses[1].first - kickPresses[0].first == 16);
+	// Facing left only mirrors a direction; these chains hold none but down.
+	const std::vector<PackedInput> crouch = BlockOf(MoveSet::Targets, "crouching lp>mp (gap 8)");
+	REQUIRE(crouch.size() >= 30);
+	CHECK(crouch[2] == (kDown | kLP));
 }

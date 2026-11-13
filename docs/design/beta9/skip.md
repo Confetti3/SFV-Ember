@@ -45,3 +45,32 @@ never set, however long the decided match's scenes run" (5000 frames, every scen
 direction, the round scenes, the intro) and a press-only case for the scenes between rounds were
 added. `SfvCatalogTests`: the launch-carries-the-rule case is gone. `EmberAdapterTests`:
 `caps.skipScenes` is false.
+
+## 3. Scripted moves the harness could not play (target combos and V-Skill)
+
+`kVSkillPunches` and the other sets press at 20-frame gaps, so no set could play a target combo.
+Three frame-timed sets are added to `input::MoveSet` (`src/mod/GameInput.*`): each is a list of
+`Step`s counted in frames, a function of the seed like the others, grounded (down at most), facing
+from the fighter.
+
+| set | blocks (press to press, a press is 4 frames) |
+|---|---|
+| `luke` (Z42) | LP, MP at +10, HP at +31 (the field's gaps); LP, MP at +8, HP at +18 (tight); each alone and followed by QCB+LP 30 frames after the HP (the field replay's follow-up); QCB+LP alone |
+| `akira` (Z41) | V-Skill (MP+MK) taps at gaps 6/9 and 21/38; a 13-frame hold; a hold then a tap, LP, MP, HP, LK, MK or HK 8 frames after it; a tap then LP, HP |
+| `targets` (any fighter) | LP>MP (gaps 6, 12), MP>HP (8, 11), LK>MK (9, 6), LP>MP>HP (6,10 and 12,8), MK>HK (7, 12), crouching LP>MP and LK>MK (gap 8) |
+
+Akira's V-Skill I or II is the pick's loadout (`Z41:c:col:1:x` or `:2:`), not the script's.
+
+**Not done, and why.** Luke's other target combos and Akira's partner-calling moves: nothing in
+this repository (docs, data, pick space) holds their inputs, and the brief says not to invent
+them. The follow-up presses after Akira's V-Skill are a probe (every attack button once, 8
+frames after the hold), not a known launcher input. When the inputs are known they are one
+`Step` list each in `GameInput.cxx`.
+
+**Wiring.** `tools/runroom.ps1` and `tools/synctest.ps1` pass `-moveset luke|akira|targets` as
+`-sfve_moveset=` and now refuse an unknown name (the mod reads an unknown name as the system
+set and plays single buttons, silently). The mod's own option parser, `src/mod/ModConfig.cxx`,
+is not in this change's scope: it needs three lines (see the report's patch), without which the
+mod ignores the new names. Tests: `GameInputTests` runs the new sets through every generic
+case (blocks follow each other, grounded, facing) and checks the Luke, Akira and chain timings
+frame by frame.
