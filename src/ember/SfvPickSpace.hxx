@@ -39,9 +39,13 @@ namespace sfve::picks {
 // fight reads it (TinyFighters' BeginFightUpdate), where 0.5's fight read
 // sockets of the small model (docs/design/beta8/desync.md); and two betas
 // that play differently must never meet (a beta.5 copy met a beta.6 one and
-// they diverged at their first checkpoint, Bugsink 2026-11). No earlier copy
-// may meet one of these.
-constexpr const char* kMatchBuild = "sfv-ember/13173604/0.6";
+// they diverged at their first checkpoint, Bugsink 2026-11). 0.7 (beta.9):
+// the tick tasks run on the battle's thread in every battle, every fighter
+// unit's outside state and socket reads are kept, and a checkpoint is taken
+// every 20 frames instead of 60, so a beta.8 copy cannot meet one of these
+// (docs/design/beta8/desync.md, "Beta.9"). No earlier copy may meet one of
+// these.
+constexpr const char* kMatchBuild = "sfv-ember/13173604/0.7";
 
 // The stage choice that stands for Random (GameCatalog::randomStage): the
 // library's own selection::RandomStageId, never a stage on the wire. P1's

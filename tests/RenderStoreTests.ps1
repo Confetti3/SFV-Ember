@@ -20,7 +20,7 @@ $failures = [Collections.Generic.List[string]]::new()
 # one V-Skill and one V-Trigger.
 $spacePath = Join-Path $root 'pick-space.json'
 @{
-	build = 'sfv-ember/13173604/0.6/0000000000000000/layout-0000000000000000'
+	build = 'sfv-ember/13173604/0.7/0000000000000000/layout-0000000000000000'
 	fighters = @(@{
 		code = 'AAA'
 		costumes = @(@{ id = 0; colours = @(0, 1) }, @{ id = 3; colours = @(0); unshipped = $true })
