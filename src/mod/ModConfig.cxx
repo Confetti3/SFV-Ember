@@ -285,4 +285,12 @@ const char* ModeName(ModMode mode)
 	return "?";
 }
 
+CrtMathChoice ChooseCrtMath(const ModConfig& config, BuildKind kind)
+{
+	if (kind == BuildKind::Development && (config.crtFma3 == 0 || config.crtFma3 == 1)) {
+		return {config.crtFma3 ? CrtMath::Fma3 : CrtMath::Sse2, true};
+	}
+	return {RollsBack(config.mode) ? kRollbackCrtMath : CrtMath::AsStarted, false};
+}
+
 } // namespace sfve::mod
