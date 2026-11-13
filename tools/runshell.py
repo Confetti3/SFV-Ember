@@ -14,7 +14,10 @@ board and its art pane, the costume and colour cards, the V-Skill and
 V-Trigger cards, the stage cards, where Select must store the stage) and
 copy 1 its table page's stage row as P2 (docs/design/beta8/select.md).
 Nothing goes through the room test commands: the pipe only reads the status
-and presses the pad. Prints PASS or FAIL; closes the copies unless --keep.
+and presses the pad. With --step-backdrop, each shot first fades the menu's
+artwork backdrop to its next picture (the pipe's `backdrop step`,
+docs/design/beta8/backdrop.md), so the shots show the pages on several
+pictures. Prints PASS or FAIL; closes the copies unless --keep.
 
 The clipboard is the Windows one, shared by both copies: the run replaces
 what it held with the room's invitation.
@@ -32,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import sfvelib as lib  # noqa: E402
 
 PRESS_S = 0.6  # a press (120 ms), its release, and a frame or two to draw
+STEP_BACKDROP = False  # --step-backdrop: each shot on the backdrop's next picture
 
 
 def status(index: int) -> dict:
@@ -184,8 +188,33 @@ def open_home(index: int) -> None:
     expect(index, "home")
 
 
+def backdrop(index: int) -> dict:
+    return status(index)["backdrop"]
+
+
+def step_backdrop(index: int, timeout_s: float = 30) -> str:
+    """Fades the menu's backdrop to its next picture (`backdrop step`) and
+    waits until the fade is over; the picture now shown. A backdrop that is
+    not drawn, or has no next picture, is left as it is."""
+    before = backdrop(index)
+    if not before["drawn"]:
+        return before["current"]
+    lib.request(index, "backdrop step")
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        now = backdrop(index)
+        if now["current"] != before["current"] and not now["fading"]:
+            time.sleep(0.3)
+            return now["current"]
+        time.sleep(0.25)
+    print(f"copy {index}: the backdrop did not change from {before['current']} (next {backdrop(index)['next']})")
+    return backdrop(index)["current"]
+
+
 def shot(shots: Path | None, name: str, index: int) -> None:
     if shots:
+        if STEP_BACKDROP:
+            print(f"copy {index}: {name} on {step_backdrop(index)}")
         lib.screenshot(lib.status_pid(index), shots / f"{name}.png")
 
 
@@ -440,9 +469,12 @@ def main(argv: list[str]) -> int:
     p.add_argument("--shots", type=Path)
     p.add_argument("--games", type=int, default=1)
     p.add_argument("--keep", action="store_true")
+    p.add_argument("--step-backdrop", action="store_true", help="each shot on the menu backdrop's next picture")
     p.add_argument("--unowned", help="copy 0's -sfve_unowned (CODE[:costume[:colour]],...): content its player "
                    "may not pick, to show the pick screen's NOT OWNED")
     a = p.parse_args(argv)
+    global STEP_BACKDROP
+    STEP_BACKDROP = a.step_backdrop
     lib.begin_run()
     if a.shots:
         a.shots.mkdir(parents=True, exist_ok=True)
