@@ -407,6 +407,10 @@ test made the masking depend on each process's heap, and equal values then hashe
   address; the packed pointer with a small value after it keeps its own window.
 - **Rerun:** R2 and R3, and the S6b run above.
 
+**Superseded again (rule 2, `rollback-fixes.md`).** Only words on an 8-byte boundary of the
+real address are tested, so no two windows overlap and `kSmallLowHalf` is gone; the S6b case,
+its tail (a pointer after a dword of 0x10000 or more) and the counter table all mask by place.
+
 ## Ranked hypotheses
 
 1. **Projectiles placed at a socket on a replayed tick: shown by D5, fixed above** (3360 and

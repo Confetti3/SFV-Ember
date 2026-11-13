@@ -2847,6 +2847,8 @@ agreement and the Tiny fighters fix all change what a room plays).
 - `select.md`, `eleven.md`: the fighter board in SFV's own placement, art pane, galleries,
   loadout cards with notes (`locales/loadout/`), stage cards, Random, remembered looks, Eleven.
 - `hitboxes.md`: Training's box viewer (library `ui/HitboxOverlay`, `Capabilities::hitboxes`).
+- `rollback-fixes.md`: the state hash tests only 8-byte boundaries for addresses (rule 2); one
+  CRT math path (SSE2) in every mode that rolls back (section 61).
 - Unshipped costumes (`select.md`): each fighter's folder 0C costume, named by the bare text id
   `ID_SYS_BSet_0224`, loads with no textures (the photo booth's capture, 45 of 45 fighters). The
   pick space marks them (`"unshipped": true` in `data/pick-space.json`, `picks::Costume::unshipped`):
@@ -2860,3 +2862,37 @@ agreement and the Tiny fighters fix all change what a room plays).
   embedded), cross-faded every 25 s under a per-page scrim, loaded only at the main menu, two alive
   at most; Look's Background artwork row (library `ui::SetMenuBackdropDrawer`,
   `ShellGame::ShowMenuArtwork`, branch `b8/lib-backdrop`).
+
+## 61. The address rule on 8-byte boundaries, and one CRT math path (2026-11-12)
+
+**Why.** The rollback inventory of 2026-11-12 found two durable gaps. The state hash zeroed
+every 8-byte window on a 4-byte boundary that looked like an address, so any pair of small
+dwords (health, gauges, input counters, command history) was left out of the hash and out of
+the start agreement's repair, and its tie-break still left the S6b false desync for a pointer
+just past a 4 GB boundary after a large dword. And msvcr120 runs the fight's float functions on
+FMA3 code or SSE2 code by CPU, so an older CPU against a newer one could diverge for real.
+
+**What changed** (`b8/rollback-fixes`; `docs/design/beta8/rollback-fixes.md`).
+- Address rule 2 (`kAddressRuleVersion`): only words on an 8-byte boundary of their real
+  address are tested and zeroed, in `HashRegion`, `AddressUnits` (the start agreement) and
+  `tools/diffstate.py` / `stateregion.py`. No tie-break is needed: the windows never overlap.
+  Checked on 22 state files and dumps: 4,743 pointers, all on boundaries; the same region's
+  address mod 8 equal across processes in 39,712 pairs; value-like windows zeroed 4,616 before,
+  3,410 now; the two-copy pairs (F5, R2, S6b) differ in the same regions as before.
+- Netplay (matches, watchers, replay playback) and the synctest call `_set_FMA3_enable(0)` at
+  start (`ChooseCrtMath`, `SetCrtMath`): SSE2 on every copy. `-sfve_fma3=0|1` still chooses in a
+  development build; a player build cannot be moved off SSE2. Training in a player's game takes
+  it too (same process). One `crt:` log line says which path and why.
+- The layout id carries both (`LayoutId` from the rule's version; `MakeLayoutRulesId`'s text
+  ends `; address rule 2; rollback math SSE2`). `data/pick-space.json`'s layout part must be set
+  to the new id (no game needed: `RoomBuildTests` prints it) and the room host rebuilt from it.
+  `kMatchBuild` stays 0.6; replays from earlier beta.8 builds are refused.
+
+*Tests (not run; no build):* `StateRegionsTests`, `StartAgreementTests`, `BuildKindTests`,
+`diffstate.py --selftest` (passes).
+
+**Left.** Still hidden under rule 2: about 1,940 value windows over 17 state files, mostly the
+input ring (`InputUnit+0x178`), the command history and the 632-byte Attack Data run. A per-owner
+"holds no addresses" mark would unhide about 73% of them; the command history and action part
+need the per-owner pointer-slot table (inventory item 1 (b)). The laptop runs in
+`rollback-fixes.md` section 4 confirm both fixes.

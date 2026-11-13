@@ -37,7 +37,8 @@
 //                        what they leave different (random spacing from -sfve_schedule)
 //   -sfve_tasks=0|1|2    test: battle tasks as the game places them (0), all of the tick on
 //                        the battle's thread (1), and P2's fighter tasks before P1's (2)
-//   -sfve_fma3=0|1       test: the game's CRT math (msvcr120) without or with its FMA3 code
+//   -sfve_fma3=0|1       test: the game's CRT math (msvcr120) on its SSE2 (0) or FMA3 (1)
+//                        code; without it, SSE2 in the modes that roll back (ChooseCrtMath)
 //   -sfve_replay_lag=N      replay playback: play as a fighter's copy does when P1's inputs
 //                        (-sfve_replay_lag_player=1: P2's) arrive N frames late, with
 //                        guesses and rollbacks; checkpoints once final
@@ -179,8 +180,9 @@ struct ModConfig {
 	// replayLagPlayer's inputs arrive this many frames late
 	// (RollbackSession::Config::replayLag). 0: none.
 	int replayLag = 0;
-	// msvcr120's FMA3 code for the game's math: -1 as the CRT chose it at
-	// start (FMA3 where the CPU has it), 0 off, 1 on (DllMain: SetCrtFma3).
+	// msvcr120's math for the game, as a test asks for it (ChooseCrtMath): 0
+	// its SSE2 code, 1 its FMA3 code where the CPU has it, -1 (not given) the
+	// mode's own: SSE2 in the modes that roll back.
 	int crtFma3 = -1;
 	// Where the battle's tick tasks run (ProjectileRelease's task hook, the
 	// modes that roll back): 0 as the game places them, 1 all on the battle's
@@ -232,5 +234,47 @@ const std::string& UninstalledProblem();
 // ("-sfve_ownership, -sfve_mash"), for the log; empty when there were none.
 const std::string& PlayerBuildIgnored();
 const char* ModeName(ModMode mode);
+
+// The modes whose battles roll back or must reproduce one exactly: netplay
+// (a room's match, a watcher, a replay's playback) and the synctest.
+constexpr bool RollsBack(ModMode mode)
+{
+	return mode == ModMode::SyncTest || mode == ModMode::Netplay;
+}
+
+// msvcr120's math for the game's sinf, cosf, atan2f, acosf, tanf and powf
+// (EMBER_LIBRARY.md section 56). The CRT takes FMA3 code on a CPU and Windows
+// that support it and SSE2 code elsewhere, and the two may round a result
+// differently, so two copies of one battle on different CPUs could compute it
+// differently (docs/design/beta8/rollback-fixes.md).
+enum class CrtMath {
+	AsStarted, // as the CRT chose at start: FMA3 where it can
+	Sse2,      // every x64 CPU runs it: one path on every copy
+	Fma3,      // where the CPU has it (a test's choice only)
+};
+// What every copy takes in a mode that rolls back. Part of the room's build
+// (mod::LayoutRulesId): two builds that compute a fight differently never meet.
+constexpr CrtMath kRollbackCrtMath = CrtMath::Sse2;
+
+constexpr const char* CrtMathName(CrtMath math)
+{
+	return math == CrtMath::Sse2 ? "SSE2" : math == CrtMath::Fma3 ? "FMA3" : "as started";
+}
+
+// This process's math (DllMain: SetCrtMath, once, before game code runs):
+// -sfve_fma3=0 or 1 where a development build was given it (byTest), else
+// kRollbackCrtMath in a mode that rolls back and the CRT's own choice in any
+// other (offline SFV under the proxy, the photo booth). A player build never
+// reads the option (kPlayerOptions), and the choice ignores it there too, so
+// nothing on its command line can move a player off SSE2. A player's game is
+// always in the netplay mode, so its Training and anything else that process
+// plays take SSE2 as well: Training is never a room's battle, but the CRT's
+// switch is the whole process's, and turning it between battles while the
+// game's threads run is not worth what it saves.
+struct CrtMathChoice {
+	CrtMath math = CrtMath::AsStarted;
+	bool byTest = false;
+};
+CrtMathChoice ChooseCrtMath(const ModConfig& config, BuildKind kind = kBuildKind);
 
 } // namespace sfve::mod

@@ -128,30 +128,31 @@ std::string HookSetState(const std::optional<sfve::mod::HookFailure>& missing)
 // The fight's sinf, cosf, atan2f, acosf, tanf and powf are msvcr120.dll's
 // (the VS2013 runtime, from System32). Its x64 math takes FMA3 code on a CPU
 // that has FMA3 and SSE2 code on one that has not, and the two can round a
-// result differently. Reported, and set when a test asks (-sfve_fma3).
-void SetCrtFma3(int wanted)
+// result differently, so every copy in a mode that rolls back takes SSE2
+// (ModConfig.hxx: ChooseCrtMath). Set once, here, before any game code runs;
+// one line says which path this process uses and why.
+void SetCrtMath(const sfve::mod::CrtMathChoice& choice, sfve::mod::ModMode mode)
 {
 	using namespace sfve::mod;
+	const char* why = choice.byTest ? "-sfve_fma3, a test's choice"
+		: choice.math == CrtMath::AsStarted ? "as the CRT chose at start; this mode does not roll back"
+		: "every copy of a battle that rolls back takes it";
 	HMODULE crt = GetModuleHandleW(L"msvcr120.dll");
 	using SetFma3 = int(__cdecl*)(int);
 	const auto set = crt ? reinterpret_cast<SetFma3>(GetProcAddress(crt, "_set_FMA3_enable")) : nullptr;
 	if (!set) {
-		Log("crt: msvcr120.dll's _set_FMA3_enable not found; its math stays as it started");
+		Log("crt: msvcr120.dll's _set_FMA3_enable not found; its math stays as it started, not %s (mode %s)",
+			CrtMathName(choice.math), ModeName(mode));
 		return;
 	}
 	// It takes FMA3 only where the CPU and Windows support it, so asking for
 	// it tells whether this copy can use it (and changes nothing: the CRT
 	// chose it at start wherever it could).
-	const int available = set(1) != 0;
-	if (wanted == 0) set(0);
-	const bool now = available && wanted != 0;
-	Log("crt: this CPU's msvcr120 math %s FMA3; it now uses %s", available ? "can use" : "cannot use",
-		now ? "FMA3" : "SSE2");
-}
-
-bool RollsBack(sfve::mod::ModMode mode)
-{
-	return mode == sfve::mod::ModMode::SyncTest || mode == sfve::mod::ModMode::Netplay;
+	const bool available = set(1) != 0;
+	if (choice.math == CrtMath::Sse2) set(0);
+	const bool fma3 = available && choice.math != CrtMath::Sse2;
+	Log("crt: msvcr120 math uses %s in mode %s (%s; this CPU %s use FMA3)", fma3 ? "FMA3" : "SSE2", ModeName(mode), why,
+		available ? "can" : "cannot");
 }
 
 // Ember's netplay needs every battle hook: the driver's frames, inputs and
@@ -203,7 +204,7 @@ extern "C" int SfveStart(int beforeGameCode)
 	Log("loaded from %ls, started by the %s", claim.module.c_str(), loader);
 	if (claim.error) Log("could not claim the process for this copy (Win32 %lu): a second copy would not be refused", claim.error);
 	if (const char* ignored = IgnoredSetting()) Log("config: %s", ignored);
-	SetCrtFma3(Config().crtFma3);
+	SetCrtMath(ChooseCrtMath(Config()), Config().mode);
 	if (!PlayerBuildIgnored().empty()) Log("config: a player build takes no test options; ignored %s", PlayerBuildIgnored().c_str());
 	if (!UnownedProblem().empty()) {
 		Log("config: -sfve_unowned=%s has an entry that is not CODE[:costume[:colour]]; left out", UnownedProblem().c_str());

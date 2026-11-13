@@ -1,5 +1,6 @@
 #include "mod/SfvLayoutRules.hxx"
 
+#include "mod/ModConfig.hxx"
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvOffsets.hxx"
 
@@ -52,6 +53,11 @@ std::string MakeLayoutRulesId()
 		text += " " + Hex(state.vtable) + ":" + std::to_string(state.size) + (state.keepOwn ? "+own" : "") + "/" +
 			std::to_string(state.leftoverWords);
 	}
+	// What every copy must do alike that no table above shows
+	// (docs/design/beta8/rollback-fixes.md): which words the hashes test for
+	// addresses (core/StateRegions.hxx; also inside the outside state's
+	// LayoutId), and the CRT math the modes that roll back take (ModConfig.hxx).
+	text += "; address rule " + std::to_string(kAddressRuleVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath);
 	return Hex(XXH3_64bits(text.data(), text.size()));
 }
 

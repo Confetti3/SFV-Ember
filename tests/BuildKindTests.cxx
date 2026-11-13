@@ -126,6 +126,56 @@ TEST_CASE("the photo booth is a development build's mode only")
 	LoadConfigFromCommandLine(L"");
 }
 
+TEST_CASE("the CRT math is SSE2 in every mode that rolls back, and a player build cannot be moved off it")
+{
+	using sfve::mod::ChooseCrtMath;
+	using sfve::mod::CrtMath;
+	using sfve::mod::ModMode;
+	static_assert(sfve::mod::kRollbackCrtMath == CrtMath::Sse2);
+	static_assert(sfve::mod::RollsBack(ModMode::Netplay) && sfve::mod::RollsBack(ModMode::SyncTest));
+	static_assert(!sfve::mod::RollsBack(ModMode::Probe) && !sfve::mod::RollsBack(ModMode::Inert) &&
+		!sfve::mod::RollsBack(ModMode::Booth));
+
+	// A player's launch: netplay, rooms on. Asking for FMA3 changes nothing.
+	for (const wchar_t* line : {L"x -sfve_mode=netplay -sfve_room=1", L"x -sfve_mode=netplay -sfve_room=1 -sfve_fma3=1",
+			 L"x -sfve_fma3=1 -sfve_mode=netplay -sfve_fma3=0"}) {
+		LoadConfigFromCommandLine(line, BuildKind::Player);
+		CHECK(Config().crtFma3 == -1);
+		const sfve::mod::CrtMathChoice player = ChooseCrtMath(Config(), BuildKind::Player);
+		CHECK(player.math == CrtMath::Sse2);
+		CHECK_FALSE(player.byTest);
+	}
+	CHECK(sfve::mod::PlayerBuildIgnored().find("-sfve_fma3") != std::string::npos);
+	// Even a config that holds the option (one a player build never reads)
+	// is not taken from it there.
+	sfve::mod::ModConfig given;
+	given.mode = ModMode::Netplay;
+	given.crtFma3 = 1;
+	CHECK(ChooseCrtMath(given, BuildKind::Player).math == CrtMath::Sse2);
+	CHECK(ChooseCrtMath(given, BuildKind::Development).math == CrtMath::Fma3);
+	CHECK(ChooseCrtMath(given, BuildKind::Development).byTest);
+
+	// A development build: the synctest and netplay take SSE2 unless a test
+	// chooses; the other modes keep the CRT's own choice.
+	LoadConfigFromCommandLine(L"x -sfve_mode=synctest", BuildKind::Development);
+	CHECK(ChooseCrtMath(Config(), BuildKind::Development).math == CrtMath::Sse2);
+	LoadConfigFromCommandLine(L"x -sfve_mode=synctest -sfve_fma3=1", BuildKind::Development);
+	CHECK(ChooseCrtMath(Config(), BuildKind::Development).math == CrtMath::Fma3);
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_fma3=0", BuildKind::Development);
+	CHECK(ChooseCrtMath(Config(), BuildKind::Development).math == CrtMath::Sse2);
+	CHECK(ChooseCrtMath(Config(), BuildKind::Development).byTest);
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_fma3=7", BuildKind::Development); // no such path
+	CHECK(ChooseCrtMath(Config(), BuildKind::Development).math == CrtMath::Sse2);
+	CHECK_FALSE(ChooseCrtMath(Config(), BuildKind::Development).byTest);
+	LoadConfigFromCommandLine(L"x", BuildKind::Development); // probe: offline SFV under the proxy
+	CHECK(ChooseCrtMath(Config(), BuildKind::Development).math == CrtMath::AsStarted);
+	LoadConfigFromCommandLine(L"x -sfve_mode=booth", BuildKind::Development);
+	CHECK(ChooseCrtMath(Config(), BuildKind::Development).math == CrtMath::AsStarted);
+	LoadConfigFromCommandLine(L"x -sfve_mode=booth -sfve_fma3=0", BuildKind::Development);
+	CHECK(ChooseCrtMath(Config(), BuildKind::Development).math == CrtMath::Sse2);
+	LoadConfigFromCommandLine(L"");
+}
+
 TEST_CASE("a player build's pipe answers ping and status only")
 {
 	bool ran = false;

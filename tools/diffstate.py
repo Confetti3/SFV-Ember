@@ -3,11 +3,13 @@ desync state files (%APPDATA%/SFVEmber/desync-states/*.state, one from each
 player's PC after a desync, EMBER_LIBRARY.md section 55).
 
   python tools/diffstate.py <a> <b>
+  python tools/diffstate.py --selftest
 
 A state file names its regions, so two of them are paired by name. A dump
 does not, and regions are listed in a different order in each process, so
 they are paired by size, then by fewest differing bytes. Words that look like
-addresses (the mod's own test) are ignored, as the state hash ignores them.
+addresses (the mod's own test) are ignored, as the state hash ignores them:
+only words on an 8-byte boundary of their real address (masked).
 """
 
 from __future__ import annotations
@@ -45,33 +47,52 @@ def looks_like_address(v: int) -> bool:
     return (1 << 40) <= v <= 0x00007FFFFFFFFFFF and v & 3 == 0
 
 
-# StateLayout::AddressAt: in a window 4 bytes off a boundary whose aligned
-# neighbour is an address too, a low half below this is a value before that
-# address (kSmallLowHalf).
-SMALL_LOW_HALF = 0x10000
-
-
 def masked(address: int, b: bytes) -> bytearray:
-    """The state hash's masking (StateLayout::ZeroAddresses and AddressAt): 8
-    bytes at each 4-byte-aligned address word, not tested 4 bytes into one it
-    found; where a window 4 bytes off an 8-byte boundary and the aligned one
-    after it both look like addresses, the aligned one when the first one's
-    low half is small (SMALL_LOW_HALF), else the first. Values only, as the
-    mod's hash: equal values mask alike in every process."""
+    """The state hash's masking (StateLayout::ZeroAddresses): the 8 bytes of
+    each word on an 8-byte boundary of the region's real address (`address`,
+    not the offset in the file) that looks like an address, and nothing else.
+    Windows never overlap, so values alone decide and equal values mask
+    alike in every process (docs/design/beta8/rollback-fixes.md)."""
     m = bytearray(b)
-    off = (4 - (address & 3)) & 3
+    off = (8 - (address & 7)) & 7
     while off + 8 <= len(b):
-        value = int.from_bytes(b[off:off + 8], "little")
-        address_here = looks_like_address(value)
-        if address_here and (address + off) & 7 == 4 and off + 12 <= len(b):
-            aligned = int.from_bytes(b[off + 4:off + 12], "little")
-            if looks_like_address(aligned) and value & 0xFFFFFFFF < SMALL_LOW_HALF:
-                address_here = False
-        if address_here:
+        if looks_like_address(int.from_bytes(b[off:off + 8], "little")):
             m[off:off + 8] = bytes(8)
-            off += 4
-        off += 4
+        off += 8
     return m
+
+
+def selftest() -> int:
+    """The rule's cases, as tests/StateRegionsTests.cxx has them."""
+    def word(v: int) -> bytes:
+        return v.to_bytes(8, "little")
+
+    def dword(v: int) -> bytes:
+        return v.to_bytes(4, "little")
+    failures = []
+
+    def check(what: str, ok: bool) -> None:
+        if not ok:
+            failures.append(what)
+    # An aligned pointer is zeroed, whatever precedes it: the S6b tail, a
+    # pointer just past a 4 GB boundary after a dword >= 0x10000.
+    for pointer in (0x0000013D000042D0, 0x00000217806F42D0):
+        b = bytes(8) + dword(0) + dword(0x00C70000) + word(pointer) + bytes(8)
+        check(f"S6b tail {pointer:#x}", masked(0x1000, b) == bytearray(b[:16]) + bytes(16))
+    # An ordinary pair of dwords 4 bytes off an 8-byte boundary (280 and 293,
+    # which read together as 0x0000012500000118) is hashed as it is.
+    b = dword(1) + dword(0x118) + dword(0x125) + dword(1)
+    check("value pair at 4 mod 8", masked(0x1000, b) == bytearray(b))
+    # The same bytes in a region that starts 4 bytes past a boundary: the
+    # pair is now on a real 8-byte boundary, and looks like an address.
+    check("value pair at 0 mod 8", masked(0x1004, b) == bytearray(dword(1) + bytes(8) + dword(1)))
+    # A word cut by the region's end is left alone.
+    b = word(0x00000204F5F982A0)[:7]
+    check("cut word", masked(0x1000, b) == bytearray(b))
+    for f in failures:
+        print(f"FAIL {f}")
+    print("selftest:", "FAIL" if failures else "PASS")
+    return 1 if failures else 0
 
 
 def show(label: str, ba: bytes, bb: bytes, words: int) -> bool:
@@ -138,4 +159,6 @@ def main(pa: str, pb: str) -> None:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--selftest"]:
+        sys.exit(selftest())
     main(sys.argv[1], sys.argv[2])

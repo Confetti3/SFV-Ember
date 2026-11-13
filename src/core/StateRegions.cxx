@@ -15,13 +15,9 @@ namespace sfve {
 namespace {
 
 constexpr size_t kChunk = 4096; // bytes masked and hashed at a time
-// The most of an 8-byte word that starts in a chunk and ends past it, and the
-// aligned word after it that AddressAt may read: each chunk is read with
-// that much of the next, so its words are tested whole.
-constexpr size_t kLookahead = 11;
-// AddressAt: a low half below this, in a window 4 bytes off a boundary whose
-// aligned neighbour is an address too, is a value before that address.
-constexpr uint32_t kSmallLowHalf = 0x10000;
+// The most of an 8-byte word that starts in a chunk and ends past it: each
+// chunk is read with that much of the next, so its words are tested whole.
+constexpr size_t kLookahead = 7;
 
 // Order-independent combination of one region's hash into the total.
 uint64_t Mix(uint64_t regionHash, uint64_t size)
@@ -47,6 +43,13 @@ void ZeroMarked(uint8_t* chunk, size_t at, size_t n, const std::vector<uint64_t>
 			memset(chunk + begin, 0, end - begin);
 		}
 	}
+}
+
+// The offset of the first 8-byte boundary of a region at `ptr`, by its real
+// address: where the address scan starts.
+size_t FirstBoundary(const uint8_t* ptr)
+{
+	return (8 - (reinterpret_cast<uintptr_t>(ptr) & 7)) & 7;
 }
 
 void Mark(std::vector<uint64_t>& marks, size_t unitIndex)
@@ -81,73 +84,53 @@ private:
 
 } // namespace
 
-// An address test passes the window 4 bytes before an aligned address too
-// when that address's low half is small (a block just past a 4 GB boundary:
-// 0x0000013D000042D0 after a zero dword reads 0x000042D000000000), and
-// zeroing that window first left the address's high half in the hash, which
-// another process's address of another value did not (2026-11-12, the S6b
-// run: a script header pointer at CharaActionPart->0x3EC8+0x40, "differing"
-// from frame 0 with every value equal). Where a window 4 bytes off an 8-byte
-// boundary and the aligned window right after it both pass the test, the
-// values decide, never this process's memory: equal values must hash alike
-// in every process. A first fix asked whether each window was committed
-// memory here (VirtualQuery), and a table of small counter pairs (an
-// unowned 632-byte run: 0x00000173000003E8 and the like) then hashed apart
-// with every byte equal, once a counter matched the high half of one
-// process's heap (2026-11-12, runs R2 and R3: a fighter and a watcher
-// "diverged" a few hundred frames into round 2). Now the aligned window is
-// the address when the first window's low half is small (below
-// kSmallLowHalf), the zero or small value before an aligned address, as in
-// S6b, R2 and R3; otherwise the first, as before, so an address packed 4
-// bytes off a boundary (its low half is rarely small) still hashes as zero.
-bool StateLayout::AddressAt(const uint8_t* word, uintptr_t address, size_t after) const
+// The address rule (kAddressRuleVersion 2, docs/design/beta8/rollback-fixes.md):
+// only the 8-byte words on an 8-byte boundary of their real address are
+// tested, and each that passes the address test is zeroed whole. A field's
+// alignment in its object is the compiler's, and the game's allocator gives
+// every object at least 8-byte alignment, so a word lies on the same boundary
+// in every process: its place, never this process's memory or a value beside
+// it, decides whether it is tested, and equal values hash alike everywhere.
+// The tested windows never overlap, so no tie-break between two of them is
+// needed (rule 1 tested every 4-byte boundary and settled overlapping windows
+// by the first one's low half, kSmallLowHalf, 2026-11-12, which left the S6b
+// false desync for a pointer just past a 4 GB boundary preceded by a dword of
+// 0x10000 or more, and hid every pair of small dwords on a 4-mod-8 boundary).
+// A pointer packed 4 bytes off a boundary would be hashed as it is: none was
+// found in 22 state files and dumps (4,743 pointers into their own regions
+// or the image, all on 8-byte boundaries), and one would show as a false
+// desync naming its region in the first runs.
+bool StateLayout::AddressAt(const uint8_t* word) const
 {
 	uint64_t value;
 	memcpy(&value, word, 8);
-	if (!addressTest_(value)) return false;
-	if ((address & 7) != 4 || after < 4) return true;
-	uint64_t aligned;
-	memcpy(&aligned, word + 4, 8);
-	if (!addressTest_(aligned)) return true;
-	return static_cast<uint32_t>(value) >= kSmallLowHalf;
+	return addressTest_(value);
 }
 
-// Zeroes the 8 bytes at every position that holds an address, and nothing
-// else. Positions are the region's 4-byte boundaries by real address: a
-// region may start anywhere in an object, and packed structures keep
-// addresses on 4-byte boundaries. The region is tested in one pass from its
-// start, whatever windows it is read in: `window` holds region bytes
-// at..at+read, the positions from `scan.next` that start in the chunk
-// (at..at+chunk) are tested, and the scan carries on in the next window.
+// Zeroes the 8 bytes at every 8-byte boundary (by real address) that holds
+// an address, and nothing else. A region may start anywhere in an object, so
+// its first boundary may lie a few bytes in; the bytes before it, and a word
+// cut by the region's end, are hashed as they are. The region is tested in
+// one pass from its start, whatever windows it is read in: `window` holds
+// region bytes at..at+read, the boundaries from `scan.next` that start in the
+// chunk (at..at+chunk) are tested, and the scan carries on in the next
+// window.
 //
 // The scan carries two offsets because they are different facts: the next
-// position to test, and the end of the last address it zeroed. Only the
+// boundary to test, and the end of the last address it zeroed. Only the
 // second says what to zero at the start of a window (the rest of an address
-// that ran past the last window's end). The first can lie past a window's
-// start without anything before it being an address: the bytes before the
-// region's first 4-byte boundary, or the end of a word that tested as no
-// address across the window's start. Those bytes are hashed as they are.
-//
-// The position 4 bytes into an address is not tested: its low half is that
-// address's high half, and with a small value after it the pair can look like
-// an address in one process and not in another (a heap address's high half is
-// 0x204 in one, 0x246 in the other). So the scan resumes after each address,
-// which also means no word it tests holds a byte it has already zeroed. Words
-// cut by the region's own ends are left alone.
+// that ran past the last window's end, in a region that does not start on a
+// boundary).
 void StateLayout::ZeroAddresses(uint8_t* window, size_t at, size_t chunk, size_t read, AddressScan& scan) const
 {
 	if (scan.zeroedTo > at) memset(window, 0, std::min(scan.zeroedTo - at, read));
 	// A window that starts in this chunk; one starting in the lookahead is
-	// the next chunk's, so the aligned word after a window is always read.
-	while (scan.next < at + chunk && scan.next + 8 <= at + read) {
+	// the next chunk's.
+	for (; scan.next < at + chunk && scan.next + 8 <= at + read; scan.next += 8) {
 		uint8_t* word = window + (scan.next - at);
-		if (AddressAt(word, scan.base + scan.next, at + read - (scan.next + 8))) {
-			memset(word, 0, 8);
-			scan.next += 8;
-			scan.zeroedTo = scan.next;
-		} else {
-			scan.next += 4;
-		}
+		if (!AddressAt(word)) continue;
+		memset(word, 0, 8);
+		scan.zeroedTo = scan.next + 8;
 	}
 }
 
@@ -238,8 +221,8 @@ uint64_t StateLayout::HashRegion(size_t index, const uint8_t* bytes, HashScope s
 	// the chunks fall: the hash is the whole region's, masked and with its
 	// addresses zeroed.
 	uint8_t window[kChunk + kLookahead];
-	// From the first 4-byte boundary of the region's real address.
-	AddressScan scan{.next = (4 - (reinterpret_cast<uintptr_t>(r.ptr) & 3)) & 3, .base = reinterpret_cast<uintptr_t>(r.ptr)};
+	// From the first 8-byte boundary of the region's real address.
+	AddressScan scan{.next = FirstBoundary(r.ptr)};
 	for (size_t at = 0; at < r.size; at += kChunk) {
 		const size_t n = std::min(kChunk, r.size - at);
 		const size_t read = std::min(n + kLookahead, r.size - at);
@@ -312,14 +295,9 @@ void StateLayout::AddressUnits(size_t region, const uint8_t* bytes, std::vector<
 	std::vector<uint8_t> masked(bytes, bytes + r.size);
 	ZeroMarked(masked.data(), 0, r.size, r.ignore, 8);
 	ZeroMarked(masked.data(), 0, r.size, r.peerIgnore, 4);
-	size_t at = (4 - (reinterpret_cast<uintptr_t>(r.ptr) & 3)) & 3; // from the first 4-byte boundary
-	while (at + 8 <= r.size) {
-		if (!AddressAt(masked.data() + at, reinterpret_cast<uintptr_t>(r.ptr) + at, r.size - (at + 8))) {
-			at += 4;
-			continue;
-		}
+	for (size_t at = FirstBoundary(r.ptr); at + 8 <= r.size; at += 8) { // as ZeroAddresses
+		if (!AddressAt(masked.data() + at)) continue;
 		for (size_t unit = at / 4; unit <= (at + 7) / 4; unit++) Mark(out, unit);
-		at += 8; // as ZeroAddresses: the scan resumes after the address
 	}
 }
 
@@ -332,7 +310,8 @@ StateLayout::Costs StateLayout::TakeCosts() const
 
 uint64_t StateLayout::LayoutId() const
 {
-	uint64_t id = 0;
+	// The address rule is part of what peers compare, though no table shows it.
+	uint64_t id = XXH3_64bits(&kAddressRuleVersion, sizeof(kAddressRuleVersion));
 	for (const StateRegion& r : regions_) {
 		XXH3_state_t state;
 		XXH3_64bits_reset(&state);
