@@ -390,7 +390,22 @@ process's): logged every 1,800 updates and as the battle ends, then cleared.
 
 **Partners.** Every CharaUnit the battle has (up to `sfv::unit::kMostCharaUnits`, 8) is kept at
 LOD 0 and keyed on its own; beta.8 did neither for Akira's partners, so their socket reads
-followed each copy's window size.
+followed each copy's window size. Only Akira (Z41) was seen with partner units (the
+maintainer's logs since 2026-11-09: no other battle had a CharaUnit[2]); RegionNames already
+named their regions `CharaUnit[2]...` and `[3]` (action, motion, visual and material parts and
+the unit's runs; no status or command part).
+
+**The partners' projectiles were not named** (2026-11-13 Akira mirror, state
+`1794589647-24364-1380`, and the bind's `regions:` lines: 341 unowned against 261 in other
+battles). `RegionNames` looked units up to index 63; the partners' projectile groups add units
+past it, whose 8 action parts (15808), 8 timelines (224), 8 unit runs (208) and 9 visual parts
+(44 and 136 bytes) stayed `game.N`. So a projectile visual part's runs, presentation the rules
+leave out of the hash because they drift on replay (its actor pointer and a frame counter,
+`kRunRules` `ProjectileVisualPart` +0xC0 and +0xF0), were hashed whole for those units and
+compared with the other copy: a candidate cause of the two Akira desyncs, which came right
+after P1's V-Skill II (MP+MK, script 875). Units are now looked up until the battle has no
+more (bound 256); naming changes no layout id, but what such a battle hashes changes, so it
+rides the next match version too.
 
 **Match version.** The values served change, so it rides the next match version (0.7).
 
