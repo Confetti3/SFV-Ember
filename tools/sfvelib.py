@@ -458,6 +458,13 @@ def _game_options(index: int, mode: str, extra: list[str], windowed: bool) -> li
         # SFVE_RES ("1920x1080") sets the window's size; 960x540 by default.
         width, height = os.environ.get("SFVE_RES", "960x540").lower().split("x")
         options += ["-windowed", f"-ResX={int(width)}", f"-ResY={int(height)}"]
+        # SFVE_SCREEN=borderless: the mod also takes the frame off the copy's
+        # window and lays it over its monitor (docs/design/beta9/screen.md;
+        # one copy at a time, two would cover each other). The player's own
+        # Screen mode never reaches a copy started here: these window options
+        # are the test's, and the launcher then adds nothing.
+        if os.environ.get("SFVE_SCREEN", "").lower() == "borderless":
+            options.append("-sfve_screen=borderless")
     return options + extra
 
 
