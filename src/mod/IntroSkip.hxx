@@ -226,9 +226,13 @@ constexpr uint32_t kKoStopBit = 0x20;
 // - Finish: whatever it waits on (the KO's presentation), on to RoundOver,
 //   which asks for the winner's or the draw's demo on its first tick. Not
 //   while `koStop` (the KO's slow motion, kKoStopBit): a round that ends in a
-//   KO is cut only once the game has cleared it itself, since the step Finish
-//   makes on its way out (docs/design/beta9/skip.md section 2) is not known
-//   to run on a cut. A time-over has no KO presentation, so nothing waits.
+//   KO is cut only once the game has cleared it itself. The bit is cleared by
+//   the KO presentation's own unit (rva 0x487CD0), not by Finish, so the
+//   gate opens whatever phase Finish is in; what a cut skips is Finish's
+//   phase 12 completion (rva 0x40BC00: every fighter's +2376 set to -1), which
+//   Finish's Exit (rva 0x474C20) does not do (IDA, 2026-11-13,
+//   docs/design/beta9/skip.md section 2). A time-over has no KO presentation,
+//   so nothing waits.
 //   SfvAdapter::EndScenes passes it from the battle frame (beta.9 patch).
 // - MatchResultDemo: its 90-tick wait before the demo's setup ends at once
 //   (phase 2 is the same setup without the wait); in phase 3, the skip the

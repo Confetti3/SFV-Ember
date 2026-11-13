@@ -512,9 +512,10 @@ Not built or run here: no builds on this PC.
    compares them).
 8. Look at the screens after a skip (`-shots`): the winner's demo cut, the results screen as
    unskipped (the "StartResult" event and the ResultUnit's sequence still run), Ember's prompt
-   over it, nothing left in slow motion or with a wrong pose. Finish's exit-only step (rva
-   `0x40BC00` sets each fighter's +2376 to -1 before it leaves) does not run when Finish is cut
-   short. Check the winner's demo looks right.
+   over it, nothing left in slow motion or with a wrong pose. The step that sets each fighter's
+   +2376 to -1 (rva `0x40BC00`) is not an exit step but Finish's phase 12, which runs when the
+   KO's presentation is over (settled in IDA, `docs/design/beta9/skip.md` section 2); a cut
+   Finish never runs it. Check the winner's demo looks right.
 9. A draw (double KO or time-over draw at the deciding round) if one comes: MatchDrawDemo's two
    moves.
 

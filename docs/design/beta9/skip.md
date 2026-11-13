@@ -84,6 +84,43 @@ reachable from this PC (no session open; `ida-pro-mcp` refused the connection). 
 the laptop (Finish's constructor `0x41C7A0`, vtable `0x2C6A668`: its Exit slot, and what `0x40BC00`
 is) or a game run (below).
 
+**Settled in IDA (the laptop's database, build 13173604; read-only queries, nothing run).**
+
+- Finish's vtable (`0x2C6A668`): slot 1 (+8, Enter) is `0x3EEE00`, which binds the phases and is
+  the one function that references `0x40BC00`; slot 2 (+16, Begin) `0x4137B0`; slot 3 (+24, Exit)
+  `0x474C20`; slot 5 (+40, Update) `0x43A700`. `FlowUnit::PreTick` (`0x3DD890`) calls the old
+  state's +24 on a switch, then the new one's +8 and +16, and +40 on a tick without one.
+- `0x40BC00` is **Finish's phase 12 body**, not an Exit. It asks (`0x2F2E90`) whether to go to
+  phase 16; else it waits until its own 1200-tick timer is up (a virtual +88 of the state) or
+  `0x2FB5D0` (the KO presentation, through `0x3D0550`) says it is over. Then it calls
+  `0x3074D0(fighters, -1)`, which writes -1 into the dword at +2376 of every fighter unit
+  (`0x948`, the state's unit list at +272..+280), and moves to phase 14 (or 13 when the
+  battle data's dword 123374 is not 7).
+- Finish's Exit `0x474C20` is the base class's: it clears the state's phase delegate (+80, +96,
+  +104), +112 and +120 (0x10000). It sets no +2376 and clears no bit. So a cut by the flow
+  request **does not run `0x40BC00`**: a cut Finish leaves each fighter's +2376 as the fight
+  left it (the unit constructor `0x37AB80` sets it to 0; its other writers are `0x3074D0` and
+  the Begin `0x413A90` of another flow's state class, vtable `0x2C6DC90`, built at `0x44BCE0`
+  and `0x44DA10`). It is a rollback-state word (the registered run +2196..+2404, `0x3785A0`),
+  so both copies cut alike. It is a bit mask: `0x344A00` refuses an action when the bit
+  `*(+252 of its other object)` is set in it, so -1 after the KO blocks that action for the
+  fighters; what the action is was not read. Whether the next round resets it was not found
+  (no other writer in the versus flow; the units may be rebuilt per round).
+- The KO's slow-motion bit (battle frame +0x190 bit 0x20) is set and cleared by the KO
+  presentation's own unit through the generic setter `0x4D5DE0(frame, mask, on)` (clearing also
+  clears +0x194's bit): set at `0x48694A` (in `0x485240`, when the unit's state at +0xF8 is 2 and
+  the bit is not yet set), cleared at `0x487D27` (in `0x487CD0`, the same state with its
+  counter at +0x108 at 0) and at `0x487F68` (its state 3 path). Both are called from
+  `0x483EA0`, a unit's own update (vtable data references only). Nothing in Finish, its Exit or
+  RoundOver touches the bit. The bit therefore clears by itself when the presentation ends,
+  whether or not Finish was cut; the Finish gate waits for exactly that, and cannot deadlock on
+  a flow that has stopped.
+- The reader of the bit is `0x46E110` (the pause menu's detector, `0x1404D1F50(frame, 0x20)`:
+  set in +400 and not in +404) and the generic helpers; `BattleFrameUpdate`'s pause test is
+  not this bit.
+- Critical Art gauge: the EX parameter (24) value 2 starts every round with the gauge full
+  (`0x357540`) and has no per-tick effect (`0x362AC0` handles 3, 4 and 5 only): `-startEx`.
+
 ### Per ending
 
 | ending (finish name) | what the code does on a press | what is at risk |
