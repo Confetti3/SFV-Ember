@@ -243,7 +243,7 @@ constexpr uint32_t kKoStopBit = 0x20;
 //   themselves (sfv::resultflow), on the same confirmed frame.
 // - MatchDrawDemo: the wait for its demo ends (phase 3, which goes to 4 at
 //   once), and its 300-tick wait (phase 5, the results' event).
-constexpr ScenesStep ScenesStepFor(int stateId, uint32_t vtableRva, int phase, bool koStop = false)
+constexpr ScenesStep ScenesStepFor(int stateId, uint32_t vtableRva, int phase, bool koStop)
 {
 	namespace rf = sfv::resultflow;
 	if (stateId == rf::kFinish && vtableRva == rf::kFinishVtable) {

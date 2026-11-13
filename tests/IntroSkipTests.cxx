@@ -293,31 +293,31 @@ TEST_CASE("the skip ends Finish, the winner's demo and the draw's demo the way t
 	using intro_skip::ScenesStepFor;
 	// Finish: whichever phase it waits in, the flow asks for its next state.
 	for (int phase = 0; phase <= 17; phase++) {
-		CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, phase) == ScenesStep{ScenesAction::RequestNext, -1});
+		CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, phase, false) == ScenesStep{ScenesAction::RequestNext, -1});
 	}
 	// The winner's demo: its 90-tick wait before the setup, then its skip phase.
-	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, 1) == ScenesStep{ScenesAction::SetPhase, 2});
-	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, 3) == ScenesStep{ScenesAction::ResultSkip, 4});
+	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, 1, false) == ScenesStep{ScenesAction::SetPhase, 2});
+	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, 3, false) == ScenesStep{ScenesAction::ResultSkip, 4});
 	for (const int phase : {0, 2, 4, 5, 6, 7}) {
 		INFO("phase " << phase);
-		CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, phase) == ScenesStep{});
+		CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, phase, false) == ScenesStep{});
 	}
 	// The draw's demo: the wait for its demo, then its 300-tick wait.
-	CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, 2) == ScenesStep{ScenesAction::SetPhase, 3});
-	CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, 4) == ScenesStep{ScenesAction::SetPhase, 5});
+	CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, 2, false) == ScenesStep{ScenesAction::SetPhase, 3});
+	CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, 4, false) == ScenesStep{ScenesAction::SetPhase, 5});
 	for (const int phase : {1, 3, 5, 6, 7}) {
 		INFO("phase " << phase);
-		CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, phase) == ScenesStep{});
+		CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, phase, false) == ScenesStep{});
 	}
 	// The states that leave on their first tick, and the results' own, play on.
 	for (const int state : {rf::kRoundOver, rf::kMatchOver, rf::kMatchEnd, 9, 10, kFight, kIntro, kMatchStart}) {
 		INFO("state " << state);
-		for (int phase = 0; phase <= 7; phase++) CHECK(ScenesStepFor(state, rf::kFinishVtable, phase) == ScenesStep{});
+		for (int phase = 0; phase <= 7; phase++) CHECK(ScenesStepFor(state, rf::kFinishVtable, phase, false) == ScenesStep{});
 	}
 	// A state of another class (another flow's) is left alone.
-	CHECK(ScenesStepFor(rf::kFinish, rf::kMatchResultDemoVtable, 3) == ScenesStep{});
-	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kFinishVtable, 3) == ScenesStep{});
-	CHECK(ScenesStepFor(rf::kMatchDrawDemo, 0, 4) == ScenesStep{});
+	CHECK(ScenesStepFor(rf::kFinish, rf::kMatchResultDemoVtable, 3, false) == ScenesStep{});
+	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kFinishVtable, 3, false) == ScenesStep{});
+	CHECK(ScenesStepFor(rf::kMatchDrawDemo, 0, 4, false) == ScenesStep{});
 }
 
 TEST_CASE("the results screens' question for any button hears the skip request, once the match is decided")
@@ -435,7 +435,7 @@ TEST_CASE("Finish is not cut while the KO's slow motion bit is set, and is once 
 		CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, phase, true) == ScenesStep{});
 		CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, phase, false) == ScenesStep{ScenesAction::RequestNext, -1});
 		// The default is the step as before the gate: a caller that says nothing cuts.
-		CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, phase) == ScenesStep{ScenesAction::RequestNext, -1});
+		CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, phase, false) == ScenesStep{ScenesAction::RequestNext, -1});
 	}
 	// Only Finish waits on it: the winner's demo and the draw's demo move as before.
 	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, rf::kResultSkipPhase, true) ==
@@ -451,12 +451,12 @@ TEST_CASE("the skip ends Finish between two rounds as at the match's end, and le
 	using intro_skip::ScenesStep;
 	using intro_skip::ScenesStepFor;
 	// Finish is the same state whether or not the round decides the match.
-	CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, 12) == ScenesStep{ScenesAction::RequestNext, -1});
+	CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, 12, false) == ScenesStep{ScenesAction::RequestNext, -1});
 	// The round demos end on the confirmed skip bit by themselves.
 	for (int phase = 0; phase <= 5; phase++) {
 		INFO("phase " << phase);
-		CHECK(ScenesStepFor(rf::kRoundResultDemo, rf::kRoundResultDemoVtable, phase) == ScenesStep{});
-		CHECK(ScenesStepFor(rf::kRoundDoubleKODemo, rf::kRoundDoubleKODemoVtable, phase) == ScenesStep{});
+		CHECK(ScenesStepFor(rf::kRoundResultDemo, rf::kRoundResultDemoVtable, phase, false) == ScenesStep{});
+		CHECK(ScenesStepFor(rf::kRoundDoubleKODemo, rf::kRoundDoubleKODemoVtable, phase, false) == ScenesStep{});
 	}
 	// The any-button answer stays a decided match's (the results screens').
 	CHECK_FALSE(intro_skip::PadsHear(kSkipBit, 0xFFFFBFF0u, false));

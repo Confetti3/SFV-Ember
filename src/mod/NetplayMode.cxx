@@ -737,6 +737,9 @@ void NetplayMode::DumpIfRequested()
 void NetplayMode::NoteFightStart(SfvAdapter& adapter, int frame)
 {
 	namespace fighter = sfv::fighter;
+	// Called from Frame and WatchFrame, which hold mutex_ for the whole step:
+	// vitalPercent_, which the pipe thread's "vital" command sets under it, is
+	// read under it here too (locking again would deadlock).
 	if (!adapter.Fighting()) {
 		fightSeen_ = false;
 		return;

@@ -142,6 +142,7 @@ private:
 	// alike: logs the battle frame's state word (the pause, KO and slow-motion
 	// bits a skipped scene must leave clear) and gives the fighters the
 	// "vital" command's shares.
+	// Game thread, inside Frame's step with mutex_ held (it reads vitalPercent_).
 	void NoteFightStart(SfvAdapter& adapter, int frame);
 	// The room battle's recording: its frames made final so far (after any
 	// step), the end of a game, and the battle's replay saved as it closes.
