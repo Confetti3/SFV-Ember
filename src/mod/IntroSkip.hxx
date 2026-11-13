@@ -215,11 +215,21 @@ struct ScenesStep {
 	bool operator==(const ScenesStep&) const = default;
 };
 
+// The battle frame's state bit the KO's slow motion sets (+0x190 bit 0x20,
+// sfv::battleframe::kState; the pause menu's detector reads it too, rva
+// 0x46E110). Finish is not cut while it is set (ScenesStepFor's `koStop`).
+constexpr uint32_t kKoStopBit = 0x20;
+
 // The step for the current state: its id (resultflow::kStateId), its class
 // (its vtable's rva) and its phase (flowstate::kPhase). Only the classes the
 // versus flow builds for these ids are moved; anything else plays on.
 // - Finish: whatever it waits on (the KO's presentation), on to RoundOver,
-//   which asks for the winner's or the draw's demo on its first tick.
+//   which asks for the winner's or the draw's demo on its first tick. Not
+//   while `koStop` (the KO's slow motion, kKoStopBit): a round that ends in a
+//   KO is cut only once the game has cleared it itself, since the step Finish
+//   makes on its way out (docs/design/beta9/skip.md section 2) is not known
+//   to run on a cut. A time-over has no KO presentation, so nothing waits.
+//   SfvAdapter::EndScenes passes it from the battle frame (beta.9 patch).
 // - MatchResultDemo: its 90-tick wait before the demo's setup ends at once
 //   (phase 2 is the same setup without the wait); in phase 3, the skip the
 //   game makes when its gate is open (phase 4, then the results' event and
@@ -229,10 +239,12 @@ struct ScenesStep {
 //   themselves (sfv::resultflow), on the same confirmed frame.
 // - MatchDrawDemo: the wait for its demo ends (phase 3, which goes to 4 at
 //   once), and its 300-tick wait (phase 5, the results' event).
-constexpr ScenesStep ScenesStepFor(int stateId, uint32_t vtableRva, int phase)
+constexpr ScenesStep ScenesStepFor(int stateId, uint32_t vtableRva, int phase, bool koStop = false)
 {
 	namespace rf = sfv::resultflow;
-	if (stateId == rf::kFinish && vtableRva == rf::kFinishVtable) return {ScenesAction::RequestNext, -1};
+	if (stateId == rf::kFinish && vtableRva == rf::kFinishVtable) {
+		return koStop ? ScenesStep{} : ScenesStep{ScenesAction::RequestNext, -1};
+	}
 	if (stateId == rf::kMatchResultDemo && vtableRva == rf::kMatchResultDemoVtable) {
 		if (phase == rf::kResultSetupWaitPhase) return {ScenesAction::SetPhase, rf::kResultSetupPhase};
 		if (phase == rf::kResultSkipPhase) return {ScenesAction::ResultSkip, rf::kResultSkippedPhase};

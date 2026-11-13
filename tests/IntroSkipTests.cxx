@@ -423,6 +423,27 @@ TEST_CASE("a press after the guard is the only ask for the scenes between two ro
 	CHECK(request.Next(kFight, 0, false, frame++) == 0u);
 }
 
+TEST_CASE("Finish is not cut while the KO's slow motion bit is set, and is once the game has cleared it")
+{
+	namespace rf = sfve::mod::sfv::resultflow;
+	using intro_skip::ScenesAction;
+	using intro_skip::ScenesStep;
+	using intro_skip::ScenesStepFor;
+	CHECK(intro_skip::kKoStopBit == 0x20u);
+	for (int phase = 0; phase <= 17; phase++) {
+		INFO("phase " << phase);
+		CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, phase, true) == ScenesStep{});
+		CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, phase, false) == ScenesStep{ScenesAction::RequestNext, -1});
+		// The default is the step as before the gate: a caller that says nothing cuts.
+		CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, phase) == ScenesStep{ScenesAction::RequestNext, -1});
+	}
+	// Only Finish waits on it: the winner's demo and the draw's demo move as before.
+	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, rf::kResultSkipPhase, true) ==
+		ScenesStep{ScenesAction::ResultSkip, rf::kResultSkippedPhase});
+	CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, rf::kDrawDemoPhase, true) ==
+		ScenesStep{ScenesAction::SetPhase, rf::kDrawAfterDemoPhase});
+}
+
 TEST_CASE("the skip ends Finish between two rounds as at the match's end, and leaves the round demos to the game")
 {
 	namespace rf = sfve::mod::sfv::resultflow;
