@@ -547,12 +547,12 @@ class Copy:
             self.hide(False, True)  # the opponent out of the picture, so the mask is one fighter
         a_path, a2_path, b_path = raw / "a.bmp", raw / "a2.bmp", raw / "b.bmp"
         frame = self.grab(a_path, True)
+        depth_state = self.booth(self.status()).get("lastGrab", {}).get("depth", "")
         # The held frame grabbed again a little later must be the same picture outside the fighters
         # (no screen fading over it, no menu); inside them a living costume may move (Gill's
         # glowing skin, fire hair). Judged after the plate, whose depth tells where the fighters are.
         self.wait_presents(STABLE_PRESENTS)
         self.grab(a2_path, False)
-        depth_state = self.booth(self.status()).get("lastGrab", {}).get("depth", "")
         self.hide(True, True)  # the plate: the same frozen frame without the fighters
         self.grab(b_path, True)
         reference = self.store / "reference" / f"plate-{stage}-{self.args.frame}.png"
