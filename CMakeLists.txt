@@ -132,6 +132,7 @@ add_library(sfve_ember STATIC
     src/ember/SfvEleven.cxx
     src/ember/SfvReplays.cxx
     src/ember/SfvRoomBuild.cxx
+    src/ember/SfvScreenMode.cxx
     src/ember/SfvSelectGrid.cxx
     src/ember/SfvSelection.cxx
     src/ember/SfvSelectionScreen.cxx
@@ -314,6 +315,7 @@ add_executable(sfve_ember_tests
     tests/FaceCropTests.cxx
     tests/SfvPictureSpecTests.cxx
     tests/SfvBackdropTests.cxx
+    tests/ScreenModeTests.cxx
     tests/SwatchStripTests.cxx
     tests/SfvVerificationTests.cxx
     tests/DesyncReportTests.cxx
@@ -448,6 +450,7 @@ add_executable(Launcher WIN32
     src/launcher/DesyncCourier.cxx
     src/launcher/ReportsDefault.cxx
     src/ember/DesyncReport.cxx
+    src/ember/SfvScreenMode.cxx
     src/launcher/ExecutableBuild.cxx
     src/launcher/SteamRecord.cxx
     src/launcher/LauncherSelection.cxx

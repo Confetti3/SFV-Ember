@@ -17,14 +17,19 @@
 // its own single-instance lock, so the one-launcher-per-user rule for
 // instance 0, what players run, is unchanged. --game-option passes one test
 // option to the game: -sfve_* or the window's -windowed, -ResX=N and
-// -ResY=N, nothing else. The game always gets -windowed (StartGame), so a
-// test's own is not repeated. A player build has neither option.
+// -ResY=N, nothing else. A test's own window option (those three, or
+// -sfve_screen=) is the window's whole say: the player's Screen mode adds
+// nothing then (mod/ScreenMode.hxx). A player build has neither option.
 //
 // Before anything starts, the exe must be the build the mod was made for
 // (ExecutableBuild): never another build, which would run as plain SFV, and
 // never UE4's starter in the game's top folder, which would start the game
 // without the mod. Then Steam's record of its client is put right when it
 // is wrong (SteamRecord): nothing is asked and Steam is never restarted.
+//
+// The window: the player's Screen mode (Settings > Interface > Look, saved in
+// interface.json; ember/SfvScreenMode.hxx) decides the game's window options
+// at each start, and the launcher's log names the mode and what it passed.
 
 #include "launcher/DesyncCourier.hxx"
 #include "launcher/ReportsDefault.hxx"
@@ -32,6 +37,7 @@
 #include "launcher/ExecutableBuild.hxx"
 #include "launcher/LaunchMessages.hxx"
 #include "launcher/LaunchSteps.hxx"
+#include "ember/SfvScreenMode.hxx"
 #include "OldDefaultName.hxx"
 #include "SteamRecord.hxx"
 #include "mod/BuildKind.hxx"
@@ -50,6 +56,7 @@
 #include <detours/detours.h>
 #include <spdlog/spdlog.h>
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -253,12 +260,24 @@ HANDLE StartGame(const StartRequest& request, StartFailure& failure)
 	std::wstring commandLine = L"\"" + request.executable + L"\"";
 	for (const std::string& option : s_gameOptions) commandLine += L" " + sf4e::platform::Utf8ToWide(option.c_str());
 	commandLine += L" -sfve_loader=launcher -sfve_mode=netplay -sfve_room=1";
-	// The game opens in a window at its saved resolution, never full screen:
-	// SFV's own full screen changes the monitor's mode, which upset players'
-	// displays. A plain window is the chosen default (2026-11-09).
-	bool windowed = false;
-	for (const std::string& option : s_gameOptions) windowed = windowed || option == "-windowed";
-	if (!windowed) commandLine += L" -windowed";
+	// The window: the player's Screen mode (ScreenMode.hxx). Until beta.8 the
+	// game was always started with -windowed, because SFV's exclusive full
+	// screen changes the monitor's mode and upset a display (2026-11-09); the
+	// maintainer then chose to let the game's own Screen Mode setting apply
+	// by default and to add Borderless (2026-11-13). A test's own window
+	// option wins.
+	std::string screenProblem;
+	const sfve::screen::Mode screenMode =
+		sfve::adapter::ReadScreenMode(std::filesystem::path(sf4e::netplay::SettingsStore::DefaultDirectory()), screenProblem);
+	if (!screenProblem.empty()) spdlog::warn("Screen mode: {}; the game's own setting is used", screenProblem);
+	const sfve::screen::Plan screenPlan = sfve::screen::PlanFor(screenMode, s_gameOptions);
+	std::string passed;
+	for (const std::string& option : screenPlan.options) {
+		commandLine += L" " + sf4e::platform::Utf8ToWide(option.c_str());
+		passed += (passed.empty() ? "" : " ") + option;
+	}
+	spdlog::info("Screen mode: {}{}; window options passed: {}", sfve::screen::Name(screenMode),
+		screenPlan.testOwnsWindow ? " (set aside: a test's own window option applies)" : "", passed.empty() ? "none" : passed);
 	if (s_instance != 0) commandLine += L" -sfve_instance=" + std::to_wstring(s_instance);
 	InheritedDumpChannel dumps(request.dumps);
 	if (dumps.Ready()) commandLine += L" -sfve_dump_channel=" + dumps.Option();

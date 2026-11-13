@@ -12,6 +12,7 @@
 #include "ember/SfvPick.hxx"
 #include "ember/SfvRandomFighter.hxx"
 #include "ember/SfvReplays.hxx"
+#include "ember/SfvScreenMode.hxx"
 #include "ember/SfvSelectionScreen.hxx"
 #include "ember/SfvTraining.hxx"
 #include "mod/ControlPipe.hxx"
@@ -48,6 +49,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -135,6 +137,10 @@ public:
 		// shell's pages (SfvBackdrop; docs/design/beta8/backdrop.md).
 		view.offersMenuArtwork = true;
 		view.menuArtworkShown = SfvBackdropShown();
+		// Look's Screen mode row: how the launcher starts the game's window
+		// next time (SfvScreenMode; docs/design/beta9/screen.md).
+		view.offersScreenMode = true;
+		view.screenMode = static_cast<int>(SfvScreenMode());
 	}
 
 	// Training select's Hitboxes row: the viewer's choice, saved.
@@ -142,6 +148,17 @@ public:
 
 	// Look's Background artwork row: the backdrop on or off, saved.
 	bool ShowMenuArtwork(bool shown) override { return ShowSfvBackdrop(shown); }
+
+	// Look's Screen mode row: the choice saved for the next start, which
+	// is when the launcher reads it.
+	bool SetScreenMode(int number) override
+	{
+		const std::optional<sfve::screen::Mode> mode = sfve::screen::FromNumber(number);
+		if (!mode) return false;
+		const bool saved = ChooseSfvScreenMode(*mode);
+		mod::Log("screen: mode %s %s; it applies at the next start", sfve::screen::Name(*mode), saved ? "saved" : "could not be saved");
+		return saved;
+	}
 
 	// The table page's Appearance and Ultra rows, and the post-match
 	// prompt's Ultra: SfvSelectionScreen's StepTableSelection. Like SF4's,
