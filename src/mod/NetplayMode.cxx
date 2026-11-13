@@ -10,10 +10,14 @@
 #include "ember/SfvTraining.hxx"
 #include "ember/SfvVerification.hxx"
 #include "mod/ControlPipe.hxx"
+#include "mod/GameHooks.hxx"
 #include "mod/GameInput.hxx"
+#include "mod/GameMemory.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
+#include "mod/SfvBattleLayouts.hxx"
+#include "mod/SfvFighterOffsets.hxx"
 #include "mod/VersusLaunch.hxx"
 
 #include "SpectatorCatchUp.hxx"
@@ -94,6 +98,7 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	scenes_ = {};
 	scenesSkips_ = 0;
 	roundScenes_ = false;
+	fightSeen_ = false;
 	ForgetEndedVersusBattle();
 	pacer_.Reset();
 }
@@ -204,14 +209,9 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	// ones in RollbackSession, whatever was sent, but for the request on the
 	// skip frames, which are stepped confirmed.
 	const bool asked = introSkip_.Requested();
-	// The room's Skip winner scenes rule: a fighter's copy of a room battle
-	// asks for the scenes between rounds and the decided match's to be
-	// skipped on its own.
-	introSkip_.SetAutoScenes(room_.SkipScenes());
 	const PackedInput local = introSkip_.Next(adapter.FlowState(), LocalInput(adapter, frame), adapter.MatchDecided(), frame);
 	if (!asked && introSkip_.Requested() && scenes_.From() >= 0) {
-		Log("netplay: this copy asks to skip the scenes from frame %d, %d frame(s) into them%s", frame, scenes_.Shown(frame),
-			introSkip_.AutoScenes() ? " (the room's Skip winner scenes rule; a press asks no sooner)" : "");
+		Log("netplay: this copy asks to skip the scenes from frame %d, %d frame(s) into them", frame, scenes_.Shown(frame));
 	}
 
 	// The game's judgement, the same on both copies (it is restored with the
@@ -226,6 +226,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	// data reset takes it from the clock; the fighters' generators are
 	// reseeded from it at each round's start. It stays the session's.
 	room_.NoteFightFrame();
+	NoteFightStart(adapter, frame);
 	if (room_.Active() && adapter.StartTime() != startTime_) {
 		Log("netplay: the match's start time became %u at frame %d; set back to %u", adapter.StartTime(), frame,
 			startTime_);
@@ -364,6 +365,7 @@ bool NetplayMode::WatchFrame(SfvAdapter& adapter)
 			session_->Frame(), startTime_);
 		adapter.SetStartTime(startTime_);
 	}
+	NoteFightStart(adapter, session_->Frame());
 	last_ = session_->Step(0);
 	NoteScenesSkip(adapter);
 	const bool advanced = last_ == RollbackSession::StepResult::Advanced;
@@ -713,6 +715,46 @@ void NetplayMode::DumpIfRequested()
 	dumpBytes_.clear();
 }
 
+void NetplayMode::NoteFightStart(SfvAdapter& adapter, int frame)
+{
+	namespace fighter = sfv::fighter;
+	if (!adapter.Fighting()) {
+		fightSeen_ = false;
+		return;
+	}
+	if (fightSeen_) return;
+	fightSeen_ = true;
+	// What a round's end must leave clean for the next round (docs/design/beta9/skip.md):
+	// the battle frame's state word (pause bits 0x7, the KO's 0x20) and its
+	// slow motion (+0x1A0).
+	uint32_t state = 0, slow = 0;
+	uint8_t* battleFrame = adapter.BattleFrame();
+	if (battleFrame) {
+		TryRead(battleFrame + sfv::battleframe::kState, &state);
+		TryRead(battleFrame + 0x1A0, &slow);
+	}
+	Log("netplay: a round's fight starts at frame %d; battle frame state word %08x (pause bits %x, KO bit %d), slow motion %08x",
+		frame, state, state & sfv::pause::kBits, (state & 0x20) != 0, slow);
+	uint8_t* anyUnit = adapter.AnyUnit();
+	if ((vitalPercent_[0] <= 0 && vitalPercent_[1] <= 0) || !anyUnit) return;
+	for (uint32_t index = 0; index < 2; index++) {
+		uint8_t* unit = GameFindUnit(anyUnit, sfv::unit::kCharaUnitType, index);
+		uint8_t* status = unit ? GameFindPart(unit, fighter::kStatusPartType) : nullptr;
+		int32_t side = -1, vitalMax = 0;
+		if (!status || !TryRead(unit + fighter::kSide, &side) || side < 0 || side > 1 ||
+			!TryRead(status + fighter::kVitalMax, &vitalMax)) {
+			Log("netplay: vital: fighter %u not found at frame %d", index, frame);
+			continue;
+		}
+		const int percent = vitalPercent_[side];
+		if (percent <= 0 || percent >= 100) continue;
+		const int32_t vital = static_cast<int32_t>(static_cast<int64_t>(vitalMax) * percent / 100);
+		const bool ok = TryWrite(status + fighter::kVital, vital);
+		Log("netplay: vital: P%d's set to %d%% (%d of %d, 16.16) at frame %d%s", side + 1, percent, vital, vitalMax, frame,
+			ok ? "" : ": the write failed");
+	}
+}
+
 // The live state is the played frame's, already saved: a rollback to that
 // frame or earlier undoes the change, so it is meant for a frame no rollback
 // crosses (before the players' inputs start).
@@ -778,6 +820,20 @@ void NetplayMode::RegisterCommands()
 	RegisterCommand("skipafter", [this](const std::string& args) {
 		std::lock_guard lock(mutex_);
 		skipAfter_ = args.empty() ? -1 : atoi(args.c_str());
+		return std::string("ok");
+	});
+	// "vital <P1 percent> <P2 percent>": each fighter's vital set to that share
+	// of its maximum at every round's first fight frame (0 or 100: left as
+	// the round gives it), for runroom's KO endings. Not rollback-proof: runs
+	// that use it play without rollbacks.
+	RegisterCommand("vital", [this](const std::string& args) {
+		int p1 = 0, p2 = 0;
+		if (sscanf_s(args.c_str(), "%d %d", &p1, &p2) != 2 || p1 < 0 || p1 > 100 || p2 < 0 || p2 > 100) {
+			return std::string("error usage: vital <P1 percent> <P2 percent> (0 or 100: as the round gives it)");
+		}
+		std::lock_guard lock(mutex_);
+		vitalPercent_[0] = p1;
+		vitalPercent_[1] = p2;
 		return std::string("ok");
 	});
 	RegisterCommand("dump", [this](const std::string& args) {

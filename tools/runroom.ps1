@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog, [switch]$autoSkip, [string]$banStages = '', [switch]$rngAudit, [string]$startPerturb = '', [switch]$plainSaves, [int]$verifyLoads = -1, [switch]$pressStart, [string]$fma3 = '', [int]$tasks = -1)
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog, [string]$banStages = '', [switch]$rngAudit, [string]$startPerturb = '', [switch]$plainSaves, [int]$verifyLoads = -1, [switch]$pressStart, [string]$fma3 = '', [string]$vital = '', [string]$expectFinish = '', [int]$fullMin = 1000, [int]$tasks = -1)
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -34,8 +34,12 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # (SFVE_RES for that copy's launch), as two players' screens differ.
 # -moves: each copy mashes the game's system moves (input::Moves: V-Skill,
 # V-Trigger, V-Reversal, Critical Art motions, EX, throws).
-# -moveset supers|cody|projectiles: one set of moves instead (input::MoveSet;
-# implies -moves). -idle 0|1: that side's player stands still, and the other
+# -moveset supers|cody|projectiles|luke|akira|targets: one set of moves instead
+# (input::MoveSet; implies -moves). luke: Luke's LP>MP>HP target combo with the
+# field's gaps and a tight chain, alone and then QCB+LP; akira: V-Skill taps at
+# varying gaps, a 13-frame hold and the presses after it (the V-Skill I or II
+# is the pick's loadout: the pick Z41:c:col:1:x or :2:); targets: chained
+# buttons at 6-12 frame gaps for any fighter (docs/design/beta9/skip.md). -idle 0|1: that side's player stands still, and the other
 # walks forward at the start of each block of moves. Every block faces the
 # way its fighter does. -socketLog: each copy logs the fight's reads of the
 # fighters' models (SocketReads); the lines are printed per copy at the end.
@@ -106,7 +110,7 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # -rounds 2 and more: every game also prints the scenes between its rounds
 # (the KO's finish to the next round's call), which must end on the same
 # frame with the same skips on both copies, skipped or not as above
-# (-skipAfter and -autoSkip apply to them too; the round call itself is
+# (-skipAfter applies to them too; the round call itself is
 # never cut). -pressStart: copy -skipCopy presses Start half a second into
 # each scene (between rounds and at the match's end), where SFV would open
 # its own pause on that copy alone; no copy's battle may be paused, and
@@ -118,12 +122,25 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # fighters' copies, must be the same stage and never a banned one: "launch: stage
 # X -> Y" in each log, checked at the end. -stage S25 with S25 banned must give
 # TRN in every game.
-# -autoSkip opens the room with its Skip winner scenes rule on
-# (docs/design/beta8/autoskip.md; the product's default, off here so the runs
-# above mean what they did): both fighters' copies then ask for the skip on
-# their own once the guard is over, with no press at all, and the scenes must
-# end the way a press ends them (fewer than -skipMax frames, the same skips and
-# result frame on both copies and the watcher's).
+# Rounds that end in a KO (docs/design/beta9/skip.md section 2): -vital "P1,P2"
+# sets each fighter's vital to that percent of its maximum at the first frame
+# of every round's fight (the pipe's vital command; 0 or 100 leaves the side as
+# the round gives it), so the next hit (or a trade) ends the round in a KO:
+# "-vital 60,5 -idle 1 -moveset targets" has P1 walk up and chain normals into
+# a P2 who stands at 5 percent. The write is not rollback-proof, so -vital needs
+# -lag 0 and no -practice (Training's gauges refill the vital). -expectFinish
+# NAME (the game's finish name in the match result: ko, critical art, ex,
+# chip, perfect, double ko, time over) fails a run none of whose rounds ended
+# so. Every run checks the next round starts clean: each copy logs "a round's
+# fight starts" with the battle frame's state word, and no round may start with
+# a pause bit, the KO's bit 0x20 or slow motion set, on the same frame on both
+# copies. A run with no scripted press shows each decided match's scenes whole:
+# no skip applied and at least -fullMin frames (default 1000; 0 turns it off;
+# 1545 and 1865 have been seen after a time-over).
+# There is no auto-skip: the Skip winner scenes rule is gone (docs/design/beta9/skip.md),
+# so no run lets a copy ask for a skip by itself, and a run with no scripted
+# press (-skipAfter, -skipPad) must show every scene in full: no skip applied
+# on either copy, checked as before (CheckScenes, CheckRounds).
 $ErrorActionPreference = 'Stop'
 # The checkout this script is in, whichever it is.
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -216,7 +233,7 @@ function AwaitWatcher([int]$game, [int]$before) {
 # (intro_skip::kScenesGuardFrames).
 $guardFrames = 60
 if ($skipCopy -lt 0 -or $skipCopy -gt 1) { throw '-skipCopy is 0 or 1' }
-$skipWanted = $skipPad -or $autoSkip -or $skipAfter -ge $guardFrames
+$skipWanted = $skipPad -or $skipAfter -ge $guardFrames
 # Each copy's scenes as its log has them, in order: the decided matches'
 # (Kind 'match': frames from the decision to the result, the result's frame)
 # and those between two rounds (Kind 'round': frames from the round's end to
@@ -265,7 +282,7 @@ function CheckRounds([int]$game) {
     if ($a.Result -ne $b.Result) { throw "game ${game}: the copies reached the next round at frames $($a.Result) and $($b.Result)" }
     if (($a.At -join '|') -ne ($b.At -join '|')) { throw "game ${game}: the copies applied different skips between rounds: copy 0 [$($a.At -join '; ')], copy 1 [$($b.At -join '; ')]" }
     if ($skipWanted) {
-      if ($a.Skips -lt 1) { throw "game ${game}: the scenes between rounds were not skipped (copy ${skipCopy}'s press, or the room's rule)" }
+      if ($a.Skips -lt 1) { throw "game ${game}: the scenes between rounds were not skipped (copy ${skipCopy}'s press)" }
     } else {
       foreach ($s in $a, $b) { if ($s.Skips -gt 0) { throw "game ${game}: the scenes between rounds were skipped though no press came after the guard" } }
     }
@@ -295,13 +312,17 @@ function CheckScenes([int]$game) {
   if ($a.Result -ne $b.Result) { throw "game ${game}: the copies took the result at frames $($a.Result) and $($b.Result)" }
   if (($a.At -join '|') -ne ($b.At -join '|')) { throw "game ${game}: the copies applied different skips: copy 0 [$($a.At -join '; ')], copy 1 [$($b.At -join '; ')]" }
   if ($skipWanted) {
-    if ($a.Skips -lt 1) { throw "game ${game}: the scenes were not skipped (copy ${skipCopy}'s press, or the room's rule)" }
+    if ($a.Skips -lt 1) { throw "game ${game}: the scenes were not skipped (copy ${skipCopy}'s press)" }
     foreach ($took in $a.Took, $b.Took) { if ($took -ge $skipMax) { throw "game ${game}: the skipped scenes still took $took frames (want fewer than $skipMax)" } }
   } else {
     # No press after the guard (none at all, or -skipAfter inside it): no
     # copy may apply a skip. Not a frame count: the unskipped scenes' length
     # depends on the fighters and the finish (1545 and 1865 frames seen).
     foreach ($s in $a, $b) { if ($s.Skips -gt 0) { throw "game ${game}: the scenes were skipped though no press came after the guard" } }
+    # No press at all: the whole presentation plays, so it is long.
+    if ($skipAfter -lt 0 -and -not $skipPad) {
+      foreach ($took in $a.Took, $b.Took) { if ($took -lt $fullMin) { throw "game ${game}: no press came, yet the scenes took only $took frames (want at least $fullMin; -fullMin 0 turns this off)" } }
+    }
   }
 }
 # -shots, through a game's decided scenes until copy 0 logs its result:
@@ -397,7 +418,10 @@ foreach ($i in $copies) {
   if ($unowned[$i]) { $marks += "-sfve_unowned=$($unowned[$i])" }
   if ($gateOff[$i]) { $marks += '-sfve_ownership=0' }
   if ($uninstalled[$i]) { $marks += "-sfve_uninstalled=$($uninstalled[$i])" }
-  if ($moveset) { $marks += "-sfve_moveset=$moveset" }
+  if ($moveset) {
+    if ('supers','cody','projectiles','luke','akira','targets' -notcontains $moveset) { throw "-moveset $moveset is not a set of moves (an unknown name would silently play single buttons)" }
+    $marks += "-sfve_moveset=$moveset"
+  }
   if ($idle -ge 0) { $marks += "-sfve_idle=$idle" }
   if ($socketLog) { $marks += '-sfve_socket_log=1' }
   if ($rngAudit) { $marks += '-sfve_rng_audit=1' }
@@ -421,8 +445,15 @@ try {
     WaitFor "copy ${skipCopy}'s skip press to be scheduled" 30 { (Ctl $skipCopy "skipafter $skipAfter") -like 'ok*' }
     "copy ${skipCopy} presses an attack $skipAfter frames into each game's scenes$(if ($skipAfter -lt $guardFrames) { ' (inside the guard: nothing may be skipped)' })"
   }
+  if ($vital) {
+    if ($lag -ne 0 -or $practice) { throw '-vital plays without rollbacks: use -lag 0 and no -practice' }
+    $v = @($vital -split '[, ]+' | Where-Object { $_ -ne '' })
+    if ($v.Count -ne 2) { throw '-vital is "P1,P2" (percent of the maximum, 0 or 100 leaves the side alone)' }
+    foreach ($i in $copies) { WaitFor "copy ${i}'s vital to be set" 30 { (Ctl $i "vital $($v[0]) $($v[1])") -like 'ok*' } }
+    "each round starts with P1 at $($v[0]) and P2 at $($v[1]) percent of their vital"
+  }
   $instant = if ($rematches -ge 0) { 1 } else { 0 }
-  WaitFor 'room commands to be taken' 30 { (Ctl 0 "room $rounds $seconds $instant $firstTo $([int][bool]$tiny) $([int][bool]$autoSkip) $(if ($banStages) { $banStages } else { '-' })") -like 'ok*' }
+  WaitFor 'room commands to be taken' 30 { (Ctl 0 "room $rounds $seconds $instant $firstTo $([int][bool]$tiny) $(if ($banStages) { $banStages } else { '-' })") -like 'ok*' }
   $inv = ''
   WaitFor 'the invitation' 60 { $script:inv = Ctl 0 invite; $script:inv -like 'ok *' }
   $inv = $inv.Substring(3)
@@ -755,6 +786,43 @@ if ($pressStart) {
   foreach ($i in 0, 1) {
     if (-not $failure -and (Count $i "hooks: SFV's own pause is off") -eq 0) { $failure = "copy ${i} never logged its game's pause off" }
   }
+}
+# Every round's start, on every copy: the same frame, and clean (no pause bit,
+# no KO bit, no slow motion left by the scenes before it, skipped or not).
+$roundStarts = @{}
+foreach ($i in $copies) {
+  $roundStarts[$i] = @(if (Test-Path $logOf[$i]) {
+    foreach ($m in Select-String -Path $logOf[$i] -Pattern 'netplay: a round''s fight starts at frame (\d+); battle frame state word ([0-9a-f]{8}) \(pause bits ([0-9a-f]+), KO bit (\d)\), slow motion ([0-9a-f]{8})') {
+      $g = $m.Matches[0].Groups
+      [pscustomobject]@{ Frame = [int]$g[1].Value; Word = $g[2].Value; Pause = $g[3].Value; Ko = [int]$g[4].Value; Slow = $g[5].Value }
+    }
+  })
+  foreach ($r in $roundStarts[$i]) {
+    "copy ${i}: a round starts at frame $($r.Frame), state word $($r.Word), slow motion $($r.Slow)"
+    if (-not $failure -and ($r.Pause -ne '0' -or $r.Ko -ne 0 -or $r.Slow -ne '00000000')) {
+      $failure = "copy ${i}: the round starting at frame $($r.Frame) began with state word $($r.Word) (pause bits $($r.Pause), KO bit $($r.Ko), slow motion $($r.Slow)): the scene before it left something set"
+    }
+  }
+}
+if (-not $failure -and $roundStarts[0].Count -ne $roundStarts[1].Count) { $failure = "copy 0 started $($roundStarts[0].Count) rounds, copy 1 $($roundStarts[1].Count)" }
+if (-not $failure -and -not $roundStarts[0].Count) { $failure = 'no round start was logged (a build without the fight-start line?)' }
+if (-not $failure) {
+  for ($k = 0; $k -lt $roundStarts[0].Count; $k++) {
+    if ($roundStarts[0][$k].Frame -ne $roundStarts[1][$k].Frame) { $failure = "round start $($k + 1): frame $($roundStarts[0][$k].Frame) on copy 0, $($roundStarts[1][$k].Frame) on copy 1"; break }
+  }
+}
+# How the rounds ended, per the game's own result (the finish names).
+$finishes = New-Object System.Collections.Generic.List[string]
+if (Test-Path $logOf[0]) {
+  foreach ($m in Select-String -Path $logOf[0] -Pattern 'netplay: match result (\{.*\}) at frame') {
+    $r = $m.Matches[0].Groups[1].Value | ConvertFrom-Json
+    $names = @($r.rounds | ForEach-Object { $_.finish })
+    "match result: rounds ended: $($names -join ', ')"
+    $finishes.Add(($names -join ','))
+  }
+}
+if ($expectFinish -and -not $failure) {
+  if (-not ($finishes | Where-Object { ($_ -split ',') -contains $expectFinish })) { $failure = "-expectFinish '$expectFinish': no game had a round that ended so ($($finishes -join ' | '))" }
 }
 $played = if ($rematches -ge 0) { $rematches + 1 } else { $games }
 if ($banStages -and -not $failure) {

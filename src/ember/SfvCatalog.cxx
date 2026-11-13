@@ -737,7 +737,6 @@ MatchLaunch LaunchPicks(const RoomMatch& match)
 	picks.rules.rounds = match.rounds;
 	picks.rules.timeFrames = *mod::RoomClockFrames(match.roundSeconds);
 	picks.practice = match.practice;
-	picks.skipScenes = match.skipScenes;
 	return {std::move(picks), {}};
 }
 

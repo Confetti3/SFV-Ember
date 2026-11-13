@@ -84,19 +84,18 @@ std::optional<std::vector<std::int64_t>> BannedStagesOf(const std::string& text)
 
 std::string Host(const std::string& args)
 {
-	int rounds = 3, seconds = 99, rematch = 0, firstTo = 0, tiny = 0, skipScenes = 1;
+	int rounds = 3, seconds = 99, rematch = 0, firstTo = 0, tiny = 0;
 	std::istringstream in(args);
-	const char* usage = "error usage: room [rounds] [seconds] [instant rematch 0|1] [first to N, 0 unlimited] [tiny fighters 0|1] [skip winner scenes 0|1] [banned stages CODE,CODE or -]";
+	const char* usage = "error usage: room [rounds] [seconds] [instant rematch 0|1] [first to N, 0 unlimited] [tiny fighters 0|1] [banned stages CODE,CODE or -]";
 	if (!args.empty() && !(in >> rounds >> seconds)) return usage;
 	if (!in.eof() && !(in >> rematch)) return usage;
 	if (!in.eof() && !(in >> firstTo)) return usage;
 	if (!in.eof() && !(in >> tiny)) return usage;
-	if (!in.eof() && !(in >> skipScenes)) return usage;
 	std::string bans = "-";
 	if (!in.eof() && !(in >> bans)) return usage;
 	const std::optional<std::vector<std::int64_t>> banned = BannedStagesOf(bans);
 	if (!banned) return "error a banned stage is not a stage code of this game";
-	if (rematch < 0 || rematch > 1 || tiny < 0 || tiny > 1 || skipScenes < 0 || skipScenes > 1) return usage;
+	if (rematch < 0 || rematch > 1 || tiny < 0 || tiny > 1) return usage;
 	if (!sf4e::room::ValidSetFormat(firstTo)) return "error the set is first to 1-10 games, or 0 for unlimited";
 	facade::RuntimeCommand command = CommandFor(CommandKind::HostRoom);
 	command.preferences = facade::GetRuntimeSnapshotShared()->preferences;
@@ -108,8 +107,6 @@ std::string Host(const std::string& args)
 	// Tiny fighters allowed (EMBER_LIBRARY.md section 59): a private room's rule,
 	// as Create's row sets it.
 	command.tinyFighters = tiny != 0;
-	// Skip winner scenes (docs/design/beta8/autoskip.md): on unless a test turns it off.
-	command.skipScenes = skipScenes != 0;
 	// Banned stages (docs/design/beta8/stageban.md): the room opens with them, as a host's
 	// Room settings would set them; a test names them.
 	command.bannedStages = *banned;

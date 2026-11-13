@@ -8,9 +8,11 @@ param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash 
 # Critical Art motions, EX, throws: input::Moves) instead of single buttons;
 # -practice gives both fighters Training's refilling gauges from the first
 # frame, so every V-Trigger and Critical Art asked for is played.
-# -moveset supers|cody|projectiles plays one set of moves (input::MoveSet:
-# Critical Arts that play out; Z29's knife, pipe, rock and Critical Art;
-# projectile specials and V-Triggers left to run out) and implies -moves.
+# -moveset supers|cody|projectiles|luke|akira|targets plays one set of moves
+# (input::MoveSet: Critical Arts that play out; Z29's knife, pipe, rock and
+# Critical Art; projectile specials and V-Triggers left to run out; Luke's
+# target combos; Akira's V-Skill taps, hold and follow-ups, the loadout being
+# the pick's (the pick Z41:c:col:1:x or :2:); chained buttons at 6-12 frame gaps) and implies -moves.
 # Every block of moves faces the way its fighter does. -idle 0|1 has that
 # player (P1 or P2) stand still, and the other walk forward at the start of
 # each block, so its moves land. -tiny draws -tinySides (1 P1, 2 P2, 3 both)
@@ -36,7 +38,10 @@ param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash 
 Set-Location (Split-Path -Parent $PSScriptRoot)
 python -I tools\sfve.py kill | Out-Null
 $extra = @()
-if ($moveset) { $extra += "-sfve_moveset=$moveset" }
+if ($moveset) {
+  if ('supers','cody','projectiles','luke','akira','targets' -notcontains $moveset) { throw "-moveset $moveset is not a set of moves (an unknown name would silently play single buttons)" }
+  $extra += "-sfve_moveset=$moveset"
+}
 if ($idle -ge 0) { $extra += "-sfve_idle=$idle" }
 if ($tiny) { $extra += "-sfve_tiny=$tinySides" }
 if ($socketLog) { $extra += '-sfve_socket_log=1' }

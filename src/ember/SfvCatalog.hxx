@@ -294,10 +294,6 @@ struct RoomMatch {
 	// room's rule): only then is a pick's Tiny drawn, so a public room's
 	// battle is always normal size whatever a pick carries.
 	bool tinyAllowed = false;
-	// The room's Skip winner scenes rule (room::Snapshot::skipScenes, on by
-	// default, any room's): the fighters' copies ask for the decided match's
-	// scenes to be skipped on their own (mod::intro_skip::Request).
-	bool skipScenes = true;
 };
 
 // Why this copy cannot launch a room's match: the reason the runtime words

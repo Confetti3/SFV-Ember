@@ -1,5 +1,8 @@
 # beta.8: the winner scenes skip without a press (2026-11-12)
 
+**Superseded 2026-11-13.** The owner decided the skip fires only on a press; the rule, its room
+row and `SetAutoScenes` are gone (`docs/design/beta9/skip.md`, section 1). Kept as the record.
+
 **What players saw.** The press-to-skip of `skip.md` ends the scenes after the deciding KO, but
 only when someone presses. A player who does not know about it waits the whole presentation
 (about 26 s) before Ember's rematch prompt opens over SFV's results. A review of another SFV

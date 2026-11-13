@@ -44,7 +44,9 @@ TEST_CASE("the game offers watching, replays and Training, and answers as no bat
 	const ember::game::Adapter& game = ember::game::Game();
 	CHECK(game.caps.training); // EMBER_LIBRARY.md section 27
 	CHECK(game.caps.tinyFighters); // EMBER_LIBRARY.md section 59
-	CHECK(game.caps.skipScenes); // docs/design/beta8/autoskip.md
+	// No Skip winner scenes rule: a scene skip is only a player's press, so the
+	// library leaves the room row out (docs/design/beta9/skip.md).
+	CHECK_FALSE(game.caps.skipScenes);
 	CHECK(game.caps.hitboxes);     // docs/design/beta8/hitboxes.md: Training select's Hitboxes row
 	// Replays (EMBER_LIBRARY.md section 26): Watch now, Keep and Show in
 	// folder; no game list of SFV's own, video, meter or inputs reader.

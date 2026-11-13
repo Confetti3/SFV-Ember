@@ -45,12 +45,11 @@
 // saw the scenes start, so a button still down from the last hit, or mashed
 // through the KO, skips nothing.
 //
-// With the room's Skip winner scenes rule on (the default,
-// docs/design/beta8/autoskip.md) a fighter's copy asks on its own
-// as soon as that guard is over, the same request a press makes, so the
-// scenes end without anyone pressing; a press then only asks no sooner than
-// the guard lets it. Watchers and a replay's playback do not ask: they follow
-// the fighters' confirmed skip frames, as for a press.
+// A copy never asks on its own: no room rule, public room or private, makes
+// the scenes end without a press (docs/design/beta9/skip.md; the beta.8
+// Skip winner scenes rule is gone). Watchers and a replay's playback do not
+// ask at all: they follow the fighters' confirmed skip frames, so a replay
+// recorded under that rule plays the skips it recorded.
 //
 // Once the match is decided the game asks the pads themselves for the skip
 // bit (sfv::kPadsAny), so each copy heard only its own player; while a
@@ -101,9 +100,9 @@ constexpr bool Skippable(int flowState, bool decided)
 	return flowState == sfv::flow::kIntroDemo || RoundScenes(flowState) || (decided && flowState != sfv::flow::kFight);
 }
 
-// The scenes a press (after the guard) or the room's rule skips: a decided
-// match's (anything but the fight once it is decided) and those between two
-// rounds. Not the intro, which takes a press at once and no rule.
+// The scenes a press (after the guard) skips: a decided match's (anything
+// but the fight once it is decided) and those between two rounds. Not the
+// intro, which takes a press at once.
 constexpr bool Scenes(int flowState, bool decided)
 {
 	return (decided && flowState != sfv::flow::kFight) || RoundScenes(flowState);
@@ -174,25 +173,19 @@ public:
 		clock_.Note(scenes, frame);
 		const bool guarded = scenes && clock_.Shown(frame) < kScenesGuardFrames;
 		const PackedInput down = local & kPressBits;
-		// With the room's rule on, the scenes themselves ask once the guard is
-		// over, as a press would; the intro still needs a press.
-		const bool pressed = ((down & ~down_) != 0 || (autoScenes_ && scenes)) && !guarded;
+		// Only a new press asks, and never inside the guard: the scenes do not
+		// end by themselves however long they run.
+		const bool pressed = (down & ~down_) != 0 && !guarded;
 		requested_ = Skippable(flowState, decided) && (requested_ || pressed);
 		down_ = down;
 		return (local & ~kSkipBit) | (requested_ ? kSkipBit : 0);
 	}
 	bool Requested() const { return requested_; }
-	// The room's Skip winner scenes rule for this copy's battle: on, a decided
-	// match's scenes ask by themselves after the guard (Next). Set before the
-	// session's first frame; a fighter's copy only.
-	void SetAutoScenes(bool on) { autoScenes_ = on; }
-	bool AutoScenes() const { return autoScenes_; }
 	// The frame this copy first saw the decided match's scenes; -1 outside them.
 	int ScenesFrom() const { return clock_.From(); }
 
 private:
 	bool requested_ = false;
-	bool autoScenes_ = false;
 	PackedInput down_ = kPressBits; // as if all down: nothing held before the first call is a press
 	ScenesClock clock_;
 };
@@ -222,11 +215,21 @@ struct ScenesStep {
 	bool operator==(const ScenesStep&) const = default;
 };
 
+// The battle frame's state bit the KO's slow motion sets (+0x190 bit 0x20,
+// sfv::battleframe::kState; the pause menu's detector reads it too, rva
+// 0x46E110). Finish is not cut while it is set (ScenesStepFor's `koStop`).
+constexpr uint32_t kKoStopBit = 0x20;
+
 // The step for the current state: its id (resultflow::kStateId), its class
 // (its vtable's rva) and its phase (flowstate::kPhase). Only the classes the
 // versus flow builds for these ids are moved; anything else plays on.
 // - Finish: whatever it waits on (the KO's presentation), on to RoundOver,
-//   which asks for the winner's or the draw's demo on its first tick.
+//   which asks for the winner's or the draw's demo on its first tick. Not
+//   while `koStop` (the KO's slow motion, kKoStopBit): a round that ends in a
+//   KO is cut only once the game has cleared it itself, since the step Finish
+//   makes on its way out (docs/design/beta9/skip.md section 2) is not known
+//   to run on a cut. A time-over has no KO presentation, so nothing waits.
+//   SfvAdapter::EndScenes passes it from the battle frame (beta.9 patch).
 // - MatchResultDemo: its 90-tick wait before the demo's setup ends at once
 //   (phase 2 is the same setup without the wait); in phase 3, the skip the
 //   game makes when its gate is open (phase 4, then the results' event and
@@ -236,10 +239,12 @@ struct ScenesStep {
 //   themselves (sfv::resultflow), on the same confirmed frame.
 // - MatchDrawDemo: the wait for its demo ends (phase 3, which goes to 4 at
 //   once), and its 300-tick wait (phase 5, the results' event).
-constexpr ScenesStep ScenesStepFor(int stateId, uint32_t vtableRva, int phase)
+constexpr ScenesStep ScenesStepFor(int stateId, uint32_t vtableRva, int phase, bool koStop = false)
 {
 	namespace rf = sfv::resultflow;
-	if (stateId == rf::kFinish && vtableRva == rf::kFinishVtable) return {ScenesAction::RequestNext, -1};
+	if (stateId == rf::kFinish && vtableRva == rf::kFinishVtable) {
+		return koStop ? ScenesStep{} : ScenesStep{ScenesAction::RequestNext, -1};
+	}
 	if (stateId == rf::kMatchResultDemo && vtableRva == rf::kMatchResultDemoVtable) {
 		if (phase == rf::kResultSetupWaitPhase) return {ScenesAction::SetPhase, rf::kResultSetupPhase};
 		if (phase == rf::kResultSkipPhase) return {ScenesAction::ResultSkip, rf::kResultSkippedPhase};

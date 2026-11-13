@@ -71,6 +71,18 @@ enum class MoveSet {
 	// drop at the end of its V-Trigger reads the model's pose): for Z33 and
 	// Z37, and anyone.
 	Projectiles,
+	// Luke's (Z42's) target combos as the field played them, frame-timed
+	// (docs/design/beta9/skip.md section 3): LP, MP, HP with a player's gaps
+	// and a tighter chain, each alone and followed by QCB+LP.
+	Luke,
+	// Akira's (Z41's) V-Skill as the field played it: taps at varying gaps, a
+	// 13-frame hold, and the presses the launcher takes after it. Which
+	// V-Skill it is (I or II) is the pick's loadout, not the script's.
+	Akira,
+	// Chained buttons at 6-12 frame gaps (LP>MP, MP>HP, LK>MK, LP>MP>HP,
+	// MK>HK) for any fighter: a target combo or a normal's cancel plays when
+	// the fighter has one on that chain, and plain normals when it has not.
+	Targets,
 };
 constexpr int kMoveBlockFrames = 96;
 // A Critical Art's script runs to some 390 frames (Z29's script 1200: 388).

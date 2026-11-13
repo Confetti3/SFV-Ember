@@ -56,7 +56,11 @@
 // desync, for checking that the peers' hashes then differ. "skipafter <n>"
 // (-1 off): this copy presses an attack n frames into each decided match's
 // scenes, which asks to skip them once they have shown the guard's second
-// (IntroSkip.hxx); a test's script presses nothing else there.
+// (IntroSkip.hxx); a test's script presses nothing else there. "vital <P1
+// percent> <P2 percent>" (0 or 100: as the round gives it): a test aid that sets
+// each fighter's vital to that share of its maximum on the first frame of every
+// round's fight, so the next hit (or a trade) ends the round in a KO; for runs
+// with no rollback (docs/design/beta9/skip.md section 2).
 
 #include "core/ReplayRecorder.hxx"
 #include "core/RollbackSession.hxx"
@@ -134,6 +138,11 @@ private:
 	void EndDrain();
 	void DumpIfRequested();
 	void PerturbIfDue();
+	// The first frame of each round's fight, on a fighter's copy and a watcher's
+	// alike: logs the battle frame's state word (the pause, KO and slow-motion
+	// bits a skipped scene must leave clear) and gives the fighters the
+	// "vital" command's shares.
+	void NoteFightStart(SfvAdapter& adapter, int frame);
 	// The room battle's recording: its frames made final so far (after any
 	// step), the end of a game, and the battle's replay saved as it closes.
 	void ConfirmRecording();
@@ -162,6 +171,8 @@ private:
 	// "skipafter <n>" (tests, runroom's -skipAfter): the script presses an
 	// attack n frames into each decided match's scenes; -1 never.
 	int skipAfter_ = -1;
+	int vitalPercent_[2] = {0, 0}; // "vital": each side's share of its maximum at a fight's start; 0 none
+	bool fightSeen_ = false;       // the fight's first frame was noted (NoteFightStart)
 	mutable std::mutex mutex_; // the game thread steps, the pipe thread reads
 	std::unique_ptr<RollbackSession> session_;
 	// P1's last session, kept after its battle for the watchers still
