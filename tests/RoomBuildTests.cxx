@@ -55,6 +55,28 @@ TEST_CASE("every fighter unit's parts keep their state outside the snapshot, a p
 	CHECK(at("CharaUnit[3].CharaStatusPart.holds") == 0);
 }
 
+TEST_CASE("the visual part's animation hand-off block is saved and restored for every fighter unit, and never hashed")
+{
+	// CharaVisualPart +268..+360 (sfv::kPartRunsOutsideSnapshot's third row), for each of the eight units, partners included.
+	sfve::mod::OutsideState where{0x1000, 0x2000, 0x3000, 0x4000, 0x5000};
+	for (size_t unit = 0; unit < sfve::mod::kMaxFighterUnits; unit++) where.fighterParts[unit][2] = 0x100000 + unit * 0x10000;
+	sfve::StateLayout layout;
+	sfve::mod::AddStateOutsideTheGameSnapshot(layout, where);
+	for (size_t unit = 0; unit < sfve::mod::kMaxFighterUnits; unit++) {
+		const sfve::StateRegion* r = layout.Find("CharaUnit[" + std::to_string(unit) + "].CharaVisualPart+0x10C.motionhandoff");
+		REQUIRE(r != nullptr);
+		CHECK(reinterpret_cast<uintptr_t>(r->ptr) == 0x100000 + unit * 0x10000 + 268);
+		CHECK(r->size == 92);
+		CHECK_FALSE(r->checked); // restored, not hashed and not compared with the peer
+	}
+	// A unit without the part gets none.
+	where.fighterParts[1][2] = 0;
+	sfve::StateLayout fewer;
+	sfve::mod::AddStateOutsideTheGameSnapshot(fewer, where);
+	CHECK(fewer.Find("CharaUnit[1].CharaVisualPart+0x10C.motionhandoff") == nullptr);
+	CHECK(fewer.Regions().size() + 1 == layout.Regions().size());
+}
+
 TEST_CASE("a room build is the pick build and the layout id, and gives the layout id back")
 {
 	const std::string pick = std::string(sfve::picks::kMatchBuild) + "/8dafe602f7615d90";

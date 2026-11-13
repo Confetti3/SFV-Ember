@@ -248,15 +248,30 @@ constexpr uint32_t kJudgeState = 248;
 // count, so a replay applied the change sooner (2026-11-09 sweep: Z39
 // against Z40, the part's +0x448 0 played and 4 replayed, and that object's
 // 8-byte run 6 and 0x2B, one replay).
+//
+// CharaVisualPart's animation hand-off block (+268..+360, IDA, build 13173604):
+// the battle task rva 0x33FB00 (through 0x3A40D0 and 0x3A4210) fills the
+// previous motion record (+268), the current one (20-byte records copied by
+// value, no pointers), the blend float (+308), the mode (+312) and the facial
+// records (+316..+356), and the visual task rva 0x3A06C0 hands the anim
+// instance its motion from that block. The game's snapshot registers only
+// +1752/392 of the part, and rva 0x3A40D0 skips the write for record types
+// 1, 3, 4, 8, 10 and 12, so after a rollback the block keeps the abandoned
+// timeline's value and the next drawn pose (which the socket record then
+// stores as fresh) can be wrong. It is restored with every rollback state and
+// never hashed or compared with the peer (`checked` false: the presentation
+// is not the simulation, as the round statistics' records).
 struct PartRun {
 	uint32_t partType; // the part's type id (GameFindPart)
 	uint32_t offset;
 	uint32_t size;
 	const char* name; // the region's name after "CharaUnit[i]."
+	bool checked = true; // false: saved and restored only
 };
 constexpr PartRun kPartRunsOutsideSnapshot[] = {
 	{fighter::kStatusPartType, 0x338, 8, "CharaStatusPart.holds"},
 	{0x3A682D0, 0x61C, 4, "CharaUniquePart@0x3A682D0.delay"},
+	{visual::kPartType, 0x10C, 92, "CharaVisualPart+0x10C.motionhandoff", false},
 };
 
 // A projectile's ProjectileVisualPart: its UE particle actor and the state

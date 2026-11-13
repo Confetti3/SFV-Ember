@@ -97,7 +97,7 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 			const sfv::PartRun& run = sfv::kPartRunsOutsideSnapshot[row];
 			if (!where.fighterParts[fighter][row]) continue;
 			layout.Add("CharaUnit[" + std::to_string(fighter) + "]." + run.name, At(where.fighterParts[fighter][row], run.offset),
-				run.size);
+				run.size, run.checked);
 		}
 	}
 }
