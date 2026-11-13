@@ -125,7 +125,8 @@ TEST_CASE("both fighters' copies of one mismatch name it by the same keys")
 TEST_CASE("a desync's comment names the match, this copy, both picks and the checkpoint")
 {
 	const std::string comment = Comment(SampleFacts(), kBuild);
-	CHECK(comment.rfind("SFV desync: build 0123456789ab\n", 0) == 0);
+	// The match's key ends the title, so both players' reports of one match group together (Title).
+	CHECK(comment.rfind("SFV desync: build 0123456789ab match 1122334455667788.2.41\n", 0) == 0);
 	CHECK(comment.find("Room 1122334455667788, table 2, match 41; games ended in this battle: 1\n") != std::string::npos);
 	CHECK(comment.find("This copy: P2 (match slot 1)\n") != std::string::npos);
 	CHECK(comment.find("P1: RYU, costume 1, colour 3, V-Skill I, V-Trigger II\n") != std::string::npos);
@@ -147,7 +148,7 @@ TEST_CASE("a start state's repair is reported under a title of its own, with bot
 	facts.confirmed = -1;
 	facts.startRepair = "1 region(s) differed from P1's: 2 dword(s) taken from P1.";
 	const std::string comment = Comment(facts, kBuild);
-	CHECK(comment.rfind("SFV start state repaired: build 0123456789ab\n", 0) == 0);
+	CHECK(comment.rfind("SFV start state repaired: build 0123456789ab match 1122334455667788.2.41\n", 0) == 0);
 	CHECK(comment.find("Start state before frame 0: 0000000000000abc here, 0000000000000def at P1. 1 region(s) differed") !=
 		std::string::npos);
 	CHECK(comment.find("Checkpoint ") == std::string::npos);
