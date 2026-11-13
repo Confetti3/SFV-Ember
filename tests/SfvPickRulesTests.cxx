@@ -477,11 +477,13 @@ TEST_CASE("each colour carries its own facts, and the log's counts are taken fro
 	CHECK(counts.fighters == 5);
 	CHECK(counts.fightersEntitled == 4);
 	CHECK(counts.fightersNotOwned == 1); // KEN
-	CHECK(counts.costumes == 10);
-	CHECK(counts.costumesInstalled == 9); // all but BSN's costume 1
-	CHECK(counts.costumesEntitled == 8);  // all but CNL's costumes 2 and 3
+	// The counts are of the game's own lists, so RYU's costume 15, which the
+	// pick space marks unshipped, is in them (and its two colours below).
+	CHECK(counts.costumes == 11);
+	CHECK(counts.costumesInstalled == 10); // all but BSN's costume 1
+	CHECK(counts.costumesEntitled == 9);   // all but CNL's costumes 2 and 3
 	CHECK(counts.costumesNotOwned == 2);
-	CHECK(counts.colours == 28);
+	CHECK(counts.colours == 30);
 	// RYU's costume 1 in every colour and costume 4's EX colours, and CNL's
 	// costume 3, which the account's cache lacks.
 	CHECK(counts.coloursNotOwned == 13);
