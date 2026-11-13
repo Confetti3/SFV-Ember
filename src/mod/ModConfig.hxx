@@ -161,6 +161,10 @@ struct ModConfig {
 	int distance = 7;
 	uint32_t virtualPadMask = 0; // bit i: slot i is virtual from the start
 	bool backgroundPlay = false;
+	// The game's window is laid over its whole monitor without a frame
+	// (-sfve_screen=borderless, which the launcher passes for the player's
+	// Screen mode Borderless; mod/ScreenMode.hxx, overlay/BorderlessWindow).
+	bool borderless = false;
 	bool learn = false;
 	bool perturb = false;
 	uint32_t scheduleSeed = 0;

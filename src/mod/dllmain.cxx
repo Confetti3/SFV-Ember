@@ -55,6 +55,7 @@
 #include "mod/VersusLaunch.hxx"
 #include "mod/VirtualPads.hxx"
 #include "mod/XInputHooks.hxx"
+#include "overlay/BorderlessWindow.hxx"
 #include "overlay/Overlay.hxx"
 
 #include "platform/Utf8.hxx"
@@ -218,6 +219,11 @@ extern "C" int SfveStart(int beforeGameCode)
 		Log("config: %zu stage(s) treated as not installed on this copy (-sfve_uninstalled, development)",
 			Config().uninstalled.size());
 	}
+	// The window the launcher asked for (the player's Screen mode, or a
+	// test's own option; mod/ScreenMode.hxx), so a window that is not what
+	// the player expected is explained by the log.
+	Log("screen: %s", Config().borderless ? "Borderless (-windowed, then the frame off and the whole monitor)" :
+		wcsstr(GetCommandLineW(), L" -windowed") ? "Window (-windowed)" : "the game's own Screen Mode setting");
 	MigrateSettings();
 
 	if (!InstallNetGuard()) {
@@ -313,6 +319,8 @@ extern "C" int SfveStart(int beforeGameCode)
 	// rooms on); the game's content lists, on the pipe. Its swap chain hooks
 	// are one set, so without the overlay none of them is live and the pads
 	// stay the game's.
+	sfve::overlay::SetBorderless(Config().borderless);
+	RegisterStatus("screen", [] { return sfve::overlay::BorderlessStatusJson(); });
 	if (scene && sfve::overlay::InstallOverlay()) SetPadFilter(&sfve::overlay::FilterGamePad);
 	RegisterCommand("content", [](const std::string&) {
 		RunOnGameThread([] {

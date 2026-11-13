@@ -1,6 +1,7 @@
 #include "mod/BackgroundPlay.hxx"
 
 #include "mod/Log.hxx"
+#include "mod/WindowState.hxx"
 
 #include <windows.h>
 
@@ -67,7 +68,11 @@ bool IsFocusLoss(UINT message, WPARAM wParam)
 
 LRESULT CALLBACK KeepActiveWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	if (IsFocusLoss(message, wParam)) return 0;
+	// In exclusive full screen (the game's own Screen Mode) Windows takes the
+	// chain out of it when the window loses the focus; an engine that never
+	// heard of the loss would go on drawing into a chain that is gone. There
+	// the focus loss is the engine's, as in the game unmodded.
+	if (IsFocusLoss(message, wParam) && !ExclusiveFullscreen()) return 0;
 	return CallWindowProcW(s_gameWndProc, hwnd, message, wParam, lParam);
 }
 

@@ -42,7 +42,8 @@ struct PlayerOption {
 	const wchar_t* name;
 	const wchar_t* value; // null: any value
 };
-constexpr PlayerOption kPlayerOptions[] = {{L"sfve_mode", L"netplay"}, {L"sfve_room", nullptr}, {L"sfve_dump_channel", nullptr}};
+constexpr PlayerOption kPlayerOptions[] = {{L"sfve_mode", L"netplay"}, {L"sfve_room", nullptr}, {L"sfve_dump_channel", nullptr},
+	{L"sfve_screen", L"borderless"}};
 
 // The command line's options as this build reads them: a player build reads
 // only kPlayerOptions and reads every other option, or another value, as
@@ -217,6 +218,8 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.startFullExtra = options.Number(L"sfve_start_ex", 0) != 0;
 	c.distance = (int)options.Number(L"sfve_distance", 7);
 	c.backgroundPlay = options.Number(L"sfve_background", 0) != 0;
+	wchar_t screen[16];
+	c.borderless = options.Find(L"sfve_screen", screen, 16) && !_wcsicmp(screen, L"borderless");
 	c.learn = options.Number(L"sfve_learn", 0) != 0;
 	c.perturb = options.Number(L"sfve_perturb", 0) != 0;
 	c.scheduleSeed = (uint32_t)options.Number(L"sfve_schedule", 0);

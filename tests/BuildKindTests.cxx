@@ -27,7 +27,7 @@ constexpr const wchar_t* kTestLine =
 	L"-sfve_crash_command=1 -sfve_unowned=RYU -sfve_uninstalled=S01 -sfve_pads=0,1 -sfve_background=1 -sfve_port=7100 "
 	L"-sfve_grant_all=0 -sfve_moveset=cody -sfve_idle=1 -sfve_tiny=2 -sfve_socket_log=1 -sfve_replay_any_build=1 "
 	L"-sfve_rng_audit=1 -sfve_start_perturb=global.rng,0,1 -sfve_skip_saves=0 -sfve_hash_on_confirm=0 -sfve_verify_loads=0 "
-	L"-sfve_start_ex=1 -sfve_loader=launcher -sfve_mode=netplay -sfve_room=1 -sfve_dump_channel=1a4:1b0:2c8";
+	L"-sfve_start_ex=1 -sfve_screen=borderless -sfve_loader=launcher -sfve_mode=netplay -sfve_room=1 -sfve_dump_channel=1a4:1b0:2c8";
 
 } // namespace
 
@@ -38,6 +38,7 @@ TEST_CASE("a player build reads only its launcher's options")
 	CHECK(player.mode == sfve::mod::ModMode::Netplay);
 	CHECK(player.room);
 	CHECK(player.dumpChannel.Present());
+	CHECK(player.borderless); // the launcher's own, for the player's Screen mode
 	CHECK(player.instance == 0);
 	CHECK(player.ownershipGate == sfve::mod::kOwnershipGateByDefault);
 	CHECK(player.grantAll); // a player build's game always grants everything
@@ -93,6 +94,7 @@ TEST_CASE("a player build reads only its launcher's options")
 	CHECK(development.replayAnyBuild);
 	CHECK(development.rngAudit);
 	CHECK(development.startFullExtra);
+	CHECK(development.borderless);
 	CHECK(development.startPerturb == "global.rng,0,1");
 	CHECK_FALSE(development.skipSaves);
 	CHECK_FALSE(development.hashOnConfirm);
@@ -105,6 +107,16 @@ TEST_CASE("a player build reads only its launcher's options")
 	CHECK(sfve::mod::PlayerBuildIgnored().find("-sfve_mode") != std::string::npos);
 	LoadConfigFromCommandLine(L"x -sfve_mode=synctest", BuildKind::Development);
 	CHECK(Config().mode == sfve::mod::ModMode::SyncTest);
+
+	// Borderless is the one -sfve_screen value a player build reads; Window
+	// is -windowed alone, which the game reads itself.
+	LoadConfigFromCommandLine(L"x -sfve_screen=window", BuildKind::Player);
+	CHECK_FALSE(Config().borderless);
+	CHECK(sfve::mod::PlayerBuildIgnored().find("-sfve_screen") != std::string::npos);
+	LoadConfigFromCommandLine(L"x -sfve_screen=borderless", BuildKind::Player);
+	CHECK(Config().borderless);
+	LoadConfigFromCommandLine(L"x -sfve_screen=window", BuildKind::Development);
+	CHECK_FALSE(Config().borderless);
 	LoadConfigFromCommandLine(L"");
 }
 
