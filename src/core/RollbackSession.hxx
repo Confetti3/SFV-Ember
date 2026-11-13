@@ -191,6 +191,7 @@ public:
 		uint64_t timesyncEvents = 0;
 		uint64_t heldFrames = 0;           // StepHeld's frames
 		uint64_t heldReplays = 0;          // held frames a rollback replayed (never expected)
+		uint64_t waitingSteps = 0;         // Step / StepHeld calls that returned Waiting: no frame run, the other player's inputs or the gate not there yet (pace log)
 	};
 
 	explicit RollbackSession(GameAdapter& game);
@@ -380,6 +381,9 @@ private:
 	// A watcher's frame: the next one P1 streamed, run (or, `onHeld`, held
 	// with its inputs), and its state hashed as the fighters hash theirs.
 	StepResult StepWatched(const std::function<void(const FrameInputs&)>* onHeld);
+	// Step and StepHeld's bodies; the public ones count the Waiting results.
+	StepResult StepBody(PackedInput localInput);
+	StepResult StepHeldBody(PackedInput localInput, const std::function<void(const FrameInputs&)>& onInputs);
 	// A watcher's state at `frame`, hashed where the fighters hash it.
 	void HashWatched(int frame);
 	// P1's watchers: drops the ones SpectatorPolicy gives up on. Outside

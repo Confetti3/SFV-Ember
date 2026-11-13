@@ -4,6 +4,7 @@
 #include "mod/GameExit.hxx"
 #include "mod/Log.hxx"
 #include "mod/PadLayer.hxx"
+#include "mod/Pace.hxx"
 #include "mod/VirtualPads.hxx"
 #include "mod/XInputHooks.hxx"
 
@@ -246,6 +247,7 @@ private:
 		for (const Pad& old : before) {
 			if (find(inventory_.pads, old.id) != inventory_.pads.end()) continue;
 			Log("pads: '%s' removed%s", old.identity.name.c_str(), old.slot >= 0 ? (" from slot " + std::to_string(old.slot)).c_str() : "");
+			pace::Current().NotePad(false);
 		}
 		for (const Pad& pad : inventory_.pads) {
 			const auto old = find(before, pad.id);
@@ -253,6 +255,7 @@ private:
 			if (!added && old->status == pad.status && old->available == pad.available && old->slot == pad.slot) continue;
 			Log("pads: '%s' %04X:%04X %s %s: %s%s", pad.identity.name.c_str(), pad.vid, pad.pid, gamepads::TypeName(pad.type),
 				added ? "added" : "now", RouteOf(pad).says, pad.slot >= 0 ? (" " + std::to_string(pad.slot)).c_str() : "");
+			if (added) pace::Current().NotePad(true);
 		}
 	}
 

@@ -565,6 +565,8 @@ TEST_CASE("a worst-case report's comment and log stay within the intake's limits
 	Facts facts = SampleFacts();
 	facts.recent = {true, 1, 121, 99999, 99999};
 	facts.socketReads = std::string(520, 's'); // SocketReadsSummary's text with every count at 20 digits
+	// The pace line at its longest: windows and rates at 20 digits, eight controller events listed.
+	facts.pace = std::string(400, 'p');
 	// The miss list full: 64 entries, the longest socket name, frame and unit numbers and reason.
 	facts.socketMissesKnown = true;
 	for (std::size_t i = 0; i < kMostSocketMisses; ++i) {
@@ -579,6 +581,7 @@ TEST_CASE("a worst-case report's comment and log stay within the intake's limits
 	const std::string details = DetailLines(facts);
 	CHECK(details.size() < 24 * 1024); // 180 runs, about 40 bytes each, and 64 misses of about 110
 	CHECK(details.find("socket read misses") != std::string::npos);
+	CHECK(details.find("pace: ppp") != std::string::npos);
 	// 400 regions, as SFV's layout has, still leave most of the log for the tail.
 	std::string regions;
 	for (int i = 0; i < 400; ++i) regions += "desync: checkpoint 2580 region CharaUnit[0].CharaStatusPart+0x238, 64 bytes, hash 00000000000000ab\n";

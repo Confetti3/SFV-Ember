@@ -261,6 +261,13 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 
 RollbackSession::StepResult RollbackSession::Step(PackedInput localInput)
 {
+	const StepResult result = StepBody(localInput);
+	if (result == StepResult::Waiting) stats_.waitingSteps++;
+	return result;
+}
+
+RollbackSession::StepResult RollbackSession::StepBody(PackedInput localInput)
+{
 	if (!Live()) return failed_ ? StepResult::Failed : StepResult::NoSession;
 	if (config_.watching) return StepWatched(nullptr);
 	ActiveScope active(this);
@@ -299,6 +306,14 @@ RollbackSession::StepResult RollbackSession::Step(PackedInput localInput)
 }
 
 RollbackSession::StepResult RollbackSession::StepHeld(PackedInput localInput,
+	const std::function<void(const FrameInputs&)>& onInputs)
+{
+	const StepResult result = StepHeldBody(localInput, onInputs);
+	if (result == StepResult::Waiting) stats_.waitingSteps++;
+	return result;
+}
+
+RollbackSession::StepResult RollbackSession::StepHeldBody(PackedInput localInput,
 	const std::function<void(const FrameInputs&)>& onInputs)
 {
 	if (!Live()) return failed_ ? StepResult::Failed : StepResult::NoSession;

@@ -319,6 +319,7 @@ add_executable(sfve_ember_tests
     tests/SwatchStripTests.cxx
     tests/SfvVerificationTests.cxx
     tests/DesyncReportTests.cxx
+    tests/PaceTests.cxx
     tests/ReportsDefaultTests.cxx
     src/launcher/ReportsDefault.cxx
     tests/BattleIdentityTests.cxx

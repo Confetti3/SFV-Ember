@@ -82,6 +82,12 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 		exitAsked_ = true;
 	});
 	session_ = std::move(session);
+	// The pace line's counts (mod/Pace.hxx), read on the battle's thread
+	// inside the session's own calls: no lock of this mode's.
+	adapter.SetPaceSource([raw = session_.get()]() {
+		const RollbackSession::Stats& s = raw->GetStats();
+		return SfvAdapter::PaceCounts{raw->Frame(), s.rollbacks, s.waitingSteps + s.predictionStalls};
+	});
 	replay_.reset();
 	replayEnd_.clear();
 	if (TakeReplayBattle()) {

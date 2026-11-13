@@ -157,6 +157,10 @@ struct Facts {
 	// This battle's socket-read counts (SocketReadsSummary: recorded, served
 	// exact, rebuilt, missed with the reason, conflicting); empty when not read.
 	std::string socketReads;
+	// This battle's pace so far (mod/Pace.hxx ReportText: the windows of 600
+	// updates, the slowest and the last in updates a second, how many were under
+	// 55, the controller removed / added events); empty when not read.
+	std::string pace;
 	// The latest misses (at most 64) from the kRecentFrames frames before the
 	// checkpoint, oldest first, copied on the game thread; `socketMissesKnown`
 	// false where the ring was not read.

@@ -285,6 +285,8 @@ std::string DetailLines(const Facts& facts)
 	} else {
 		text += "rollbacks, last " + std::to_string(kRecentFrames) + " frames: not counted\n";
 	}
+	text += "pace: " + (facts.pace.empty() ? std::string("not read") : facts.pace) + "
+";
 	text += "socket reads: " + (facts.socketReads.empty() ? std::string("not read") : facts.socketReads) + "\n";
 	if (facts.socketMissesKnown) {
 		text += "socket read misses (the live value was given), frames " + std::to_string(facts.frame - kRecentFrames) + " to " +

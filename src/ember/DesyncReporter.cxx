@@ -9,6 +9,7 @@
 #include "mod/GameMemory.hxx"
 #include "mod/SfvAdapter.hxx"
 #include "mod/Log.hxx"
+#include "mod/Pace.hxx"
 #include "mod/SocketReads.hxx"
 
 #include "launcher/update/PackageInstaller.hxx"
@@ -123,6 +124,8 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	// never read, a pose read at other roots only) and the conflicting records.
 	// The summary takes the counts' own lock, so it is safe from here.
 	facts.socketReads = mod::SocketReadsSummary();
+	// The battle's pace and controller events (mod/Pace.hxx; its own lock).
+	facts.pace = mod::pace::Current().Report();
 	// The misses among them from the frames before the checkpoint, copied
 	// under the same lock.
 	facts.socketMissesKnown = true;

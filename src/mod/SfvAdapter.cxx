@@ -2,6 +2,7 @@
 
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
+#include "mod/Pace.hxx"
 #include "mod/ProjectileRelease.hxx"
 #include "mod/RngAudit.hxx"
 #include "mod/SfvLayoutRules.hxx"
@@ -93,6 +94,19 @@ void SfvAdapter::Forget()
 	// The socket reads' counts are the battle's own (SocketReads): logged as
 	// it ends, then forgotten with the record.
 	if (fighterUnitCount_ > 0) Log("sockets: the battle ends: %s", SocketReadsSummary().c_str());
+	{
+		// The pace of the battle that ends and the controller events in it
+		// (mod/Pace.hxx); the next battle's record begins.
+		pace::Summary summary;
+		std::vector<pace::PadEvent> events;
+		size_t totalEvents = 0;
+		pace::Current().End(&summary, &events, &totalEvents);
+		if (summary.windows) Log("%s", pace::SummaryText(summary).c_str());
+		if (summary.windows || totalEvents) Log("pace: %s", pace::PadEventsText(events, totalEvents).c_str());
+		pace::Current().Begin();
+	}
+	paceFrom_ = 0;
+	paceAtStart_ = {};
 	if (queuesCarried_) Log("actions: the battle ends: %llu time(s) a fighter unit's command queue was not empty between updates",
 		(unsigned long long)queuesCarried_);
 	queuesCarried_ = 0;
@@ -660,6 +674,10 @@ void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)
 	// they ask the pads.
 	if (InjectedAny(intro_skip::kSkipBit) && intro_skip::Scenes(FlowState(), MatchDecided())) EndScenes();
 	const int64_t from = Ticks();
+	if (!resimulating && !paceFrom_) {
+		paceFrom_ = from;
+		paceAtStart_ = paceSource_ ? paceSource_() : PaceCounts{};
+	}
 	RunUpdate();
 	const int64_t took = Ticks() - from;
 	replaying_ = false;
@@ -674,6 +692,7 @@ void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)
 	}
 	costs_.ticks++;
 	costs_.tickTicks += took;
+	if (paceSource_) pace::Current().SetFrame(paceSource_().frame);
 	if (costs_.ticks >= kCostAdvances) LogCosts();
 }
 
@@ -696,6 +715,18 @@ void SfvAdapter::LogCosts()
 	const StateLayout::Costs layout = layout_.TakeCosts();
 	LARGE_INTEGER frequency{};
 	QueryPerformanceFrequency(&frequency);
+	// The wall-clock time of this window's updates (a monotonic clock), and
+	// what the session did in it: a slow own game has few rollbacks and no
+	// waiting steps, waiting on the peer has waiting steps.
+	const int64_t nowTicks = Ticks();
+	const PaceCounts counts = paceSource_ ? paceSource_() : PaceCounts{};
+	pace::Window window;
+	window.updates = costs_.ticks;
+	window.seconds = paceFrom_ && frequency.QuadPart ? (double)(nowTicks - paceFrom_) / (double)frequency.QuadPart : 0.0;
+	window.rollbacks = counts.rollbacks - paceAtStart_.rollbacks;
+	window.waiting = counts.waiting - paceAtStart_.waiting;
+	const bool slow = pace::Current().AddWindow(window);
+	const std::string paceText = pace::WindowText(window);
 	// Average microseconds per call, and the calls.
 	const auto us = [&](int64_t ticks, uint64_t calls) {
 		return calls && frequency.QuadPart ? 1e6 * (double)ticks / (double)frequency.QuadPart / (double)calls : 0.0;
@@ -704,14 +735,17 @@ void SfvAdapter::LogCosts()
 	// copy, and of the hashes, those made once a frame was final; saves a
 	// rollback replaced before they were final, whose hash was never needed.
 	Log("costs: the last %llu updates: tick %.0f us; replayed tick %.0f us (%llu); save %.0f us (%llu, %llu skipped), "
-		"load %.0f us (%llu), hash %.0f us (%llu, %llu once final, %llu not needed), the restore's callbacks %.0f us (%llu)",
+		"load %.0f us (%llu), hash %.0f us (%llu, %llu once final, %llu not needed), the restore's callbacks %.0f us (%llu); %s",
 		(unsigned long long)costs_.ticks, us(costs_.tickTicks, costs_.ticks), us(costs_.replayedTicks, costs_.replayed),
 		(unsigned long long)costs_.replayed, us(layout.saveTicks, layout.saves), (unsigned long long)layout.saves,
 		(unsigned long long)layout.skippedSaves, us(layout.loadTicks, layout.loads), (unsigned long long)layout.loads,
 		us(layout.hashTicks, layout.hashes), (unsigned long long)layout.hashes, (unsigned long long)layout.confirmedHashes,
 		(unsigned long long)layout.droppedHashes, us(costs_.callbackTicks, costs_.callbacks),
-		(unsigned long long)costs_.callbacks);
+		(unsigned long long)costs_.callbacks, paceText.c_str());
+	if (slow) Log("%s", pace::SlowText(window).c_str());
 	costs_ = {};
+	paceFrom_ = nowTicks;
+	paceAtStart_ = counts;
 }
 
 int SfvAdapter::ReseedRandom(uint32_t seed)

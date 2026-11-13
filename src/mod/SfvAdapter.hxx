@@ -27,6 +27,7 @@
 #include <stdint.h>
 
 #include <array>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -203,6 +204,20 @@ private:
 	// and the restore's callbacks since the last line.
 	void LogCosts();
 
+public:
+	// What the pace line needs of the session (logging only): its frame, its
+	// rollbacks and the steps that ran no frame, read on the battle's thread
+	// at each update. The netplay mode sets it for each session; null where
+	// the battle has none.
+	struct PaceCounts {
+		int frame = -1;
+		uint64_t rollbacks = 0;
+		uint64_t waiting = 0;
+	};
+	void SetPaceSource(std::function<PaceCounts()> source) { paceSource_ = std::move(source); }
+
+private:
+
 	BattleIdentity identity_;
 	uint8_t* battleFrame_ = nullptr;
 	uint8_t* battleData_ = nullptr;
@@ -262,6 +277,12 @@ private:
 		int64_t tickTicks = 0, replayedTicks = 0, callbackTicks = 0;
 	};
 	UpdateCosts costs_;
+	// The pace of the updates played forward (mod/Pace.hxx): when the window
+	// the next costs line covers began (a monotonic tick, 0 not begun), and
+	// the session's counts then.
+	std::function<PaceCounts()> paceSource_;
+	int64_t paceFrom_ = 0;
+	PaceCounts paceAtStart_;
 
 	// Ending the decided match's scenes (EndScenes); the game's functions
 	// from the bind's image base.
