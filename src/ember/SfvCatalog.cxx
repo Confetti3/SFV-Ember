@@ -1,6 +1,7 @@
 #include "ember/SfvCatalog.hxx"
 
 #include "ember/SfvRoomBuild.hxx"
+#include "ember/SfvSelectionAssetPath.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvLayoutRules.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -58,6 +59,25 @@ const mod::CostumeContent* CostumeAt(std::int64_t fighter, int costume)
 		if (entry.id == costume) return &entry;
 	}
 	return nullptr;
+}
+
+// The costume is one the game ships: in the pick space and not marked
+// unshipped (picks::Costume::unshipped). No unshipped costume is ever
+// offered, ready, fitted to or valid.
+bool Shipped(std::int64_t fighter, int costume)
+{
+	const picks::Costume* entry = picks::CostumeAt(s_space, fighter, costume);
+	return entry && !entry->unshipped;
+}
+
+// The game's text lookup answers a text it has no words for with the text's
+// id: "ID_" and letters, digits and underscores, never a name. SFV's content
+// list names each fighter's unshipped costume slot so ("ID_SYS_BSet_0224").
+bool NamedByTextId(const std::string& name)
+{
+	return name.rfind("ID_", 0) == 0 && std::all_of(name.begin(), name.end(), [](char c) {
+		return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+	});
 }
 
 // What this copy's player may pick, by GameContent's `owned` while the gate
@@ -144,7 +164,8 @@ bool FighterLocked(int fighter, const sf4e::selection::Availability&)
 {
 	const mod::FighterContent* content = FighterAt(fighter);
 	return !content || !content->installed || !FighterOwned(*content) ||
-		std::none_of(content->costumes.begin(), content->costumes.end(), CostumeReady);
+		std::none_of(content->costumes.begin(), content->costumes.end(),
+			[fighter](const mod::CostumeContent& costume) { return Shipped(fighter, costume.id) && CostumeReady(costume); });
 }
 
 // A valid pick this copy's player can ready: the fighter not locked and the
@@ -166,9 +187,10 @@ bool AvailablePick(const sf4e::selection::Pick& pick, bool editionSelect, const 
 void FitReadyLook(sf4e::selection::Pick& pick)
 {
 	const mod::FighterContent& fighter = *FighterAt(pick.fighter);
+	const auto ready = [&pick](const mod::CostumeContent& costume) { return Shipped(pick.fighter, costume.id) && CostumeReady(costume); };
 	const mod::CostumeContent* costume = CostumeAt(pick.fighter, pick.costume);
-	if (!costume || !CostumeReady(*costume)) {
-		costume = &*std::find_if(fighter.costumes.begin(), fighter.costumes.end(), CostumeReady);
+	if (!costume || !ready(*costume)) {
+		costume = &*std::find_if(fighter.costumes.begin(), fighter.costumes.end(), ready);
 		pick.costume = costume->id;
 	}
 	if (!LookReady(*costume, pick.color)) pick.color = ReadyColours(*costume).front();
@@ -323,6 +345,19 @@ bool FillCatalog(const mod::ContentLists& lists, bool ownershipGate)
 	s_space = std::move(space);
 	s_gate = ownershipGate;
 	s_buildId = room::RoomBuildId(picks::BuildId(s_space), mod::LayoutRulesId());
+	// The marks are this release's data (data/pick-space.json); the game's
+	// own names say which slots it ships nothing for. A difference is the
+	// data to re-export (catalog-export marks them by the names).
+	for (const mod::FighterContent& fighter : s_lists.fighters) {
+		for (const mod::CostumeContent& costume : fighter.costumes) {
+			const picks::Costume* entry = picks::CostumeAt(s_space, &fighter - s_lists.fighters.data(), costume.id);
+			const bool marked = entry && entry->unshipped, named = NamedByTextId(costume.name);
+			if (marked != named) {
+				mod::Log("catalog: %s costume %d is %s in the pick space but the game names it \"%s\"", fighter.code.c_str(), costume.id,
+					marked ? "unshipped" : "offered", costume.name.c_str());
+			}
+		}
+	}
 	for (int id = 0; id < (int)s_lists.fighters.size(); id++) s_rosterOrder.push_back(id);
 	s_catalog.rosterOrder = s_rosterOrder.data();
 	FillRules();
@@ -349,10 +384,25 @@ const std::string& MatchBuildId()
 
 picks::PickSpace PickSpaceOf(const mod::ContentLists& lists)
 {
+	// The unshipped marks are the release's own data (the embedded
+	// data/pick-space.json), by the fighter's code and the costume's number,
+	// so every copy of the release marks the same costumes.
+	const picks::PickSpace& release = assets::EmbeddedPickSpace();
+	const auto unshipped = [&release](const std::string& code, int id) {
+		for (const picks::Fighter& fighter : release.fighters) {
+			if (fighter.code != code) continue;
+			for (const picks::Costume& costume : fighter.costumes) {
+				if (costume.id == id) return costume.unshipped;
+			}
+		}
+		return false;
+	};
 	picks::PickSpace space;
 	for (const mod::FighterContent& fighter : lists.fighters) {
 		picks::Fighter entry{fighter.code, {}, (int)fighter.vSkills.size(), (int)fighter.vTriggers.size()};
-		for (const mod::CostumeContent& costume : fighter.costumes) entry.costumes.push_back({costume.id, mod::ColourNumbers(costume)});
+		for (const mod::CostumeContent& costume : fighter.costumes) {
+			entry.costumes.push_back({costume.id, mod::ColourNumbers(costume), unshipped(fighter.code, costume.id)});
+		}
 		space.fighters.push_back(std::move(entry));
 	}
 	for (const mod::StageContent& stage : lists.stages) space.stages.push_back(stage.code);
@@ -366,7 +416,17 @@ std::string ContentFingerprint(const mod::ContentLists& lists)
 
 std::string PickSpaceJson()
 {
-	return s_catalog.fighterCount > 0 ? picks::ToJson(s_space, s_buildId) : std::string();
+	if (s_catalog.fighterCount == 0) return std::string();
+	// The export marks every slot the game names by a bare text id, as well
+	// as those this release marks: what the next release's data should say.
+	picks::PickSpace exported = s_space;
+	for (size_t id = 0; id < s_lists.fighters.size() && id < exported.fighters.size(); id++) {
+		for (picks::Costume& costume : exported.fighters[id].costumes) {
+			const mod::CostumeContent* content = CostumeAt((std::int64_t)id, costume.id);
+			if (content && NamedByTextId(content->name)) costume.unshipped = true;
+		}
+	}
+	return picks::ToJson(exported, s_buildId);
 }
 
 std::string FighterCode(std::int64_t fighter)
@@ -461,7 +521,8 @@ std::vector<int> CostumeIds(std::int64_t fighter, bool pickableOnly)
 	std::vector<int> ids;
 	if (const mod::FighterContent* content = FighterAt(fighter)) {
 		for (const mod::CostumeContent& costume : content->costumes) {
-			if (!pickableOnly || CostumeReady(costume)) ids.push_back(costume.id);
+			// An unshipped slot is never listed, whatever the account says.
+			if (Shipped(fighter, costume.id) && (!pickableOnly || CostumeReady(costume))) ids.push_back(costume.id);
 		}
 	}
 	return ids;
@@ -477,8 +538,8 @@ std::vector<int> ColourIds(std::int64_t fighter, int costume, bool pickableOnly)
 bool FighterNotOwned(std::int64_t fighter)
 {
 	const mod::FighterContent* content = FighterAt(fighter);
-	return content &&
-		(!FighterOwned(*content) || std::none_of(content->costumes.begin(), content->costumes.end(), CostumeOwned));
+	return content && (!FighterOwned(*content) || std::none_of(content->costumes.begin(), content->costumes.end(),
+		[fighter](const mod::CostumeContent& costume) { return Shipped(fighter, costume.id) && CostumeOwned(costume); }));
 }
 
 bool CostumeNotOwned(std::int64_t fighter, int costume)
@@ -532,12 +593,7 @@ std::string CostumeName(std::int64_t fighter, int costume)
 
 std::string ShownCostumeName(const std::string& gameName, int costume)
 {
-	// The game's text lookup answers a text it has no words for with the
-	// text's id: "ID_" and letters, digits and underscores, never a name.
-	const bool textId = gameName.rfind("ID_", 0) == 0 && std::all_of(gameName.begin(), gameName.end(), [](char c) {
-		return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
-	});
-	if (!gameName.empty() && !textId) return gameName;
+	if (!gameName.empty() && !NamedByTextId(gameName)) return gameName;
 	return std::string(sf4e::loc::T("selection.costume")) + " " + std::to_string(costume);
 }
 

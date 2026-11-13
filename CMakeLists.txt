@@ -563,4 +563,6 @@ add_test(NAME sfve_catalog_lifecycle_tests COMMAND sfve_catalog_lifecycle_tests)
 add_test(NAME sfve_catalog_gate_off_tests COMMAND sfve_catalog_gate_off_tests)
 # SFV's room host catalog over the exported pick space.
 add_test(NAME sfve_room_host_tests COMMAND sfve_room_host_tests)
+# The packaging script's render store checks (scripts/RenderStore.ps1), on small stores.
+add_test(NAME sfve_render_store_tests COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/RenderStoreTests.ps1")
 add_test(NAME guard_probe COMMAND guard_probe WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

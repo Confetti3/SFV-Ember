@@ -156,6 +156,13 @@ std::uint32_t LoadCodeButtons(int index);
 struct Costume {
 	int id = 0;               // the game's costume number
 	std::vector<int> colours; // the game's colour numbers for it, in its order
+	// The game lists the costume but ships nothing for it: SFV's content list
+	// has one such slot per fighter, named by the bare text id
+	// "ID_SYS_BSet_0224", and it loads as a plain grey model. It keeps its
+	// number (the costume numbers stay as the game's), but is never a pick:
+	// ValidPick refuses it and FitPick moves a pick off it. The pick space's
+	// data marks it ("unshipped" in ToJson's document); nothing else does.
+	bool unshipped = false;
 };
 
 struct Fighter {
@@ -192,16 +199,20 @@ constexpr std::uint8_t kRoundCounts[] = {1, 3, 5, 7};
 constexpr std::uint16_t kRoundTimes[] = {30, 60, 99, 300, 9999};
 
 // Why the lists make no pick space, or empty when they do: no list is empty,
-// the roster fits a room (ember::MaxFighters), every fighter has a costume and
-// every costume a colour (the fitting's first of each), every number fits
-// the wire's byte (SelectionPick's ToNative), and every fighter has 1 or
-// kPartChoices V-Skills and V-Triggers.
+// the roster fits a room (ember::MaxFighters), every fighter has a costume it
+// ships (not unshipped) and every costume a colour (the fitting's first of
+// each), every number fits the wire's byte (SelectionPick's ToNative), and
+// every fighter has 1 or kPartChoices V-Skills and V-Triggers.
 std::string Problem(const PickSpace& space);
 
 // 16 hex digits of a hash of the pick space: the fighters' codes, each
 // fighter's costume numbers and each costume's colour numbers, each
 // fighter's V-Skill and V-Trigger counts, and the stages' codes, all in
-// order. Equal pick spaces give equal fingerprints.
+// order. Equal pick spaces give equal fingerprints. The unshipped marks are
+// not in it: they are the release's own data (data/pick-space.json, embedded
+// in the mod and the room host alike), so the copies of one release share
+// them, and the fingerprint stays the game data's. A release that changes
+// the marks changes what a pick may be, and so bumps kMatchBuild.
 std::string Fingerprint(const PickSpace& space);
 
 // kMatchBuild, "/", and the Fingerprint: the build id a room's members share.
@@ -217,29 +228,37 @@ const Fighter* FighterAt(const PickSpace& space, std::int64_t fighter);
 const Costume* CostumeAt(const PickSpace& space, std::int64_t fighter, int costume);
 bool HasColour(const Costume& costume, int colour);
 
-// A costume of the fighter, in one of that costume's colours, with a loadout
-// the fighter has (HasLoadout) and no handicap (SFV's launch has none).
+// A costume of the fighter that is not unshipped, in one of that costume's
+// colours, with a loadout the fighter has (HasLoadout) and no handicap
+// (SFV's launch has none).
 bool ValidPick(const PickSpace& space, const sf4e::selection::Pick& pick);
 bool ValidStage(const PickSpace& space, std::int64_t stage);
 
 // Each part of the pick SFV refuses becomes the game's first of its kind, in
 // this order so each fits the one before: fighter 0, the fighter's first
-// costume, that costume's first colour, then each part of the loadout the
-// fighter lacks becomes I (FitLoadout); no handicap. Only the pick space
-// decides, so every copy fits a pick alike. True when it changed.
+// costume it ships (for a costume it lacks or one unshipped), that costume's
+// first colour, then each part of the loadout the fighter lacks becomes I
+// (FitLoadout); no handicap. Only the pick space decides, so every copy fits
+// a pick alike. True when it changed.
 bool FitPick(const PickSpace& space, sf4e::selection::Pick& pick);
 
 // One past the highest costume and colour number of any fighter (the numbers
-// a room shows: GameCatalog's costumeLimit and colorLimit).
+// a room shows: GameCatalog's costumeLimit and colorLimit), unshipped
+// costumes left out (no pick shows one).
 int CostumeLimit(const PickSpace& space);
 int ColourLimit(const PickSpace& space);
-// One past the fighter's highest costume number (GameCatalog's costumeCount):
-// SFV's numbers have gaps, and every costume the spec has reads as known.
+// One past the fighter's highest costume number it ships (GameCatalog's
+// costumeCount): SFV's numbers have gaps, and every costume the spec offers
+// reads as known.
 int CostumeCount(const PickSpace& space, int fighter);
+// The fighter's first costume it ships, in the game's order; none for a
+// fighter with none (Problem refuses such a pick space).
+const Costume* FirstShipped(const Fighter& fighter);
 
 // The pick space as the room host's data: {"build", "fighters": [{"code",
-// "costumes": [{"id", "colours"}], "v_skills", "v_triggers"}], "stages"},
-// with the build it was exported from.
+// "costumes": [{"id", "colours"[, "unshipped": true]}], "v_skills",
+// "v_triggers"}], "stages"}, with the build it was exported from. A costume
+// carries "unshipped" only when it is (Costume::unshipped).
 std::string ToJson(const PickSpace& space, const std::string& build);
 // The other way. False, with the reason in `error`, for text that is not
 // such a document.

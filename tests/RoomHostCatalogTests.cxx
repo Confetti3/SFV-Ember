@@ -96,7 +96,10 @@ TEST_CASE("SFV's room host takes only the room of the build its pick space makes
 	CHECK(ember::PlayableRoundTime(9999)); // the game's no time limit (EMBER_LIBRARY.md section 27)
 	CHECK_FALSE(ember::PlayableRoundTime(546));
 
-	// Every costume of every fighter in each of its colours is a pick.
+	// Every costume of every fighter in each of its colours is a pick, but
+	// the one the game ships nothing for, which the host refuses and fits
+	// to the fighter's first costume.
+	int unshipped = 0;
 	for (int fighter = 0; fighter < (int)space.fighters.size(); fighter++) {
 		for (const sfve::picks::Costume& costume : space.fighters[(size_t)fighter].costumes) {
 			for (int colour : costume.colours) {
@@ -104,11 +107,16 @@ TEST_CASE("SFV's room host takes only the room of the build its pick space makes
 				pick.fighter = fighter;
 				pick.costume = costume.id;
 				pick.color = colour;
-				CHECK(catalog.validPick(pick, false));
-				CHECK(catalog.availablePick(pick, false, {}, nullptr));
+				CHECK(catalog.validPick(pick, false) == !costume.unshipped);
+				CHECK(catalog.availablePick(pick, false, {}, nullptr) == !costume.unshipped);
+				if (!costume.unshipped) continue;
+				unshipped++;
+				CHECK(catalog.normalizePick(pick, false, nullptr, nullptr));
+				CHECK(pick.costume == space.fighters[(size_t)fighter].costumes.front().id);
 			}
 		}
 	}
+	CHECK(unshipped > 0);
 	// A loadout is a pick exactly where the fighter has both its parts, as
 	// the exported counts say, and the host fits one the fighter lacks.
 	for (int fighter = 0; fighter < (int)space.fighters.size(); fighter++) {
@@ -225,7 +233,8 @@ TEST_CASE("SFV's room host data holds every costume, colour and stage SFV has")
 	CHECK(sfve::picks::ValidPick(space, PickOf(cnl, 23, 0)));
 	CHECK(sfve::picks::ValidPick(space, PickOf(ken, 11, 9)));
 	CHECK(sfve::picks::ValidPick(space, PickOf(ryu, 0, 101)));
-	CHECK(sfve::picks::ValidPick(space, PickOf(ryu, 15, 1)));
+	// RYU's folder 0C set, which loads with no textures: unshipped.
+	CHECK_FALSE(sfve::picks::ValidPick(space, PickOf(ryu, 15, 1)));
 	CHECK_FALSE(sfve::picks::ValidPick(space, PickOf(ryu, 24, 2)));
 	CHECK_FALSE(sfve::picks::ValidPick(space, PickOf(cnl, 23, 1)));
 	CHECK_FALSE(sfve::picks::ValidPick(space, PickOf(ryu, 25, 0)));

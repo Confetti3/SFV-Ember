@@ -2256,7 +2256,7 @@ The maintainer wants players to be able to pick every alternative costume SFV ha
 - **This PC:** 481 costumes, and 474 EX colours of listed costumes, are not in the cache. Costume 1 of every fighter lacks EX 105 and 106, and costume 0 lacks between 4 and 10 of EX 101-112.
 - **All 481 load.** Every one has its `DA_*_Costume_*` package in the paks (`pakchunk<fighter>`, `pakchunk68` for folders 0C and 0E). The battle's own load (0x69BC20, then 0x7B33B0) checks only that the package exists (0x548E40) and otherwise puts the costume back to 0, without a word. Nothing on that path asks the entitlement cache.
 - **What the new costumes are.**
-  - Nine sets every fighter has: folder 0C (`ID_SYS_BSet_0224`) and folders 30-37 (`ID_SYS_BSet_0240`-`0247`). That is 405 of the 481.
+  - Nine sets every fighter has: folder 0C (`ID_SYS_BSet_0224`) and folders 30-37 (`ID_SYS_BSet_0240`-`0247`). That is 405 of the 481. *Corrected in section 60:* folder 0C loads as a plain grey model (no textures); beta 8 marks it unshipped and never offers it.
   - Three "EX character" skins with one colour: CNL 23, NSH 8, Z36 6 (folder 0E). Their text is a character key (`ID_CMN_EXChar_E_SLD`, `_SDW`, `ID_CMN_Char_E_Z36`).
   - The rest are fighters' own folders.
   - The pipe's `content` names every costume through `kCostumeName`, which finds the costume by key and reads no flag.
@@ -2847,5 +2847,12 @@ agreement and the Tiny fighters fix all change what a room plays).
 - `select.md`, `eleven.md`: the fighter board in SFV's own placement, art pane, galleries,
   loadout cards with notes (`locales/loadout/`), stage cards, Random, remembered looks, Eleven.
 - `hitboxes.md`: Training's box viewer (library `ui/HitboxOverlay`, `Capabilities::hitboxes`).
+- Unshipped costumes (`select.md`): each fighter's folder 0C costume, named by the bare text id
+  `ID_SYS_BSet_0224`, loads with no textures (the photo booth's capture, 45 of 45 fighters). The
+  pick space marks them (`"unshipped": true` in `data/pick-space.json`, `picks::Costume::unshipped`):
+  they keep their numbers, but `ValidPick` refuses them, `FitPick` moves a pick to the fighter's
+  first costume it ships, and no list, roll or launch offers one. The marks are not in the
+  fingerprint, so the build id and the layout id are unchanged; a release that changes them bumps
+  `kMatchBuild`. `catalog-export` marks every costume the game names by a bare text id.
 - `booth.md`, `booth-protocol.md`, `tools.md`, `pack.md`: the capture mode, its driver and the
   picture pack shipped under `assets\selection\`.

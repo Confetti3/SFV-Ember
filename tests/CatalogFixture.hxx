@@ -95,9 +95,12 @@ inline mod::StageContent Stage(const char* code, const char* name = "", bool ins
 // lets them pick in none of its colours (RYU's costume 1, as -sfve_unowned
 // marks of each of its colours make it), so no look of it is theirs; a
 // one-colour costume installed here that the account's entitlement cache
-// lacks (CNL's costume 3, as SFV's "EX character" skins are); the
-// stages' names where the game gives one (none for the second); a stage
-// installed here whose codes the account's entitlement cache lacks (S02, id
+// lacks (CNL's costume 3, as SFV's "EX character" skins are); RYU's
+// costume 15, the slot the game lists but ships nothing for, named by its
+// bare text id and marked unshipped by the shipped pick space
+// (data/pick-space.json, RYU:15), which this copy owns and has installed and
+// still never offers; the stages' names where the game gives one (none for
+// the second); a stage installed here whose codes the account's entitlement cache lacks (S02, id
 // 1), which the default rule does not offer this copy's player; and a fourth
 // stage of the universe this copy has not installed (S26, id 3). The
 // fighters' V-Skills and V-Triggers (section 40) are every mix: RYU and BSN
@@ -109,7 +112,8 @@ inline mod::ContentLists TestContent()
 	mod::ContentLists lists{{WithChoices(Fighter("RYU",
 							 {Costume(0, {0, 1, 2}, "Story"),
 								 Costume(1, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, "", true, true, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}),
-								 Costume(4, {0, 1, 100, 101}, "Nostalgia", true, true, {100, 101})},
+								 Costume(4, {0, 1, 100, 101}, "Nostalgia", true, true, {100, 101}),
+								 Costume(15, {0, 1}, "ID_SYS_BSet_0224")},
 							 "Ryu"),
 				 {"Skill One", "Skill Two"}, {"Trigger One", "Trigger Two"}),
 				WithChoices(Fighter("CNL", {Costume(0, {0, 1}), Costume(2, {0}, "", true, false), NotEntitled(3, {0}, "EX Skin")},
