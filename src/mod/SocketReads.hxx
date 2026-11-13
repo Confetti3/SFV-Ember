@@ -36,8 +36,9 @@
 //     evaluating the pose gives it).
 // A fresh read that finds its pose and root with another value is counted as
 // conflicting (the keys would not hold all the value depends on); one whose
-// certified rebuild from another root disagrees with it turns rebuilding off
-// for the battle (the arithmetic model would be wrong) and is counted too.
+// certified rebuild from another root disagrees with it marks that pose
+// never-rebuild for the battle (the arithmetic model would be wrong for it;
+// its other-root readings are dropped) and is counted too.
 // Reads the fight does not make (bone 28 every tick, the camera's, the visual
 // tasks') are left as they are.
 //
@@ -216,7 +217,7 @@ enum class Recorded {
 	New,              // a pose or root not kept before
 	Again,            // the same value again
 	Conflicting,      // the same pose and root with another value (the newer is kept)
-	RebuildDisagrees, // a certified rebuild from another root gave another value: rebuilding is off
+	RebuildDisagrees, // a certified rebuild from another root gave another value: this pose is never rebuilt again
 };
 enum class Found {
 	Exact,     // the same pose and root
@@ -237,8 +238,13 @@ public:
 	// when the models stand where the update's state puts them (else null,
 	// and nothing is rebuilt).
 	Found Find(const Key& key, uint64_t root, const ModelTransform* now, Position* out);
-	// False once a rebuild disagreed with a fresh read (until Clear).
-	bool Rebuilding() const { return rebuilding_; }
+	// False once a rebuild for this pose disagreed with a fresh read, or two
+	// readings of it rebuilt to different values: that one pose (all its
+	// sockets' slots are separate) is never rebuilt again this battle (until
+	// Clear); the others still are.
+	bool Rebuilding(const Key& key) const;
+	// How many (unit, socket, pose) slots are never rebuilt.
+	size_t NeverRebuilt() const { return neverRebuilt_; }
 	void Clear();
 	size_t Size() const { return values_.size(); }
 
@@ -247,9 +253,10 @@ private:
 		std::array<Reading, kRootsPerPose> readings;
 		size_t count = 0;
 		size_t next = 0; // the reading replaced next once all are taken
+		bool neverRebuild = false;
 	};
 	size_t capacity_;
-	bool rebuilding_ = true;
+	size_t neverRebuilt_ = 0;
 	std::unordered_map<Key, Slot, KeyHash> values_;
 	std::deque<Key> order_; // insertion order, for dropping the oldest
 };
@@ -268,7 +275,7 @@ struct Counts {
 // "N fresh read(s) recorded, ..., K conflicting (D of them a rebuild's), ...":
 // every count, and `kept`. K counts both kinds, as tools/synctest.ps1 -check
 // fails on "[1-9]... conflicting".
-std::string CountsText(const Counts& counts, size_t kept, bool rebuilding);
+std::string CountsText(const Counts& counts, size_t kept, size_t neverRebuilt);
 
 } // namespace socket_reads
 

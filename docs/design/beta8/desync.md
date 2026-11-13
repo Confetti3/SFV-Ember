@@ -380,8 +380,9 @@ beta.8; the counts measure it.
 **Checks.** A fresh read whose pose and root are kept with another value is conflicting (the
 keys miss something: a looping layer's time runs on the engine's clock, rva 0xE5F6E0 and
 0xE62E70, if a spawn ever reads one). A fresh read for which a certain rebuild from another
-root gives another value turns rebuilding off for the battle and counts as conflicting too, as
-do two readings whose certain rebuilds disagree. `tools/synctest.ps1 -check` fails on any.
+root gives another value marks that pose never-rebuild for the battle (its other-root readings
+are dropped; other poses are still rebuilt) and counts as conflicting too, as do two readings
+whose certain rebuilds disagree (that pose is then never rebuilt). `tools/synctest.ps1 -check` fails on any.
 
 **Bounds and counts.** 8,192 poses (unit, socket, pose key), as before, each with up to four
 roots, the oldest replaced; a battle's spawns at a bone use far fewer (the 2026-11-13 battles

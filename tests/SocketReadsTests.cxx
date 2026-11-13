@@ -369,7 +369,7 @@ TEST_CASE("a pose read at another root is rebuilt at this one when certain")
 	CHECK(found == socket_reads::FightPosition(socket));
 }
 
-TEST_CASE("a fresh read the rebuild gets wrong turns rebuilding off for the battle")
+TEST_CASE("a fresh read the rebuild gets wrong turns rebuilding off for that pose, not for the battle")
 {
 	using socket_reads::Found;
 	using socket_reads::Recorded;
@@ -380,20 +380,31 @@ TEST_CASE("a fresh read the rebuild gets wrong turns rebuilding off for the batt
 	// A fresh read where the rebuild would have said what the engine says.
 	const float agreeing[3] = {339.25f, 12.5f, 95.0f};
 	CHECK(cache.Record(key, Modelled(2, Mesh(302.0f, 0.0f, 0.0f), agreeing)) == Recorded::New);
-	CHECK(cache.Rebuilding());
+	CHECK(cache.Rebuilding(key));
+	// Another pose, which will stay rebuildable.
+	const Key fine{0x89, socket_reads::NameKey(L"b_R_Hand"), 0};
+	CHECK(cache.Record(fine, Modelled(1, Mesh(300.0f, 0.0f, 0.0f), socket)) == Recorded::New);
 	// One where it would not.
 	const float other[3] = {341.5f, 12.5f, 95.0f};
 	CHECK(cache.Record(key, Modelled(3, Mesh(304.0f, 0.0f, 0.0f), other)) == Recorded::RebuildDisagrees);
-	CHECK_FALSE(cache.Rebuilding());
+	CHECK_FALSE(cache.Rebuilding(key));
+	CHECK(cache.Rebuilding(fine));
+	CHECK(cache.NeverRebuilt() == 1);
 	Position found;
 	ModelTransform now = Mesh(306.0f, 0.0f, 0.0f);
 	CHECK(cache.Find(key, 4, &now, &found) == Found::OtherRoot);
-	// The exact readings are still given.
+	// The other root entries of that pose are gone; the reading at this root stays and is given.
+	CHECK(cache.Find(key, 1, &now, &found) == Found::OtherRoot);
+	CHECK(cache.Find(key, 2, &now, &found) == Found::OtherRoot);
 	REQUIRE(cache.Find(key, 3, &now, &found) == Found::Exact);
 	CHECK(found == socket_reads::FightPosition(other));
-	// A new battle rebuilds again.
+	// The other pose is still rebuilt.
+	CHECK(cache.Find(fine, 2, &now, &found) == Found::Rebuilt);
+	// The disagreement is still counted as a conflict by the caller (Recorded::RebuildDisagrees),
+	// and a new battle rebuilds that pose again.
 	cache.Clear();
-	CHECK(cache.Rebuilding());
+	CHECK(cache.Rebuilding(key));
+	CHECK(cache.NeverRebuilt() == 0);
 }
 
 TEST_CASE("two readings that rebuild to different values give neither")
@@ -408,13 +419,14 @@ TEST_CASE("two readings that rebuild to different values give neither")
 	// certainty (a finer binade), so nothing is checked as it is recorded.
 	const float second[3] = {37.5f, 0.0f, 0.0f};
 	CHECK(cache.Record(key, Modelled(2, Mesh(0.0f, 0.0f, 0.0f), second)) == Recorded::New);
-	CHECK(cache.Rebuilding());
+	CHECK(cache.Rebuilding(key));
 	// At 302 both are certain, 339.25 and 339.5: the pose key does not hold
-	// all the value depends on, and nothing is rebuilt from here on.
+	// all the value depends on, and this pose is not rebuilt from here on.
 	Position found;
 	ModelTransform now = Mesh(302.0f, 0.0f, 0.0f);
 	CHECK(cache.Find(key, 3, &now, &found) == Found::OtherRoot);
-	CHECK_FALSE(cache.Rebuilding());
+	CHECK_FALSE(cache.Rebuilding(key));
+	CHECK(cache.NeverRebuilt() == 1);
 }
 
 TEST_CASE("past its capacity the record drops its oldest poses, and a pose its oldest root")
@@ -459,7 +471,7 @@ TEST_CASE("the battle's counts, as the log and the synctest's check read them")
 	counts.otherRoot = 1;
 	counts.conflicting = 2;
 	counts.disagreeing = 1;
-	const std::string text = socket_reads::CountsText(counts, 77, false);
+	const std::string text = socket_reads::CountsText(counts, 77, 2);
 	CHECK(text.find("120 fresh read(s) recorded") != std::string::npos);
 	CHECK(text.find("30 given the straight read") != std::string::npos);
 	CHECK(text.find("4 rebuilt") != std::string::npos);
@@ -467,9 +479,9 @@ TEST_CASE("the battle's counts, as the log and the synctest's check read them")
 	CHECK(text.find("1 of a pose read fresh at other roots only") != std::string::npos);
 	// Both kinds count as conflicting for tools/synctest.ps1 -check.
 	CHECK(text.find(" 3 conflicting (1 of them a rebuild's)") != std::string::npos);
-	CHECK(text.find("77 pose(s) kept; rebuilding off") != std::string::npos);
-	CHECK(socket_reads::CountsText({}, 0, true).find("0 conflicting") != std::string::npos);
-	CHECK(socket_reads::CountsText({}, 0, true).find("rebuilding off") == std::string::npos);
+	CHECK(text.find("77 pose(s) kept; 2 pose(s) never rebuilt") != std::string::npos);
+	CHECK(socket_reads::CountsText({}, 0, 0).find("0 conflicting") != std::string::npos);
+	CHECK(socket_reads::CountsText({}, 0, 0).find("never rebuilt") == std::string::npos);
 }
 
 TEST_CASE("every skeletal mesh of a fighter's actor is kept at LOD 0")

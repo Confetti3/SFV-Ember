@@ -142,7 +142,7 @@ const char* MissText(socket_reads::Found found, bool placed, bool model, bool re
 	if (found == socket_reads::Found::NoPose) return "(stale pose; this pose never read fresh: live)";
 	if (!placed) return "(stale pose; read fresh at other roots only, and the models stand where a restored state left them: live)";
 	if (!model) return "(stale pose; read fresh at other roots only, and the model's transforms could not be read: live)";
-	if (!rebuilding) return "(stale pose; read fresh at other roots only, and rebuilding is off for this battle: live)";
+	if (!rebuilding) return "(stale pose; read fresh at other roots only, and rebuilding is off for this pose: live)";
 	return "(stale pose; read fresh at other roots only, and no certain rebuild: live)";
 }
 
@@ -207,7 +207,7 @@ void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t f
 			Log("socket: frame %d, unit %d (P%d), socket %s, from rva 0x%X: %.5f %.5f %.5f fresh, %s", read.frame, read.unit,
 				read.side + 1, SocketName(socket).c_str(), read.from, live.xyzw[0], live.xyzw[1], live.xyzw[2],
 				conflicting ? "CONFLICTING with the value kept for this pose and root (the keys miss what the pose depends on)"
-							: "a certain rebuild from another root DISAGREES (rebuilding is off for this battle)");
+							: "a certain rebuild from another root DISAGREES (this pose is never rebuilt again this battle)");
 		} else if (s_log) {
 			char text[128];
 			if (reading.model) {
@@ -225,9 +225,9 @@ void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t f
 	bool rebuilding = true, turnedOff = false;
 	{
 		std::lock_guard lock(s_mutex);
-		const bool before = s_cache.Rebuilding();
+		const bool before = s_cache.Rebuilding(key);
 		found = s_cache.Find(key, unit.root, placed && reading.model ? &reading.at.mesh : nullptr, &kept);
-		rebuilding = s_cache.Rebuilding();
+		rebuilding = s_cache.Rebuilding(key);
 		// Two readings of this pose rebuilt to different values here.
 		turnedOff = before && !rebuilding;
 		if (turnedOff) s_counts.disagreeing++;
@@ -240,7 +240,7 @@ void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t f
 	}
 	if (turnedOff && s_conflictLines.fetch_add(1) < kMostConflictLines) {
 		Log("socket: frame %d, unit %d (P%d), socket %s, from rva 0x%X: two readings of this pose rebuild to different values "
-			"(rebuilding is off for this battle)",
+			"(this pose is never rebuilt again this battle)",
 			read.frame, read.unit, read.side + 1, SocketName(socket).c_str(), read.from);
 	}
 	if (found == socket_reads::Found::NoPose || found == socket_reads::Found::OtherRoot) {
@@ -528,14 +528,25 @@ Recorded Cache::Record(const Key& key, const Reading& reading)
 	// what the engine gives: the arithmetic the rebuild assumes, checked on
 	// every fresh read that can check it.
 	bool disagrees = false;
-	if (reading.model && rebuilding_) {
+	if (reading.model && !slot.neverRebuild) {
 		for (size_t i = 0; i < slot.count; i++) {
 			const Reading& other = slot.readings[i];
 			Position rebuilt;
 			if (other.root == reading.root || !other.model || !Rebuild(other.at, reading.at.mesh, &rebuilt)) continue;
 			if (!(rebuilt == reading.out)) disagrees = true;
 		}
-		if (disagrees) rebuilding_ = false;
+		if (disagrees) {
+			// Nothing is rebuilt for this pose again, and what the contradicted
+			// rebuilds came from goes: only the readings at this root stay.
+			slot.neverRebuild = true;
+			neverRebuilt_++;
+			size_t kept = 0;
+			for (size_t i = 0; i < slot.count; i++) {
+				if (slot.readings[i].root == reading.root) slot.readings[kept++] = slot.readings[i];
+			}
+			slot.count = kept;
+			slot.next = 0;
+		}
 	}
 	for (size_t i = 0; i < slot.count; i++) {
 		Reading& same = slot.readings[i];
@@ -558,23 +569,24 @@ Found Cache::Find(const Key& key, uint64_t root, const ModelTransform* now, Posi
 {
 	const auto it = values_.find(key);
 	if (it == values_.end()) return Found::NoPose;
-	const Slot& slot = it->second;
+	Slot& slot = it->second;
 	for (size_t i = 0; i < slot.count; i++) {
 		if (slot.readings[i].root != root) continue;
 		*out = slot.readings[i].out;
 		return Found::Exact;
 	}
-	if (!now || !rebuilding_) return Found::OtherRoot;
+	if (!now || slot.neverRebuild) return Found::OtherRoot;
 	// Every reading that certifies a value must certify the same one; two
-	// that do not agree mean the arithmetic is not the engine's, and nothing
-	// is rebuilt again this battle.
+	// that do not agree mean the arithmetic is not the engine's for this
+	// pose, and it is not rebuilt again this battle.
 	bool any = false;
 	Position first;
 	for (size_t i = 0; i < slot.count; i++) {
 		Position rebuilt;
 		if (!slot.readings[i].model || !Rebuild(slot.readings[i].at, *now, &rebuilt)) continue;
 		if (any && !(rebuilt == first)) {
-			rebuilding_ = false;
+			slot.neverRebuild = true;
+			neverRebuilt_++;
 			return Found::OtherRoot;
 		}
 		first = rebuilt;
@@ -589,19 +601,27 @@ void Cache::Clear()
 {
 	values_.clear();
 	order_.clear();
-	rebuilding_ = true;
+	neverRebuilt_ = 0;
 }
 
-std::string CountsText(const Counts& c, size_t kept, bool rebuilding)
+bool Cache::Rebuilding(const Key& key) const
+{
+	const auto it = values_.find(key);
+	return it == values_.end() || !it->second.neverRebuild;
+}
+
+std::string CountsText(const Counts& c, size_t kept, size_t neverRebuilt)
 {
 	char text[640];
+	char neverText[64];
+	snprintf(neverText, sizeof(neverText), "; %zu pose(s) never rebuilt", neverRebuilt);
 	snprintf(text, sizeof(text),
 		"%llu fresh read(s) recorded; stale read(s): %llu given the straight read of their pose and root, %llu rebuilt at their "
 		"root, %llu of a pose never read fresh, %llu of a pose read fresh at other roots only; %llu conflicting (%llu of them a "
 		"rebuild's), %llu without a key; %zu pose(s) kept%s",
 		(unsigned long long)c.recorded, (unsigned long long)c.exact, (unsigned long long)c.rebuilt, (unsigned long long)c.noPose,
 		(unsigned long long)c.otherRoot, (unsigned long long)(c.conflicting + c.disagreeing), (unsigned long long)c.disagreeing,
-		(unsigned long long)c.unkeyed, kept, rebuilding ? "" : "; rebuilding off");
+		(unsigned long long)c.unkeyed, kept, neverRebuilt ? neverText : "");
 	return text;
 }
 
@@ -629,7 +649,7 @@ void ForgetSocketReads()
 std::string SocketReadsSummary()
 {
 	std::lock_guard lock(s_mutex);
-	return socket_reads::CountsText(s_counts, s_cache.Size(), s_cache.Rebuilding());
+	return socket_reads::CountsText(s_counts, s_cache.Size(), s_cache.NeverRebuilt());
 }
 
 bool InstallSocketReads(uintptr_t imageBase, bool log)
