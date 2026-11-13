@@ -47,8 +47,16 @@ SOURCE_DOWN = 2           # the plate is put back in the world from a picture sh
 DIFF = 18                 # a pixel differs when a channel differs by more than this (0-255)
 STAGE_MAX = 0.05          # share of the stage around the subject that may still differ from the plate (cleaned)
 COVER_MIN = 0.6           # share of the picture the plate must reach through the grab's camera
+SUBJECT_MAX = 0.6         # a subject over this share of the picture is a stage that did not line up
 GLARE_LUMA = 230.0        # near-white (brighter than this, channels within GLARE_SPREAD): the activation ring's glare
 GLARE_SPREAD = 24.0
+BAND = 0.2                # the top of the picture (the wall above the fighters): a shake is found on it
+SHAKE_MAX = 8             # a shake of up to this many shrunk pixels either way is taken out...
+SHAKE_GAIN = 0.8          # ...when lining it up leaves less than this share of the difference
+SOFT_LUMA = 35.0          # a stage pixel lifted by less than this, every channel alike (within SOFT_SPREAD), is glow
+SOFT_SPREAD = 12.0
+RING_SHARE = 0.005         # glare over this share of the picture...
+RING_WIDTH = 0.4          # ...spread over this share of its width is the ring or a flash: not used
 GAIN_MAX = 0.12           # a stage this much darker or brighter than the plate is dimmed or flashed: not used
 FLASH_LUMA = 10.0         # mean brightness change of the stage around the subject that counts as a flash or a dimmed stage (0-255)
 PIECE_MIN = 0.06          # a piece of the subject smaller than this share of it is left out...
@@ -67,6 +75,8 @@ class Grab:
     stage: float = 0.0     # share of the stage around the subject still differing from the plate
     cover: float = 1.0     # share of the picture the plate reaches
     gain: float = 1.0      # the stage's brightness against the plate's
+    shake: tuple[int, int] = (0, 0)  # the shake taken out after the warp (shrunk pixels)
+    ring: bool = False     # the activation's white ring (or a white flash) across the picture
     flash: bool = False
     score: float = 0.0     # the subject's size against the standing fighter's
     usable: bool = False
@@ -84,6 +94,42 @@ def luma(rgb: np.ndarray) -> np.ndarray:
 
 def differs(a: np.ndarray, b: np.ndarray, threshold: float = DIFF) -> np.ndarray:
     return np.abs(a - b).max(axis=-1) > threshold
+
+
+def _is_red(rgb: np.ndarray) -> np.ndarray:
+    return (rgb[..., 0] > 2 * rgb[..., 1] + 20) & (rgb[..., 0] > 2 * rgb[..., 2] + 20)
+
+
+def _shift(img: np.ndarray, dy: int, dx: int) -> tuple[np.ndarray, np.ndarray]:
+    """`img` moved by (dy, dx), and where it has pixels from inside it."""
+    out = np.roll(img, (dy, dx), axis=(0, 1))
+    inside = np.ones(img.shape[:2], dtype=bool)
+    if dy > 0:
+        inside[:dy] = False
+    elif dy < 0:
+        inside[dy:] = False
+    if dx > 0:
+        inside[:, :dx] = False
+    elif dx < 0:
+        inside[:, dx:] = False
+    return out, inside
+
+
+def shake(plate: np.ndarray, valid: np.ndarray, grab: np.ndarray) -> tuple[int, int]:
+    """(dy, dx) that lines the seen plate up with the grab on the top BAND of the picture."""
+    band = max(8, int(grab.shape[0] * BAND))
+    pl, gl = luma(plate[: band + SHAKE_MAX]), luma(grab[:band])
+    ok = valid[: band + SHAKE_MAX]
+
+    def error(dy: int, dx: int) -> float:
+        q, inside = _shift(pl, dy, dx)
+        m = (_shift(ok, dy, dx)[0] & inside)[:band]
+        return float(np.abs(q[:band] - gl)[m].mean()) if m.sum() > 0.5 * m.size else float("inf")
+
+    still = error(0, 0)
+    best = min(((error(dy, dx), dy, dx) for dy in range(-SHAKE_MAX, SHAKE_MAX + 1)
+                for dx in range(-SHAKE_MAX, SHAKE_MAX + 1)), key=lambda e: e[0])
+    return (best[1], best[2]) if best[0] < SHAKE_GAIN * still else (0, 0)
 
 
 def _erode(m: np.ndarray) -> np.ndarray:
@@ -176,7 +222,14 @@ def score_grab(stage: Stage, grab: np.ndarray, camera: bc.Camera, area: int) -> 
     fighter's size (shrunk pixels)."""
     h, w = grab.shape[:2]
     plate, valid = stage.seen(camera, h, w)
-    g = Grab(cover=float(valid.mean()))
+    # A V-Trigger's activation shakes the picture without the camera the game reports: the shake
+    # is found on the wall above the fighters (the placing within SHAKE_MAX that matches it best,
+    # when clearly better than none) and taken out.
+    dy, dx = shake(plate, valid, grab)
+    if dy or dx:
+        plate, inside = _shift(plate, dy, dx)
+        valid = _shift(valid, dy, dx)[0] & inside
+    g = Grab(cover=float(valid.mean()), shake=(dy, dx))
     # The stage dimmed (a V-Trigger's activation darkens it) or lit up as a whole: its brightness
     # against the plate's (the median, the subject being the smaller part).
     if valid.any():
@@ -184,8 +237,20 @@ def score_grab(stage: Stage, grab: np.ndarray, camera: bc.Camera, area: int) -> 
         plate = plate * g.gain
     # A V-Trigger's activation draws the same white ring for every fighter, larger than most of
     # them: near-white glare is neither the subject nor a changed stage.
-    glare = _dilate((luma(grab) > GLARE_LUMA) & ((grab.max(axis=-1) - grab.min(axis=-1)) < GLARE_SPREAD), 3)  # and its halo
-    cleaned = clean(differs(grab, plate) & valid & ~glare)
+    core = (luma(grab) > GLARE_LUMA) & ((grab.max(axis=-1) - grab.min(axis=-1)) < GLARE_SPREAD)
+    cols = np.nonzero(core.any(axis=0))[0]
+    # The ring itself (or a white flash across the screen): a picture of the activation, not of the
+    # fighter, and its glow lights the whole wall.
+    g.ring = bool(core.mean() > RING_SHARE and cols.size and (cols[-1] - cols[0]) > RING_WIDTH * w)
+    glare = _dilate(core, 3)  # and its halo
+    # The glow such light leaves on the wall (and dust): the stage a little brighter, its colour kept.
+    lift = grab - plate
+    soft = ((luma(grab) - luma(plate)) < SOFT_LUMA) & (lift.min(axis=-1) > -4) & ((lift.max(axis=-1) - lift.min(axis=-1)) < SOFT_SPREAD)
+    # The training stage's red lines change brightness through a move: red in both is the line.
+    # (a shake moves them a few pixels: red in the grab next to the plate's line is the line too).
+    plate_red = _is_red(plate)
+    red = _dilate(plate_red, 1) | (_is_red(grab) & _dilate(plate_red, 5))
+    cleaned = clean(differs(grab, plate) & valid & ~glare & ~soft & ~red)
     g.mask = subject(cleaned)
     around = valid & ~_dilate(g.mask, 8) & ~glare
     if around.any():
@@ -193,9 +258,10 @@ def score_grab(stage: Stage, grab: np.ndarray, camera: bc.Camera, area: int) -> 
         g.flash = float(np.abs(luma(grab[around]) - luma(plate[around])).mean()) > FLASH_LUMA
     else:
         g.stage = 1.0
-    g.flash = g.flash or abs(g.gain - 1) > GAIN_MAX
+    g.flash = g.flash or abs(g.gain - 1) > GAIN_MAX or g.ring
     g.score = float(g.mask.sum()) / max(area, 1)
-    g.usable = not g.flash and g.stage <= STAGE_MAX and g.cover >= COVER_MIN
+    g.usable = (not g.flash and g.stage <= STAGE_MAX and g.cover >= COVER_MIN
+                and float(g.mask.sum()) <= SUBJECT_MAX * max(int(valid.sum()), 1))
     return g
 
 

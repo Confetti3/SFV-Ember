@@ -128,9 +128,13 @@ it looks at, its eye, the horizontal field of view; `tools/boothcamera.py`); the
 in the world by its depth (reversed Z, near plane 10) and seen through each grab's camera, so it
 lines up with the grab everywhere it reaches. What then differs is the subject: the fighter, its
 effects and its shadow (specks and thin lines left out, and small pieces far from the rest, such as
-the cloth a scaled-away fighter leaves on the floor), and near-white glare with its halo left out (the
-white ring every V-Trigger's activation draws, larger than most fighters, made the first camera run
-frame those pictures around the ring). A grab is unusable when the stage is dimmed or
+the cloth a scaled-away fighter leaves on the floor), and near-white glare with its halo, the soft
+glow such light leaves on the wall (the stage lifted by less than 35 levels, every channel alike) and
+the stage's red lines (they change brightness and shake a few pixels through a move) left out. A
+grab with the activation's white ring itself across the picture (glare over 0.5 % of it, spread
+over 40 % of its width) is not used: the first camera run framed those pictures around the ring.
+What is left of an activation's shake is looked for on the wall above the fighters (a placing
+within 8 shrunk pixels that clearly matches better) and taken out. A grab is unusable when the stage is dimmed or
 flashed (its brightness 12 % off the plate's as a whole, as a V-Trigger's activation dims it, or 10
 levels off around the subject), when more than 5 % of the stage around the subject still differs,
 or when the plate reaches less than 60 % of the picture. The score is the subject's size against the
