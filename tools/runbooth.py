@@ -712,7 +712,12 @@ class Copy:
                     thumb = Image.fromarray(grabs[i]).resize((480, 270), Image.Resampling.BILINEAR)
                     mark = "-chosen" if i == index else ("" if g.usable else "-unused")
                     thumb.save(out / f"{prefix}{choice}-t{tt:03d}-s{round(g.score * 1000):03d}{mark}.jpg", quality=80)
-            if not self.args.keep_raw:
+            if self.args.keep_raw:  # the cameras too, so the picture can be chosen again from the raw grabs
+                cameras = {"plate": plate_camera.words(), "pre": pre_camera.words(),
+                           "burst": {str(tt): c.words() for tt, _, _, c in burst}}
+                plate_path.with_name(plate_path.name.replace("-plate.bmp", "-cameras.json")).write_text(
+                    json.dumps(cameras), encoding="utf-8")
+            else:
                 for _, p, _, _ in burst:
                     p.unlink(missing_ok=True)
                 for p in (pre_path, plate_path):
