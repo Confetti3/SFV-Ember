@@ -160,7 +160,11 @@ def pages(out: Path) -> None:
     press(0, "LEFT")
     wait_for("the backdrop off", 10, lambda: not backdrop(0)["enabled"] and not backdrop(0)["drawn"])
     shot(out, "bd-04-settings-look-off", step=False)
-    if backdrop(0)["alive"] != 0:
+    # A picture still loading when it was turned off is let go when it arrives.
+    deadline = time.time() + 10
+    while backdrop(0)["alive"] and time.time() < deadline:
+        time.sleep(0.5)
+    if backdrop(0)["alive"]:
         note(f"the backdrop is off but {backdrop(0)['alive']} pictures are alive")
     press(0, "RIGHT")
     wait_for("the backdrop on again", 60, lambda: backdrop(0)["enabled"] and backdrop(0)["drawn"])
