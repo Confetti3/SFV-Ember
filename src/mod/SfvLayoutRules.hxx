@@ -23,16 +23,19 @@ namespace sfve::mod {
 
 // Where one battle keeps the state its snapshot leaves out: the rule unit,
 // the match data, the battle frame, the input unit, the exe's base and each
-// fighter's parts that sfv::kPartRunsOutsideSnapshot names, by its row (0:
-// the fighter has no such part).
+// fighter unit's parts that sfv::kPartRunsOutsideSnapshot names, by the
+// unit's place among the battle's CharaUnits (partners after the two
+// fighters, sfv::unit::kMostCharaUnits) and the row (0: the unit has no such
+// part).
 constexpr size_t kMaxPartRuns = 4;
+constexpr size_t kMaxFighterUnits = 8; // sfv::unit::kMostCharaUnits (checked in SfvLayoutRules.cxx)
 struct OutsideState {
 	uintptr_t ruleUnit = 0;
 	uintptr_t battleData = 0;
 	uintptr_t battleFrame = 0;
 	uintptr_t inputUnit = 0;
 	uintptr_t base = 0;
-	uintptr_t fighterParts[2][kMaxPartRuns] = {};
+	uintptr_t fighterParts[kMaxFighterUnits][kMaxPartRuns] = {};
 };
 
 // Adds what a battle tick changes that the game's snapshot leaves out: its

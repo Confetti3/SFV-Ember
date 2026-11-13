@@ -393,7 +393,12 @@ LOD 0 and keyed on its own; beta.8 did neither for Akira's partners, so their so
 followed each copy's window size. Only Akira (Z41) was seen with partner units (the
 maintainer's logs since 2026-11-09: no other battle had a CharaUnit[2]); RegionNames already
 named their regions `CharaUnit[2]...` and `[3]` (action, motion, visual and material parts and
-the unit's runs; no status or command part).
+the unit's runs; no status or command part). The state the snapshot leaves out of a part
+(`sfv::kPartRunsOutsideSnapshot`) is now added for every fighter unit, not the first two
+(`OutsideState::fighterParts`, 8 units): Akira's partners have neither part it names today, so
+nothing is added in practice, but a helper unit with a status part would no longer be left
+out. The made-up layout `LayoutRulesId` hashes has 8 units' rows now, so **the layout id
+changes and `data/pick-space.json` must be re-exported**.
 
 **The partners' projectiles were not named** (2026-11-13 Akira mirror, state
 `1794589647-24364-1380`, and the bind's `regions:` lines: 341 unowned against 261 in other

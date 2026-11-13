@@ -12,6 +12,8 @@
 
 namespace sfve::mod {
 
+static_assert(kMaxFighterUnits == sfv::unit::kMostCharaUnits, "every fighter unit the adapter binds has its outside runs");
+
 namespace {
 
 void* At(uintptr_t object, uint32_t offset)
