@@ -23,13 +23,15 @@
 // different order in each process (SFV builds its table in allocation order),
 // so region hashes are combined commutatively, and the per-region hashes peers
 // compare are listed in a canonical order (by size, then hash). An address
-// test (optional) hashes every 8-byte word on a 4-byte boundary of its real
+// test (optional) hashes every 8-byte word on an 8-byte boundary of its real
 // address that holds an address of this process as zero: heap and code
 // addresses differ between processes even when the state they describe is the
-// same.
+// same. Only those words: a pair of dwords 4 bytes off a boundary is two
+// values, whatever they read as together (docs/design/beta8/rollback-fixes.md).
 //
-// The layout id combines sizes, flags and masks the same way, so two peers can
-// check they compare the same thing before comparing hashes.
+// The layout id combines sizes, flags and masks the same way, and the address
+// rule's version, so two peers can check they compare the same thing before
+// comparing hashes.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -67,11 +69,19 @@ struct RegionHash {
 // True for a value that is an address of this process.
 using AddressTest = bool (*)(uint64_t value);
 
+// Which words an address test reads (StateRegions.cxx, AddressAt): 1 tested
+// every 4-byte boundary, with a tie-break between overlapping windows; 2
+// tests only 8-byte boundaries of the real address. Two copies whose rules
+// differ hash the same state differently, so it is part of LayoutId (and so
+// of the room's build, mod::LayoutRulesId).
+constexpr uint32_t kAddressRuleVersion = 2;
+
 class StateLayout {
 public:
 	void Clear();
-	// `test` reads values only, so every process masks the same bytes of
-	// the same values (AddressAt settles two overlapping windows by value too).
+	// `test` reads values only, and only words on 8-byte boundaries of their
+	// real address are tested, so every process masks the same bytes of the
+	// same values.
 	void SetAddressTest(AddressTest test) { addressTest_ = test; }
 	size_t Add(std::string name, void* ptr, size_t size, bool checked = true);
 	// Marks the 8-byte word holding `offset` in region `region` as not hashed.
@@ -146,16 +156,15 @@ private:
 	// Where one pass over a region's addresses stands between the windows it
 	// is read in (region offsets).
 	struct AddressScan {
-		size_t next = 0;     // the next 4-byte boundary to test
+		size_t next = 0;     // the next 8-byte boundary (of the real address) to test
 		size_t zeroedTo = 0; // the end of the last address found, which may lie past its window
-		uintptr_t base = 0;  // the region's real address
 	};
-	// Tests the 8-byte windows that start in [at, at + chunk) of a window of
-	// `read` region bytes from `at`, zeroing each address.
+	// Tests the 8-byte boundaries that start in [at, at + chunk) of a window
+	// of `read` region bytes from `at`, zeroing each address.
 	void ZeroAddresses(uint8_t* window, size_t at, size_t chunk, size_t read, AddressScan& scan) const;
-	// The 8-byte window at `word` (real address `address`, `after` readable
-	// bytes past its end) holds an address (see the .cxx).
-	bool AddressAt(const uint8_t* word, uintptr_t address, size_t after) const;
+	// The 8-byte word at `word`, on an 8-byte boundary of its real address,
+	// holds an address (see the .cxx).
+	bool AddressAt(const uint8_t* word) const;
 
 	std::vector<StateRegion> regions_;
 	size_t totalSize_ = 0;

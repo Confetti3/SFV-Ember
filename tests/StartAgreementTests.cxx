@@ -332,6 +332,43 @@ TEST_CASE("the repair leaves addresses, masked words and the peers' own dwords a
 	CHECK(kept == 5);
 }
 
+TEST_CASE("the repair writes a pair of values 4 bytes off a boundary that reads like an address")
+{
+	// Two dwords of fight state side by side (280, then 293 on this copy and
+	// 292 on P1's), 4 bytes off an 8-byte boundary: together they pass the
+	// mod's value test (GameMemory.hxx LooksLikeAddress). The address rule
+	// tested every 4-byte boundary once, took them for an address on both
+	// sides and left the differing value as it was; only words on 8-byte
+	// boundaries are tested now, so the repair takes P1's value.
+	const auto heapLike = [](uint64_t v) { return v >= (1ull << 40) && v <= 0x00007FFFFFFFFFFFull && (v & 3) == 0; };
+	alignas(8) uint8_t live[32] = {};
+	alignas(8) uint8_t theirs[32] = {};
+	StateLayout layout;
+	layout.SetAddressTest(heapLike);
+	const size_t r = layout.Add("r", live, sizeof(live));
+	const uint32_t mine[] = {1, 280, 293}, reference[] = {1, 280, 292};
+	memcpy(live + 8, mine, sizeof(mine));
+	memcpy(theirs + 8, reference, sizeof(reference));
+	REQUIRE(heapLike(0x0000012500000118ull));
+	REQUIRE(heapLike(0x0000012400000118ull));
+	// An address of each copy's own on the next boundary is still left alone.
+	const uint64_t ownAddress = 0x00000204F5F982A0ull, theirAddress = 0x00000246994182A0ull;
+	memcpy(live + 24, &ownAddress, 8);
+	memcpy(theirs + 24, &theirAddress, 8);
+	std::vector<uint64_t> theirUnits;
+	layout.AddressUnits(r, theirs, theirUnits);
+	size_t kept = 0;
+	const size_t written = ApplyRegion(layout, r, theirs, theirUnits, &kept);
+	CHECK(written == 1);
+	uint32_t value = 0;
+	memcpy(&value, live + 16, 4);
+	CHECK(value == 292);
+	uint64_t address = 0;
+	memcpy(&address, live + 24, 8);
+	CHECK(address == ownAddress);
+	CHECK(kept == 2); // the address's two dwords
+}
+
 TEST_CASE("datagrams round-trip, and anything else is refused")
 {
 	Message m;
