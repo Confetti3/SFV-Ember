@@ -116,8 +116,11 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	// inputs for the kInputFrames before the checkpoint.
 	facts.recent = Trace().Recent(session.Frame(), desync::kRecentFrames);
 	facts.inputs = Trace().Inputs(mismatch.frame - desync::kInputFrames, mismatch.frame);
-	// The counts so far: the process's, until the reads are counted per battle
-	// (mod/SocketReads.cxx: ForgetSocketReads does not reset its counters).
+	// This battle's socket-read counts (mod/SocketReads.cxx: ForgetSocketReads
+	// zeroes them as each battle starts): the fresh reads recorded, the stale
+	// ones served exact or rebuilt at their root, the misses by reason (a pose
+	// never read, a pose read at other roots only) and the conflicting records.
+	// The summary takes the counts' own lock, so it is safe from here.
 	facts.socketReads = mod::SocketReadsSummary();
 	facts.layoutId = session.Layout().LayoutId();
 	facts.matchBuild = MatchBuildId();

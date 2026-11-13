@@ -552,7 +552,7 @@ TEST_CASE("a worst-case report's comment and log stay within the intake's limits
 {
 	Facts facts = SampleFacts();
 	facts.recent = {true, 1, 121, 99999, 99999};
-	facts.socketReads = std::string(240, 's');
+	facts.socketReads = std::string(520, 's'); // SocketReadsSummary's text with every count at 20 digits
 	facts.inputs.known = true;
 	facts.inputs.first = 0;
 	facts.inputs.end = kInputFrames;

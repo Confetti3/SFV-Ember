@@ -134,7 +134,8 @@ struct Facts {
 	std::uint64_t rollbacks = 0;
 	int longestRollback = 0;
 	RollbackFacts recent;
-	// The socket reads' counts (SocketReadsSummary); empty when not read.
+	// This battle's socket-read counts (SocketReadsSummary: recorded, served
+	// exact, rebuilt, missed with the reason, conflicting); empty when not read.
 	std::string socketReads;
 	InputFacts inputs;
 	std::uint64_t layoutId = 0;
