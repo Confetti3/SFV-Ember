@@ -139,6 +139,7 @@ std::string Problem(const PickSpace& space)
 			}
 		}
 		if (fighter.costumes.empty()) return fighter.code + " has no costume";
+		if (!FirstShipped(fighter)) return fighter.code + " has no costume it ships";
 		for (const Costume& costume : fighter.costumes) {
 			if (costume.colours.empty()) return fighter.code + " costume " + std::to_string(costume.id) + " has no colour";
 			if (costume.id < 0 || costume.id > 0xFF) return fighter.code + " has a costume number past a byte";
@@ -226,7 +227,8 @@ bool ValidPick(const PickSpace& space, const sf4e::selection::Pick& pick)
 {
 	const Costume* costume = CostumeAt(space, pick.fighter, pick.costume);
 	const std::optional<Loadout> loadout = LoadoutIn(pick);
-	return costume && HasColour(*costume, pick.color) && loadout && HasLoadout(*FighterAt(space, pick.fighter), *loadout) &&
+	return costume && !costume->unshipped && HasColour(*costume, pick.color) && loadout &&
+		HasLoadout(*FighterAt(space, pick.fighter), *loadout) &&
 		pick.handicap == 0 && (pick.size == kSizeNormal || pick.size == kSizeTiny);
 }
 
@@ -241,8 +243,11 @@ bool FitPick(const PickSpace& space, sf4e::selection::Pick& pick)
 	if (!FighterAt(space, pick.fighter)) pick.fighter = 0;
 	const Fighter* fighter = FighterAt(space, pick.fighter);
 	const Costume* costume = CostumeAt(space, pick.fighter, pick.costume);
-	if (!costume && fighter) {
-		costume = &fighter->costumes.front();
+	if ((!costume || costume->unshipped) && fighter) {
+		// The first costume it ships; the first of all only for a fighter
+		// with none, which Problem refuses.
+		costume = FirstShipped(*fighter);
+		if (!costume) costume = &fighter->costumes.front();
 		pick.costume = costume->id;
 	}
 	if (costume && !HasColour(*costume, pick.color)) pick.color = costume->colours.front();
@@ -256,7 +261,9 @@ int CostumeLimit(const PickSpace& space)
 {
 	int limit = 0;
 	for (const Fighter& fighter : space.fighters) {
-		for (const Costume& costume : fighter.costumes) limit = std::max(limit, costume.id + 1);
+		for (const Costume& costume : fighter.costumes) {
+			if (!costume.unshipped) limit = std::max(limit, costume.id + 1);
+		}
 	}
 	return limit;
 }
@@ -266,6 +273,7 @@ int ColourLimit(const PickSpace& space)
 	int limit = 0;
 	for (const Fighter& fighter : space.fighters) {
 		for (const Costume& costume : fighter.costumes) {
+			if (costume.unshipped) continue;
 			for (int colour : costume.colours) limit = std::max(limit, colour + 1);
 		}
 	}
@@ -276,9 +284,19 @@ int CostumeCount(const PickSpace& space, int fighter)
 {
 	int count = 0;
 	if (const Fighter* content = FighterAt(space, fighter)) {
-		for (const Costume& costume : content->costumes) count = std::max(count, costume.id + 1);
+		for (const Costume& costume : content->costumes) {
+			if (!costume.unshipped) count = std::max(count, costume.id + 1);
+		}
 	}
 	return count;
+}
+
+const Costume* FirstShipped(const Fighter& fighter)
+{
+	for (const Costume& costume : fighter.costumes) {
+		if (!costume.unshipped) return &costume;
+	}
+	return nullptr;
 }
 
 std::string ToJson(const PickSpace& space, const std::string& build)
@@ -286,7 +304,11 @@ std::string ToJson(const PickSpace& space, const std::string& build)
 	nlohmann::json fighters = nlohmann::json::array();
 	for (const Fighter& fighter : space.fighters) {
 		nlohmann::json costumes = nlohmann::json::array();
-		for (const Costume& costume : fighter.costumes) costumes.push_back({{"id", costume.id}, {"colours", costume.colours}});
+		for (const Costume& costume : fighter.costumes) {
+			nlohmann::json entry = {{"id", costume.id}, {"colours", costume.colours}};
+			if (costume.unshipped) entry["unshipped"] = true;
+			costumes.push_back(std::move(entry));
+		}
 		fighters.push_back({{"code", fighter.code}, {"costumes", std::move(costumes)}, {"v_skills", fighter.vSkills},
 			{"v_triggers", fighter.vTriggers}});
 	}
@@ -323,11 +345,15 @@ bool FromJson(const std::string& text, PickSpace& space, std::string& build, std
 			}
 			Fighter entry{fighter["code"].get<std::string>(), {}, fighter["v_skills"].get<int>(), fighter["v_triggers"].get<int>()};
 			for (const nlohmann::json& costume : fighter["costumes"]) {
-				if (!exactly(costume, {"id", "colours"}) || !integer(costume["id"]) || !costume["colours"].is_array()) {
-					error = entry.code + ": a costume is not an id and colours";
+				// "unshipped" is written only as true; the key alone is not.
+				const bool marked = costume.is_object() && costume.contains("unshipped");
+				if (!(marked ? exactly(costume, {"id", "colours", "unshipped"}) : exactly(costume, {"id", "colours"})) ||
+					!integer(costume["id"]) || !costume["colours"].is_array() ||
+					(marked && !(costume["unshipped"].is_boolean() && costume["unshipped"].get<bool>()))) {
+					error = entry.code + ": a costume is not an id and colours (and \"unshipped\": true)";
 					return false;
 				}
-				Costume numbers{costume["id"].get<int>(), {}};
+				Costume numbers{costume["id"].get<int>(), {}, marked};
 				for (const nlohmann::json& colour : costume["colours"]) {
 					if (!integer(colour)) {
 						error = entry.code + ": a colour is not a number";

@@ -73,8 +73,11 @@ scripts\package.ps1 -RenderStore D:\sfv-ember-renders [-MinColourCoverage 0]
    `gameBuild` equals the build in this checkout's `data/pick-space.json`; every listed path is
    one the pick space allows (same rules as the C++); each file exists with the stated bytes and
    SHA-256 (case-insensitive hex); each file's `look` agrees with its path; no file in
-   `<store>\pack\assets\selection` is missing from the manifest; every costume's first colour
-   (the first entry of its `colours` array) has a cutout or a listed exception; the cutouts
+   `<store>\pack\assets\selection` is missing from the manifest; every offered costume's first
+   colour (the first entry of its `colours` array) has a cutout or a listed exception (a costume
+   the pick space marks `"unshipped"` is not offered: no picture of it is wanted or taken, and an
+   exception naming it is accepted, counted as `unshippedCostumes` in the receipt, and no longer
+   needed); the cutouts
    reach `-MinColourCoverage` of the looks (default 0: beta.8 ships each costume's first colour
    only, colours being picked with swatch chips; the coverage is still reported in the
    receipt); every loadout picture of the pick space (180 now: each fighter's V-Skill and
@@ -93,9 +96,10 @@ scripts\package.ps1 -RenderStore D:\sfv-ember-renders [-MinColourCoverage 0]
    the kept earlier beta's copy on the same folder (its compiled rules plus the package's
    inventory), then the zip download check, as before.
 
-Coverage: `colourCoverage = cutouts / (looks - exceptions)` over every costume x colour of the
-pick space (6,426 looks, 875 costumes in the current space; a first-colour-only pack is
-about 13.6%). The first colour of every costume and every loadout picture are required
+Coverage: `colourCoverage = cutouts / (looks - exceptions)` over every offered costume x colour
+of the pick space (875 costumes in the current space, 45 of them unshipped).
+`tests/RenderStoreTests.ps1` (ctest `sfve_render_store_tests`) runs `scripts/RenderStore.ps1`'s
+checks on small stores. The first colour of every costume and every loadout picture are required
 whatever `-MinColourCoverage` says. A cutout exception removes its look from both sides.
 
 With first colours only, `Character` falls back from the missing look to the costume's first

@@ -1,7 +1,8 @@
 // What this copy's player can ready on SFV's catalog, checked without the
 // game: the spec's fitting every copy does alike, what is installed here,
 // what the game lets them pick (Ember's ownership gate, the command line's
-// marks), their stored pick and Training's dummy (SfvPick), and Random.
+// marks), their stored pick and Training's dummy (SfvPick), Random, and the
+// costume slot each fighter has that the game ships nothing for.
 
 #include <doctest/doctest.h>
 
@@ -10,6 +11,8 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
 #include "ember/SfvPick.hxx"
+#include "ember/SfvPickSpace.hxx"
+#include "ember/SfvSelectionAssetPath.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/ModConfig.hxx"
 
@@ -652,4 +655,153 @@ TEST_CASE("the command line marks content unowned for this copy, never owned")
 	CHECK(mod::Config().unowned.empty());
 	CHECK(mod::UnownedProblem().empty());
 	mod::LoadConfigFromCommandLine(L"");
+}
+
+namespace {
+
+// A pick space of one fighter, AAA: costume 0 in colour 0, costume 3 (the
+// game's unshipped slot) in colours 0 and 1, costume 5 in colour 2.
+picks::PickSpace WithUnshipped()
+{
+	picks::PickSpace space;
+	picks::Fighter fighter{"AAA", {}, 1, 1};
+	fighter.costumes.push_back({0, {0}});
+	fighter.costumes.push_back({3, {0, 1}, true});
+	fighter.costumes.push_back({5, {2}});
+	space.fighters.push_back(fighter);
+	space.stages.push_back("S01");
+	return space;
+}
+
+} // namespace
+
+TEST_CASE("a costume the game ships nothing for keeps its number but is never a pick: refused, fitted off, out of the limits")
+{
+	picks::PickSpace space = WithUnshipped();
+	CHECK(picks::Problem(space).empty());
+	// Refused as a pick, in any colour.
+	CHECK_FALSE(picks::ValidPick(space, PickOf(0, 3, 0)));
+	CHECK_FALSE(picks::ValidPick(space, PickOf(0, 3, 1)));
+	CHECK(picks::ValidPick(space, PickOf(0, 5, 2)));
+	// Fitted to the fighter's first costume it ships, and that costume's colour.
+	Pick pick = PickOf(0, 3, 1);
+	CHECK(picks::FitPick(space, pick));
+	CHECK(pick.costume == 0);
+	CHECK(pick.color == 0);
+	CHECK(picks::FirstShipped(space.fighters[0])->id == 0);
+	// The limits and the count are of the costumes it ships.
+	space.fighters[0].costumes[2].unshipped = true; // costume 5 too: the highest left is 0
+	CHECK(picks::CostumeCount(space, 0) == 1);
+	CHECK(picks::CostumeLimit(space) == 1);
+	CHECK(picks::ColourLimit(space) == 1);
+	// A fighter with no costume it ships makes no pick space.
+	space.fighters[0].costumes[0].unshipped = true;
+	CHECK_FALSE(picks::Problem(space).empty());
+	CHECK(picks::FirstShipped(space.fighters[0]) == nullptr);
+}
+
+TEST_CASE("the room host's data carries the unshipped marks, and the build's fingerprint is the game data's alone")
+{
+	const picks::PickSpace space = WithUnshipped();
+	picks::PickSpace bare = space;
+	bare.fighters[0].costumes[1].unshipped = false;
+	// The marks are the release's data: the fingerprint, and so the build id, stays the game's.
+	CHECK(picks::Fingerprint(space) == picks::Fingerprint(bare));
+	CHECK(picks::BuildId(space) == picks::BuildId(bare));
+	// Written only where set, and read back.
+	const std::string text = picks::ToJson(space, picks::BuildId(space));
+	CHECK(text.find("\"unshipped\": true") != std::string::npos);
+	CHECK(picks::ToJson(bare, picks::BuildId(bare)).find("unshipped") == std::string::npos);
+	picks::PickSpace back;
+	std::string build, error;
+	REQUIRE(picks::FromJson(text, back, build, error));
+	REQUIRE(back.fighters.size() == 1);
+	CHECK_FALSE(back.fighters[0].costumes[0].unshipped);
+	CHECK(back.fighters[0].costumes[1].unshipped);
+	CHECK(back.fighters[0].costumes[1].id == 3);
+	// "unshipped" is true or absent: false, or anything else, is not the document.
+	std::string falsy = text;
+	falsy.replace(falsy.find("\"unshipped\": true"), 17, "\"unshipped\": false");
+	CHECK_FALSE(picks::FromJson(falsy, back, build, error));
+	std::string number = text;
+	number.replace(number.find("\"unshipped\": true"), 17, "\"unshipped\": 1");
+	CHECK_FALSE(picks::FromJson(number, back, build, error));
+}
+
+TEST_CASE("the shipped pick space marks one costume of each fighter unshipped, the slot the game names ID_SYS_BSet_0224")
+{
+	const picks::PickSpace& release = assets::EmbeddedPickSpace();
+	REQUIRE(release.fighters.size() == 45);
+	int marked = 0;
+	for (const picks::Fighter& fighter : release.fighters) {
+		CAPTURE(fighter.code);
+		const auto count = std::count_if(fighter.costumes.begin(), fighter.costumes.end(), [](const picks::Costume& costume) { return costume.unshipped; });
+		CHECK(count == 1);
+		marked += (int)count;
+		// Never the fighter's first costume: a pick fitted off it lands on that one.
+		CHECK_FALSE(fighter.costumes.front().unshipped);
+	}
+	CHECK(marked == 45);
+	const auto at = [&release](const char* code, int id) {
+		for (const picks::Fighter& fighter : release.fighters) {
+			if (fighter.code != code) continue;
+			const picks::Costume* costume = picks::CostumeAt(release, &fighter - release.fighters.data(), id);
+			return costume && costume->unshipped;
+		}
+		return false;
+	};
+	CHECK(at("RYU", 15));
+	CHECK(at("CMY", 17));
+	CHECK(at("KEN", 10));
+	CHECK(at("Z36", 8));
+	CHECK(at("CNL", 25));
+	CHECK_FALSE(at("RYU", 14));
+}
+
+TEST_CASE("this copy never offers, stores, rolls or launches a costume the game ships nothing for")
+{
+	FillTestCatalog();
+	const ember::GameCatalog& catalog = ember::Catalog();
+	// RYU's costume 15: installed, owned, named by its bare text id, and
+	// marked unshipped by the shipped pick space. Never listed, in any list.
+	CHECK(CostumeIds(0, false) == std::vector<int>{0, 1, 4});
+	const std::vector<int> ready = CostumeIds(0, true);
+	CHECK(std::find(ready.begin(), ready.end(), 15) == ready.end());
+	CHECK_FALSE(catalog.validPick(PickOf(0, 15, 0), false));
+	CHECK_FALSE(catalog.availablePick(PickOf(0, 15, 0), false, OwnedAvailability(0), nullptr));
+	// The spec's fitting, the same on every copy, moves a pick off it.
+	Pick fitted = PickOf(0, 15, 1);
+	CHECK(catalog.normalizePick(fitted, false, nullptr, nullptr));
+	CHECK(fitted.costume == 0);
+	CHECK(fitted.color == 1);
+	// A stored pick (the player's, the dummy's) falls back to the fighter's
+	// first costume, as does a remembered look.
+	PlayerPick stored;
+	stored.pick = PickOf(0, 15, 0);
+	CHECK(SetPick(stored).pick.costume == 0);
+	CHECK(SetDummy(stored).pick.costume == 0);
+	ForgetDummyForTest();
+	CHECK(RememberedLook(0)->costume != 15);
+	CHECK(LookFor(PickOf(1), 0, false).costume != 15);
+	// Random rolls a fighter in a look fitted the same way.
+	const sf4e::selection::Availability ryu = OwnedAvailability(0);
+	CHECK(sf4e::selection::RolledPick(0, PickOf(0, 15, 0), false, &ryu).costume == 0);
+	for (int fighter : sf4e::selection::RandomCandidates([](int id) { return OwnedAvailability(id); }, false)) {
+		Pick rolled = sf4e::selection::RolledPick(fighter, PickOf(fighter), false, nullptr);
+		CHECK(catalog.validPick(rolled, false));
+	}
+	// A received pick naming it is refused before it can launch: by the
+	// sender's own check, the room host's and every copy's launch alike.
+	RoomMatch match = MatchOf(0, 1, 2);
+	match.picks[0].costume = 15;
+	const MatchLaunch refused = LaunchPicks(match);
+	CHECK_FALSE(refused.picks);
+	CHECK(refused.refusal.reason == ember::game::EntryRefusal::UnsupportedMatch);
+	// The export marks it: by this release's data, and by the game's name for it.
+	picks::PickSpace exported;
+	std::string build, error;
+	REQUIRE(picks::FromJson(PickSpaceJson(), exported, build, error));
+	REQUIRE(picks::CostumeAt(exported, 0, 15));
+	CHECK(picks::CostumeAt(exported, 0, 15)->unshipped);
+	CHECK_FALSE(picks::CostumeAt(exported, 0, 4)->unshipped);
 }

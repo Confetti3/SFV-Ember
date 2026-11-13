@@ -43,6 +43,46 @@ Rules carried over from the rows screen:
 - The dummy's screen (Training select's Dummy row) has no Random card, no stage page, and does
   not use the remembered looks.
 
+## Costumes the game ships nothing for
+
+Each fighter has one costume slot the game's content list names by the bare text id
+`ID_SYS_BSet_0224` (folder 0C) and loads as a plain grey model: 45 in all (the photo booth's
+capture, `D:\sfv-re\b8-capture\unshipped-costumes.txt`; RYU:15, KEN:10, CMY:17, CNL:25, Z36:8 ...).
+None is ever offered or played:
+
+- **Data, not a table in the screen.** `data/pick-space.json` marks them (`"unshipped": true`,
+  `picks::Costume::unshipped`); costume numbers stay the game's (they were sparse already). The
+  mod embeds the file and marks the game's lists from it by code and number (SfvCatalog's
+  `PickSpaceOf`), so every copy of a release marks the same costumes; the room host embeds the
+  same file. `catalog-export` (`PickSpaceJson`) also marks every costume the game names by a bare
+  text id, so a re-export carries them, and the catalog logs any difference between the marks
+  and the game's names when it fills.
+- **Rules** (`SfvPickSpace`, the same in the mod and the room host): `ValidPick` refuses an
+  unshipped costume; `FitPick` moves a pick on one to the fighter's first costume it ships (never
+  one of these: the test checks no fighter's first costume is); `Problem` refuses a fighter with
+  none it ships; `CostumeLimit`, `ColourLimit` and `CostumeCount` count only shipped ones (the
+  current data's values do not change).
+- **Never offered:** `CostumeIds` leaves them out (the costume cards, the costume row, Left and
+  Right, previews), and the catalog's ready rules ignore them (`FighterLocked`, `FitReadyLook`,
+  `FighterNotOwned`).
+- **Stored, remembered, dummy, Training, Random, Eleven:** every stored pick is fitted
+  (`SetPick` / `SetDummy` through `FitOwnPick`, which runs `FitPick` first); remembered looks are
+  stored picks; Random's roll is `RolledPick` / `RandomCandidates` through the catalog's
+  `normalizePick`; Eleven's look goes through `FitLookWithin`; Training plays the stored picks.
+  The costume codes (`picks::kLoadCodes`) are buttons held at load over the fitted costume.
+- **Received picks** are not fitted but refused, so no copy can play one: the sender's runtime
+  will not send a pick `validPick` refuses (library `SessionClient::PreBattle_SetChara`), the
+  room host rejects one (`SessionServer` handlers, `validPick` over its embedded pick space) and
+  keeps the seat's previous pick, a room match with one is a match problem (`FindMatchProblem`),
+  and every copy's launch refuses it (`LaunchPicks`: UnsupportedMatch). Both copies therefore
+  load the same, shipped look.
+- **Ids:** the marks are not in `picks::Fingerprint`, so `kMatchBuild` (0.6), the fingerprint,
+  the build id in `data/pick-space.json` and the layout id are unchanged. A release that
+  changes the marks bumps `kMatchBuild`.
+- **Pack:** `scripts/RenderStore.ps1` (package.ps1's render checks) wants a first-colour cutout
+  of every offered costume only; the 45 exceptions in the manifest are accepted and counted
+  (`unshippedCostumes`), and a picture of an unshipped costume is refused.
+
 ## Openings
 
 `OpeningFor(start, pick, random, dummy)` (tested):

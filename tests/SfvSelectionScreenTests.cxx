@@ -908,3 +908,22 @@ TEST_CASE("a costume the game has no words for in this language is named by the 
 	CHECK(RowOf(SfvSelectionScreen::CostumeCards(PlayerPickOf(kRyu, kOneOne), true), "costume-1").label == costume + " 1");
 	CHECK(CostumeName(kRyu, 1) == costume + " 1");
 }
+
+TEST_CASE("the costume cards and the costume row never offer the costume the game ships nothing for")
+{
+	FillTestCatalog();
+	// RYU's costume 15 (marked unshipped by the shipped pick space).
+	const PlayerPick ryu = PlayerPickOf(kRyu, kOneOne);
+	CHECK_FALSE(HasRow(SfvSelectionScreen::CostumeCards(ryu, true), "costume-15"));
+	const std::vector<MenuEntry> rows = SfvSelectionScreen::Rows(ryu, true, true, true, StageOptions(MissingStages()));
+	const MenuEntry& costume = RowOf(rows, "costume");
+	CHECK(std::none_of(costume.choices.begin(), costume.choices.end(), [](const sf4e::ui::MenuChoice& choice) { return choice.id == "#15"; }));
+	// Neither stepping nor choosing reaches it, and a preview of it is fitted off it.
+	PlayerPick pick = ryu;
+	pick.pick.costume = 4;
+	CHECK_FALSE(SfvSelectionScreen::Apply(Adjust("costume", 1), pick, StageOptions(MissingStages())));
+	CHECK(pick.pick.costume == 4);
+	CHECK_FALSE(SfvSelectionScreen::Apply(Choose("costume", "#15"), pick, StageOptions(MissingStages())));
+	CHECK(SfvSelectionScreen::Previewed(ryu, "costume", "#15").pick.costume == 0);
+	CHECK(SfvSelectionScreen::BoardPick(PlayerPickOf(kCnl, kOneOne), "fighter-0", false).pick.costume != 15);
+}
