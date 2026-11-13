@@ -27,9 +27,9 @@ Ember release.
   told the game what each account owns, no longer answer. Stages one player
   lacks on disk are left out of the stage choice; Random stage picks from
   stages both have.
-- Fighter select with costumes and colours, V-Skill and V-Trigger, and
-  previews of each pick and stage.
-- Ember's frame meter in SFV's Training.
+- Fighter select laid out like SFV's own, with pictures of every costume,
+  V-Skill and V-Trigger cards that say what each one does, and stage pictures.
+- Ember's frame meter and hitboxes in SFV's Training.
 - Replays and the Discord companion from Ember.
 - In-app updates from this repository's releases.
 
@@ -47,11 +47,11 @@ pads, in slots no Xbox-style pad holds. `"controllerLayer": false` in
 Needs Visual Studio 18 Build Tools (C++ x64), a vcpkg checkout next to this
 folder (`..\vcpkg`), and the Ember library: the `feat/ember-library` branch of
 [SF4-Ember-Netplay](https://github.com/Confetti3/SF4-Ember-Netplay). This
-release builds against library commit `24ca041b9`.
+release builds against library commit `3515bca6f`.
 
 ```powershell
 git clone -b feat/ember-library https://github.com/Confetti3/SF4-Ember-Netplay ember-library
-git -C ember-library checkout 24ca041b9
+git -C ember-library checkout 3515bca6f
 .\scripts\build.ps1 -EmberRoot ..\ember-library
 ```
 
