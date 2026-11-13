@@ -355,13 +355,6 @@ function ScenesShots([int]$game, [int]$results0, [int]$decided0, [bool]$rolling)
   $skipSeen = $null
   $afterSkipTaken = $false
   $scenePattern = 'netplay: (a round is over|the match is decided) at frame'
-  # The first frames of every round after the first (docs/design/beta9/skip.md
-  # section 2: what a cut KO leaves behind): shots 0.4, 1.5 and 3 s after the
-  # round's fight start shows in copy 0's log, named game<N>-round<R>-t<k>.
-  $fightPattern = 'netplay: a round''s fight starts at frame'
-  $fightsSeen = Count 0 $fightPattern
-  $roundShots = New-Object System.Collections.Generic.List[object]
-  $roundNo = 0
   $scenesSeen = Count $skipCopy $scenePattern
   $startDue = $null
   $deadline = (Get-Date).AddSeconds($gameSeconds)
@@ -378,17 +371,7 @@ function ScenesShots([int]$game, [int]$results0, [int]$decided0, [bool]$rolling)
       }
     }
     if (!$shots) { Start-Sleep -Milliseconds 250; continue }
-    $fightsNow = Count 0 $fightPattern
-    if ($fightsNow -gt $fightsSeen) {
-      $fightsSeen = $fightsNow
-      $roundNo++
-      $k = 0
-      foreach ($delay in 0.4, 1.5, 3.0) { $k++; $roundShots.Add([pscustomobject]@{ Due = (Get-Date).AddSeconds($delay); Name = "game$game-round$roundNo-t$k" }) }
-    }
-    foreach ($due in @($roundShots | Where-Object { (Get-Date) -ge $_.Due })) {
-      $roundShots.Remove($due) | Out-Null
-      ShotAsync $due.Name $shots | Out-Null
-    }
+    RoundShotsStep $game
     if (-not $skipSeen -and (Count 0 'netplay: scenes skipped at frame') -gt $skips0) { $skipSeen = Get-Date }
     if ($skipSeen -and -not $afterSkipTaken -and ((Get-Date) - $skipSeen).TotalSeconds -ge 1) {
       $afterSkipTaken = $true
@@ -416,6 +399,29 @@ function ScenesShots([int]$game, [int]$results0, [int]$decided0, [bool]$rolling)
   }
 }
 $startPresses = 0
+# The first frames of every round (docs/design/beta9/skip.md section 2: what a
+# cut KO leaves behind): with -shots, shots 0.4, 1.5 and 3 s after each round's
+# fight start shows in copy 0's log, named game<N>-round<R>-t<k>. Stepped from
+# the loops that wait for the game's result (the fight's first 20 s included).
+$fightPattern = 'netplay: a round''s fight starts at frame'
+$script:fightsSeen = 0
+$script:roundShots = New-Object System.Collections.Generic.List[object]
+$script:roundNo = 0
+function RoundShotsBegin { $script:fightsSeen = Count 0 $fightPattern; $script:roundShots.Clear(); $script:roundNo = 0 }
+function RoundShotsStep([int]$game) {
+  if (!$shots) { return }
+  $fightsNow = Count 0 $fightPattern
+  if ($fightsNow -gt $script:fightsSeen) {
+    $script:fightsSeen = $fightsNow
+    $script:roundNo++
+    $k = 0
+    foreach ($delay in 0.4, 1.5, 3.0) { $k++; $script:roundShots.Add([pscustomobject]@{ Due = (Get-Date).AddSeconds($delay); Name = "game$game-round$($script:roundNo)-t$k" }) }
+  }
+  foreach ($due in @($script:roundShots | Where-Object { (Get-Date) -ge $_.Due })) {
+    $script:roundShots.Remove($due) | Out-Null
+    ShotAsync $due.Name $shots | Out-Null
+  }
+}
 # At the end of the run: every shot finished, and the rolling shots' folders gone.
 function RemoveRollingShots {
   if (!$shots) { return }
@@ -528,7 +534,9 @@ try {
       $answers = @((Count 0 "the WIN's answers"), (Count 1 "the WIN's answers"), (Count 2 "the WIN's answers"))
       $decidedBefore = Count $skipCopy 'netplay: the match is decided at frame'
       $decided0 = Count 0 'netplay: the match is decided at frame'
-      Start-Sleep 20
+      RoundShotsBegin
+      $fightWait = Get-Date
+      while (((Get-Date) - $fightWait).TotalSeconds -lt 20) { RoundShotsStep $game; Start-Sleep -Milliseconds 250 }
       Shot "game$game-fight"
       if ($skipPad) { PadSkip $decidedBefore }
       # -quickAnswer presses as the prompt shows, and the last WIN's B mash
