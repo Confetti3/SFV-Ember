@@ -22,6 +22,8 @@
 #include <vector>
 
 using namespace sfve::adapter::desync;
+using sfve::adapter::DesyncTrace;
+namespace desync = sfve::adapter::desync;
 
 namespace {
 

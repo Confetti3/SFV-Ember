@@ -67,6 +67,10 @@ namespace sfve::mod {
 
 constexpr int kMostFighterUnits = (int)sfv::unit::kMostCharaUnits;
 
+namespace socket_reads {
+struct Miss; // one stale read given the live value (below)
+}
+
 // One fighter unit as an update begins (SfvAdapter, the game thread).
 struct UnitKeys {
 	const uint8_t* chara = nullptr; // the CharaUnit: its visual part's owner
