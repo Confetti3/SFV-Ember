@@ -137,16 +137,22 @@ std::string Hex(uintptr_t v)
 
 } // namespace
 
-void RegionNames::AddObject(const std::string& name, uint8_t* object, const OwnerSpec& spec)
+void RegionNames::AddObject(const std::string& name, uint8_t* object, const OwnerSpec& spec, size_t minExtent)
 {
 	const uintptr_t base = reinterpret_cast<uintptr_t>(object);
-	objects_.emplace_back(base, name);
+	// The extent: past the last registered run, the last sub-object pointer
+	// and `minExtent` (a unit's parts vector). A lower bound, not the object's
+	// size (NamedObject::extent).
+	size_t extent = minExtent;
+	for (const RunSpec& r : spec.runs) extent = (std::max)(extent, size_t(r.offset) + r.size);
+	for (const SubObjectSpec& s : spec.subObjects) extent = (std::max)(extent, size_t(s.pointerAt) + sizeof(void*));
+	objects_.push_back({base, name, extent});
 	for (const RunSpec& r : spec.runs) runs_[base + r.offset] = {{name + "+" + Hex(r.offset), spec.name, r.offset}, r.size};
 	for (const SubObjectSpec& s : spec.subObjects) {
 		uint8_t* sub = nullptr;
 		if (!TryRead(object + s.pointerAt, &sub) || !sub) continue;
 		const std::string subName = name + "->" + Hex(s.pointerAt);
-		objects_.emplace_back(reinterpret_cast<uintptr_t>(sub), subName);
+		objects_.push_back({reinterpret_cast<uintptr_t>(sub), subName, size_t(s.run.offset) + s.run.size});
 		// A sub-object's runs belong to their own object, not the owner's
 		// layout: they carry no owner type, so no owner rule applies.
 		runs_[reinterpret_cast<uintptr_t>(sub) + s.run.offset] = {{subName + "+" + Hex(s.run.offset), nullptr, s.run.offset},
@@ -173,7 +179,7 @@ void RegionNames::AddParts(const std::string& unitName, uint8_t* unit)
 		if (spec == std::end(kParts)) {
 			const bool unique = DerivesFrom(type, image + kUniquePartBaseRva);
 			const std::string name = unitName + "." + (unique ? "CharaUniquePart" : "Part") + "@" + Hex(type - image);
-			objects_.emplace_back(reinterpret_cast<uintptr_t>(part.object), name);
+			objects_.push_back({reinterpret_cast<uintptr_t>(part.object), name, 0});
 			unknownParts_.push_back(name);
 			continue;
 		}
@@ -185,17 +191,20 @@ void RegionNames::AddParts(const std::string& unitName, uint8_t* unit)
 void RegionNames::Collect(uint8_t* anyUnit, uint8_t* manager)
 {
 	*this = RegionNames{};
-	if (manager) AddObject(kRoot.name, manager - kManagerInRoot, kRoot);
+	// The root unit is far larger than its one registered run: the manager
+	// is inside it at kManagerInRoot, so at least that far.
+	if (manager) AddObject(kRoot.name, manager - kManagerInRoot, kRoot, kManagerInRoot);
 	for (const OwnerSpec& spec : kUnits) {
 		for (uint32_t k = 0; k < kMaxUnitsOfAType; k++) {
 			uint8_t* unit = GameFindUnit(anyUnit, spec.typeRva, k);
 			if (!unit) break;
 			const std::string name = std::string(spec.name) + "[" + std::to_string(k) + "]";
-			AddObject(name, unit, spec);
+			AddObject(name, unit, spec, kPartsEnd + sizeof(void*));
 			AddParts(name, unit);
 		}
 	}
-	std::sort(objects_.begin(), objects_.end());
+	std::sort(objects_.begin(), objects_.end(),
+		[](const NamedObject& a, const NamedObject& b) { return a.address != b.address ? a.address < b.address : a.name < b.name; });
 }
 
 NamedRun RegionNames::Name(const uint8_t* ptr, size_t size)
@@ -218,11 +227,12 @@ NamedRun RegionNames::Name(const uint8_t* ptr, size_t size)
 
 std::string RegionNames::Nearest(uintptr_t ptr) const
 {
-	auto it = std::upper_bound(objects_.begin(), objects_.end(), std::make_pair(ptr, std::string("\x7f")));
+	auto it = std::upper_bound(objects_.begin(), objects_.end(), ptr,
+		[](uintptr_t v, const NamedObject& o) { return v < o.address; });
 	if (it == objects_.begin()) return "(no known object below)";
 	--it;
-	if (ptr - it->first > kNearWindow) return "(no known object within " + Hex(kNearWindow) + ")";
-	return "(" + it->second + "+" + Hex(ptr - it->first) + "?)";
+	if (ptr - it->address > kNearWindow) return "(no known object within " + Hex(kNearWindow) + ")";
+	return "(" + it->name + "+" + Hex(ptr - it->address) + "?)";
 }
 
 void RegionNames::LogSummary()

@@ -59,6 +59,9 @@ public:
 	bool Bind();
 	bool Bound() const { return bound_; }
 	uint8_t* BattleFrame() const { return battleFrame_; }
+	// The names of the rollback regions' owners and their objects, as of the
+	// bind (game thread only: the desync report copies Objects() there).
+	const RegionNames& Names() const { return regionNames_; }
 	// The battle's match data (rounds, results); null until bound.
 	const uint8_t* BattleData() const { return battleData_; }
 	// The fighter of `side` (0 P1, 1 P2) faces right: the fight does not mirror

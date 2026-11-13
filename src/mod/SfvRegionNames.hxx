@@ -33,6 +33,20 @@ struct NamedRun {
 	uint32_t offset = 0;        // the run's start in its owner
 };
 
+// A known object of the battle with its extent, for classing a pointer as
+// "object + offset" (the desync report's state file census).
+struct NamedObject {
+	uintptr_t address = 0;
+	std::string name;     // "CharaUnit[1].CharaStatusPart", "CharaUnit[0]->0xC58" for a sub-object
+	// The bytes from `address` the mod can vouch for: one past the end of the
+	// last field the object's tables register (a run, a sub-object's pointer,
+	// a unit's parts vector). That is a LOWER BOUND, a guess at the object's
+	// real size: the game's objects are larger (the tables cover only what
+	// the rollback saves), so a pointer into an unregistered tail is not
+	// classed as this object's. 0 for a part no table knows.
+	size_t extent = 0;
+};
+
 class RegionNames {
 public:
 	// Finds the known objects from any unit of the battle and the rollback
@@ -47,19 +61,24 @@ public:
 	// differs from the map's, and expected runs the table did not list.
 	void LogSummary();
 
+	// Every known object, by address (read-only; valid until the next Collect).
+	// RegionNames belongs to the game thread: a reader on another thread takes
+	// a copy here, on the game thread, and reads the copy.
+	const std::vector<NamedObject>& Objects() const { return objects_; }
+
 private:
 	struct Run {
 		NamedRun named;
 		size_t expectedSize = 0;
 		bool seen = false;
 	};
-	void AddObject(const std::string& name, uint8_t* object, const OwnerSpec& spec);
+	void AddObject(const std::string& name, uint8_t* object, const OwnerSpec& spec, size_t minExtent = 0);
 	void AddParts(const std::string& unitName, uint8_t* unit);
 	// The known object whose start is nearest below `ptr` (for unowned entries).
 	std::string Nearest(uintptr_t ptr) const;
 
 	std::unordered_map<uintptr_t, Run> runs_; // by start address
-	std::vector<std::pair<uintptr_t, std::string>> objects_; // start, name
+	std::vector<NamedObject> objects_; // sorted by address once Collect is done
 	std::vector<std::string> unowned_;
 	std::vector<std::string> otherSize_;
 	int named_ = 0;

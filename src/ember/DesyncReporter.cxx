@@ -7,6 +7,7 @@
 #include "ember/SfvGame.hxx"
 #include "ember/SfvPickSpace.hxx"
 #include "mod/GameMemory.hxx"
+#include "mod/SfvAdapter.hxx"
 #include "mod/Log.hxx"
 #include "mod/SocketReads.hxx"
 
@@ -122,6 +123,13 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	// never read, a pose read at other roots only) and the conflicting records.
 	// The summary takes the counts' own lock, so it is safe from here.
 	facts.socketReads = mod::SocketReadsSummary();
+	// The named objects, copied here on the game thread: the report thread
+	// reads only this copy (RegionNames is the adapter's, not thread-safe).
+	if (const mod::SfvAdapter* game = CurrentBattle().game) {
+		for (const mod::NamedObject& object : game->Names().Objects()) {
+			facts.objects.push_back({object.name, static_cast<std::uint64_t>(object.address), object.extent});
+		}
+	}
 	facts.layoutId = session.Layout().LayoutId();
 	facts.matchBuild = MatchBuildId();
 	if (const std::vector<uint8_t>* state = session.CheckpointState(mismatch.frame)) {
@@ -261,9 +269,10 @@ void WriteState(const fs::path& settings, const std::wstring& stem, const desync
 {
 	desync::PointerCensus census;
 	SeedImage(census);
-	// Named objects (RegionNames' object index) are not handed over yet: a
-	// pointer into one is a region or heap pointer in the census until they
-	// are (RegionNames has no accessor for its objects and their extents).
+	// The named objects, as the game thread copied them when the mismatch was
+	// noted (Gather): a pointer into one is object+offset, not a heap pointer.
+	// Their extents are the tables' lower bounds (NamedObject::extent).
+	census.objects = facts.objects;
 	ProcessEnv env;
 	census = desync::TakeCensus(facts, env, &mod::LooksLikeAddress, std::move(census));
 	const std::string bytes = desync::StateFile(facts, &census);

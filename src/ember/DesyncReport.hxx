@@ -102,6 +102,16 @@ struct ScriptFacts {
 };
 
 // Everything the game knows of a desync as it finds it.
+// A named object with its extent, from the mod's RegionNames (Objects(); the
+// extent is the tables' lower bound, not the object's size). Facts carries
+// the list as the game thread copied it when the mismatch was noted; the
+// census reads that copy and never RegionNames itself.
+struct CensusObject {
+	std::string name;
+	std::uint64_t address = 0;
+	std::uint64_t extent = 0;
+};
+
 struct Facts {
 	// This copy: its match slot (0 P1, 1 P2, 2 and up watch; -1 not known),
 	// and whether it watches.
@@ -140,6 +150,9 @@ struct Facts {
 	InputFacts inputs;
 	std::uint64_t layoutId = 0;
 	std::string matchBuild; // SfvCatalog's MatchBuildId
+	// The battle's named objects (RegionNames) as of the mismatch, copied on
+	// the game thread: the census classes a pointer into one as object+offset.
+	std::vector<CensusObject> objects;
 	std::vector<RegionFacts> regions; // the checkpoint's, in canonical order
 	// This copy's whole state at the checkpoint (the session keeps the last
 	// two checkpoints'), its regions in the layout's order; empty when it was
@@ -199,13 +212,6 @@ struct CensusWord {
 	std::uint64_t allocBase = 0;  // VirtualQuery's allocation base (0 unmapped)
 	std::uint64_t allocSize = 0;  // and the size from it to the end of the allocation
 	std::uint64_t targetHash = 0; // of the 32 bytes at the target; 0 when unreadable
-};
-// A named object with its extent, from the mod's RegionNames; none of them
-// until the mod hands the list over (RegionNames keeps its object index private).
-struct CensusObject {
-	std::string name;
-	std::uint64_t address = 0;
-	std::uint64_t extent = 0;
 };
 struct PointerCensus {
 	std::vector<CensusObject> objects;
