@@ -2856,3 +2856,7 @@ agreement and the Tiny fighters fix all change what a room plays).
   `kMatchBuild`. `catalog-export` marks every costume the game names by a bare text id.
 - `booth.md`, `booth-protocol.md`, `tools.md`, `pack.md`: the capture mode, its driver and the
   picture pack shipped under `assets\selection\`.
+- `backdrop.md`: the game's own illustrations behind every shell page (`data/menu-art.json`,
+  embedded), cross-faded every 25 s under a per-page scrim, loaded only at the main menu, two alive
+  at most; Look's Background artwork row (library `ui::SetMenuBackdropDrawer`,
+  `ShellGame::ShowMenuArtwork`, branch `b8/lib-backdrop`).
