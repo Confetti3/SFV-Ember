@@ -457,7 +457,13 @@ void SfvAdapter::EndScenes()
 	const int32_t id = Field<int32_t>(state, rf::kStateId);
 	const uint32_t vtable = (uint32_t)(Field<uintptr_t>(state, 0) - imageBase_);
 	const int32_t phase = Field<int32_t>(state, sfv::flowstate::kPhase);
-	const intro_skip::ScenesStep step = intro_skip::ScenesStepFor(id, vtable, phase);
+	// The KO's slow motion (battle frame state word, bit 0x20) holds Finish: a
+	// round that ends in a KO is not cut while the game still plays it
+	// (docs/design/beta9/skip.md section 2). The word is in the rollback state,
+	// so both copies read the same one on the same frame.
+	const uint32_t stateWord = battleFrame_ ? Field<uint32_t>(battleFrame_, sfv::battleframe::kState) : 0;
+	const bool koStop = battleFrame_ && (stateWord & intro_skip::kKoStopBit) != 0;
+	const intro_skip::ScenesStep step = intro_skip::ScenesStepFor(id, vtable, phase, koStop);
 	// Finish's last phase asks for the state the constructor gave it; the
 	// skip asks for that one only when it is RoundOver, as the versus flow's.
 	const bool unexpectedNext = step.action == ScenesAction::RequestNext && Field<int32_t>(state, rf::kNextState) != rf::kRoundOver;
@@ -473,7 +479,7 @@ void SfvAdapter::EndScenes()
 				// MatchResultDemo's phase 6 waits for the results screens, whose
 				// pages hear the bit as a press (intro_skip::PadsHear).
 				Log("scene skip: the skip bit in flow state %d (class rva 0x%X) phase %d moves no phase here; the "
-					"game's own questions for a press hear it", id, vtable, phase);
+					"game's own questions for a press hear it; battle frame state word %08x", id, vtable, phase, stateWord);
 			}
 		}
 		return;
@@ -510,7 +516,7 @@ void SfvAdapter::EndScenes()
 		break;
 	case ScenesAction::None: break;
 	}
-	Log("scene skip: %s", scenesSkipText_);
+	Log("scene skip: %s, battle frame state word %08x", scenesSkipText_, stateWord);
 	scenesSkip_ = scenesSkipText_;
 }
 
@@ -640,7 +646,9 @@ void SfvAdapter::NotePause()
 	// SFV's own pause never runs in a session's battle (GameHooks keeps the
 	// PauseUnit's task from it, sfv::pause); a pause bit here would be one
 	// copy's alone. Logged on each change.
-	const uint32_t bits = Field<uint32_t>(battleFrame_, sfv::battleframe::kState) & sfv::pause::kBits;
+	// The mask takes the KO's bits too (0x30: the KO's slow motion, 0x20, and
+	// its neighbour) so a round's ending shows in the log (skip.md section 2).
+	const uint32_t bits = Field<uint32_t>(battleFrame_, sfv::battleframe::kState) & (sfv::pause::kBits | 0x30);
 	if (bits == pausedBits_) return;
 	Log("adapter: the game's pause bits are %x in a session's battle (were %x; flow state %d)", bits, pausedBits_,
 		flow_.Announced());
