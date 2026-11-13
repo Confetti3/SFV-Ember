@@ -294,6 +294,15 @@ constexpr uint32_t kProjectileUnitType = 0x3A64C20;
 constexpr uint32_t kProjectileOwner = 0x100; // int: the side that threw it
 constexpr uint32_t kProjectileLive = 0x2B0;  // int: 1 from the tick it comes out until the tick it hits or ends
 
+// The dword Finish's phase 12 (rva 0x40BC00) sets to -1 in every fighter
+// unit through rva 0x3074D0(fighters, -1) when it ends (IDA, build 13173604,
+// docs/design/beta9/skip.md): a bit mask in the rollback state (the
+// registered run +2196..+2404, rva 0x3785A0) that the unit constructor
+// (rva 0x37AB80) zeroes and rva 0x344A00 tests before an action. A cut
+// Finish never runs that phase (its Exit, rva 0x474C20, does not touch it).
+constexpr uint32_t kFinishMask = 2376;
+constexpr int32_t kFinishMaskValue = -1;
+
 } // namespace fighter
 
 } // namespace sfve::mod::sfv

@@ -518,6 +518,17 @@ void SfvAdapter::EndScenes()
 				   Field<int32_t>(state, sfv::flowstate::kArg)) != 0;
 		snprintf(scenesSkipText_, sizeof(scenesSkipText_), "Finish ends in its phase %d: the flow %s RoundOver", phase,
 			done ? "asked for" : "refused");
+		// The cut skips Finish's phase 12, whose last act is rva 0x3074D0
+		// (fighters, -1): each fighter unit's dword +2376 set to -1 (skip.md,
+		// "Settled in IDA"). What `fighters` is (the state's list at
+		// +272..+280) was not read to its element type, so the writes are
+		// made through the field helpers to the two fighters' units. A
+		// confirmed frame on every copy, in the rollback state.
+		if (done) {
+			for (int i = 0; i < fighterUnitCount_ && i < kPlayers; i++) {
+				if (fighterUnits_[i].chara) Field<int32_t>(fighterUnits_[i].chara, sfv::fighter::kFinishMask) = sfv::fighter::kFinishMaskValue;
+			}
+		}
 		break;
 	case ScenesAction::ResultSkip: {
 		// What phase 3 (rva 0x409930) does on the skip bit when its gate is
