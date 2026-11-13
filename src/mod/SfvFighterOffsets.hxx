@@ -185,8 +185,14 @@ constexpr uint64_t kSkeletalMeshComponentFlag = 0x40000000000ull;
 constexpr uint32_t kForcedLodModel = 0x560;    // int, 1376
 constexpr uint32_t kMinLodModel = 0x564;       // int, 1380
 constexpr uint32_t kPredictedLodLevel = 0x568; // int, 1384
-constexpr uint32_t kUpdateFlag = 0x5AC;        // uint8 MeshComponentUpdateFlag, 1452 (logged only)
+constexpr uint32_t kUpdateFlag = 0x5AC;        // uint8 MeshComponentUpdateFlag, 1452
 constexpr int32_t kForceLodZero = 1;
+// EMeshComponentUpdateFlag::AlwaysTickPoseAndRefreshBones: the engine
+// evaluates the pose and refreshes the bones every frame whether the mesh is
+// rendered or not. The other values (AlwaysTickPose 1, OnlyTickMontagesWhenNotRendered
+// 2, OnlyTickPoseWhenRendered 3) skip that while the window is minimised or
+// occluded, and the sockets then read the last drawn pose, not this frame's.
+constexpr uint8_t kAlwaysTickPoseAndRefreshBones = 0;
 
 } // namespace mesh
 

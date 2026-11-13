@@ -119,12 +119,16 @@ struct MeshLod {
 	int32_t forced = 0;    // ForcedLodModel as found
 	int32_t minLod = 0;    // MinLodModel
 	int32_t predicted = 0; // PredictedLODLevel: the LOD the engine evaluated last
-	uint8_t updateFlag = 0; // MeshComponentUpdateFlag
+	uint8_t updateFlag = 0; // MeshComponentUpdateFlag as found
 	bool written = false;  // ForcedLodModel was set to 1 here
+	bool flagWritten = false; // the update flag was set to AlwaysTickPoseAndRefreshBones here
 };
 
 // Gives each skeletal mesh component of `actor` (its mesh, its second mesh and
-// its layers, sfv::visual) ForcedLodModel 1 where it holds another value; an
+// its layers, sfv::visual) ForcedLodModel 1 where it holds another value, and
+// the update flag AlwaysTickPoseAndRefreshBones (the pose is then evaluated
+// every frame, rendered or not); neither is ever put back: a battle's fighter
+// meshes are the mod's to keep that way; an
 // object that is not a usable skeletal mesh component (sfv::mesh's flag and
 // class tests, as the game makes them) is left alone. Fills `seen`, if any,
 // with each component as found. Returns how many it wrote.

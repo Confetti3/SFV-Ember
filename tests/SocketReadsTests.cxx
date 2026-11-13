@@ -57,6 +57,7 @@ struct FakeComponent {
 		Put(bytes, sfv::mesh::kUpdateFlag, uint8_t(2));
 	}
 	int32_t Forced() const { return Get<int32_t>(bytes, sfv::mesh::kForcedLodModel); }
+	uint8_t Flag() const { return Get<uint8_t>(bytes, sfv::mesh::kUpdateFlag); }
 };
 
 // A fighter's actor: its mesh, second mesh and layers (sfv::visual).
@@ -493,6 +494,8 @@ TEST_CASE("every skeletal mesh of a fighter's actor is kept at LOD 0")
 	std::vector<socket_reads::MeshLod> seen;
 	CHECK(socket_reads::ForceLodZero(actor.bytes, &seen) == 4);
 	for (const FakeComponent* c : {&mesh, &second, &layer0, &layer1}) CHECK(c->Forced() == sfv::mesh::kForceLodZero);
+	// Each also evaluates its pose every frame, rendered or not (found as 2: only montages when not rendered).
+	for (const FakeComponent* c : {&mesh, &second, &layer0, &layer1}) CHECK(c->Flag() == sfv::mesh::kAlwaysTickPoseAndRefreshBones);
 	REQUIRE(seen.size() == 4);
 	// What the engine had picked is reported, component by component.
 	CHECK(seen[0].component == 0);
@@ -503,11 +506,13 @@ TEST_CASE("every skeletal mesh of a fighter's actor is kept at LOD 0")
 	CHECK(seen[3].component == 3);
 	CHECK(seen[3].updateFlag == 2);
 	CHECK(seen[0].written);
+	CHECK(seen[0].flagWritten);
 	// Already at LOD 0: nothing written again.
 	seen.clear();
 	CHECK(socket_reads::ForceLodZero(actor.bytes, &seen) == 0);
 	REQUIRE(seen.size() == 4);
 	CHECK_FALSE(seen[0].written);
+	CHECK_FALSE(seen[0].flagWritten);
 	CHECK(seen[0].forced == sfv::mesh::kForceLodZero);
 }
 

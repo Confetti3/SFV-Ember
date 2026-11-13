@@ -285,18 +285,25 @@ int ForceOne(uint8_t* component, int which, std::vector<socket_reads::MeshLod>* 
 		return 0;
 	}
 	if (lod.forced != m::kForceLodZero) lod.written = TryWrite(component + m::kForcedLodModel, m::kForceLodZero);
+	// A mesh that only ticks its pose when rendered would not be evaluated
+	// while the window is minimised or occluded: the sockets would read the
+	// last drawn pose.
+	if (lod.updateFlag != m::kAlwaysTickPoseAndRefreshBones) {
+		lod.flagWritten = TryWrite(component + m::kUpdateFlag, m::kAlwaysTickPoseAndRefreshBones);
+	}
 	if (seen) seen->push_back(lod);
-	return lod.written ? 1 : 0;
+	return lod.written || lod.flagWritten ? 1 : 0;
 }
 
 std::string Describe(const std::vector<socket_reads::MeshLod>& seen)
 {
 	std::string text;
 	for (const socket_reads::MeshLod& lod : seen) {
-		char one[112];
+		char one[160];
 		const std::string kind = lod.component == 0 ? "mesh" : lod.component == 1 ? "second mesh" : "layer " + std::to_string(lod.component - 2);
-		snprintf(one, sizeof(one), "%s%s LOD %d (forced %d, min %d, update flag %u)%s", text.empty() ? "" : "; ", kind.c_str(),
-			lod.predicted, lod.forced, lod.minLod, (unsigned)lod.updateFlag, lod.written ? ", now LOD 0" : "");
+		snprintf(one, sizeof(one), "%s%s LOD %d (forced %d, min %d, update flag %u)%s%s", text.empty() ? "" : "; ", kind.c_str(),
+			lod.predicted, lod.forced, lod.minLod, (unsigned)lod.updateFlag, lod.written ? ", now LOD 0" : "",
+			lod.flagWritten ? ", now ticking every frame" : "");
 		text += one;
 	}
 	return text;
@@ -332,7 +339,7 @@ void KeepFighterMeshesAtLodZero(uint8_t* const* visualParts, int count)
 		}
 		const int written = socket_reads::ForceLodZero(actor, nullptr);
 		if (written && s_reforced.fetch_add(1) < kMostReforcedLines) {
-			Log("meshes: fighter %d: %d component(s) given LOD 0 again (something reset ForcedLodModel)", unit, written);
+			Log("meshes: fighter %d: %d component(s) given LOD 0 and the pose tick again (something reset ForcedLodModel or the update flag)", unit, written);
 		}
 	}
 }
