@@ -47,9 +47,10 @@ uint64_t h_AddBattleTask(void* list, const void* task, uint32_t order, uint32_t 
 	int32_t thread = ProjectileTaskThread(name, gameThread);
 	// The battle's units register their tasks while it is set up, on the game
 	// thread, before it binds: a room's or a replay's launch is still loading
-	// it then (LaunchedBattleLoading), which tells it from Training.
+	// it then (LaunchedBattleLoading), which tells it from Training. Latched:
+	// a task registered after the bind belongs to the same battle.
 	const ModConfig& config = Config();
-	const bool session = SessionBattleSetUp(config.mode, config.room, LaunchedBattleLoading());
+	const bool session = BattleLatch().Registering(SessionBattleSetUp(config.mode, config.room, LaunchedBattleLoading()));
 	const TickTasks placement = ChooseTickTasks(config, session);
 	if (placement != TickTasks::AsTheGamePlaces && (phases & kTickPhases) != 0) thread = 1;
 	if (placement == TickTasks::P2First && name && strncmp(name, "Chara ", 6) == 0) {

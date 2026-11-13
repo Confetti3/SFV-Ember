@@ -31,3 +31,25 @@ TEST_CASE("every other battle task keeps the thread the game asked for")
 	CHECK(ProjectileTaskThread(nullptr, 0) == 0);
 	CHECK(ProjectileTaskThread(nullptr, 1) == 1);
 }
+
+TEST_CASE("a battle a session plays places every task it registers, also after the launch stopped loading")
+{
+	sfve::mod::SessionBattleLatch latch;
+	// Nothing registered yet: not a session's.
+	CHECK_FALSE(latch.Latched());
+	// Registered while the launch loads it (SessionBattleSetUp true).
+	CHECK(latch.Registering(true));
+	CHECK(latch.Registering(true));
+	// The first frame of the launch's battle: Forget with the launch still loading keeps it.
+	latch.NewBattle(true);
+	CHECK(latch.Latched());
+	// Bound: the launch no longer loads, a later registration (a lazily created unit, a rematch in place) still counts.
+	CHECK(latch.Registering(false));
+	// The next battle frame with no launch loading (Training after the match): over.
+	latch.NewBattle(false);
+	CHECK_FALSE(latch.Latched());
+	CHECK_FALSE(latch.Registering(false));
+	// Training's own tasks never latch.
+	CHECK_FALSE(latch.Registering(false));
+	CHECK_FALSE(latch.Latched());
+}

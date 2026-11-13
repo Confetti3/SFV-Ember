@@ -2,11 +2,13 @@
 
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
+#include "mod/ProjectileRelease.hxx"
 #include "mod/RngAudit.hxx"
 #include "mod/SfvLayoutRules.hxx"
 #include "mod/SfvOffsets.hxx"
 #include "mod/SocketReads.hxx"
 #include "mod/TinyFighters.hxx"
+#include "mod/VersusLaunch.hxx"
 
 #include <windows.h>
 
@@ -75,6 +77,9 @@ void SfvAdapter::SeeBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 
 void SfvAdapter::Forget()
 {
+	// The battle that was latched as a session's ends here, unless this is
+	// the frame of the launch's own, still loading (ProjectileRelease).
+	BattleLatch().NewBattle(LaunchedBattleLoading());
 	bound_ = false;
 	battleData_ = nullptr;
 	layout_.Clear();

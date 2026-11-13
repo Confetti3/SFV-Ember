@@ -59,9 +59,12 @@ std::string MakeLayoutRulesId()
 	// (docs/design/beta8/rollback-fixes.md): which words the hashes test for
 	// addresses (core/StateRegions.hxx; also inside the outside state's
 	// LayoutId), the CRT math the modes that roll back take, and where a
-	// battle that rolls back runs its tick's tasks (ModConfig.hxx).
+	// battle that rolls back runs its tick's tasks (ModConfig.hxx): the
+	// placement this copy takes (a development build's -sfve_tasks changes
+	// it, so a -sfve_tasks=0 copy cannot meet a default one; the default's
+	// text is kRollbackTickTasks' name as before).
 	text += "; address rule " + std::to_string(kAddressRuleVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath) +
-		"; rollback tick tasks " + TickTasksName(kRollbackTickTasks);
+		"; rollback tick tasks " + TickTasksName(ChooseTickTasks(Config(), true));
 	return Hex(XXH3_64bits(text.data(), text.size()));
 }
 

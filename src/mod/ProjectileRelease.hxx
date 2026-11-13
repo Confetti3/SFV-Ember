@@ -56,6 +56,42 @@ inline int32_t ProjectileTaskThread(const char* name, int32_t gameThread)
 	return name && strcmp(name, kProjectilePreMainTask) == 0 ? 1 : gameThread;
 }
 
+// Whether a battle is one a session plays (the tick's tasks then run on the
+// battle's thread), decided once from the launch and kept for the whole
+// battle. A task registered after the battle binds (a lazily created unit, a
+// rematch in place) still belongs to it, though the launch has stopped
+// loading by then: SessionBattleSetUp alone would give the game's parallel
+// placement to exactly those tasks.
+class SessionBattleLatch {
+public:
+	// A task is being registered; `setUpNow`: SessionBattleSetUp for it
+	// (true while the launch is loading the battle). Whether to place this
+	// battle's tasks as a session's.
+	bool Registering(bool setUpNow)
+	{
+		if (setUpNow) latched_ = true;
+		return latched_;
+	}
+	// A new battle frame is seen (SfvAdapter::Forget). `launchLoading`: the
+	// launch's battle is still loading, which the new battle's own tasks,
+	// registered before its first frame, were placed by: keep it for them.
+	void NewBattle(bool launchLoading)
+	{
+		if (!launchLoading) latched_ = false;
+	}
+	bool Latched() const { return latched_; }
+
+private:
+	bool latched_ = false;
+};
+
+// The process's latch, for AddBattleTask and SfvAdapter::Forget (the game thread).
+inline SessionBattleLatch& BattleLatch()
+{
+	static SessionBattleLatch latch;
+	return latch;
+}
+
 // Adds the release's hooks to the battle's set (dllmain) in the modes that
 // roll back: without them two copies release projectiles on different frames,
 // or release them off the battle's thread.
