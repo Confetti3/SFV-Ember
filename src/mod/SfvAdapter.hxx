@@ -232,6 +232,13 @@ private:
 	};
 	// The keys of every fighter unit as an update begins (SocketReads).
 	void KeyFighterUnits(SocketUpdate* sockets) const;
+	// After an update: a fighter unit's command queue left not empty
+	// (sfv::fighter::kCommandQueueBegin), outside the snapshot, is counted
+	// and the first few logged. Diagnostics only: nothing is changed.
+	void NoteCommandQueues();
+	uint64_t queuesCarried_ = 0;
+	int queueLines_ = 0;
+	static constexpr int kMostQueueLines = 8;
 	FighterUnit fighterUnits_[kMostFighterUnits];
 	int fighterUnitCount_ = 0;
 	uint64_t keyedUpdates_ = 0; // this battle's updates whose fighter units were keyed, and the time that took

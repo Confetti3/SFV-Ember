@@ -88,6 +88,10 @@ void SfvAdapter::Forget()
 	// The socket reads' counts are the battle's own (SocketReads): logged as
 	// it ends, then forgotten with the record.
 	if (fighterUnitCount_ > 0) Log("sockets: the battle ends: %s", SocketReadsSummary().c_str());
+	if (queuesCarried_) Log("actions: the battle ends: %llu time(s) a fighter unit's command queue was not empty between updates",
+		(unsigned long long)queuesCarried_);
+	queuesCarried_ = 0;
+	queueLines_ = 0;
 	for (FighterUnit& unit : fighterUnits_) unit = {};
 	fighterUnitCount_ = 0;
 	ForgetSocketReads();
@@ -277,6 +281,25 @@ void SfvAdapter::FighterVisualParts(uint8_t* parts[kPlayers]) const
 	for (int index = 0; index < kPlayers; index++) {
 		uint8_t* chara = rollbackUnit_ ? GameFindUnit(rollbackUnit_, sfv::unit::kCharaUnitType, (uint32_t)index) : nullptr;
 		parts[index] = chara ? GameFindPart(chara, sfv::visual::kPartType) : nullptr;
+	}
+}
+
+void SfvAdapter::NoteCommandQueues()
+{
+	namespace f = sfv::fighter;
+	for (int i = 0; i < fighterUnitCount_; i++) {
+		const uint8_t* action = fighterUnits_[i].action;
+		uintptr_t begin = 0, end = 0;
+		if (!action || !TryRead(action + f::kCommandQueueBegin, &begin) || !TryRead(action + f::kCommandQueueEnd, &end) || end <= begin) {
+			continue;
+		}
+		queuesCarried_++;
+		if (queueLines_++ < kMostQueueLines) {
+			Log("actions: frame %d%s: CharaUnit[%d]'s command queue holds %llu command(s) after the update (outside the snapshot: a "
+				"restore would keep them)",
+				inputUnit_ ? Field<int32_t>(inputUnit_, sfv::inputunit::kInputFrame) : -1, replaying_ ? " replayed" : "", i,
+				(unsigned long long)((end - begin) / sizeof(void*)));
+		}
 	}
 }
 
@@ -541,6 +564,7 @@ void SfvAdapter::RunUpdate()
 	// The update's last phase ran the visual task (rva 0x3A06C0), which gave
 	// every actor its position and layers for the state the update leaves.
 	modelsPlaced_ = true;
+	if (bound_) NoteCommandQueues();
 	EndFightUpdate(visualParts);
 	if (bound_ && keyedUpdates_ % kSocketSummaryUpdates == 0) {
 		LARGE_INTEGER frequency{};

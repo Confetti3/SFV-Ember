@@ -414,6 +414,28 @@ rides the next match version too.
 
 **Match version.** The values served change, so it rides the next match version (0.7).
 
+## Beta.9: the action part's words outside the snapshot (IDA, 2026-11-13)
+
+- **Part +0x3EB4** is a copy of the facing (+0x3E90, in the snapshot) that Chara Prepare takes
+  every tick (rva 0x37DED6: `mov eax, [rbx+3E90h]; mov [rbx+3EB4h], eax`, on every path once
+  the part exists), as does rva 0x4705C0; rva 0x2FBB50 (`== 1`) and 0x36AC30 read it later in
+  the tick. It is the facing as the tick began, recomputed from restored state by the tick's
+  first fighter task: nothing carries across a frame unless a reader runs before Chara Prepare
+  in a tick (not checked). Not added to the snapshot.
+- **The command vector at part +0x3E98** (controller +15832) is a queue of heap copies of
+  script commands (56-byte objects, vtable rva 0x3231618) that rva 0x342AC0 pushes (from rva
+  0x36AC30 through 0x35F590, from 0x34A500 through 0x35C010, and from 0x4843B0). The
+  controller's virtual rva 0x30D530 runs them (rva 0x302A30 with mask 0x80000010) and frees
+  them (rva 0x2F3330); the part's reset (rva 0x305500) frees what is left. Whether a push can
+  come after that tick's run, leaving the queue full between two updates, was not settled.
+  If it can, a restore keeps the abandoned timeline's commands and the replay runs them. Its
+  bytes must never be saved and restored (they point to copies the run frees); the fix would
+  be to empty it on a restore. `SfvAdapter` now logs every update that ends with a fighter
+  unit's queue not empty (`actions:` lines, the first 8 a battle, and a count when the battle
+  ends): a synctest or a two-copy run with Cody's or Akira's moves settles it.
+- The command part's own fields past its registered runs (the input buffer and cancel-window
+  area that target combos use) were not traced: its factory was not found in a light search.
+
 ## A pointer's high half in the hash (2026-11-12, S6b)
 
 **What the run showed.** A plain room run (RYU against CNL, a watcher, 30 ms lag; the first

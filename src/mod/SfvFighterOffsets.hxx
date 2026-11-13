@@ -223,6 +223,23 @@ constexpr uint32_t kScriptPlayer = 0xD8;
 // 0x2FB820 compares it with 1, rva 0x2F9310 returns it); fight state, in the
 // action part's registered run (rva 0x2E8D30: its controller's +15824).
 constexpr uint32_t kMirrored = 0x3E90;
+// The action part's command queue, outside the snapshot (its controller,
+// part +0xC0, +15832: a std::vector of Command*, begin and end). The fighter's
+// code queues heap copies of script commands into it (rva 0x342AC0, vtable
+// rva 0x3231618; from rva 0x36AC30 through 0x35F590, from 0x34A500 through
+// 0x35C010, and from 0x4843B0); the controller's virtual rva 0x30D530 runs
+// them (rva 0x302A30, mask 0x80000010) and frees them (rva 0x2F3330), and
+// the part's reset (rva 0x305500) frees what is left. Whether it is ever not
+// empty between two updates (a rollback would then keep an abandoned
+// timeline's commands) was not settled in IDA: SfvAdapter logs it.
+// Saving its bytes would restore pointers to freed copies, so it can never be
+// a kPartRunsOutsideSnapshot row.
+constexpr uint32_t kCommandQueueBegin = 0x3E98;
+constexpr uint32_t kCommandQueueEnd = 0x3EA0;
+// Part +0x3EB4 is a copy of kMirrored that Chara Prepare (rva 0x37DED6) and
+// rva 0x4705C0 take each tick, read later in the tick (rva 0x2FBB50,
+// 0x36AC30): the facing as the tick began, recomputed from the snapshot's
+// +0x3E90 by the tick's first fighter task.
 constexpr uint32_t kScriptHeader = 0x40;    // const int32[3]: first attack frame, last (exclusive), interrupt; -1 none
 constexpr uint32_t kScriptNumber = 0x48;    // int: the script (action) played
 constexpr uint32_t kScriptFrame = 0x4C;     // 16.16
