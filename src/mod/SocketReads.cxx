@@ -42,6 +42,7 @@ bool s_log;
 std::mutex s_mutex;
 SocketUpdate s_update;
 socket_reads::Cache s_cache;
+socket_reads::MissRing s_misses;
 socket_reads::Counts s_counts;
 std::atomic<int> s_lines;
 // A runaway caller cannot fill the disk: the log stops here.
@@ -244,6 +245,17 @@ void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t f
 			read.frame, read.unit, read.side + 1, SocketName(socket).c_str(), read.from);
 	}
 	if (found == socket_reads::Found::NoPose || found == socket_reads::Found::OtherRoot) {
+		socket_reads::Miss miss;
+		miss.frame = read.frame;
+		miss.unit = read.unit;
+		miss.from = read.from;
+		miss.reason = found == socket_reads::Found::NoPose ? socket_reads::MissReason::NeverSeenPose :
+			!rebuilding ? socket_reads::MissReason::RebuildingOff : socket_reads::MissReason::OtherRootNotCertifiable;
+		snprintf(miss.socket, sizeof(miss.socket), "%s", SocketName(socket).c_str());
+		{
+			std::lock_guard lock(s_mutex);
+			s_misses.Add(miss);
+		}
 		LogRead(read, MissText(found, placed, reading.model, rebuilding), live.xyzw);
 		return;
 	}
@@ -604,6 +616,35 @@ Found Cache::Find(const Key& key, uint64_t root, const ModelTransform* now, Posi
 	return Found::Rebuilt;
 }
 
+const char* MissReasonName(MissReason reason)
+{
+	switch (reason) {
+	case MissReason::NeverSeenPose: return "never-seen pose";
+	case MissReason::OtherRootNotCertifiable: return "other root not certifiable";
+	case MissReason::RebuildingOff: return "rebuilding off";
+	}
+	return "?";
+}
+
+void MissRing::Add(const Miss& miss)
+{
+	misses_[next_] = miss;
+	next_ = (next_ + 1) % kMostMisses;
+	if (count_ < kMostMisses) count_++;
+}
+
+std::vector<Miss> MissRing::Between(int32_t first, int32_t last) const
+{
+	std::vector<Miss> out;
+	// Oldest first: from where the ring would write next when it is full.
+	const size_t start = count_ < kMostMisses ? 0 : next_;
+	for (size_t i = 0; i < count_; i++) {
+		const Miss& miss = misses_[(start + i) % kMostMisses];
+		if (miss.frame >= first && miss.frame <= last) out.push_back(miss);
+	}
+	return out;
+}
+
 void Cache::Clear()
 {
 	values_.clear();
@@ -645,6 +686,7 @@ void ForgetSocketReads()
 	{
 		std::lock_guard lock(s_mutex);
 		s_cache.Clear();
+		s_misses.Clear();
 		s_counts = {};
 		s_update = {};
 	}
@@ -657,6 +699,12 @@ std::string SocketReadsSummary()
 {
 	std::lock_guard lock(s_mutex);
 	return socket_reads::CountsText(s_counts, s_cache.Size(), s_cache.NeverRebuilt());
+}
+
+std::vector<socket_reads::Miss> SocketMissesBetween(int32_t first, int32_t last)
+{
+	std::lock_guard lock(s_mutex);
+	return s_misses.Between(first, last);
 }
 
 bool InstallSocketReads(uintptr_t imageBase, bool log)

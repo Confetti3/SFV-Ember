@@ -112,6 +112,16 @@ struct CensusObject {
 	std::uint64_t extent = 0;
 };
 
+// One stale socket read that was given the live value (mod/SocketReads.hxx's
+// Miss), as the report lists it.
+struct SocketMissFacts {
+	int frame = -1;
+	int unit = -1;
+	std::uint32_t from = 0; // the call site's rva
+	std::string socket;
+	std::string reason;     // never-seen pose, other root not certifiable, rebuilding off
+};
+
 struct Facts {
 	// This copy: its match slot (0 P1, 1 P2, 2 and up watch; -1 not known),
 	// and whether it watches.
@@ -147,6 +157,11 @@ struct Facts {
 	// This battle's socket-read counts (SocketReadsSummary: recorded, served
 	// exact, rebuilt, missed with the reason, conflicting); empty when not read.
 	std::string socketReads;
+	// The latest misses (at most 64) from the kRecentFrames frames before the
+	// checkpoint, oldest first, copied on the game thread; `socketMissesKnown`
+	// false where the ring was not read.
+	std::vector<SocketMissFacts> socketMisses;
+	bool socketMissesKnown = false;
 	InputFacts inputs;
 	std::uint64_t layoutId = 0;
 	std::string matchBuild; // SfvCatalog's MatchBuildId
@@ -169,6 +184,8 @@ struct Facts {
 // The frames a report's rollback count and its inputs cover.
 constexpr int kRecentFrames = 120;
 constexpr int kInputFrames = 180;
+// The socket-read misses a report lists (mod::socket_reads::MissRing's size).
+constexpr std::size_t kMostSocketMisses = 64;
 
 // The match key both fighters' copies share: "<room epoch>.<table>.<match
 // generation>" (16 hex digits, then decimals); empty when the room is not

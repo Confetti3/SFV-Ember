@@ -286,6 +286,17 @@ std::string DetailLines(const Facts& facts)
 		text += "rollbacks, last " + std::to_string(kRecentFrames) + " frames: not counted\n";
 	}
 	text += "socket reads: " + (facts.socketReads.empty() ? std::string("not read") : facts.socketReads) + "\n";
+	if (facts.socketMissesKnown) {
+		text += "socket read misses (the live value was given), frames " + std::to_string(facts.frame - kRecentFrames) + " to " +
+			std::to_string(facts.frame) + ", the latest " + std::to_string(kMostSocketMisses) + " kept: " +
+			std::to_string(facts.socketMisses.size()) + "\n";
+		char line[160];
+		for (const SocketMissFacts& miss : facts.socketMisses) {
+			snprintf(line, sizeof(line), "miss %d unit %d %.31s from rva 0x%X: %.40s\n", miss.frame, miss.unit, miss.socket.c_str(),
+				static_cast<unsigned>(miss.from), miss.reason.c_str());
+			text += line;
+		}
+	}
 	if (!facts.inputs.known) {
 		text += "inputs: not recorded (the session's frame hook is not wired, or the frames are gone)\n";
 	} else {

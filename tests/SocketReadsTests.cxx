@@ -485,6 +485,39 @@ TEST_CASE("the battle's counts, as the log and the synctest's check read them")
 	CHECK(socket_reads::CountsText({}, 0, 0).find("never rebuilt") == std::string::npos);
 }
 
+
+TEST_CASE("the latest misses are kept, 64 of them, oldest dropped, and read back by frame")
+{
+	socket_reads::MissRing ring;
+	CHECK(ring.Between(0, 1000).empty());
+	for (int i = 0; i < 100; i++) {
+		socket_reads::Miss miss;
+		miss.frame = 1000 + i;
+		miss.unit = i % 2;
+		miss.from = 0x3BDB02;
+		miss.reason = i % 3 == 0 ? socket_reads::MissReason::NeverSeenPose : socket_reads::MissReason::OtherRootNotCertifiable;
+		snprintf(miss.socket, sizeof(miss.socket), "Sock_Item_R");
+		ring.Add(miss);
+	}
+	CHECK(ring.Size() == socket_reads::MissRing::kMostMisses);
+	// The first 36 are gone; the rest are oldest first.
+	const std::vector<socket_reads::Miss> all = ring.Between(0, 5000);
+	REQUIRE(all.size() == 64);
+	CHECK(all.front().frame == 1036);
+	CHECK(all.back().frame == 1099);
+	// A window of frames takes only its own.
+	const std::vector<socket_reads::Miss> window = ring.Between(1050, 1059);
+	REQUIRE(window.size() == 10);
+	CHECK(window.front().frame == 1050);
+	CHECK(window.back().frame == 1059);
+	CHECK(std::string(window[0].socket) == "Sock_Item_R");
+	CHECK(window[0].from == 0x3BDB02);
+	CHECK(std::string(socket_reads::MissReasonName(socket_reads::MissReason::RebuildingOff)) == "rebuilding off");
+	CHECK(std::string(socket_reads::MissReasonName(socket_reads::MissReason::NeverSeenPose)) == "never-seen pose");
+	ring.Clear();
+	CHECK(ring.Between(0, 5000).empty());
+}
+
 TEST_CASE("every skeletal mesh of a fighter's actor is kept at LOD 0")
 {
 	FakeClass skeletal(sfv::mesh::kSkeletalMeshComponentFlag | 1);

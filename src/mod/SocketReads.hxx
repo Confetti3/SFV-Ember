@@ -97,6 +97,10 @@ void ForgetSocketReads();
 bool InstallSocketReads(uintptr_t imageBase, bool log);
 // The battle's counts so far, for the log (SfvAdapter, with the keys' cost).
 std::string SocketReadsSummary();
+// The latest misses (at most socket_reads::MissRing::kMostMisses) whose frame
+// lies in [first, last], oldest first, for a desync report (copied under the
+// reads' own lock: safe from any thread).
+std::vector<socket_reads::Miss> SocketMissesBetween(int32_t first, int32_t last);
 
 // The same pose on every copy, whatever its window. The engine evaluates a
 // skeletal mesh's bones at the LOD the renderer picks from its size on
@@ -263,6 +267,40 @@ private:
 	size_t neverRebuilt_ = 0;
 	std::unordered_map<Key, Slot, KeyHash> values_;
 	std::deque<Key> order_; // insertion order, for dropping the oldest
+};
+
+// Why a stale read got the live value (the counts' misses, one by one).
+enum class MissReason : uint8_t {
+	NeverSeenPose,           // this pose was never read fresh
+	OtherRootNotCertifiable, // read fresh at other roots only, and no certain rebuild (or no model, or not placed)
+	RebuildingOff,           // read fresh at other roots only, and this pose is never rebuilt
+};
+const char* MissReasonName(MissReason reason);
+
+// One miss, for the desync report: where it was and why.
+struct Miss {
+	int32_t frame = -1; // the input frame of the update that made the read
+	int32_t unit = -1;  // the fighter unit (-1: not known)
+	uint32_t from = 0;  // the call site's rva
+	MissReason reason = MissReason::NeverSeenPose;
+	char socket[32] = {};
+};
+
+// The latest misses of a battle, a ring of kMostMisses: the oldest goes. Not
+// thread-safe: the hook holds a lock.
+class MissRing {
+public:
+	static constexpr size_t kMostMisses = 64;
+	void Add(const Miss& miss);
+	// The misses whose frame lies in [first, last], oldest first.
+	std::vector<Miss> Between(int32_t first, int32_t last) const;
+	size_t Size() const { return count_; }
+	void Clear() { next_ = count_ = 0; }
+
+private:
+	std::array<Miss, kMostMisses> misses_;
+	size_t next_ = 0;
+	size_t count_ = 0;
 };
 
 // One battle's counts.
