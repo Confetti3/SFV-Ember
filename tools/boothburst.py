@@ -9,8 +9,9 @@ SFV's camera follows the fighter, so a burst grab sees the stage from elsewhere,
 more than the far wall. The plate is put back in the world by its depth and seen through each
 grab's camera (boothcamera.py), so it lines up with the grab everywhere; what then differs is the
 fighter, its effects and its shadow, wherever the move took it. For each grab:
-  - the subject: that difference, without specks, thin lines (a stage line a pixel off) and small
-    pieces far from the rest (the cloth a scaled-away fighter leaves on the floor);
+  - the subject: that difference, without specks, thin lines (a stage line a pixel off), small
+    pieces far from the rest (the cloth a scaled-away fighter leaves on the floor) and near-white
+    glare (the white ring every V-Trigger's activation draws, larger than most fighters);
   - unusable: a flash or a dimmed stage (the stage as a whole, or around the subject, much brighter
     or darker than the plate; a V-Trigger's activation dims it), a stage that no longer matches the plate (a cinematic camera, a covered screen), or
     a camera that turned to where the plate never saw;
@@ -46,6 +47,8 @@ SOURCE_DOWN = 2           # the plate is put back in the world from a picture sh
 DIFF = 18                 # a pixel differs when a channel differs by more than this (0-255)
 STAGE_MAX = 0.05          # share of the stage around the subject that may still differ from the plate (cleaned)
 COVER_MIN = 0.6           # share of the picture the plate must reach through the grab's camera
+GLARE_LUMA = 230.0        # near-white (brighter than this, channels within GLARE_SPREAD): the activation ring's glare
+GLARE_SPREAD = 24.0
 GAIN_MAX = 0.12           # a stage this much darker or brighter than the plate is dimmed or flashed: not used
 FLASH_LUMA = 10.0         # mean brightness change of the stage around the subject that counts as a flash or a dimmed stage (0-255)
 PIECE_MIN = 0.06          # a piece of the subject smaller than this share of it is left out...
@@ -179,9 +182,12 @@ def score_grab(stage: Stage, grab: np.ndarray, camera: bc.Camera, area: int) -> 
     if valid.any():
         g.gain = float(np.median(((luma(grab) + 1) / (luma(plate) + 1))[valid]))
         plate = plate * g.gain
-    cleaned = clean(differs(grab, plate) & valid)
+    # A V-Trigger's activation draws the same white ring for every fighter, larger than most of
+    # them: near-white glare is neither the subject nor a changed stage.
+    glare = _dilate((luma(grab) > GLARE_LUMA) & ((grab.max(axis=-1) - grab.min(axis=-1)) < GLARE_SPREAD), 3)  # and its halo
+    cleaned = clean(differs(grab, plate) & valid & ~glare)
     g.mask = subject(cleaned)
-    around = valid & ~_dilate(g.mask, 8)
+    around = valid & ~_dilate(g.mask, 8) & ~glare
     if around.any():
         g.stage = float(cleaned[around].mean())
         g.flash = float(np.abs(luma(grab[around]) - luma(plate[around])).mean()) > FLASH_LUMA
