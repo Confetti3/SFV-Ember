@@ -139,6 +139,7 @@ add_library(sfve_ember STATIC
     src/ember/SfvSwatchStrip.cxx
     src/ember/SfvTraining.cxx
     src/ember/SfvVerification.cxx
+    src/overlay/BorderlessWindow.cxx
     src/overlay/FrameGrab.cxx
     src/overlay/Overlay.cxx
     src/overlay/TextureUploaderD3D11.cxx)

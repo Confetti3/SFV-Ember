@@ -2,6 +2,8 @@
 
 #include "mod/GameHooks.hxx"
 #include "mod/Log.hxx"
+#include "mod/WindowState.hxx"
+#include "overlay/BorderlessWindow.hxx"
 #include "overlay/TextureUploaderD3D11.hxx"
 
 #include "platform/GameWindowSection.hxx"
@@ -104,6 +106,9 @@ struct ShaderBinding {
 // F10, which shows and hides it, is never the game's where it can be shown.
 LRESULT CALLBACK OverlayWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	// Borderless's own request to look at the window, made by the render
+	// thread and answered here, on the window's thread (BorderlessWindow.hxx).
+	if (BorderlessMessage(window, message)) return 0;
 	if (message == WM_ACTIVATEAPP) {
 		s_focused = wParam != 0;
 		if (!wParam) s_inputBridge.RequestClear(); // nothing stays held while away
@@ -241,6 +246,11 @@ void Draw(IDXGISwapChain* swap)
 {
 	DXGI_SWAP_CHAIN_DESC desc{};
 	if (FAILED(swap->GetDesc(&desc)) || !IsGameWindow(desc.OutputWindow)) return;
+	// The game's own Screen Mode full screen is exclusive: the chain says so.
+	// Others (BackgroundPlay, Borderless) leave the window alone then.
+	BOOL fullscreen = FALSE;
+	if (FAILED(swap->GetFullscreenState(&fullscreen, nullptr))) fullscreen = FALSE;
+	mod::SetExclusiveFullscreen(fullscreen != FALSE);
 	// The game's window for the launcher (platform/GameWindowSection.hxx):
 	// its freeze watch reads whether the window answers, and a second
 	// launcher started by a link brings it forward.
@@ -259,6 +269,8 @@ void Draw(IDXGISwapChain* swap)
 	if (!s_r.ready && !Attach(swap, desc)) return Detach();
 	const sf4e::ui::OverlayLifecycle::Frame drawing(s_lifecycle);
 	if (!drawing) return;
+	// After Attach: the window procedure that answers it is in place.
+	BorderlessPresented(desc.OutputWindow, fullscreen != FALSE);
 	if (!s_r.target) {
 		ID3D11Texture2D* backBuffer = nullptr;
 		if (FAILED(swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer)))) return;
@@ -302,11 +314,21 @@ HRESULT WINAPI h_Present(IDXGISwapChain* swap, UINT syncInterval, UINT flags)
 HRESULT WINAPI h_ResizeBuffers(IDXGISwapChain* swap, UINT count, UINT width, UINT height, DXGI_FORMAT format, UINT flags)
 {
 	if (swap == s_r.swap) Release(s_r.target);
-	return o_resizeBuffers(swap, count, width, height, format, flags);
+	const HRESULT result = o_resizeBuffers(swap, count, width, height, format, flags);
+	// What the engine made of a window's new size (the window's mode and
+	// Borderless's resize both end here): asked 0x0 is "the window's".
+	DXGI_SWAP_CHAIN_DESC desc{};
+	if (SUCCEEDED(result) && SUCCEEDED(swap->GetDesc(&desc)))
+		Log("overlay: back buffers resized, asked %ux%u, now %ux%u, %s", width, height, desc.BufferDesc.Width, desc.BufferDesc.Height,
+			desc.Windowed ? "windowed" : "full screen");
+	else
+		Log("overlay: back buffers resize, asked %ux%u, failed (%#lx)", width, height, (unsigned long)result);
+	return result;
 }
 
 // Present and ResizeBuffers are the same code for every swap chain: read
-// them from a throwaway one on a hidden window.
+// them from a throwaway one on a hidden window (hence its Windowed = TRUE:
+// it is only a source for the two functions' addresses, not the game's).
 bool FindSwapChainFunctions(void** present, void** resizeBuffers)
 {
 	HWND window = CreateWindowExW(0, L"STATIC", L"sfve-probe", WS_OVERLAPPED, 0, 0, 8, 8, nullptr, nullptr, nullptr, nullptr);

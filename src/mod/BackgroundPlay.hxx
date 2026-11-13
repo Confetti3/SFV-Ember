@@ -10,7 +10,9 @@
 //
 // Off unless asked for at launch (-sfve_background) or by the player's saved
 // Play in the background (dllmain, as the game starts); it changes nothing
-// else.
+// else. In exclusive full screen (the game's own Screen Mode setting, see
+// mod/ScreenMode.hxx) it lets the engine hear that it lost the focus, as the
+// game does unmodded: Windows takes such a window out of full screen then.
 
 #include "mod/GameHooks.hxx"
 
