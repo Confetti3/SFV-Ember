@@ -7,10 +7,16 @@ named where the game's code says what they are.
   python tools/stateregion.py <file.state> NAME --against <other.state>
                                                                only the words that differ, both sides
   python tools/stateregion.py <file.state> --fighters          what each fighter and live projectile plays
+  python tools/stateregion.py <file.state> NAME --census       the region's pointer words and what each refers to (version 2)
 
 A state file (%APPDATA%/SFVEmber/desync-states/*.state, EMBER_LIBRARY.md
 section 56) holds every region of the rollback state at a desync's
-checkpoint; tools/diffstate.py reads the format. Each word is shown as hex,
+checkpoint; tools/diffstate.py reads the format, versions 1 and 2. Version 2
+adds the pointer census: --census lists a region's address-like words with
+what each refers to, and --against lists, besides the value words that
+differ, the pointer words whose references (image offset, region and offset,
+object and offset, heap allocation size, offset and 32 bytes there) differ.
+Each word is shown as hex,
 two int32, two float32 and a tag: `img+0x...` for a pointer into the game's
 image (the image base comes from the global random generator's region, whose
 address is sfv::rng::kGlobal + kState past it), `heap` for another address
@@ -148,7 +154,9 @@ def owner_fields(name: str) -> tuple[int, dict[int, str]]:
     return start, {}
 
 
-def image_base(regions) -> int | None:
+def image_base(regions, census=None) -> int | None:
+    if census is not None and census.image_size:
+        return census.image_base  # version 2 files name it
     for size, address, _, name in regions:
         if name == "global.rng":
             return address - RNG_GLOBAL - RNG_STATE
@@ -188,12 +196,12 @@ def word_line(run_off: int, start: int, b: bytes, image: int | None, label: str)
     return text + (f"  {extra}" if extra else "")
 
 
-def show_region(regions, name: str, show_all: bool) -> None:
+def show_region(regions, name: str, show_all: bool, census=None) -> None:
     found = [r for r in regions if r[3] == name]
     if not found:
         sys.exit(f"no region named {name!r} (--list shows them)")
     size, address, data, _ = found[0]
-    image = image_base(regions)
+    image = image_base(regions, census)
     start, fields = owner_fields(name)
     print(f"{name}: {size} bytes at {address:#x}" + (f", image at {image:#x}" if image is not None else ""))
     zeros = 0
@@ -211,7 +219,21 @@ def show_region(regions, name: str, show_all: bool) -> None:
         print(f"    ({zeros} zero word{'s' if zeros > 1 else ''})")
 
 
-def show_against(regions, other, name: str) -> None:
+def show_census(state, name: str) -> None:
+    """A region's pointer words from a version 2 file, each with what it refers to."""
+    if state.census is None:
+        sys.exit("this file is version 1: it has no pointer census")
+    index = next((i for i, r in enumerate(state.regions) if r[3] == name), None)
+    if index is None:
+        sys.exit(f"no region named {name!r} (--list shows them)")
+    words = [w for w in state.census.words if w.region == index]
+    for w in words:
+        ref = diffstate.describe(state.census, state.regions, w)
+        print(f"+{w.offset:#06x}  {w.value:016x}  {diffstate.describe_text(ref)}")
+    print(f"{len(words)} pointer word(s) in {name}" + (" (the census was cut short)" if state.census.truncated else ""))
+
+
+def show_against(regions, other, name: str, states=None) -> None:
     mine = {r[3]: r for r in regions}
     theirs = {r[3]: r for r in other}
     if name not in mine or name not in theirs:
@@ -220,7 +242,8 @@ def show_against(regions, other, name: str) -> None:
     _, addr_b, b, _ = theirs[name]
     ma = diffstate.masked(addr_a, a)
     mb = diffstate.masked(addr_b, b)
-    image_a, image_b = image_base(regions), image_base(other)
+    image_a = image_base(regions, states[0].census if states else None)
+    image_b = image_base(other, states[1].census if states else None)
     start, fields = owner_fields(name)
     count = 0
     if (addr_a - addr_b) & 7:
@@ -236,6 +259,14 @@ def show_against(regions, other, name: str) -> None:
     if len(a) != len(b):
         print(f"sizes differ: {len(a)} and {len(b)}")
     print(f"{count} word(s) differ in {name} once addresses are masked as the hash masks them")
+    # Two version 2 files: where the pointers refer to different things.
+    if states and states[0].census is not None and states[1].census is not None:
+        ia = next(i for i, r in enumerate(states[0].regions) if r[3] == name)
+        ib = next(i for i, r in enumerate(states[1].regions) if r[3] == name)
+        lines: list[str] = []
+        values, pointers = diffstate.compare_regions(states[0], states[1], ia, ib, name, lines.append)
+        shown = [x for x in lines if "pointer" in x or x.lstrip().startswith("->")]
+        print(chr(10).join(shown) if shown else "no pointer word refers to different things")
 
 
 def int_at(data: bytes, off: int) -> int:
@@ -277,8 +308,10 @@ def main() -> None:
     p.add_argument("--all", action="store_true")
     p.add_argument("--against")
     p.add_argument("--fighters", action="store_true")
+    p.add_argument("--census", action="store_true")
     args = p.parse_args()
-    regions = diffstate.read(args.file)
+    state = diffstate.read_state(args.file)
+    regions = [r[:4] for r in state.regions]
     if not all(r[3] for r in regions):
         sys.exit(f"{args.file} is a dump without region names; use a desync state file")
     if args.fighters:
@@ -290,10 +323,14 @@ def main() -> None:
             if flt in name:
                 print(f"{size:>8}  {address:#014x}  {name}")
         return
-    if args.against:
-        show_against(regions, diffstate.read(args.against), args.name)
+    if args.census:
+        show_census(state, args.name)
         return
-    show_region(regions, args.name, args.all)
+    if args.against:
+        other = diffstate.read_state(args.against)
+        show_against(regions, [r[:4] for r in other.regions], args.name, (state, other))
+        return
+    show_region(regions, args.name, args.all, state.census)
 
 
 if __name__ == "__main__":

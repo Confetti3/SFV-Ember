@@ -1,11 +1,14 @@
 #include "ember/DesyncReporter.hxx"
 
 #include "ember/DesyncReport.hxx"
+#include "ember/DesyncTrace.hxx"
 #include "ember/RoomBattle.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
 #include "ember/SfvPickSpace.hxx"
+#include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
+#include "mod/SocketReads.hxx"
 
 #include "launcher/update/PackageInstaller.hxx"
 #include "launcher/update/github_release_client.hxx"
@@ -30,6 +33,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace sfve::adapter {
@@ -102,14 +106,24 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	facts.local = mismatch.local;
 	facts.remote = mismatch.remote;
 	facts.confirmed = session.LastConfirmedFrame();
+	facts.previousMatch = mismatch.previousMatch;
+	facts.now = session.Frame();
 	facts.delay = session.AppliedDelay();
 	facts.rollbacks = session.GetStats().rollbacks;
 	facts.longestRollback = session.GetStats().longestRollback;
+	// The frames before the mismatch, from the rings the battle fills
+	// (DesyncTrace.hxx): the last kRecentFrames' rollbacks, and both players'
+	// inputs for the kInputFrames before the checkpoint.
+	facts.recent = Trace().Recent(session.Frame(), desync::kRecentFrames);
+	facts.inputs = Trace().Inputs(mismatch.frame - desync::kInputFrames, mismatch.frame);
+	// The counts so far: the process's, until the reads are counted per battle
+	// (mod/SocketReads.cxx: ForgetSocketReads does not reset its counters).
+	facts.socketReads = mod::SocketReadsSummary();
 	facts.layoutId = session.Layout().LayoutId();
 	facts.matchBuild = MatchBuildId();
 	if (const std::vector<uint8_t>* state = session.CheckpointState(mismatch.frame)) {
 		for (const StateRegion& r : session.Layout().Regions()) {
-			facts.stateRegions.push_back({r.name, r.size, reinterpret_cast<std::uint64_t>(r.ptr)});
+			facts.stateRegions.push_back({r.name, r.size, reinterpret_cast<std::uint64_t>(r.ptr), r.checked, r.comparedWithPeers});
 		}
 		facts.state = *state;
 	}
@@ -160,12 +174,96 @@ std::string LogTail(int frame)
 	return desync::TailLines(bytes, size > kept, frame);
 }
 
+// What this process says of an address, for the pointer census: VirtualQuery
+// for whether it is mapped and its allocation, ReadProcessMemory (which fails
+// instead of faulting when the memory goes away under the report's thread)
+// for 32 bytes at the target.
+class ProcessEnv final : public desync::PointerEnv {
+public:
+	desync::PointerTarget Look(std::uint64_t address) override
+	{
+		desync::PointerTarget target;
+		MEMORY_BASIC_INFORMATION info{};
+		if (!VirtualQuery(reinterpret_cast<const void*>(address), &info, sizeof(info))) return target;
+		if (info.State != MEM_COMMIT || (info.Protect & (PAGE_NOACCESS | PAGE_GUARD))) return target;
+		target.mapped = true;
+		target.allocBase = reinterpret_cast<std::uint64_t>(info.AllocationBase);
+		target.allocSize = AllocationSize(info.AllocationBase);
+		if (info.Type == MEM_IMAGE) {
+			target.moduleBase = target.allocBase;
+			target.module = ModuleName(info.AllocationBase);
+		}
+		unsigned char bytes[32] = {};
+		SIZE_T read = 0;
+		// A read cut short (the target is near the region's end) is no hash:
+		// two copies' hashes of the same 32 bytes must be of 32.
+		if (ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(address), bytes, sizeof(bytes), &read) &&
+			read == sizeof(bytes)) {
+			std::uint64_t hash = 14695981039346656037ull; // FNV-1a
+			for (const unsigned char b : bytes) hash = (hash ^ b) * 1099511628211ull;
+			target.hash = hash;
+		}
+		return target;
+	}
+
+private:
+	// From the allocation's base to the end of the run of regions that share it.
+	std::uint64_t AllocationSize(const void* base)
+	{
+		const auto cached = sizes_.find(base);
+		if (cached != sizes_.end()) return cached->second;
+		std::uint64_t size = 0;
+		const unsigned char* at = static_cast<const unsigned char*>(base);
+		for (int i = 0; i < 4096; ++i) {
+			MEMORY_BASIC_INFORMATION info{};
+			if (!VirtualQuery(at, &info, sizeof(info)) || info.AllocationBase != base) break;
+			size += info.RegionSize;
+			at += info.RegionSize;
+		}
+		sizes_[base] = size;
+		return size;
+	}
+	std::string ModuleName(const void* base)
+	{
+		wchar_t path[MAX_PATH] = {};
+		const DWORD length = GetModuleFileNameW(static_cast<HMODULE>(const_cast<void*>(base)), path, MAX_PATH);
+		if (!length || length >= MAX_PATH) return "unknown";
+		std::string name;
+		const wchar_t* leaf = path;
+		for (const wchar_t* c = path; *c; ++c) {
+			if (*c == L'\\' || *c == L'/') leaf = c + 1;
+		}
+		for (const wchar_t* c = leaf; *c; ++c) name += *c < 128 ? static_cast<char>(*c) : '?'; // module names are ASCII
+		return name;
+	}
+	std::unordered_map<const void*, std::uint64_t> sizes_;
+};
+
+// The exe's extent, which the census calls the image.
+void SeedImage(desync::PointerCensus& census)
+{
+	const HMODULE exe = GetModuleHandleW(nullptr);
+	census.imageBase = reinterpret_cast<std::uint64_t>(exe);
+	const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(exe);
+	if (!exe || dos->e_magic != IMAGE_DOS_SIGNATURE) return;
+	const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(reinterpret_cast<const unsigned char*>(exe) + dos->e_lfanew);
+	if (nt->Signature == IMAGE_NT_SIGNATURE) census.imageSize = nt->OptionalHeader.SizeOfImage;
+}
+
 // This copy's state at the checkpoint, in its own folder beside the reports
 // (desync::StateFile), whether or not reports are sent; the oldest beyond
-// kStatesKept go.
+// kStatesKept go. The pointer census is taken here, on the report's own
+// thread, after the mismatch: nothing of it runs in the fight.
 void WriteState(const fs::path& settings, const std::wstring& stem, const desync::Facts& facts)
 {
-	const std::string bytes = desync::StateFile(facts);
+	desync::PointerCensus census;
+	SeedImage(census);
+	// Named objects (RegionNames' object index) are not handed over yet: a
+	// pointer into one is a region or heap pointer in the census until they
+	// are (RegionNames has no accessor for its objects and their extents).
+	ProcessEnv env;
+	census = desync::TakeCensus(facts, env, &mod::LooksLikeAddress, std::move(census));
+	const std::string bytes = desync::StateFile(facts, &census);
 	if (bytes.empty()) {
 		mod::Log("desync report: the state at checkpoint %d was no longer kept; no state file", facts.frame);
 		return;
@@ -242,6 +340,7 @@ void WriteDown(const desync::Facts& facts)
 	spooled.watcher = facts.watcher;
 	spooled.comment = desync::Comment(facts, spooled.buildId);
 	spooled.regionLines = desync::RegionLines(facts);
+	spooled.details = desync::DetailLines(facts);
 	spooled.logTail = LogTail(facts.frame);
 
 	const fs::path target = folder / (stem + desync::kSpoolExtension);
@@ -341,7 +440,7 @@ void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& 
 	}
 	if (report.stateBefore.size() == layout.TotalSize()) {
 		for (const StateRegion& r : layout.Regions()) {
-			facts.stateRegions.push_back({r.name, r.size, reinterpret_cast<std::uint64_t>(r.ptr)});
+			facts.stateRegions.push_back({r.name, r.size, reinterpret_cast<std::uint64_t>(r.ptr), r.checked, r.comparedWithPeers});
 		}
 		facts.state = report.stateBefore;
 	}

@@ -1,6 +1,7 @@
 #include "ember/SfvVerification.hxx"
 
 #include "ember/DesyncReporter.hxx"
+#include "ember/DesyncTrace.hxx"
 #include "ember/SfvGame.hxx"
 #include "mod/Log.hxx"
 
@@ -47,10 +48,15 @@ std::optional<CheckpointExchange::Mismatch> CheckpointExchange::Step(const Rollb
 			const auto it = local_.find(frame);
 			return it == local_.end() ? nullptr : &it->second;
 		},
-		[&first](const Checkpoint& local, const BattleHashV2& theirs) {
+		[this, &first](const Checkpoint& local, const BattleHashV2& theirs) {
 			// A watcher's hash is a diagnostic only; it never ends a fight.
-			if (!first && theirs.fromPlayer && local.overall != theirs.overall) {
-				first = Mismatch{local.ggpoStateFrame, local.overall, theirs.overall};
+			if (!theirs.fromPlayer) return;
+			if (local.overall != theirs.overall) {
+				if (!first) first = Mismatch{local.ggpoStateFrame, local.overall, theirs.overall, lastMatch_};
+			} else if (!first && local.ggpoStateFrame > lastMatch_) {
+				// Reconciled in frame order, so the last frame that agreed
+				// before the first mismatch is the one a report names.
+				lastMatch_ = local.ggpoStateFrame;
 			}
 		});
 	// Remote hashes older than every kept checkpoint can no longer be compared.
@@ -77,6 +83,7 @@ void CheckpointExchange::Reset()
 	local_.clear();
 	next_ = RollbackSession::kCheckpointInterval;
 	lastConfirmed_ = -1;
+	lastMatch_ = -1;
 	mismatchReported_ = false;
 }
 
@@ -92,6 +99,8 @@ public:
 	{
 		const RollbackSession* session = CurrentBattle().session;
 		if (!session || !session->Live()) return;
+		// The rollbacks by frame, for a desync's report (DesyncTrace.hxx).
+		Trace().NoteStep(session->Frame(), session->GetStats().rollbacks, session->GetStats().resimulatedFrames);
 		const bool player = client.IsLocalPlayer();
 		const CheckpointExchange::Publish send = [&client](const BattleHashV2& hash) {
 			nlohmann::json message = hash;
