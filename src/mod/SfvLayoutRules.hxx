@@ -48,9 +48,11 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 // masks AddStateOutsideTheGameSnapshot adds, laid out at fixed made-up
 // addresses (their offsets, sizes, flags and masks); and of the flow
 // record's rules (its size, sfv::flowstate's base and every class's size,
-// own fields and leftover words). The same for every copy of one build; any
-// change to a table that decides what is saved, restored or compared
-// changes it, and a new such table must feed it too.
+// own fields and leftover words); and of the two rules no table shows, the
+// address rule's version (kAddressRuleVersion) and the CRT math of the modes
+// that roll back (kRollbackCrtMath). The same for every copy of one build;
+// any change to a table or rule that decides what is saved, restored,
+// computed or compared changes it, and a new one must feed it too.
 const std::string& LayoutRulesId();
 
 } // namespace sfve::mod
