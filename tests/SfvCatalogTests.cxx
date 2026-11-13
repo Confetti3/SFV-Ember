@@ -203,22 +203,6 @@ TEST_CASE("which stages this copy has installed is its own: the room hears them,
 	CHECK(PlayableIds(StageOptions({0, 1, 2, kUninstalledStage})) == std::vector<int>{picks::kRandomStage});
 }
 
-TEST_CASE("a room's Skip winner scenes rule goes into the launch, on by default")
-{
-	FillTestCatalog();
-	RoomMatch match = MatchOf(2, 0, 1);
-	CHECK(match.skipScenes);
-	std::optional<mod::MatchPicks> picks = LaunchPicks(match).picks;
-	REQUIRE(picks);
-	CHECK(picks->skipScenes);
-	match.skipScenes = false;
-	picks = LaunchPicks(match).picks;
-	REQUIRE(picks);
-	CHECK_FALSE(picks->skipScenes);
-	// Not a launch's own default: a pipe's or Training's launch asks for nothing.
-	CHECK_FALSE(mod::MatchPicks{}.skipScenes);
-}
-
 TEST_CASE("a room's match launches its fighters, stage, rounds and time by the game's codes")
 {
 	FillTestCatalog();

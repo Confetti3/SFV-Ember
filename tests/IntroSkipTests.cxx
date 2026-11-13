@@ -189,69 +189,38 @@ TEST_CASE("a press in the scenes' first second asks nothing, then or later")
 	CHECK(request.Requested());
 }
 
-TEST_CASE("with the room's rule on the scenes ask by themselves once the guard is over, and never before")
+TEST_CASE("with no press the request is never set, however long the decided match's scenes run")
 {
 	constexpr int kFinish = 7;
 	constexpr int kDecidedAt = 800;
-	constexpr int kGuardEnds = kDecidedAt + intro_skip::kScenesGuardFrames;
 	intro_skip::Request request;
-	request.SetAutoScenes(true);
-	CHECK(request.AutoScenes());
-	// The fight asks nothing, rule or not.
 	CHECK(request.Next(kFight, 0, false, kDecidedAt - 1) == 0u);
-	CHECK_FALSE(request.Requested());
-	// Nothing in the guard: not on the deciding frame, not on any frame up to the last one inside it.
-	for (int frame = kDecidedAt; frame < kGuardEnds; frame++) {
+	// Far past the guard and past any scene's own length (the winner's demo, the
+	// results' 600-tick pages), through every state the scenes pass: nothing asks.
+	const int states[] = {kFinish, 11, 13, kFinish};
+	for (int frame = kDecidedAt; frame < kDecidedAt + 5000; frame++) {
 		INFO("frame " << frame);
-		CHECK(request.Next(kFinish, 0, true, frame) == 0u);
+		CHECK(request.Next(states[(frame / 1000) % 4], 0, true, frame) == 0u);
 		CHECK_FALSE(request.Requested());
 	}
-	// The first frame past it asks, with no press, and goes on asking through the scenes.
-	CHECK(request.Next(kFinish, 0, true, kGuardEnds) == kSkipBit);
-	CHECK(request.Requested());
-	CHECK(request.Next(11, 0, true, kGuardEnds + 1) == kSkipBit);
-	CHECK(request.Next(13, input::kLeft, true, kGuardEnds + 2) == (kSkipBit | input::kLeft));
-	// A rematch in place starts it over: nothing asked until its own scenes have shown the guard.
-	CHECK(request.Next(kMatchStart, 0, false, kGuardEnds + 3) == 0u);
-	CHECK_FALSE(request.Requested());
-	CHECK(request.Next(kFinish, 0, true, kGuardEnds + 4) == 0u);
-	CHECK_FALSE(request.Requested());
-	CHECK(request.Next(kFinish, 0, true, kGuardEnds + 4 + intro_skip::kScenesGuardFrames) == kSkipBit);
-}
-
-TEST_CASE("with the room's rule on a press in the guard still asks nothing, and the intro still needs a press")
-{
-	constexpr int kFinish = 7;
-	intro_skip::Request request;
-	request.SetAutoScenes(true);
-	// The intro: the rule is about the winner scenes, so no press, no request.
-	for (int frame = 0; frame < 200; frame++) CHECK(request.Next(kIntro, 0, false, frame) == 0u);
-	CHECK_FALSE(request.Requested());
-	CHECK(request.Next(kIntro, input::kHK, false, 200) == (kSkipBit | input::kHK));
-	CHECK(request.Next(kFight, 0, false, 201) == 0u);
-	// A mash inside the scenes' first second asks nothing, with the rule on too.
-	for (int frame = 300; frame < 300 + intro_skip::kScenesGuardFrames; frame++) {
-		CHECK(request.Next(kFinish, (frame % 3 == 0) ? input::kMP : 0, true, frame) == ((frame % 3 == 0) ? input::kMP : 0u));
+	// The same with a stick held (not an attack): a direction is no press.
+	for (int frame = kDecidedAt + 5000; frame < kDecidedAt + 5300; frame++) {
+		CHECK(request.Next(kFinish, input::kLeft, true, frame) == input::kLeft);
 		CHECK_FALSE(request.Requested());
 	}
-	CHECK(request.Next(kFinish, 0, true, 300 + intro_skip::kScenesGuardFrames) == kSkipBit);
-}
-
-TEST_CASE("with the rule off a press by this copy is the only ask, as before")
-{
-	constexpr int kFinish = 7;
-	intro_skip::Request request;
-	CHECK_FALSE(request.AutoScenes());
-	request.SetAutoScenes(true);
-	request.SetAutoScenes(false);
-	int frame = 100;
-	CHECK(request.Next(kFight, 0, false, frame++) == 0u);
-	for (int i = 0; i < 4 * intro_skip::kScenesGuardFrames; i++) {
-		CHECK(request.Next(kFinish, 0, true, frame++) == 0u);
-		CHECK_FALSE(request.Requested());
+	// And the same between two rounds, the match not decided.
+	namespace rf = sfve::mod::sfv::resultflow;
+	intro_skip::Request round;
+	CHECK(round.Next(kFight, 0, false, 99) == 0u);
+	for (int frame = 100; frame < 100 + 3000; frame++) {
+		const int state = (frame / 500) % 2 == 0 ? rf::kFinish : rf::kRoundResultDemo;
+		CHECK(round.Next(state, 0, false, frame) == 0u);
+		CHECK_FALSE(round.Requested());
 	}
-	CHECK(request.Next(kFinish, input::kLP, true, frame++) == (kSkipBit | input::kLP));
-	CHECK(request.Requested());
+	// The intro, likewise: it ends on a press only.
+	intro_skip::Request intro;
+	for (int frame = 0; frame < 3000; frame++) CHECK(intro.Next(kIntro, 0, false, frame) == 0u);
+	CHECK_FALSE(intro.Requested());
 }
 
 TEST_CASE("a button held through the guard counts only once released and pressed again")
@@ -435,16 +404,18 @@ TEST_CASE("between two rounds a fresh press after the guard asks, and the next r
 	CHECK_FALSE(request.Requested());
 }
 
-TEST_CASE("with the room's rule on, the scenes between two rounds ask by themselves after the guard")
+TEST_CASE("a press after the guard is the only ask for the scenes between two rounds, and the next round's call clears it")
 {
 	namespace rf = sfve::mod::sfv::resultflow;
 	intro_skip::Request request;
-	request.SetAutoScenes(true);
 	int frame = 500;
 	CHECK(request.Next(kFight, 0, false, frame++) == 0u);
 	const int from = frame;
-	for (; frame < from + intro_skip::kScenesGuardFrames; frame++) CHECK(request.Next(rf::kFinish, 0, false, frame) == 0u);
-	CHECK(request.Next(rf::kFinish, 0, false, frame++) == kSkipBit);
+	for (; frame < from + 4 * intro_skip::kScenesGuardFrames; frame++) {
+		CHECK(request.Next(rf::kFinish, 0, false, frame) == 0u);
+		CHECK_FALSE(request.Requested());
+	}
+	CHECK(request.Next(rf::kFinish, input::kMK, false, frame++) == (kSkipBit | input::kMK));
 	CHECK(request.Next(rf::kRoundDoubleKODemo, 0, false, frame++) == kSkipBit);
 	// Never into the next round's call or its fight.
 	CHECK(request.Next(rf::kRoundStart, 0, false, frame++) == 0u);

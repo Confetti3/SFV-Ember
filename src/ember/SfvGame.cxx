@@ -472,8 +472,11 @@ Capabilities SfvCapabilities()
 	caps.training = true;
 	// A private room's host may allow tiny fighters (TinyFighters, EMBER_LIBRARY.md section 59).
 	caps.tinyFighters = true;
-	// A room's Skip winner scenes rule (docs/design/beta8/autoskip.md).
-	caps.skipScenes = true;
+	// No Skip winner scenes rule: a scene skip is only ever a player's press
+	// (docs/design/beta9/skip.md), so the library leaves the row out of Room
+	// settings (offersSkipScenes) and a public room's rule, carried as on, is
+	// never read. Spelled out so a later change does not turn it on by habit.
+	caps.skipScenes = false;
 	// A private room's host may ban stages (docs/design/beta8/stageban.md).
 	caps.bannedStages = true;
 	// Ember's hitbox viewer over SFV's Training, switched from Training select
@@ -504,8 +507,6 @@ std::optional<RoomMatch> RoomMatchNow()
 	// (server-owned) room (EMBER_LIBRARY.md section 59).
 	const auto& snapshot = netplay->client.GetRoomSnapshot();
 	room.tinyAllowed = snapshot.tinyFighters && !snapshot.serverOwned;
-	// The room's Skip winner scenes rule, public rooms' too (on by default).
-	room.skipScenes = snapshot.skipScenes;
 	return room;
 }
 
