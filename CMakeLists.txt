@@ -111,6 +111,7 @@ add_library(sfve_ember STATIC
     src/ember/RoomBattle.cxx
     src/ember/RoomCommands.cxx
     src/ember/SfvArt.cxx
+    src/ember/SfvBackdrop.cxx
     src/ember/SfvBackdropRules.cxx
     src/ember/SfvBoxes.cxx
     src/ember/SfvCatalog.cxx

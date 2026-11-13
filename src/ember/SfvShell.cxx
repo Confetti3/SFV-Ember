@@ -3,6 +3,7 @@
 #include "ember/EmberHost.hxx"
 #include "ember/RoomBattle.hxx"
 #include "ember/SfvArt.hxx"
+#include "ember/SfvBackdrop.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvEleven.hxx"
 #include "ember/SfvHitboxes.hxx"
@@ -130,10 +131,17 @@ public:
 		// Training select's Hitboxes row shows the viewer's saved choice
 		// (SfvHitboxes; docs/design/beta8/hitboxes.md).
 		view.hitboxesShown = SfvHitboxesShown();
+		// Look's Background artwork row: the game's own pictures behind the
+		// shell's pages (SfvBackdrop; docs/design/beta8/backdrop.md).
+		view.offersMenuArtwork = true;
+		view.menuArtworkShown = SfvBackdropShown();
 	}
 
 	// Training select's Hitboxes row: the viewer's choice, saved.
 	bool ShowHitboxes(bool shown) override { return ShowSfvHitboxes(shown); }
+
+	// Look's Background artwork row: the backdrop on or off, saved.
+	bool ShowMenuArtwork(bool shown) override { return ShowSfvBackdrop(shown); }
 
 	// The table page's Appearance and Ultra rows, and the post-match
 	// prompt's Ultra: SfvSelectionScreen's StepTableSelection. Like SF4's,
@@ -489,6 +497,13 @@ overlay::OverlayUi::Shown Draw()
 	// Over SFV's Training battle: the room line and the call's banner.
 	DrawSfvTraining(*shell.frame, presentation.Visible(), shell.host.Shell().UnreadChat(), overlay::GameWindowFocused());
 	DrawReplayControls(shell, snapshot, presentation.Visible());
+	// The artwork behind the shell's pages only while it is shown over the
+	// game's main menu, with no match, watched match or replay: never over a
+	// battle, a loading screen or the WIN (SfvBackdrop).
+	const bool backdrop = presentation.Visible() && snapshot.menuContext == input::MenuContext::MainMenu &&
+		snapshot.session.match == sf4e::netplay::MatchState::None && !snapshot.watchedGame.Active() &&
+		!snapshot.replays.playback.playback;
+	BackdropFrame(backdrop, shell.host.Shell().Navigation().Screen());
 	const double now = ImGui::GetTime();
 	if (presentation.Visible() != shell.wasShown) shell.changedAt = now;
 	const float fade = FadeProgress(now - shell.changedAt);
@@ -598,6 +613,7 @@ bool ShellTakesPads()
 void InstallEmberShell()
 {
 	InstallSfvArt();
+	InstallSfvBackdrop();
 	InstallSfvHud();
 	// Random on the board (SfvRandomFighter): each frame the runtime hears
 	// whether the pick is Random, and a roll it made becomes the stored pick.
