@@ -155,7 +155,7 @@ struct Facts {
 	std::vector<CensusObject> objects;
 	std::vector<RegionFacts> regions; // the checkpoint's, in canonical order
 	// This copy's whole state at the checkpoint (the session keeps the last
-	// two checkpoints'), its regions in the layout's order; empty when it was
+	// RollbackSession::kCheckpointStatesKept checkpoints'), its regions in the layout's order; empty when it was
 	// no longer kept.
 	std::vector<StateRegionFacts> stateRegions;
 	std::vector<std::uint8_t> state;

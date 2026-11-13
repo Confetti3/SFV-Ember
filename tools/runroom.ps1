@@ -724,7 +724,7 @@ foreach ($i in $copies) {
 # The copies close here, whatever happened above; the logs stay.
 RemoveRollingShots
 if (!$keep) { python -I tools\sfve.py kill | Out-Null }
-# Each copy logs its checkpoint hashes (every 60 confirmed frames); tools/verdict.ps1
+# Each copy logs its checkpoint hashes (every 20 confirmed frames, RollbackSession::kCheckpointInterval); tools/verdict.ps1
 # compares them and holds the verdict rule: PASS needs a compared checkpoint.
 $h0 = Get-Checkpoints $logOf[0]; $h1 = Get-Checkpoints $logOf[1]
 $checkpoints = Compare-Checkpoints $h0 $h1

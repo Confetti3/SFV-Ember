@@ -20,7 +20,7 @@ using sf4e::SessionProtocol::BattleHashV2;
 
 namespace {
 
-// The session's checkpoint spacing: these tests hold for any of its values (60 in beta.8, 20 proposed for beta.9).
+// The session's checkpoint spacing: these tests hold for any of its values (60 in beta.8, 20 from beta.9).
 constexpr int kInterval = RollbackSession::kCheckpointInterval;
 
 // Both peers' checks, each publishing into the other's remote hashes.

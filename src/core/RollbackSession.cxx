@@ -13,9 +13,10 @@ namespace {
 
 constexpr int kPoolSlots = GGPO_MAX_PREDICTION_FRAMES + 4;
 constexpr int kHistory = 256;
-// Five minutes of checkpoints (about 550 regions x 16 bytes each), so a
+// Five minutes of checkpoints (about 550 regions x 16 bytes each: 8 MB), so a
 // divergence that comes and goes is still found region by region after it.
-constexpr size_t kCheckpointsKept = 300;
+// 900 at the interval of 20 (it was 300 at 60).
+constexpr size_t kCheckpointsKept = 900;
 
 RollbackSession* s_active = nullptr;
 
@@ -892,7 +893,7 @@ void RollbackSession::HashConfirmed()
 		if (confirmed > confirmed_) confirmed_ = confirmed;
 	}
 	if (!config_.hashOnConfirm) return;
-	// Oldest first: the checkpoints kept (CheckpointState) are the latest two.
+	// Oldest first: the checkpoints kept (CheckpointState) are the latest ones.
 	for (;;) {
 		Slot* next = nullptr;
 		for (Slot& s : pool_) {
@@ -916,14 +917,18 @@ void RollbackSession::RecordHash(int frame, const uint8_t* bytes, long long copy
 {
 	StateLayout& layout = game_.Layout();
 	const bool checkpoint = frame % kCheckpointInterval == 0;
-	// A checkpoint's bytes are kept (CheckpointState), in the older of the
-	// two kept unless this frame's own (saved again after a rollback) is
-	// there. A save with no copy has its state copied there, its one copy.
+	// A checkpoint's bytes are kept (CheckpointState), in the oldest of the
+	// kept states (an empty one first) unless this frame's own (saved again
+	// after a rollback) is there. A save with no copy has its state copied
+	// there, its one copy.
 	if (checkpoint) {
-		KeptState* keep = &checkpointStates_[0];
-		if (checkpointStates_[1].frame == frame || (checkpointStates_[0].frame != frame &&
-				checkpointStates_[1].frame < checkpointStates_[0].frame)) {
-			keep = &checkpointStates_[1];
+		KeptState* keep = nullptr;
+		for (KeptState& kept : checkpointStates_) {
+			if (kept.frame == frame) {
+				keep = &kept;
+				break;
+			}
+			if (!keep || kept.frame < keep->frame) keep = &kept;
 		}
 		keep->frame = frame;
 		if (bytes) {

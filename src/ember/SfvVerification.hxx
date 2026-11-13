@@ -58,8 +58,10 @@ public:
 	// room client clears the remote hashes it buffers itself.
 	void Reset();
 
-	// How many confirmed checkpoints are kept for remote hashes still to come.
-	static constexpr std::size_t kKeptCheckpoints = 64;
+	// How many confirmed checkpoints are kept for remote hashes still to come:
+	// the 64 seconds of play it was at 60 frames to a checkpoint (64), now 192
+	// at 20.
+	static constexpr std::size_t kKeptCheckpoints = 64 * 60 / RollbackSession::kCheckpointInterval;
 
 private:
 	struct Checkpoint {

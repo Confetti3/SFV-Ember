@@ -5,7 +5,7 @@
 // the state P1 starts from, and a copy that does not takes P1's bytes where
 // they may be taken.
 //
-// Each frame-0 cause of a desync so far was found at checkpoint 60 and fixed
+// Each frame-0 cause of a desync so far was found at the first checkpoint (60 in beta.8, 20 now) and fixed
 // on its own (EMBER_LIBRARY.md sections 48 and 53): a value one process
 // started with that the other did not. This turns the next one into a logged
 // repair before frame 0 instead of a desync.

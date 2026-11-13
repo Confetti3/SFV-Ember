@@ -2,7 +2,8 @@
 
   python tools/compare.py [a] [b]
 
-* the last 60 confirmed frames' state hashes, side by side;
+* the last 60 confirmed frames' state hashes, side by side (three checkpoints'
+  worth: RollbackSession::kCheckpointInterval is 20);
 * the latest common checkpoint's regions (the peers' hashes, size:hash in
   canonical order), unmatched ones grouped by size;
 * the first checkpoint whose hash differs, from both mod logs (every
@@ -25,6 +26,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import sfvelib as lib  # noqa: E402
 
+# RollbackSession::kCheckpointInterval (20 from beta.9, 60 before): the frames
+# between two checkpoints.
+CHECKPOINT_INTERVAL = 20
 _CHECKPOINT = re.compile(r"checkpoint: frame (\d+) hash ([0-9a-f]+)")
 
 
@@ -59,7 +63,7 @@ def compare_regions(a: int, b: int, frame: int) -> None:
 def first_differing_frame(a: int, b: int, checkpoint: int) -> None:
     """With every frame hashed and kept (-sfve_hash_every=1), the first frame
     before `checkpoint` whose hashes differ."""
-    for frame in range(max(0, checkpoint - 59), checkpoint + 1):
+    for frame in range(max(0, checkpoint - CHECKPOINT_INTERVAL + 1), checkpoint + 1):
         ha, hb = lib.request(a, f"hash {frame}"), lib.request(b, f"hash {frame}")
         if not (ha.startswith("ok") and hb.startswith("ok")):
             print("frames between checkpoints are not all kept (-sfve_hash_every=1 keeps them)")

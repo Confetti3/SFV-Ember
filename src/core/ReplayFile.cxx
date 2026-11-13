@@ -20,7 +20,11 @@ constexpr size_t kMagicBytes = sizeof(kMagic);
 constexpr size_t kRunBytes = 13;       // u32 frames, u32 P1, u32 P2, u8 flags
 constexpr size_t kCheckpointBytes = 12; // i32 frame, u64 hash
 constexpr size_t kTrailerBytes = 8;
-constexpr int kCheckpointInterval = 60; // RollbackSession::kCheckpointInterval
+// RollbackSession::kCheckpointInterval. A file is accepted when its checkpoints
+// are multiples of this: the ones recorded at 60 (beta.8) are, and a playback
+// compares only the frames the file lists (NotePlaybackCheckpoint), so a file
+// with fewer checkpoints than the session now makes still verifies.
+constexpr int kCheckpointInterval = 20;
 
 void PutU32(std::vector<uint8_t>& out, uint32_t v)
 {

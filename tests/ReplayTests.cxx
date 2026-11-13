@@ -120,6 +120,22 @@ TEST_CASE("a replay file reads back as written, and anything else is refused")
 		CHECK_FALSE(replay::Decode(versioned.data(), versioned.size(), &back, &error));
 		CHECK(error == "a replay of another version");
 	}
+	SUBCASE("checkpoints at the session's interval, or at beta.8's 60 (SampleReplay's), load; any other spacing is refused")
+	{
+		// The sample's checkpoints are 60 apart, as a beta.8 file's are: still
+		// multiples of the interval (read back above).
+		CHECK(60 % RollbackSession::kCheckpointInterval == 0);
+		replay::Replay now = r;
+		now.checkpoints.clear();
+		for (int f = 0; f <= 600; f += RollbackSession::kCheckpointInterval) now.checkpoints.push_back({f, 0x2000u + (uint64_t)f});
+		std::vector<uint8_t> b = replay::Encode(now);
+		REQUIRE_MESSAGE(replay::Decode(b.data(), b.size(), &back, &error), error);
+		CHECK(back.checkpoints == now.checkpoints);
+		replay::Replay odd = r;
+		odd.checkpoints = {{RollbackSession::kCheckpointInterval + 1, 1}}; // inside the frames, not a multiple
+		b = replay::Encode(odd);
+		CHECK_FALSE(replay::Decode(b.data(), b.size(), &back, &error));
+	}
 	SUBCASE("checkpoints past the frames, or a frame of no known kind")
 	{
 		replay::Replay bad = r;
@@ -449,8 +465,8 @@ TEST_CASE("two fighters and a watcher record the same battle, and its playback r
 		CHECK(fa[(size_t)heldFrom].Held());
 		CHECK(fa[(size_t)*trio.decided[0] - 1].Held());
 		CHECK(fa[(size_t)*trio.decided[0]].Fight());
-		// The fighters' checkpoints, every 60 frames up to the end, alike.
-		CHECK(ca.size() >= (size_t)(end / 60));
+		// The fighters' checkpoints, every interval up to the end, alike.
+		CHECK(ca.size() >= (size_t)(end / RollbackSession::kCheckpointInterval));
 		CHECK(std::equal(ca.begin(), ca.begin() + (ptrdiff_t)std::min(ca.size(), cb.size()), cb.begin()));
 
 		// The battle again from A's recording, on a game that never saw it.

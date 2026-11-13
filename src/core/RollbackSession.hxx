@@ -69,10 +69,16 @@ class RollbackSession {
 public:
 	// Every kCheckpointInterval frames the session also keeps one hash per
 	// region, so peers that disagree can find where. The latest five minutes
-	// are kept.
+	// are kept. (20 from beta.9, 60 before: a checkpoint every third of a
+	// second of play instead of every second, and a replay's recorded
+	// checkpoints, which are multiples of the interval it was recorded at, stay
+	// valid at any divisor of it: ReplayFile accepts every multiple of 20.)
 	// Frame and region hashes here are the peers' (HashScope::Peers): two
 	// processes playing the same match agree on them.
-	static constexpr int kCheckpointInterval = 60;
+	static constexpr int kCheckpointInterval = 20;
+	// How many checkpoints' whole states are kept (CheckpointState): 120
+	// frames of them, a state's size each, for the desync report's state file.
+	static constexpr int kCheckpointStatesKept = 6;
 
 	struct Config {
 		int localPlayer = 0;               // 0 = P1, 1 = P2
@@ -296,8 +302,8 @@ public:
 	// The peers' per-region hashes of checkpoint `frame`, in canonical order.
 	bool RegionHashesAt(int frame, std::vector<RegionHash>* out) const;
 	// The whole state at checkpoint `frame` as last hashed (the layout's
-	// regions one after another), while it is one of the last two
-	// checkpoints; null otherwise. A desync report keeps it, so two copies'
+	// regions one after another), while it is one of the last
+	// kCheckpointStatesKept checkpoints; null otherwise. A desync report keeps it, so two copies'
 	// states can be compared byte by byte.
 	const std::vector<uint8_t>* CheckpointState(int frame) const;
 	int LatestCheckpoint(int atOrBefore) const;
@@ -425,7 +431,7 @@ private:
 		int frame = -1;
 		std::vector<uint8_t> bytes;
 	};
-	KeptState checkpointStates_[2]; // the last two checkpoints' states (CheckpointState)
+	KeptState checkpointStates_[kCheckpointStatesKept]; // the latest checkpoints' states (CheckpointState)
 	int frame_ = 0;
 	// Held frames (StepHeld): from heldFrom_ up to heldTo_ (exclusive; the
 	// current frame while holding_).

@@ -114,7 +114,7 @@ struct Header {
 struct Replay {
 	Header header;
 	ReplayFrames frames;
-	std::vector<std::pair<int, uint64_t>> checkpoints; // frame order, every kCheckpointInterval
+	std::vector<std::pair<int, uint64_t>> checkpoints; // frame order, multiples of the recorder's interval
 };
 
 // The frames that read inputs and the stretches of them (Header's counts).
