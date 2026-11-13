@@ -111,6 +111,7 @@ add_library(sfve_ember STATIC
     src/ember/RoomBattle.cxx
     src/ember/RoomCommands.cxx
     src/ember/SfvArt.cxx
+    src/ember/SfvBackdropRules.cxx
     src/ember/SfvBoxes.cxx
     src/ember/SfvCatalog.cxx
     src/ember/SfvFaceCrop.cxx
@@ -266,6 +267,11 @@ target_link_libraries(sfve_selection_assets PUBLIC ember_neutral_x64 xxHash::xxh
 sfve_embed_text_file("${CMAKE_CURRENT_SOURCE_DIR}/data/select-grid.json"
     "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedSelectGrid.cxx" "sfve::grid" kEmbeddedSelectGridJson)
 target_sources(sfve_ember PRIVATE "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedSelectGrid.cxx")
+# The menu backdrop's art set (data/menu-art.json, src/ember/SfvBackdropRules.cxx),
+# embedded the same way: no file of its own in the package.
+sfve_embed_text_file("${CMAKE_CURRENT_SOURCE_DIR}/data/menu-art.json"
+    "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedMenuArt.cxx" "sfve::backdrop" kEmbeddedMenuArtJson)
+target_sources(sfve_ember PRIVATE "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedMenuArt.cxx")
 sf4e_embed_brand_mark(sfve_product "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
 target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product sfve_selection_assets ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
 
@@ -303,6 +309,7 @@ add_executable(sfve_ember_tests
     tests/PhotoBoothTests.cxx
     tests/FaceCropTests.cxx
     tests/SfvPictureSpecTests.cxx
+    tests/SfvBackdropTests.cxx
     tests/SwatchStripTests.cxx
     tests/SfvVerificationTests.cxx
     tests/DesyncReportTests.cxx
@@ -340,12 +347,13 @@ target_compile_definitions(sfve_ember_tests PRIVATE SFVE_EMBER_SOURCE_ROOT="${sf
 # RoomBuildTests reads the room host's pick space from this checkout.
 file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/data/pick-space.json" sfve_pick_space_forward)
 target_compile_definitions(sfve_ember_tests PRIVATE SFVE_PICK_SPACE_PATH="${sfve_pick_space_forward}")
-# SfvSelectGridTests reads the select grid, and LoadoutNotesTests the loadout
-# catalogs, from this checkout.
+# SfvSelectGridTests reads the select grid, LoadoutNotesTests the loadout
+# catalogs and SfvBackdropTests the menu's art set, from this checkout.
 file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/data/select-grid.json" sfve_select_grid_forward)
 file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/locales/loadout" sfve_loadout_locales_forward)
+file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/data/menu-art.json" sfve_menu_art_forward)
 target_compile_definitions(sfve_ember_tests PRIVATE SFVE_SELECT_GRID_PATH="${sfve_select_grid_forward}"
-    SFVE_LOADOUT_LOCALES_DIR="${sfve_loadout_locales_forward}")
+    SFVE_LOADOUT_LOCALES_DIR="${sfve_loadout_locales_forward}" SFVE_MENU_ART_PATH="${sfve_menu_art_forward}")
 
 # The catalog's life (empty, filled once, sealed) changes the process for good: a program of its own.
 add_executable(sfve_catalog_lifecycle_tests tests/main.cxx tests/CatalogLifecycleTests.cxx)
