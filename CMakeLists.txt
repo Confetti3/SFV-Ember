@@ -22,6 +22,8 @@ find_package(doctest CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(CLI11 CONFIG REQUIRED)
+# The launcher deflates a desync's state file for its report (src/launcher/DesyncCourier.cxx).
+find_package(ZLIB REQUIRED)
 # The controller layer's SDL (src/mod/SdlPads.cxx and the library's
 # common/SdlPadSource; EMBER_LIBRARY.md section 49), a static library like
 # every package of the triplet: no SDL3.dll comes with the mod.
@@ -455,7 +457,7 @@ target_include_directories(Launcher PRIVATE src "${SFVE_EMBER_SOURCE_ROOT}/src" 
 target_compile_definitions(Launcher PRIVATE UNICODE _UNICODE)
 # Its wWinMain is in ember_launcher_x64, where the linker does not look for an entry point.
 target_link_options(Launcher PRIVATE "/ENTRY:wWinMainCRTStartup")
-target_link_libraries(Launcher PRIVATE sfve_product sfve_selection_assets ember_launcher_x64 CLI11::CLI11 "${DETOURS_LIBRARY}")
+target_link_libraries(Launcher PRIVATE sfve_product sfve_selection_assets ember_launcher_x64 CLI11::CLI11 ZLIB::ZLIB "${DETOURS_LIBRARY}")
 sfve_program_resources(Launcher "SFV Ember" "Launcher.exe")
 # A Windows program, as SF4 Ember's: its progress window is all a player sees.
 add_executable(Updater WIN32 src/launcher/LauncherSelection.cxx)

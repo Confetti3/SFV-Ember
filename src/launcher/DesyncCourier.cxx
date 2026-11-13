@@ -4,6 +4,7 @@
 
 #include "common/ProductIdentity.hxx"
 #include "common/sf4e__NetUtil.hxx"
+#include "launcher/update/PackageInstaller.hxx"
 #include "launcher/update/github_release_client.hxx"
 #include "netplay/SettingsStore.hxx"
 #include "platform/ProblemReport.hxx"
@@ -15,6 +16,7 @@
 #include <windows.h>
 
 #include <spdlog/spdlog.h>
+#include <zlib.h>
 
 #include <algorithm>
 #include <atomic>
@@ -22,6 +24,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -40,11 +43,23 @@ namespace fs = std::filesystem;
 namespace desync = sfve::adapter::desync;
 namespace reports = sf4e::reports;
 
-constexpr std::chrono::seconds kPassInterval{30};
+// A pass over the waiting reports: a report the game wrote is on its way
+// within this many seconds, which is as soon as its fight ended (a fighter's
+// mismatch ends the fight). The pass is a directory listing when none waits.
+constexpr std::chrono::seconds kPassInterval{5};
 // Tries of one report in one launcher's life that came to nothing.
-constexpr int kTriesPerRun = 2;
+constexpr int kTriesPerRun = 5;
+// After an answer that asks for patience (a busy intake, a rate limit, no
+// connection) nothing is sent for this long.
+constexpr std::int64_t kPauseSeconds = 120;
 // Larger than any report the game writes (its log's tail is at most 256 KiB).
 constexpr std::uintmax_t kSpoolFileBytes = 1024 * 1024;
+// A state file: 1 MB of regions and a census of at most 65536 pointer words.
+constexpr std::uintmax_t kStateFileBytes = 6 * 1024 * 1024;
+// What the intake's body limit (5 MiB, ProblemReport.hxx) leaves for the
+// deflated state beside the report's log.
+constexpr std::size_t kBodyLimit = 5 * 1024 * 1024;
+constexpr std::size_t kDeflatedStateLimit = 2 * 1024 * 1024;
 
 std::int64_t Now()
 {
@@ -100,6 +115,55 @@ std::string Redacted(const std::string& tail, const reports::Account& account)
 		start = end + 1;
 	}
 	return reports::Utf8Tail(text, desync::kLogBytes);
+}
+
+// The installed build's id: the SHA-256 of the sfv_ember.dll beside this
+// launcher, which is what the game hashes of itself for a report's build id
+// (DesyncReporter's ModuleHash). Empty when it cannot be read.
+std::string InstalledBuildId()
+{
+	wchar_t path[MAX_PATH] = {};
+	const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
+	if (!length || length >= MAX_PATH) return {};
+	try {
+		return sf4e::launcher::Sha256Hex(fs::path(path).parent_path() / ember::Product().gameModule);
+	} catch (...) {
+		return {};
+	}
+}
+
+// The state file a report names: the report's own name with the state's
+// extension (the game writes both under one stem), read whole; empty when it
+// is gone (it is kept for the newest kStatesKept only), too large or unreadable.
+std::string ReadState(const fs::path& settings, const fs::path& report)
+{
+	std::wstring name = report.filename().wstring();
+	const std::wstring extension = desync::kSpoolExtension;
+	if (name.size() <= extension.size()) return {};
+	name.resize(name.size() - extension.size());
+	const fs::path path = settings / desync::kStateFolder / (name + desync::kStateExtension);
+	std::ifstream file(path, std::ios::binary | std::ios::ate);
+	if (!file) return {};
+	const std::streamoff size = file.tellg();
+	if (size <= 0 || static_cast<std::uintmax_t>(size) > kStateFileBytes) return {};
+	std::string bytes(static_cast<std::size_t>(size), '\0');
+	file.seekg(0);
+	if (!file.read(bytes.data(), size)) return {};
+	return bytes;
+}
+
+// A zlib stream of `raw` (about 1 MB raw gives about 15 KB: its regions are
+// mostly zeros); empty when it fails or does not fit the limit.
+std::string Deflate(const std::string& raw)
+{
+	uLongf size = compressBound(static_cast<uLong>(raw.size()));
+	std::string out(size, '\0');
+	if (compress2(reinterpret_cast<Bytef*>(out.data()), &size, reinterpret_cast<const Bytef*>(raw.data()),
+			static_cast<uLong>(raw.size()), Z_BEST_COMPRESSION) != Z_OK) {
+		return {};
+	}
+	out.resize(size);
+	return out.size() <= kDeflatedStateLimit ? out : std::string();
 }
 
 // A report file held open by this launcher alone, deleted when it is settled.
@@ -198,24 +262,111 @@ private:
 		const std::wstring settings = sf4e::netplay::SettingsStore::DefaultDirectory();
 		if (settings.empty()) return;
 		const fs::path folder = fs::path(settings) / desync::kSpoolFolder;
-		std::vector<fs::path> waiting;
+		std::vector<fs::path> files;
 		std::error_code ec;
 		const std::wstring extension = desync::kSpoolExtension;
 		for (fs::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec)) {
 			const std::wstring name = it->path().filename().wstring();
 			if (name.size() > extension.size() && name.compare(name.size() - extension.size(), extension.size(), extension) == 0) {
-				waiting.push_back(it->path());
+				files.push_back(it->path());
 			}
 		}
+		if (files.empty()) return;
 		// Named by the time they were written: oldest first.
-		std::sort(waiting.begin(), waiting.end());
-		for (const fs::path& path : waiting) {
+		std::sort(files.begin(), files.end());
+
+		// Which are sent, in what order, and which are dropped unsent
+		// (desync::PlanSends): the installed build's reports, newest first.
+		if (installedBuild_.empty()) installedBuild_ = InstalledBuildId();
+		// `paths[i]` is `waiting[i]`'s file.
+		std::vector<desync::Waiting> waiting;
+		std::vector<fs::path> paths;
+		std::vector<fs::path> unreadable;
+		for (const fs::path& path : files) {
+			const std::optional<desync::Spooled> spooled = Peek(path);
+			if (!spooled) {
+				unreadable.push_back(path); // Deliver deletes what is not a report, and skips what another launcher holds
+				continue;
+			}
+			waiting.push_back({spooled->time, spooled->buildId});
+			paths.push_back(path);
+		}
+		const desync::SendPlan plan = desync::PlanSends(waiting, installedBuild_, Now());
+		for (const std::size_t i : plan.otherBuild) {
+			spdlog::info("Desync report {}: from another build than the installed one; deleted unsent",
+				sf4e::platform::WideToUtf8(paths[i].filename().wstring()));
+			Discard(paths[i]);
+		}
+		for (const std::size_t i : plan.stale) {
+			spdlog::info("Desync report {}: older than a week; deleted unsent", sf4e::platform::WideToUtf8(paths[i].filename().wstring()));
+			Discard(paths[i]);
+		}
+		for (const fs::path& path : unreadable) {
 			if (cancelled_) return;
+			Deliver(path, settings);
+		}
+		for (const std::size_t i : plan.send) {
+			if (cancelled_) return;
+			const fs::path& path = paths[i];
 			int& tries = tries_[path.filename().wstring()];
 			if (tries >= kTriesPerRun) continue;
+			if (Now() < pauseUntil_) return;
+			// The caps are checked before every send: the day's (a flood guard
+			// over a session) and the intake's own pace.
+			const std::int64_t wait = Wait(settings);
+			if (wait > 0) {
+				if (!limitLogged_) {
+					spdlog::info("Desync report {}: the sending limit is reached; it waits {} s",
+						sf4e::platform::WideToUtf8(path.filename().wstring()), wait);
+				}
+				limitLogged_ = true;
+				return; // every other waiting report hits the same limit
+			}
+			limitLogged_ = false;
 			if (!Deliver(path, settings)) tries++;
 		}
 	}
+
+	// A report's parsed file without holding it; nothing when it is gone,
+	// another launcher has it, or it is not one.
+	static std::optional<desync::Spooled> Peek(const fs::path& path)
+	{
+		std::ifstream file(path, std::ios::binary | std::ios::ate);
+		if (!file) return std::nullopt;
+		const std::streamoff size = file.tellg();
+		if (size <= 0 || static_cast<std::uintmax_t>(size) > kSpoolFileBytes) return std::nullopt;
+		std::string text(static_cast<std::size_t>(size), '\0');
+		file.seekg(0);
+		if (!file.read(text.data(), size)) return std::nullopt;
+		return desync::ParseSpool(text);
+	}
+
+	static void Discard(const fs::path& path)
+	{
+		const HeldFile file(path);
+		if (file.Held()) file.Delete();
+	}
+
+	// Seconds until one more send is allowed; 0 now. A record that cannot be
+	// read is a wait too: nothing is counted then, so nothing is sent.
+	static std::int64_t Wait(const std::wstring& settings)
+	{
+		const reports::ReportHistory history(DesyncRecordPath(settings));
+		const reports::History current = history.Load();
+		if (!current.readable) return kPauseSeconds;
+		std::vector<std::int64_t> times;
+		for (const reports::Record& r : current.sent) {
+			// A send that never reached the intake (no connection, cancelled)
+			// is not one of the day's.
+			if (r.kind == "problem" && r.status != reports::Status::NotSent) times.push_back(r.time);
+		}
+		return desync::SendWaitSeconds(times, Now());
+	}
+
+	// The desync reports' own record of sent reports, apart from the crash
+	// reports' (sent-reports.json): the crash reports' automatic limit of three
+	// a day neither holds desync reports back nor is used up by them.
+	static fs::path DesyncRecordPath(const std::wstring& settings) { return fs::path(settings) / desync::kSentFile; }
 
 	// One report; false when it stays for a later try.
 	bool Deliver(const fs::path& path, const std::wstring& settings)
@@ -260,25 +411,44 @@ private:
 		report.meta.buildId = spooled->buildId;
 		report.meta.sourceRevision = spooled->sourceRevision;
 		report.meta.windowsVersion = WindowsVersion();
-		report.logs.push_back({Narrow(ember::Product().gameLog), desync::Record(spooled->comment, spooled->regionLines, tail)});
+		report.logs.push_back({Narrow(ember::Product().gameLog), desync::Record(spooled->comment, spooled->regionLines, tail, spooled->details)});
+		// The state beside the report (a copy's 1 MB of regions and its pointer
+		// census, deflated), unless the intake has refused one already in this
+		// launcher's life. It goes only past the same switch as the report.
+		std::string state;
+		if (stateAccepted_) {
+			const std::string raw = ReadState(fs::path(settings), path);
+			if (!raw.empty()) state = Deflate(raw);
+		}
 
-		reports::ReportHistory history(reports::SentReportsPath());
+		// Counted in the desync reports' own record, with no limit of the
+		// library's (Pass checked the caps).
+		reports::ReportHistory history(DesyncRecordPath(settings));
 		reports::Record attempt;
 		attempt.kind = "problem";
-		const reports::Reservation reservation = history.Reserve(attempt, true, now);
+		const reports::Reservation reservation = history.Reserve(attempt, false, now);
 		if (reservation != reports::Reservation::Reserved) {
-			spdlog::info("Desync report {}: {}; it waits", name,
-				reservation == reports::Reservation::LimitReached ? "today's automatic reports are used up" :
-					"the record of sent reports cannot be changed");
+			spdlog::info("Desync report {}: the record of sent reports cannot be changed; it waits", name);
 			return false;
 		}
 		bool withLog = true;
-		desync::Outcome outcome = Send(report, spooled->comment, cancelled);
-		if (outcome.verdict == desync::Verdict::WithoutLog) {
-			spdlog::info("Desync report {}: the intake does not take {} yet; sent again without it", name, report.logs[0].name);
-			report.logs.clear();
-			withLog = false;
-			outcome = Send(report, spooled->comment, cancelled);
+		desync::Outcome outcome = Send(report, spooled->comment, state, cancelled);
+		// An intake from before the state part, or before the log's name, is
+		// answered once more without what it does not take; each time the same
+		// counted send.
+		for (int again = 0; again < 2; ++again) {
+			if (outcome.verdict == desync::Verdict::WithoutState && !state.empty()) {
+				spdlog::info("Desync report {}: the intake does not take the state yet; sent again without it", name);
+				stateAccepted_ = false;
+				state.clear();
+			} else if (outcome.verdict == desync::Verdict::WithoutLog && withLog) {
+				spdlog::info("Desync report {}: the intake does not take {} yet; sent again without it", name, report.logs[0].name);
+				report.logs.clear();
+				withLog = false;
+			} else {
+				break;
+			}
+			outcome = Send(report, spooled->comment, state, cancelled);
 		}
 		reports::Record record = attempt;
 		record.id = outcome.id;
@@ -289,25 +459,30 @@ private:
 		if (!history.Complete(record)) spdlog::warn("Desync report {}: the record of sent reports was not updated", name);
 		switch (outcome.verdict) {
 		case desync::Verdict::Delivered:
-			spdlog::info("Desync report {}: received as {}{}{}", name, outcome.id.empty() ? "(no id)" : outcome.id.c_str(),
-				withLog ? "" : ", without its log", spooled->watcher ? ", a watcher's" : "");
+			spdlog::info("Desync report {}: received as {}{}{}{}", name, outcome.id.empty() ? "(no id)" : outcome.id.c_str(),
+				withLog ? "" : ", without its log", state.empty() ? ", without its state" : ", with its state",
+				spooled->watcher ? ", a watcher's" : "");
 			file.Delete();
 			return true;
 		case desync::Verdict::Refused:
 		case desync::Verdict::WithoutLog:
+		case desync::Verdict::WithoutState:
 			spdlog::warn("Desync report {}: refused ({}); deleted", name, outcome.reason);
 			file.Delete();
 			return true;
 		case desync::Verdict::Later:
 			break;
 		}
+		// No answer, a rate limit or a busy intake: nothing is sent for a while.
+		pauseUntil_ = Now() + kPauseSeconds;
 		spdlog::info("Desync report {}: not sent ({}); it waits", name, outcome.reason);
 		return false;
 	}
 
 	// One upload; Verdict::Refused with reason "invalid" when the report
-	// cannot be built at all.
-	desync::Outcome Send(const reports::Report& report, const std::string& comment, const std::function<bool()>& cancelled)
+	// cannot be built at all. `state`: the deflated state, or empty for none.
+	desync::Outcome Send(const reports::Report& report, const std::string& comment, const std::string& state,
+		const std::function<bool()>& cancelled)
 	{
 		reports::Submission submission;
 		submission.comment = comment;
@@ -315,12 +490,21 @@ private:
 		reports::Multipart multipart;
 		std::string error;
 		bool built = false;
+		std::string boundary;
 		// A boundary that happens to occur in the report is drawn again.
-		for (int i = 0; i < 3 && !built; ++i) built = reports::BuildMultipart(report, submission, Boundary(), multipart, error);
+		for (int i = 0; i < 3 && !built; ++i) {
+			boundary = Boundary();
+			built = reports::BuildMultipart(report, submission, boundary, multipart, error);
+		}
 		if (!built) return {desync::Verdict::Refused, {}, "invalid"};
+		if (!state.empty()) {
+			const std::string withState = desync::WithPart(multipart.body, boundary, "state", "desync.state.z", state, kBodyLimit);
+			// A body that cannot take the state goes without it, as a report without one.
+			if (!withState.empty()) multipart.body = withState;
+		}
 		const sf4e::HttpResponse answer =
 			sf4e::HttpPostReport(sf4e::ReportIntakeHost, multipart.contentType, multipart.body, cancelled);
-		return desync::Judge(answer, !report.logs.empty());
+		return desync::Judge(answer, !report.logs.empty(), !state.empty());
 	}
 
 	std::mutex mutex_;
@@ -328,7 +512,12 @@ private:
 	bool stop_ = false;
 	bool pending_ = false;
 	std::atomic<bool> cancelled_{false};
-	std::map<std::wstring, int> tries_; // the courier's thread only
+	// The courier's thread only from here.
+	std::map<std::wstring, int> tries_;
+	std::string installedBuild_; // InstalledBuildId, read at the first pass that can
+	std::int64_t pauseUntil_ = 0;
+	bool limitLogged_ = false;
+	bool stateAccepted_ = true; // false once the intake refused a state part
 	// Last: started after everything above, stopped (joined) before it goes.
 	std::thread thread_;
 };
