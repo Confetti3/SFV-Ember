@@ -186,6 +186,34 @@ struct ModelReading {
 // What the game's read writes for a world translation (sfv::kSocketWorldPosition):
 // x * 0.01f, z * 0.01f, y * -0.01f, 1, each one float multiply.
 Position FightPosition(const float socket[3]);
+
+// The grid every value a fight socket read hands the game is snapped to, per
+// component (x, y, z; w stays 1), in a battle a session plays: the fight's
+// units are 1/kGridSteps apart. Evidence (2026-11-13, two field desyncs): the
+// diverging value was one fight socket read (P1 Sock_Item_R from call site rva
+// 0x3BDB02; P1 b_C_Head from rva 0x3A4B79) whose FRESH value differed by
+// 1e-6..2e-6 (1 to 560 float ulps) between two copies with different rollback
+// histories, and the object placed from it kept that value in hashed state.
+// The engine's own evaluation is not bit-reproducible across histories (the
+// bone pose is blended and refreshed on the engine's clock), so what the game
+// is given is made reproducible instead: two copies whose raw reads differ by
+// about 1e-6 now agree, unless a grid boundary falls between them (about 1
+// read in 4,000 at a 2e-6 difference: 2e-6 * 128 = 1/3,900). A power of two, so the
+// scaling is exact. Part of the room's build (LayoutRulesId): copies with
+// another grid never meet.
+constexpr int kGridSteps = 128;
+// v snapped to the grid: floorf(v * 128 + 0.5) * (1/128), each step one single
+// precision operation (no contraction, no double). NaN and infinities (and a
+// value so large the scaling overflows) are returned as they are.
+float SnapToGrid(float v);
+// x, y and z snapped, w as it is.
+Position SnapPosition(Position p);
+// Whether a socket's name is a bone's (b_ or g_: b_L_Foot, b_C_Head,
+// g_X_Trajectory). Only a bone's world position is its transform plus the
+// parent chain's one add, which the rebuild at another root assumes; a mesh
+// socket (Sock_Item_R: GetSocketTransform, rva 0x1C80C90, adds the socket's
+// own offset after the bone's translation) is served exact or live only.
+bool RebuildableSocket(const wchar_t* name);
 // The same rotation and scale, bit for bit.
 bool SameTurnAndScale(const ModelTransform& a, const ModelTransform& b);
 // One axis of the engine's last add, fl(r + root), for every float r with
@@ -198,7 +226,7 @@ bool CertifiedSum(float recordedSum, float recordedRoot, float root, float* out)
 // The value the read gives at `now` for the pose of `recorded`: the same
 // rotation and scale, and CertifiedSum on each axis, then FightPosition.
 // False when either does not hold.
-bool Rebuild(const ModelReading& recorded, const ModelTransform& now, Position* out);
+bool Rebuild(const ModelReading& recorded, const ModelTransform& now, Position* out, bool grid = false);
 
 struct Key {
 	uint64_t pose = 0;   // MakePoseKey
@@ -241,6 +269,11 @@ class Cache {
 public:
 	static constexpr size_t kRootsPerPose = 4;
 	explicit Cache(size_t capacity = 8192) : capacity_(capacity) {}
+	// Whether the values compared and rebuilt are snapped to the grid
+	// (SnapPosition): the hook sets it before each call, from whether this
+	// battle is one a session plays (the readings it was given are snapped
+	// then, so a rebuild must be too). Off by default.
+	void UseGrid(bool on) { grid_ = on; }
 	Recorded Record(const Key& key, const Reading& reading);
 	// A stale read's value. `now`: the model's transform as the read found it,
 	// when the models stand where the update's state puts them (else null,
@@ -265,6 +298,7 @@ private:
 	};
 	size_t capacity_;
 	size_t neverRebuilt_ = 0;
+	bool grid_ = false;
 	std::unordered_map<Key, Slot, KeyHash> values_;
 	std::deque<Key> order_; // insertion order, for dropping the oldest
 };

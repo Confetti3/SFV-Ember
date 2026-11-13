@@ -518,6 +518,98 @@ TEST_CASE("the latest misses are kept, 64 of them, oldest dropped, and read back
 	CHECK(ring.Between(0, 5000).empty());
 }
 
+
+TEST_CASE("fight socket values are snapped to a grid of 1/128")
+{
+	using socket_reads::SnapToGrid;
+	const auto bits = [](float f) { return std::bit_cast<uint32_t>(f); };
+	static_assert(socket_reads::kGridSteps == 128);
+	// Values 1e-6 apart (what two copies' fresh reads were) snap equal.
+	const float a = 3.3925f;
+	CHECK(bits(SnapToGrid(a)) == bits(SnapToGrid(a + 1e-6f)));
+	CHECK(bits(SnapToGrid(a)) == bits(SnapToGrid(a - 2e-6f)));
+	CHECK(bits(SnapToGrid(-0.9512f)) == bits(SnapToGrid(-0.9512f + 1.5e-6f)));
+	// The grid's own points are exact and stay: k / 128 for any k.
+	for (int k = -4000; k <= 4000; k += 7) {
+		const float point = (float)k / 128.0f;
+		CHECK(bits(SnapToGrid(point)) == bits(point));
+	}
+	// The result is always a multiple of 1/128, and within half a step of v.
+	for (int i = 0; i < 2000; i++) {
+		const float v = (float)(i - 1000) * 0.0137f + 0.00031f;
+		const float q = SnapToGrid(v);
+		CHECK(std::floor(q * 128.0f) == q * 128.0f);
+		CHECK(std::fabs(q - v) <= 0.5f / 128.0f);
+	}
+	// Half way between two grid points rounds up (floor(x + 0.5)): a boundary
+	// between two reads is where they differ.
+	const float below = (3.0f + 0.5f) / 128.0f;
+	CHECK(SnapToGrid(below) == 4.0f / 128.0f);
+	CHECK(SnapToGrid(std::nextafter(below, 0.0f)) == 3.0f / 128.0f);
+	// Negative values: the same rule, towards the greater neighbour at a half.
+	CHECK(SnapToGrid(-1.5f / 128.0f) == -1.0f / 128.0f);
+	CHECK(SnapToGrid(std::nextafter(-1.5f / 128.0f, -1.0f)) == -2.0f / 128.0f);
+	CHECK(SnapToGrid(-0.5f / 128.0f) == 0.0f);
+	CHECK(SnapToGrid(-0.4f / 128.0f) == 0.0f);
+	CHECK(SnapToGrid(-0.6f / 128.0f) == -1.0f / 128.0f);
+	// The scaling is exact: v * 128 and q / 128 lose nothing for a normal float.
+	CHECK(337.25f * 128.0f / 128.0f == 337.25f);
+	CHECK(SnapToGrid(337.25f) == 337.25f);
+	// NaN and infinities pass through; a value too large to scale does too.
+	CHECK(std::isnan(SnapToGrid(std::nanf(""))));
+	CHECK(SnapToGrid(INFINITY) == INFINITY);
+	CHECK(SnapToGrid(-INFINITY) == -INFINITY);
+	CHECK(SnapToGrid(3.0e38f) == 3.0e38f);
+	// A position: x, y and z snapped, w left alone.
+	socket_reads::Position p;
+	p.xyzw[0] = 3.3925f;
+	p.xyzw[1] = 0.95f + 1e-6f;
+	p.xyzw[2] = -0.125f;
+	p.xyzw[3] = 1.0f;
+	const socket_reads::Position q = socket_reads::SnapPosition(p);
+	CHECK(q.xyzw[0] == SnapToGrid(3.3925f));
+	CHECK(q.xyzw[1] == SnapToGrid(0.95f));
+	CHECK(q.xyzw[2] == -0.125f);
+	CHECK(q.xyzw[3] == 1.0f);
+}
+
+TEST_CASE("only a bone's reads are rebuilt at another root")
+{
+	using socket_reads::RebuildableSocket;
+	CHECK(RebuildableSocket(L"b_L_Foot"));
+	CHECK(RebuildableSocket(L"b_C_Head"));
+	CHECK(RebuildableSocket(L"g_X_Trajectory"));
+	CHECK_FALSE(RebuildableSocket(L"Sock_Item_R"));
+	CHECK_FALSE(RebuildableSocket(L"bone"));
+	CHECK_FALSE(RebuildableSocket(L"b"));
+	CHECK_FALSE(RebuildableSocket(L"B_L_Foot"));
+	CHECK_FALSE(RebuildableSocket(L""));
+	CHECK_FALSE(RebuildableSocket(nullptr));
+}
+
+TEST_CASE("with the grid on, a rebuild gives the snapped value and is compared with snapped reads")
+{
+	using socket_reads::Found;
+	using socket_reads::Recorded;
+	Cache cache;
+	cache.UseGrid(true);
+	const Key key{0x55, socket_reads::NameKey(L"b_C_Head"), 1};
+	const float socket[3] = {337.25f, 12.5f, 95.0f};
+	Reading first = Modelled(1, Mesh(300.0f, 0.0f, 0.0f), socket);
+	first.out = socket_reads::SnapPosition(first.out);
+	CHECK(cache.Record(key, first) == Recorded::New);
+	ModelTransform now = Mesh(302.0f, 0.0f, 0.0f);
+	const float there[3] = {339.25f, 12.5f, 95.0f};
+	Position found;
+	REQUIRE(cache.Find(key, 2, &now, &found) == Found::Rebuilt);
+	CHECK(found == socket_reads::SnapPosition(socket_reads::FightPosition(there)));
+	// A fresh read there that the snapped rebuild agrees with: no disagreement.
+	Reading second = Modelled(2, now, there);
+	second.out = socket_reads::SnapPosition(second.out);
+	CHECK(cache.Record(key, second) == Recorded::New);
+	CHECK(cache.Rebuilding(key));
+}
+
 TEST_CASE("every skeletal mesh of a fighter's actor is kept at LOD 0")
 {
 	FakeClass skeletal(sfv::mesh::kSkeletalMeshComponentFlag | 1);

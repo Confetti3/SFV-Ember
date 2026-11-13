@@ -3,6 +3,7 @@
 #include "mod/ModConfig.hxx"
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvOffsets.hxx"
+#include "mod/SocketReads.hxx"
 
 #include <xxhash.h>
 
@@ -63,7 +64,7 @@ std::string MakeLayoutRulesId()
 	// placement this copy takes (a development build's -sfve_tasks changes
 	// it, so a -sfve_tasks=0 copy cannot meet a default one; the default's
 	// text is kRollbackTickTasks' name as before).
-	text += "; address rule " + std::to_string(kAddressRuleVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath) +
+	text += "; socket grid 1/" + std::to_string(socket_reads::kGridSteps) + "; address rule " + std::to_string(kAddressRuleVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath) +
 		"; rollback tick tasks " + TickTasksName(ChooseTickTasks(Config(), true));
 	return Hex(XXH3_64bits(text.data(), text.size()));
 }

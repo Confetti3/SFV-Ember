@@ -3,6 +3,7 @@
 #include "mod/GameHooks.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
+#include "mod/ProjectileRelease.hxx"
 
 #include <xxhash.h>
 
@@ -138,9 +139,10 @@ bool ReadModel(uint8_t* actor, const wchar_t* socket, socket_reads::ModelReading
 	return true;
 }
 
-const char* MissText(socket_reads::Found found, bool placed, bool model, bool rebuilding)
+const char* MissText(socket_reads::Found found, bool placed, bool model, bool rebuilding, bool bone)
 {
 	if (found == socket_reads::Found::NoPose) return "(stale pose; this pose never read fresh: live)";
+	if (!bone) return "(stale pose; read fresh at other roots only, and this socket is not a bone: exact or live only: live)";
 	if (!placed) return "(stale pose; read fresh at other roots only, and the models stand where a restored state left them: live)";
 	if (!model) return "(stale pose; read fresh at other roots only, and the model's transforms could not be read: live)";
 	if (!rebuilding) return "(stale pose; read fresh at other roots only, and rebuilding is off for this pose: live)";
@@ -175,6 +177,14 @@ void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t f
 		LogRead(read, "no model, nothing written", nullptr);
 		return;
 	}
+	// A battle a session plays hands the game its values on the grid
+	// (socket_reads::kGridSteps): the fresh read, the record's and a rebuild
+	// alike, so this is the one place they are made. Training and the
+	// player's own battles keep the engine's raw values.
+	const bool grid = BattleLatch().Latched();
+	if (grid) {
+		for (int axis = 0; axis < 3; axis++) out[axis] = socket_reads::SnapToGrid(out[axis]);
+	}
 	socket_reads::Position live;
 	memcpy(live.xyzw, out, sizeof(live.xyzw));
 	if (!unit.pose) {
@@ -189,12 +199,19 @@ void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t f
 	reading.root = unit.root;
 	reading.out = live;
 	// Only transforms that give what the game wrote are kept or rebuilt from.
-	reading.model = ReadModel(actor, socket, &reading.at) && socket_reads::FightPosition(reading.at.socket) == live;
+	// Only a bone's transforms are rebuilt from (RebuildableSocket).
+	reading.model = socket_reads::RebuildableSocket(socket) && ReadModel(actor, socket, &reading.at);
+	if (reading.model) {
+		socket_reads::Position again = socket_reads::FightPosition(reading.at.socket);
+		if (grid) again = socket_reads::SnapPosition(again);
+		reading.model = again == live;
+	}
 	const socket_reads::Key key{unit.pose, socket_reads::NameKey(socket), unit.unit};
 	if (fresh) {
 		socket_reads::Recorded recorded = socket_reads::Recorded::New;
 		{
 			std::lock_guard lock(s_mutex);
+			s_cache.UseGrid(grid);
 			recorded = s_cache.Record(key, reading);
 			s_counts.recorded++;
 			if (recorded == socket_reads::Recorded::Conflicting) s_counts.conflicting++;
@@ -226,6 +243,7 @@ void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t f
 	bool rebuilding = true, turnedOff = false;
 	{
 		std::lock_guard lock(s_mutex);
+		s_cache.UseGrid(grid);
 		const bool before = s_cache.Rebuilding(key);
 		found = s_cache.Find(key, unit.root, placed && reading.model ? &reading.at.mesh : nullptr, &kept);
 		rebuilding = s_cache.Rebuilding(key);
@@ -256,7 +274,7 @@ void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t f
 			std::lock_guard lock(s_mutex);
 			s_misses.Add(miss);
 		}
-		LogRead(read, MissText(found, placed, reading.model, rebuilding), live.xyzw);
+		LogRead(read, MissText(found, placed, reading.model, rebuilding, socket_reads::RebuildableSocket(socket)), live.xyzw);
 		return;
 	}
 	memcpy(out, kept.xyzw, sizeof(kept.xyzw));
@@ -482,6 +500,30 @@ bool SameTurnAndScale(const ModelTransform& a, const ModelTransform& b)
 	return memcmp(a.rotation, b.rotation, sizeof(a.rotation)) == 0 && memcmp(a.scale, b.scale, 3 * sizeof(float)) == 0;
 }
 
+// MSVC may fuse a multiply and an add into one fma where the target has it;
+// the grid's two steps must be two roundings, as on every copy.
+#pragma fp_contract(off)
+float SnapToGrid(float v)
+{
+	if (!isfinite(v)) return v;
+	const float scaled = v * static_cast<float>(kGridSteps); // exact: a power of two
+	if (!isfinite(scaled)) return v;
+	const float stepped = floorf(scaled + 0.5f);
+	return stepped * (1.0f / static_cast<float>(kGridSteps)); // exact too
+}
+#pragma fp_contract(on)
+
+Position SnapPosition(Position p)
+{
+	for (int axis = 0; axis < 3; axis++) p.xyzw[axis] = SnapToGrid(p.xyzw[axis]);
+	return p;
+}
+
+bool RebuildableSocket(const wchar_t* name)
+{
+	return name && name[0] && name[1] == L'_' && (name[0] == L'b' || name[0] == L'g');
+}
+
 bool CertifiedSum(float recordedSum, float recordedRoot, float root, float* out)
 {
 	if (!isfinite(recordedSum) || !isfinite(recordedRoot) || !isfinite(root)) return false;
@@ -515,7 +557,7 @@ bool CertifiedSum(float recordedSum, float recordedRoot, float root, float* out)
 	return true;
 }
 
-bool Rebuild(const ModelReading& recorded, const ModelTransform& now, Position* out)
+bool Rebuild(const ModelReading& recorded, const ModelTransform& now, Position* out, bool grid)
 {
 	if (!SameTurnAndScale(recorded.mesh, now)) return false;
 	float socket[3];
@@ -523,6 +565,7 @@ bool Rebuild(const ModelReading& recorded, const ModelTransform& now, Position* 
 		if (!CertifiedSum(recorded.socket[axis], recorded.mesh.translation[axis], now.translation[axis], &socket[axis])) return false;
 	}
 	*out = FightPosition(socket);
+	if (grid) *out = SnapPosition(*out);
 	return true;
 }
 
@@ -551,7 +594,7 @@ Recorded Cache::Record(const Key& key, const Reading& reading)
 		for (size_t i = 0; i < slot.count; i++) {
 			const Reading& other = slot.readings[i];
 			Position rebuilt;
-			if (other.root == reading.root || !other.model || !Rebuild(other.at, reading.at.mesh, &rebuilt)) continue;
+			if (other.root == reading.root || !other.model || !Rebuild(other.at, reading.at.mesh, &rebuilt, grid_)) continue;
 			if (!(rebuilt == reading.out)) disagrees = true;
 		}
 		if (disagrees) {
@@ -602,7 +645,7 @@ Found Cache::Find(const Key& key, uint64_t root, const ModelTransform* now, Posi
 	Position first;
 	for (size_t i = 0; i < slot.count; i++) {
 		Position rebuilt;
-		if (!slot.readings[i].model || !Rebuild(slot.readings[i].at, *now, &rebuilt)) continue;
+		if (!slot.readings[i].model || !Rebuild(slot.readings[i].at, *now, &rebuilt, grid_)) continue;
 		if (any && !(rebuilt == first)) {
 			slot.neverRebuild = true;
 			neverRebuilt_++;

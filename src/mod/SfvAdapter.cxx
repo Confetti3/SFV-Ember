@@ -189,6 +189,8 @@ bool SfvAdapter::Bind()
 			text += one;
 		}
 		Log("adapter: socket reads keyed by each fighter unit's animation and place: %s", text.c_str());
+		Log("adapter: the fight's socket reads are given on a grid of 1/%d in a battle a session plays (the game's own value is "
+			"not bit-reproducible across rollback histories)", socket_reads::kGridSteps);
 		if (GameFindUnit(rollbackUnit_, sfv::unit::kCharaUnitType, sfv::unit::kMostCharaUnits)) {
 			Log("adapter: more than %u fighter units; the ones past them are not kept at LOD 0, keyed or given their outside runs",
 				sfv::unit::kMostCharaUnits);
