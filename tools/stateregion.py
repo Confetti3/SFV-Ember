@@ -17,6 +17,11 @@ address is sfv::rng::kGlobal + kState past it), `heap` for another address
 (the state hash masks both, diffstate.masked), `nan`. Offsets are the run's
 own and the owner's (`+run / @owner`).
 
+Words are the game's: 8 bytes from each 8-byte boundary of the run's real
+address, the only words the state hash tests for addresses. A run that
+starts 4 bytes past a boundary (CharaUnit+0x894 and the like) opens with its
+first dword alone, and its words sit at +0x4, +0xC, ...
+
 Field names come from build 13173604 (IDA, every one with its rva in
 docs/design/beta8/desync.md and determinism.md); a name is only given where
 the code was read.
@@ -158,6 +163,15 @@ def tag(q: int, image: int | None) -> str:
     return ""
 
 
+def words(address: int, size: int) -> list[tuple[int, int]]:
+    """The run's words as (start, end) offsets: a part word up to the first
+    8-byte boundary of its real address, then 8 bytes from each boundary."""
+    first = min((8 - (address & 7)) & 7, size)
+    out = [(0, first)] if first else []
+    out += [(off, min(off + 8, size)) for off in range(first, size, 8)]
+    return out
+
+
 def floats(b: bytes) -> str:
     out = []
     for (v,) in struct.iter_unpack("<f", b):
@@ -168,7 +182,7 @@ def floats(b: bytes) -> str:
 def word_line(run_off: int, start: int, b: bytes, image: int | None, label: str) -> str:
     q = int.from_bytes(b.ljust(8, b"\0"), "little")
     ints = struct.unpack("<2i", b.ljust(8, b"\0"))
-    t = tag(q, image)
+    t = tag(q, image) if len(b) == 8 else ""  # a part word is never an address
     text = f"+{run_off:#06x} @{start + run_off:#06x}  {q:016x}  {ints[0]:>11} {ints[1]:>11}  {floats(b.ljust(8, bytes(1)))}"
     extra = " ".join(x for x in (t, label) if x)
     return text + (f"  {extra}" if extra else "")
@@ -183,8 +197,8 @@ def show_region(regions, name: str, show_all: bool) -> None:
     start, fields = owner_fields(name)
     print(f"{name}: {size} bytes at {address:#x}" + (f", image at {image:#x}" if image is not None else ""))
     zeros = 0
-    for off in range(0, size, 8):
-        b = data[off:off + 8]
+    for off, end in words(address, size):
+        b = data[off:end]
         label = fields.get(start + off, "")
         if not show_all and not any(b) and not label:
             zeros += 1
@@ -209,13 +223,16 @@ def show_against(regions, other, name: str) -> None:
     image_a, image_b = image_base(regions), image_base(other)
     start, fields = owner_fields(name)
     count = 0
-    for off in range(0, min(len(a), len(b)), 8):
-        if ma[off:off + 8] == mb[off:off + 8]:
+    if (addr_a - addr_b) & 7:
+        print(f"the run lies {addr_a & 7} and {addr_b & 7} bytes past an 8-byte boundary in the two files: "
+              "the hash tests other words in each")
+    for off, end in words(addr_a, min(len(a), len(b))):
+        if ma[off:end] == mb[off:end]:
             continue
         count += 1
         label = fields.get(start + off, "")
-        print("a " + word_line(off, start, a[off:off + 8], image_a, label))
-        print("b " + word_line(off, start, b[off:off + 8], image_b, ""))
+        print("a " + word_line(off, start, a[off:end], image_a, label))
+        print("b " + word_line(off, start, b[off:end], image_b, ""))
     if len(a) != len(b):
         print(f"sizes differ: {len(a)} and {len(b)}")
     print(f"{count} word(s) differ in {name} once addresses are masked as the hash masks them")
