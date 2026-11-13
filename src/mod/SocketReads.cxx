@@ -3,14 +3,17 @@
 #include "mod/GameHooks.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
-#include "mod/SfvOffsets.hxx"
+
+#include <xxhash.h>
 
 #include <intrin.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
 #include <algorithm>
 #include <atomic>
+#include <bit>
 #include <iterator>
 #include <mutex>
 
@@ -21,24 +24,30 @@ namespace {
 // sfv::kSocketWorldPosition: (CharaVisualPart*, socket name, float out[4],
 // flag); the flag is passed on untouched.
 using SocketFn = void (*)(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t flag);
+// sfv::kMakeName and sfv::kSocketTransform, called as the socket read calls them.
+using MakeNameFn = uint64_t* (*)(uint64_t* name, const wchar_t* text, int32_t find, int32_t split);
+using SocketTransformFn = void (*)(uint8_t* actor, const uint64_t* name, float* transform);
 
 SocketFn o_socket;
+MakeNameFn s_makeName;
+SocketTransformFn s_socketTransform;
 uintptr_t s_base;
 bool s_log;
 
-// The update now running (NoteSocketUpdate, before the update's tasks start).
-std::atomic<int32_t> s_frame{-1};
-std::atomic<bool> s_replaying;
-std::atomic<bool> s_fresh;
-std::atomic<uint64_t> s_state[2];
-
-// The reads run on the battle's job threads, both fighters' at once.
+// The update now running (NoteSocketUpdate, before the update's tasks
+// start), the record and the battle's counts. The reads run on the battle's
+// job threads, several units' at once; they are few (spawns at a bone), so
+// one lock serves them all.
 std::mutex s_mutex;
+SocketUpdate s_update;
 socket_reads::Cache s_cache;
-std::atomic<uint64_t> s_recorded, s_served, s_missed, s_conflicting, s_unkeyed;
+socket_reads::Counts s_counts;
 std::atomic<int> s_lines;
 // A runaway caller cannot fill the disk: the log stops here.
 constexpr int kMostLines = 20000;
+// The conflicts logged in any build, a battle (ForgetSocketReads).
+std::atomic<int> s_conflictLines;
+constexpr int kMostConflictLines = 16;
 
 // The calls of the socket read that are not the fight's, by their return
 // addresses (call site + 5; read in IDA, build 13173604).
@@ -51,6 +60,11 @@ constexpr uint32_t kNotTheFights[] = {
 	0x38F401, 0x38F69B, 0x38F6B7, // the head (b_C_Head) for Chara PostVisual (rva 0x3897C0 through 0x3A53E0), after the tick
 };
 
+float FloatOf(uint32_t bits)
+{
+	return std::bit_cast<float>(bits);
+}
+
 std::string SocketName(const wchar_t* name)
 {
 	std::string out;
@@ -62,89 +76,188 @@ std::string SocketName(const wchar_t* name)
 	return out.empty() ? "?" : out;
 }
 
-// The side of the fighter a visual part belongs to, or -1.
-int SideOf(const uint8_t* visualPart)
+// The CharaUnit a visual part belongs to, or null.
+const uint8_t* OwnerOf(const uint8_t* visualPart)
 {
-	const uint8_t* fighter = nullptr;
-	int side = -1;
-	if (!visualPart || !TryRead(visualPart + sfv::visual::kOwnerObject, &fighter) || !fighter ||
-		!TryRead(fighter + sfv::fighter::kSide, &side)) {
-		return -1;
-	}
-	return side;
+	const uint8_t* chara = nullptr;
+	return visualPart && TryRead(visualPart + sfv::visual::kOwnerObject, &chara) ? chara : nullptr;
 }
 
-void LogRead(const char* what, int side, const wchar_t* socket, uint32_t from, const float* p)
+// One read as the log names it.
+struct ReadContext {
+	int32_t frame = -1;
+	bool replaying = false;
+	int32_t unit = -1;
+	int32_t side = -1;
+	const wchar_t* socket = nullptr;
+	uint32_t from = 0;
+};
+
+void LogRead(const ReadContext& read, const char* what, const float* p)
 {
 	if (!s_log || s_lines.fetch_add(1) >= kMostLines) return;
-	const std::string name = SocketName(socket);
+	const std::string name = SocketName(read.socket);
+	char who[32];
+	if (read.unit >= 0) snprintf(who, sizeof(who), "unit %d (P%d)", read.unit, read.side + 1);
+	else snprintf(who, sizeof(who), "no known unit");
 	if (!p) {
-		Log("socket: frame %d%s, P%d, socket %s, from rva 0x%X: %s", s_frame.load(), s_replaying.load() ? " replayed" : "", side + 1,
-			name.c_str(), from, what);
+		Log("socket: frame %d%s, %s, socket %s, from rva 0x%X: %s", read.frame, read.replaying ? " replayed" : "", who, name.c_str(),
+			read.from, what);
 		return;
 	}
-	Log("socket: frame %d%s, P%d, socket %s, from rva 0x%X: %.5f %.5f %.5f %s", s_frame.load(),
-		s_replaying.load() ? " replayed" : "", side + 1, name.c_str(), from, p[0], p[1], p[2], what);
+	Log("socket: frame %d%s, %s, socket %s, from rva 0x%X: %.5f %.5f %.5f %s", read.frame, read.replaying ? " replayed" : "", who,
+		name.c_str(), read.from, p[0], p[1], p[2], what);
+}
+
+// The transforms the read came from, read again the way it reads them: the
+// socket's world transform and, for NAME_None, the mesh component's own
+// (sfv::kSocketTransform). False when either was not written (the actor has
+// no skeletal mesh with a mesh asset). The same calls, on the same thread, as
+// the read that just ran.
+bool ReadModel(uint8_t* actor, const wchar_t* socket, socket_reads::ModelReading* reading)
+{
+	if (!s_makeName || !s_socketTransform || !actor) return false;
+	alignas(16) float socketTransform[12];
+	alignas(16) float meshTransform[12];
+	// All bits set, a NaN no transform holds: what is still there was not written.
+	memset(socketTransform, 0xFF, sizeof(socketTransform));
+	memset(meshTransform, 0xFF, sizeof(meshTransform));
+	uint64_t name = 0;
+	s_makeName(&name, socket, 1, 1);
+	s_socketTransform(actor, &name, socketTransform);
+	const uint64_t none = 0;
+	s_socketTransform(actor, &none, meshTransform);
+	const auto written = [](const float* transform) { return std::bit_cast<uint32_t>(transform[4]) != 0xFFFFFFFFu; };
+	if (!written(socketTransform) || !written(meshTransform)) return false;
+	memcpy(reading->mesh.rotation, meshTransform, sizeof(reading->mesh.rotation));
+	memcpy(reading->mesh.translation, meshTransform + 4, sizeof(reading->mesh.translation));
+	memcpy(reading->mesh.scale, meshTransform + 8, sizeof(reading->mesh.scale));
+	memcpy(reading->socket, socketTransform + 4, sizeof(reading->socket));
+	return true;
+}
+
+const char* MissText(socket_reads::Found found, bool placed, bool model, bool rebuilding)
+{
+	if (found == socket_reads::Found::NoPose) return "(stale pose; this pose never read fresh: live)";
+	if (!placed) return "(stale pose; read fresh at other roots only, and the models stand where a restored state left them: live)";
+	if (!model) return "(stale pose; read fresh at other roots only, and the model's transforms could not be read: live)";
+	if (!rebuilding) return "(stale pose; read fresh at other roots only, and rebuilding is off for this battle: live)";
+	return "(stale pose; read fresh at other roots only, and no certain rebuild: live)";
 }
 
 void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t flag)
 {
 	o_socket(visualPart, socket, out, flag);
-	const uint32_t from = (uint32_t)(reinterpret_cast<uintptr_t>(_ReturnAddress()) - s_base);
-	if (socket_reads::EveryTick(from)) return;
-	const int side = SideOf(visualPart);
+	ReadContext read;
+	read.from = (uint32_t)(reinterpret_cast<uintptr_t>(_ReturnAddress()) - s_base);
+	if (socket_reads::EveryTick(read.from)) return;
+	read.socket = socket;
+	const uint8_t* chara = OwnerOf(visualPart);
+	UnitKeys unit;
+	bool fresh = false, placed = false;
+	{
+		std::lock_guard lock(s_mutex);
+		read.frame = s_update.inputFrame;
+		read.replaying = s_update.replaying;
+		fresh = s_update.fresh;
+		placed = s_update.placed;
+		for (int i = 0; chara && i < s_update.unitCount; i++) {
+			if (s_update.units[i].chara == chara) unit = s_update.units[i];
+		}
+	}
+	read.unit = unit.unit;
+	read.side = unit.side;
 	// The read writes `out` whenever the part has an actor (rva 0x3919D0).
-	const uint8_t* actor = nullptr;
+	uint8_t* actor = nullptr;
 	if (!out || !visualPart || !TryRead(visualPart + sfv::visual::kActor, &actor) || !actor) {
-		LogRead("no model, nothing written", side, socket, from, nullptr);
+		LogRead(read, "no model, nothing written", nullptr);
 		return;
 	}
 	socket_reads::Position live;
 	memcpy(live.xyzw, out, sizeof(live.xyzw));
-	const uint64_t state = side == 0 || side == 1 ? s_state[side].load() : 0;
-	if (!state) {
-		s_unkeyed++;
-		LogRead("(no key: live)", side, socket, from, live.xyzw);
-		return;
-	}
-	const socket_reads::Key key{state, socket_reads::NameKey(socket), side};
-	if (s_fresh.load()) {
-		bool conflicting = false;
+	if (!unit.pose) {
 		{
 			std::lock_guard lock(s_mutex);
-			conflicting = s_cache.Record(key, live);
+			s_counts.unkeyed++;
 		}
-		s_recorded++;
-		if (conflicting) s_conflicting++;
-		LogRead(conflicting ? "(fresh; recorded, CONFLICTING with the value kept for this state)" : "(fresh; recorded)", side, socket,
-			from, live.xyzw);
+		LogRead(read, "(no key: live)", live.xyzw);
+		return;
+	}
+	socket_reads::Reading reading;
+	reading.root = unit.root;
+	reading.out = live;
+	// Only transforms that give what the game wrote are kept or rebuilt from.
+	reading.model = ReadModel(actor, socket, &reading.at) && socket_reads::FightPosition(reading.at.socket) == live;
+	const socket_reads::Key key{unit.pose, socket_reads::NameKey(socket), unit.unit};
+	if (fresh) {
+		socket_reads::Recorded recorded = socket_reads::Recorded::New;
+		{
+			std::lock_guard lock(s_mutex);
+			recorded = s_cache.Record(key, reading);
+			s_counts.recorded++;
+			if (recorded == socket_reads::Recorded::Conflicting) s_counts.conflicting++;
+			if (recorded == socket_reads::Recorded::RebuildDisagrees) s_counts.disagreeing++;
+		}
+		// Either says the keys or the rebuild miss something: logged in every
+		// build (a few a battle), with what the next run needs to find it.
+		const bool conflicting = recorded == socket_reads::Recorded::Conflicting;
+		if ((conflicting || recorded == socket_reads::Recorded::RebuildDisagrees) &&
+			s_conflictLines.fetch_add(1) < kMostConflictLines) {
+			Log("socket: frame %d, unit %d (P%d), socket %s, from rva 0x%X: %.5f %.5f %.5f fresh, %s", read.frame, read.unit,
+				read.side + 1, SocketName(socket).c_str(), read.from, live.xyzw[0], live.xyzw[1], live.xyzw[2],
+				conflicting ? "CONFLICTING with the value kept for this pose and root (the keys miss what the pose depends on)"
+							: "a certain rebuild from another root DISAGREES (rebuilding is off for this battle)");
+		} else if (s_log) {
+			char text[128];
+			if (reading.model) {
+				snprintf(text, sizeof(text), "(fresh; recorded; mesh at %.3f %.3f %.3f)", reading.at.mesh.translation[0],
+					reading.at.mesh.translation[1], reading.at.mesh.translation[2]);
+			} else {
+				snprintf(text, sizeof(text), "(fresh; recorded; no model transforms)");
+			}
+			LogRead(read, text, live.xyzw);
+		}
 		return;
 	}
 	socket_reads::Position kept;
-	bool found = false;
+	socket_reads::Found found = socket_reads::Found::NoPose;
+	bool rebuilding = true, turnedOff = false;
 	{
 		std::lock_guard lock(s_mutex);
-		found = s_cache.Find(key, &kept);
+		const bool before = s_cache.Rebuilding();
+		found = s_cache.Find(key, unit.root, placed && reading.model ? &reading.at.mesh : nullptr, &kept);
+		rebuilding = s_cache.Rebuilding();
+		// Two readings of this pose rebuilt to different values here.
+		turnedOff = before && !rebuilding;
+		if (turnedOff) s_counts.disagreeing++;
+		switch (found) {
+		case socket_reads::Found::Exact: s_counts.exact++; break;
+		case socket_reads::Found::Rebuilt: s_counts.rebuilt++; break;
+		case socket_reads::Found::NoPose: s_counts.noPose++; break;
+		case socket_reads::Found::OtherRoot: s_counts.otherRoot++; break;
+		}
 	}
-	if (!found) {
-		s_missed++;
-		LogRead("(stale pose; no straight read of this state: live)", side, socket, from, live.xyzw);
+	if (turnedOff && s_conflictLines.fetch_add(1) < kMostConflictLines) {
+		Log("socket: frame %d, unit %d (P%d), socket %s, from rva 0x%X: two readings of this pose rebuild to different values "
+			"(rebuilding is off for this battle)",
+			read.frame, read.unit, read.side + 1, SocketName(socket).c_str(), read.from);
+	}
+	if (found == socket_reads::Found::NoPose || found == socket_reads::Found::OtherRoot) {
+		LogRead(read, MissText(found, placed, reading.model, rebuilding), live.xyzw);
 		return;
 	}
 	memcpy(out, kept.xyzw, sizeof(kept.xyzw));
-	s_served++;
-	if (s_log && !(kept == live)) {
-		char text[96];
-		snprintf(text, sizeof(text), "(stale pose %.5f %.5f %.5f; the straight read's taken)", live.xyzw[0], live.xyzw[1], live.xyzw[2]);
-		LogRead(text, side, socket, from, kept.xyzw);
-	} else {
-		LogRead("(stale pose; the straight read's taken, the same)", side, socket, from, kept.xyzw);
+	if (s_log) {
+		char text[128];
+		snprintf(text, sizeof(text), "(stale pose %.5f %.5f %.5f; %s)", live.xyzw[0], live.xyzw[1], live.xyzw[2],
+			found == socket_reads::Found::Exact ? "the straight read of this pose and root taken" : "rebuilt at this root, certain");
+		LogRead(read, text, kept.xyzw);
 	}
 }
 
-// The fighters' meshes: each side's components logged once a battle, and the
+// The units' meshes: each unit's components logged once a battle, and the
 // times the LOD had to be forced again after that (a few, then quiet).
-std::atomic<bool> s_meshesLogged[2];
+std::atomic<bool> s_meshesLogged[kMostFighterUnits];
 std::atomic<int> s_reforced;
 constexpr int kMostReforcedLines = 8;
 
@@ -188,25 +301,37 @@ std::string Describe(const std::vector<socket_reads::MeshLod>& seen)
 	return text;
 }
 
+// The float at a place in the order of all finite floats, counted from +0:
+// negative places are the negative floats (-0 is not one), so a float's
+// place grows with its value and a binary search over places is one over
+// values.
+float FromOrdered(int64_t ordered)
+{
+	return ordered < 0 ? std::bit_cast<float>(0x80000000u | (uint32_t)-ordered) : std::bit_cast<float>((uint32_t)ordered);
+}
+
+// The largest finite float, ordered.
+constexpr int64_t kMostOrdered = 0x7F7FFFFF;
+
 } // namespace
 
-void KeepFighterMeshesAtLodZero(uint8_t* const visualParts[2])
+void KeepFighterMeshesAtLodZero(uint8_t* const* visualParts, int count)
 {
-	for (int side = 0; side < 2; side++) {
+	for (int unit = 0; unit < count && unit < kMostFighterUnits; unit++) {
 		uint8_t* actor = nullptr;
-		if (!visualParts[side] || !TryRead(visualParts[side] + sfv::visual::kActor, &actor) || !actor) continue;
-		if (!s_meshesLogged[side].load()) {
+		if (!visualParts[unit] || !TryRead(visualParts[unit] + sfv::visual::kActor, &actor) || !actor) continue;
+		if (!s_meshesLogged[unit].load()) {
 			std::vector<socket_reads::MeshLod> seen;
 			socket_reads::ForceLodZero(actor, &seen);
 			if (seen.empty()) continue; // the actor's meshes are not there yet: look again next update
-			s_meshesLogged[side].store(true);
-			// "fighter k": the battle's order of its fighters (CharaUnit[k]), not the side.
-			Log("meshes: fighter %d: %zu skeletal mesh component(s): %s", side, seen.size(), Describe(seen).c_str());
+			s_meshesLogged[unit].store(true);
+			// "fighter k": the battle's order of its fighter units (CharaUnit[k]), not the side.
+			Log("meshes: fighter %d: %zu skeletal mesh component(s): %s", unit, seen.size(), Describe(seen).c_str());
 			continue;
 		}
 		const int written = socket_reads::ForceLodZero(actor, nullptr);
 		if (written && s_reforced.fetch_add(1) < kMostReforcedLines) {
-			Log("meshes: fighter %d: %d component(s) given LOD 0 again (something reset ForcedLodModel)", side, written);
+			Log("meshes: fighter %d: %d component(s) given LOD 0 again (something reset ForcedLodModel)", unit, written);
 		}
 	}
 }
@@ -250,9 +375,49 @@ uint64_t NameKey(const wchar_t* name)
 	return h;
 }
 
+namespace {
+
+// Each run's bytes, then its size, into the running hash: a missing run and
+// an empty one hash alike, and two runs cannot trade bytes unseen.
+uint64_t Mix(uint64_t h, const uint8_t* bytes, size_t size)
+{
+	if (bytes && size) h = XXH3_64bits_withSeed(bytes, size, h);
+	const uint64_t n = bytes ? size : 0;
+	return XXH3_64bits_withSeed(&n, sizeof(n), h);
+}
+
+} // namespace
+
+uint64_t MakePoseKey(const Run motion[2], int32_t facing, bool tiny)
+{
+	uint64_t h = 0x9E3779B97F4A7C15ull;
+	for (int i = 0; i < 2; i++) h = Mix(h, motion[i].bytes, motion[i].size);
+	h = Mix(h, reinterpret_cast<const uint8_t*>(&facing), sizeof(facing));
+	const uint8_t small = tiny ? 1 : 0;
+	h = Mix(h, &small, sizeof(small));
+	return h ? h : 1;
+}
+
+uint64_t MakeRootKey(const Run& unit, const Run& place)
+{
+	namespace f = sfv::fighter;
+	uint64_t h = 0xC2B2AE3D27D4EB4Full;
+	h = Mix(h, unit.bytes, unit.size);
+	// The place run without its bone 28 words, in two pieces; a run shorter
+	// than the bone's words is hashed whole (never in a battle: RegionNames'
+	// size checks would show it).
+	if (place.bytes && place.size >= f::kPlaceBoneTo) {
+		h = Mix(h, place.bytes, f::kPlaceBoneFrom);
+		h = Mix(h, place.bytes + f::kPlaceBoneTo, place.size - f::kPlaceBoneTo);
+	} else {
+		h = Mix(h, place.bytes, place.size);
+	}
+	return h ? h : 1;
+}
+
 size_t KeyHash::operator()(const Key& k) const
 {
-	return (size_t)(k.state ^ (k.socket * 0x9E3779B97F4A7C15ull) ^ ((uint64_t)(uint32_t)k.side << 61));
+	return (size_t)(k.pose ^ (k.socket * 0x9E3779B97F4A7C15ull) ^ ((uint64_t)(uint32_t)k.unit << 59));
 }
 
 bool Position::operator==(const Position& o) const
@@ -260,47 +425,173 @@ bool Position::operator==(const Position& o) const
 	return memcmp(xyzw, o.xyzw, sizeof(xyzw)) == 0;
 }
 
-bool Cache::Record(const Key& key, const Position& value)
+Position FightPosition(const float socket[3])
 {
-	const auto it = values_.find(key);
-	if (it != values_.end()) {
-		const bool other = !(it->second == value);
-		it->second = value;
-		return other;
-	}
-	if (capacity_ == 0) return false;
-	while (values_.size() >= capacity_ && !order_.empty()) {
-		values_.erase(order_.front());
-		order_.pop_front();
-	}
-	values_.emplace(key, value);
-	order_.push_back(key);
-	return false;
+	// The game's three multiplies, each of one float by a float constant
+	// (sfv::kCentimetresToFightBits), in its order of axes.
+	const float toFight = FloatOf(sfv::kCentimetresToFightBits);
+	const float toFightNegated = FloatOf(sfv::kCentimetresToFightNegatedBits);
+	Position p;
+	p.xyzw[0] = socket[0] * toFight;
+	p.xyzw[1] = socket[2] * toFight;
+	p.xyzw[2] = socket[1] * toFightNegated;
+	p.xyzw[3] = 1.0f;
+	return p;
 }
 
-bool Cache::Find(const Key& key, Position* out) const
+bool SameTurnAndScale(const ModelTransform& a, const ModelTransform& b)
+{
+	return memcmp(a.rotation, b.rotation, sizeof(a.rotation)) == 0 && memcmp(a.scale, b.scale, 3 * sizeof(float)) == 0;
+}
+
+bool CertifiedSum(float recordedSum, float recordedRoot, float root, float* out)
+{
+	if (!isfinite(recordedSum) || !isfinite(recordedRoot) || !isfinite(root)) return false;
+	// fl(r + recordedRoot) does not decrease as r grows, so the r giving
+	// recordedSum are one run of floats: the least with a sum not below it,
+	// and the greatest with a sum not above it. Each sum is one single
+	// precision add (an addss on x64; /fp:precise keeps it that), as the
+	// engine's own.
+	const auto sumAt = [](int64_t r, float to) { return FromOrdered(r) + to; };
+	int64_t lo = -kMostOrdered, hi = kMostOrdered;
+	while (lo < hi) { // the least r with fl(r + recordedRoot) >= recordedSum
+		const int64_t mid = lo + (hi - lo) / 2;
+		if (sumAt(mid, recordedRoot) >= recordedSum) hi = mid;
+		else lo = mid + 1;
+	}
+	const int64_t least = lo;
+	lo = -kMostOrdered;
+	hi = kMostOrdered;
+	while (lo < hi) { // the greatest r with fl(r + recordedRoot) <= recordedSum
+		const int64_t mid = hi - (hi - lo) / 2;
+		if (sumAt(mid, recordedRoot) <= recordedSum) lo = mid;
+		else hi = mid - 1;
+	}
+	const int64_t greatest = lo;
+	// No r gives recordedSum exactly: not the engine's add of this root.
+	if (least > greatest || std::bit_cast<uint32_t>(sumAt(least, recordedRoot)) != std::bit_cast<uint32_t>(recordedSum)) return false;
+	const float low = sumAt(least, root);
+	const float high = sumAt(greatest, root);
+	if (std::bit_cast<uint32_t>(low) != std::bit_cast<uint32_t>(high) || !isfinite(low)) return false;
+	*out = low;
+	return true;
+}
+
+bool Rebuild(const ModelReading& recorded, const ModelTransform& now, Position* out)
+{
+	if (!SameTurnAndScale(recorded.mesh, now)) return false;
+	float socket[3];
+	for (int axis = 0; axis < 3; axis++) {
+		if (!CertifiedSum(recorded.socket[axis], recorded.mesh.translation[axis], now.translation[axis], &socket[axis])) return false;
+	}
+	*out = FightPosition(socket);
+	return true;
+}
+
+Recorded Cache::Record(const Key& key, const Reading& reading)
+{
+	auto it = values_.find(key);
+	if (it == values_.end()) {
+		if (capacity_ == 0) return Recorded::New;
+		while (values_.size() >= capacity_ && !order_.empty()) {
+			values_.erase(order_.front());
+			order_.pop_front();
+		}
+		Slot slot;
+		slot.readings[0] = reading;
+		slot.count = 1;
+		values_.emplace(key, slot);
+		order_.push_back(key);
+		return Recorded::New;
+	}
+	Slot& slot = it->second;
+	// What a stale read would have been given here from another root, against
+	// what the engine gives: the arithmetic the rebuild assumes, checked on
+	// every fresh read that can check it.
+	bool disagrees = false;
+	if (reading.model && rebuilding_) {
+		for (size_t i = 0; i < slot.count; i++) {
+			const Reading& other = slot.readings[i];
+			Position rebuilt;
+			if (other.root == reading.root || !other.model || !Rebuild(other.at, reading.at.mesh, &rebuilt)) continue;
+			if (!(rebuilt == reading.out)) disagrees = true;
+		}
+		if (disagrees) rebuilding_ = false;
+	}
+	for (size_t i = 0; i < slot.count; i++) {
+		Reading& same = slot.readings[i];
+		if (same.root != reading.root) continue;
+		const bool other = !(same.out == reading.out);
+		same = reading;
+		if (disagrees) return Recorded::RebuildDisagrees;
+		return other ? Recorded::Conflicting : Recorded::Again;
+	}
+	if (slot.count < kRootsPerPose) {
+		slot.readings[slot.count++] = reading;
+	} else {
+		slot.readings[slot.next] = reading;
+		slot.next = (slot.next + 1) % kRootsPerPose;
+	}
+	return disagrees ? Recorded::RebuildDisagrees : Recorded::New;
+}
+
+Found Cache::Find(const Key& key, uint64_t root, const ModelTransform* now, Position* out)
 {
 	const auto it = values_.find(key);
-	if (it == values_.end()) return false;
-	*out = it->second;
-	return true;
+	if (it == values_.end()) return Found::NoPose;
+	const Slot& slot = it->second;
+	for (size_t i = 0; i < slot.count; i++) {
+		if (slot.readings[i].root != root) continue;
+		*out = slot.readings[i].out;
+		return Found::Exact;
+	}
+	if (!now || !rebuilding_) return Found::OtherRoot;
+	// Every reading that certifies a value must certify the same one; two
+	// that do not agree mean the arithmetic is not the engine's, and nothing
+	// is rebuilt again this battle.
+	bool any = false;
+	Position first;
+	for (size_t i = 0; i < slot.count; i++) {
+		Position rebuilt;
+		if (!slot.readings[i].model || !Rebuild(slot.readings[i].at, *now, &rebuilt)) continue;
+		if (any && !(rebuilt == first)) {
+			rebuilding_ = false;
+			return Found::OtherRoot;
+		}
+		first = rebuilt;
+		any = true;
+	}
+	if (!any) return Found::OtherRoot;
+	*out = first;
+	return Found::Rebuilt;
 }
 
 void Cache::Clear()
 {
 	values_.clear();
 	order_.clear();
+	rebuilding_ = true;
+}
+
+std::string CountsText(const Counts& c, size_t kept, bool rebuilding)
+{
+	char text[640];
+	snprintf(text, sizeof(text),
+		"%llu fresh read(s) recorded; stale read(s): %llu given the straight read of their pose and root, %llu rebuilt at their "
+		"root, %llu of a pose never read fresh, %llu of a pose read fresh at other roots only; %llu conflicting (%llu of them a "
+		"rebuild's), %llu without a key; %zu pose(s) kept%s",
+		(unsigned long long)c.recorded, (unsigned long long)c.exact, (unsigned long long)c.rebuilt, (unsigned long long)c.noPose,
+		(unsigned long long)c.otherRoot, (unsigned long long)(c.conflicting + c.disagreeing), (unsigned long long)c.disagreeing,
+		(unsigned long long)c.unkeyed, kept, rebuilding ? "" : "; rebuilding off");
+	return text;
 }
 
 } // namespace socket_reads
 
 void NoteSocketUpdate(const SocketUpdate& update)
 {
-	s_frame.store(update.inputFrame);
-	s_replaying.store(update.replaying);
-	s_fresh.store(update.fresh);
-	s_state[0].store(update.fighterState[0]);
-	s_state[1].store(update.fighterState[1]);
+	std::lock_guard lock(s_mutex);
+	s_update = update;
 }
 
 void ForgetSocketReads()
@@ -308,35 +599,30 @@ void ForgetSocketReads()
 	{
 		std::lock_guard lock(s_mutex);
 		s_cache.Clear();
+		s_counts = {};
+		s_update = {};
 	}
-	s_meshesLogged[0].store(false);
-	s_meshesLogged[1].store(false);
+	for (std::atomic<bool>& logged : s_meshesLogged) logged.store(false);
 	s_reforced.store(0);
+	s_conflictLines.store(0);
 }
 
 std::string SocketReadsSummary()
 {
-	size_t kept = 0;
-	{
-		std::lock_guard lock(s_mutex);
-		kept = s_cache.Size();
-	}
-	char text[224];
-	snprintf(text, sizeof(text),
-		"%llu fresh read(s) recorded, %llu stale read(s) given the straight read, %llu stale read(s) of a state never read fresh, "
-		"%llu conflicting, %llu without a key; %zu kept",
-		(unsigned long long)s_recorded.load(), (unsigned long long)s_served.load(), (unsigned long long)s_missed.load(),
-		(unsigned long long)s_conflicting.load(), (unsigned long long)s_unkeyed.load(), kept);
-	return text;
+	std::lock_guard lock(s_mutex);
+	return socket_reads::CountsText(s_counts, s_cache.Size(), s_cache.Rebuilding());
 }
 
 bool InstallSocketReads(uintptr_t imageBase, bool log)
 {
 	s_base = imageBase;
 	s_log = log;
+	// Called, not hooked: the build's check (BuildCheck, sfv::kSites) has read their bytes.
+	s_makeName = reinterpret_cast<MakeNameFn>(imageBase + sfv::kMakeName.rva);
+	s_socketTransform = reinterpret_cast<SocketTransformFn>(imageBase + sfv::kSocketTransform.rva);
 	const bool ok = HookCodeSite(imageBase, sfv::kSocketWorldPosition, reinterpret_cast<void*>(&h_Socket),
 		reinterpret_cast<void**>(&o_socket));
-	Log("socket: %s%s", ok ? "the fight's reads of the fighters' models take the straight play's pose" : "the socket read NOT hooked; replayed frames read the last drawn pose",
+	Log("socket: %s%s", ok ? "the fight's reads of the fighters' models take a straight play's pose" : "the socket read NOT hooked; replayed frames read the last drawn pose",
 		ok && log ? "; every read logged (-sfve_socket_log)" : "");
 	return ok;
 }

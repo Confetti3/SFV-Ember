@@ -22,6 +22,7 @@
 #include "mod/IntroSkip.hxx"
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvRegionNames.hxx"
+#include "mod/SocketReads.hxx"
 
 #include <stdint.h>
 
@@ -184,7 +185,7 @@ private:
 	// logged each time they change.
 	void NotePause();
 	// Both fighters' CharaVisualParts, in the battle's order (null where
-	// there is none).
+	// there is none): TinyFighters' sides.
 	void FighterVisualParts(uint8_t* parts[kPlayers]) const;
 	// The cost line (every kCostAdvances updates played forward): each kind
 	// of update's time, and saving, loading, hashing (StateLayout::TakeCosts)
@@ -216,9 +217,24 @@ private:
 	// The models show the state the next update starts from: the engine drew a
 	// frame since the last update, and nothing was restored (SocketReads).
 	bool poseFresh_ = false;
-	std::vector<size_t> fighterRegions_[kPlayers]; // each side's regions, the key of its socket reads
-	uint8_t* fighterVisualParts_[kPlayers] = {};   // the fighters' CharaVisualParts, in the battle's order (from Bind)
-	uint64_t keyedUpdates_ = 0; // updates whose fighters were keyed, and the time that took
+	// The models stand where the state the next update starts from puts them:
+	// the last update's visual task placed them, and nothing was restored
+	// since (SocketReads' rebuilds).
+	bool modelsPlaced_ = false;
+	// The battle's fighter units, partners included, in its order (from Bind):
+	// what their socket reads are keyed by, and whose meshes are kept at LOD 0.
+	struct FighterUnit {
+		uint8_t* chara = nullptr;
+		int32_t side = -1;
+		uint8_t* motion = nullptr; // CharaMotionPart (sfv::fighter::kMotionPartType)
+		uint8_t* action = nullptr; // CharaActionPart, for the facing
+		uint8_t* visual = nullptr; // CharaVisualPart
+	};
+	// The keys of every fighter unit as an update begins (SocketReads).
+	void KeyFighterUnits(SocketUpdate* sockets) const;
+	FighterUnit fighterUnits_[kMostFighterUnits];
+	int fighterUnitCount_ = 0;
+	uint64_t keyedUpdates_ = 0; // this battle's updates whose fighter units were keyed, and the time that took
 	int64_t keyTicks_ = 0;
 	FlowRollback flow_;
 	// The costs since the last cost line (LogCosts), in QueryPerformanceCounter

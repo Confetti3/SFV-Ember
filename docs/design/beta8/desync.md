@@ -315,6 +315,85 @@ misprediction changed (F5's copy 1: 22 in some 11,000 updates). Closing them exa
 pose evaluated for the replayed state, which the component tick cannot give safely (above);
 the count in the `sockets:` lines is the measure of the risk left.
 
+## Beta.9: the pose record keyed by what decides the pose
+
+**Why.** Beta.8 keyed a recorded read by a hash of all the reading fighter's regions, command
+history included. On the copy that guessed the other player's input wrong, every read of a
+corrected frame then missed, whatever the pose: the 2026-11-13 matches missed far more than the
+lab runs (the maintainer's process counted 662 misses against 532 served by the end of its
+two Akira mirror battles, 26 and 44 of them in those; laptop runs 14 to 28 a run). It also
+keyed a partner unit's reads (Akira's CharaUnit[2] and [3]) by its owner's state and side, so a
+partner's socket shared its owner's key.
+
+**What decides the value** (IDA, build 13173604). The read (rva 0x3919D0) builds the socket's
+FName (rva 0x11AC010), asks rva 0xE58F10 for the socket's world transform (the actor's mesh,
+its virtual +0x358 with space 0) and writes the translation as x * 0.01f, z * 0.01f, y *
+-0.01f, 1. The transform is the pose (the bones the engine last evaluated) times the mesh's own
+world transform. The pose comes from the two layers the visual task hands a motion and a time
+(rva 0x3A06C0 -> 0xE5F7D0 -> 0xE5F6E0, from the visual part's layer block +2144..+2400), and
+that block from the fighter's CharaMotionPart (rva 0x33FB00 -> 0x3A40D0, 0x3A4210). The mesh's
+place comes from the actor's position (the visual part's +2400, through the actor's virtual
++1744) and, in a cinematic, the whole-mesh transform (rva 0xE5BD90: SetWorldScale3D and
+SetWorldLocationAndRotation on the mesh). The layer block and +2400 are outside the snapshot;
+the motion part, the facing and the CharaUnit's position runs are in it.
+
+**The keys** (`SocketReads.hxx`, computed by `SfvAdapter::KeyFighterUnits` before each update,
+on the game thread):
+- the unit: its place among the battle's CharaUnits (partners included);
+- the pose key: a raw XXH3 of the unit's CharaMotionPart runs (+0xC0/13092, +0x33E8/192),
+  its facing (action part +0x3E90) and its side's Tiny pick. Raw: the key is compared within
+  one process only, where a motion asset's pointer names that asset;
+- the root key, kept per reading: the CharaUnit's +0xF8/40 run (with the hitstop) and its
+  +0x764/300 run without the bone 28 words [88, 112).
+All of it is restored with the state, so the first update after a restore keys the restored
+state, not the models' leftover one. Hashing about 13.6 KB per unit costs a few microseconds,
+against 28 to 30 us for beta.8's two 40 KB masked hashes (the 2026-11-13 `sockets:` lines).
+
+**Serving a stale read.**
+1. A reading of the same unit, socket, pose and root: its value as written (exact, the
+   straight play's).
+2. A reading of the same pose at another root whose mesh had the same rotation and scale
+   bits: rebuilt at the current mesh translation, only when certain. The engine adds the
+   mesh's translation last (UE4's `FTransform` multiply: rotate, then `VectorAdd` of the
+   translation), so on each axis the socket is fl(r + T) with r the same for both readings.
+   `CertifiedSum` finds the least and greatest float r with fl(r + T_recorded) ==
+   W_recorded (rounding is monotonic, so a binary search over the floats' order), adds each
+   to T_now in single precision, and serves the result only when both give the same float:
+   then every possible r does, and that is the value the other copy's fresh read computes.
+   It holds in the same binade or into a coarser one (except when the run of r ends on a tie
+   that rounds the other way), and never into a finer one (a mesh near x = 0). Only while
+   the models stand where the update's state put them (`SocketUpdate::placed`: no restore
+   since the last update, whose visual task placed them), as the mesh transform is read live.
+   The mesh's transform is read with `NAME_None` through rva 0xE58F10 (UE4's
+   `GetSocketTransform` starts from the component's own transform; the virtual itself was not
+   found), and the socket's again with its name: both are kept only when they give exactly
+   what the game's read wrote.
+3. Otherwise the read keeps the live value and is counted: "this pose never read fresh", or
+   "read fresh at other roots only" with why (the models stand where a restored state left
+   them, the transforms could not be read, rebuilding is off, no certain rebuild).
+
+**What a miss does.** No value both copies compute alike exists for a pose this copy never
+evaluated: the copy that guessed right reads the engine's evaluation, and the nearest recorded
+time of the same motion, or a reference pose, is another pose. So the live value stays, as in
+beta.8; the counts measure it.
+
+**Checks.** A fresh read whose pose and root are kept with another value is conflicting (the
+keys miss something: a looping layer's time runs on the engine's clock, rva 0xE5F6E0 and
+0xE62E70, if a spawn ever reads one). A fresh read for which a certain rebuild from another
+root gives another value turns rebuilding off for the battle and counts as conflicting too, as
+do two readings whose certain rebuilds disagree. `tools/synctest.ps1 -check` fails on any.
+
+**Bounds and counts.** 8,192 poses (unit, socket, pose key), as before, each with up to four
+roots, the oldest replaced; a battle's spawns at a bone use far fewer (the 2026-11-13 battles
+kept 500 to 3,400 entries under beta.8's finer keys). The counts are the battle's (they were the
+process's): logged every 1,800 updates and as the battle ends, then cleared.
+
+**Partners.** Every CharaUnit the battle has (up to `sfv::unit::kMostCharaUnits`, 8) is kept at
+LOD 0 and keyed on its own; beta.8 did neither for Akira's partners, so their socket reads
+followed each copy's window size.
+
+**Match version.** The values served change, so it rides the next match version (0.7).
+
 ## A pointer's high half in the hash (2026-11-12, S6b)
 
 **What the run showed.** A plain room run (RYU against CNL, a watcher, 30 ms lag; the first
