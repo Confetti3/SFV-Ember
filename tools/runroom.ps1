@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog, [string]$banStages = '', [switch]$rngAudit, [string]$startPerturb = '', [switch]$plainSaves, [int]$verifyLoads = -1, [switch]$pressStart, [string]$fma3 = '', [string]$vital = '', [string]$expectFinish = '', [int]$fullMin = 1000, [int]$tasks = -1)
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog, [string]$banStages = '', [switch]$rngAudit, [string]$startPerturb = '', [switch]$plainSaves, [int]$verifyLoads = -1, [switch]$pressStart, [string]$fma3 = '', [string]$vital = '', [string]$expectFinish = '', [int]$fullMin = 1000, [int]$tasks = -1, [switch]$startEx)
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -128,7 +128,12 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # the round gives it), so the next hit (or a trade) ends the round in a KO:
 # "-vital 60,5 -idle 1 -moveset targets" has P1 walk up and chain normals into
 # a P2 who stands at 5 percent. The write is not rollback-proof, so -vital needs
-# -lag 0 and no -practice (Training's gauges refill the vital). -expectFinish
+# -lag 0 and no -practice (Training's gauges refill the vital). -startEx gives
+# both copies a full Critical Art gauge at the start of every round and changes
+# nothing else (-sfve_start_ex: the game's own "EX full at round start" setting,
+# written once before frame 0, so it is rollback-proof and works with any -lag
+# and with -vital): "-vital 60,5 -idle 1 -moveset supers -startEx" lets P1 finish
+# P2 with a Critical Art, and -expectFinish 'critical art' checks it did. -expectFinish
 # NAME (the game's finish name in the match result: ko, critical art, ex,
 # chip, perfect, double ko, time over) fails a run none of whose rounds ended
 # so. Every run checks the next round starts clean: each copy logs "a round's
@@ -432,6 +437,7 @@ foreach ($i in $copies) {
   $fma3Each = @(if ($fma3) { "$fma3" -split "[, ]+" | Where-Object { $_ -ne "" } | ForEach-Object { [int]$_ } })
   if ($i -lt $fma3Each.Count -and $fma3Each[$i] -ge 0) { $marks += "-sfve_fma3=$($fma3Each[$i])" }
   if ($tasks -ge 0) { $marks += "-sfve_tasks=$tasks" }
+  if ($startEx) { $marks += '-sfve_start_ex=1' }
   $resOf = @($res0, $res1, '')
   $priorRes = $env:SFVE_RES
   if ($resOf[$i]) { $env:SFVE_RES = $resOf[$i] }

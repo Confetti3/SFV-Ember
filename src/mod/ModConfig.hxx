@@ -33,6 +33,8 @@
 //                        (a name, or a size) of this copy's start state, before the
 //                        start state's agreement, which then repairs it
 //   -sfve_practice=1     synctest, netplay: Training's refilling gauges from the first frame
+//   -sfve_start_ex=1     netplay: only the EX (Critical Art) gauge starts full at every round's
+//                        start, set once before frame 0 (rollback-proof, unlike -vital's write)
 //   -sfve_replay_regions=F  replay playback: log each checkpoint's region hashes from frame F
 //   -sfve_replay_check=N    replay playback: also make rollbacks up to N frames deep and log
 //                        what they leave different (random spacing from -sfve_schedule)
@@ -154,6 +156,8 @@ struct ModConfig {
 	// players, as a Practice room's match has them, so every V-Trigger and
 	// Critical Art a script asks for is played (synctest and netplay).
 	bool practiceGauges = false;
+	// The EX gauge alone full at each round's start (-sfve_start_ex; netplay).
+	bool startFullExtra = false;
 	int distance = 7;
 	uint32_t virtualPadMask = 0; // bit i: slot i is virtual from the start
 	bool backgroundPlay = false;

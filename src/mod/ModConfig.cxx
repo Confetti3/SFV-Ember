@@ -214,6 +214,7 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	wchar_t perturb[96];
 	if (options.Find(L"sfve_start_perturb", perturb, 96)) c.startPerturb = Narrow(perturb);
 	c.practiceGauges = options.Number(L"sfve_practice", 0) != 0;
+	c.startFullExtra = options.Number(L"sfve_start_ex", 0) != 0;
 	c.distance = (int)options.Number(L"sfve_distance", 7);
 	c.backgroundPlay = options.Number(L"sfve_background", 0) != 0;
 	c.learn = options.Number(L"sfve_learn", 0) != 0;

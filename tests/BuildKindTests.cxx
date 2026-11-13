@@ -27,7 +27,7 @@ constexpr const wchar_t* kTestLine =
 	L"-sfve_crash_command=1 -sfve_unowned=RYU -sfve_uninstalled=S01 -sfve_pads=0,1 -sfve_background=1 -sfve_port=7100 "
 	L"-sfve_grant_all=0 -sfve_moveset=cody -sfve_idle=1 -sfve_tiny=2 -sfve_socket_log=1 -sfve_replay_any_build=1 "
 	L"-sfve_rng_audit=1 -sfve_start_perturb=global.rng,0,1 -sfve_skip_saves=0 -sfve_hash_on_confirm=0 -sfve_verify_loads=0 "
-	L"-sfve_loader=launcher -sfve_mode=netplay -sfve_room=1 -sfve_dump_channel=1a4:1b0:2c8";
+	L"-sfve_start_ex=1 -sfve_loader=launcher -sfve_mode=netplay -sfve_room=1 -sfve_dump_channel=1a4:1b0:2c8";
 
 } // namespace
 
@@ -57,6 +57,7 @@ TEST_CASE("a player build reads only its launcher's options")
 	CHECK_FALSE(player.socketLog);
 	CHECK_FALSE(player.replayAnyBuild);
 	CHECK_FALSE(player.rngAudit);
+	CHECK_FALSE(player.startFullExtra);
 	CHECK(player.startPerturb.empty());
 	// The cheaper rollbacks stay on, with one restore in 16 re-hashed.
 	CHECK(player.skipSaves);
@@ -66,7 +67,7 @@ TEST_CASE("a player build reads only its launcher's options")
 	for (const char* option :
 		{"-sfve_instance", "-sfve_ownership", "-sfve_mash", "-sfve_lag", "-sfve_crash_command", "-sfve_pads", "-sfve_grant_all",
 			"-sfve_moveset", "-sfve_idle", "-sfve_tiny", "-sfve_socket_log", "-sfve_replay_any_build", "-sfve_rng_audit",
-			"-sfve_start_perturb", "-sfve_skip_saves", "-sfve_hash_on_confirm", "-sfve_verify_loads"}) {
+			"-sfve_start_perturb", "-sfve_skip_saves", "-sfve_hash_on_confirm", "-sfve_verify_loads", "-sfve_start_ex"}) {
 		CHECK(ignored.find(option) != std::string::npos);
 	}
 	CHECK(ignored.find("-sfve_mode") == std::string::npos);
@@ -91,6 +92,7 @@ TEST_CASE("a player build reads only its launcher's options")
 	CHECK(development.socketLog);
 	CHECK(development.replayAnyBuild);
 	CHECK(development.rngAudit);
+	CHECK(development.startFullExtra);
 	CHECK(development.startPerturb == "global.rng,0,1");
 	CHECK_FALSE(development.skipSaves);
 	CHECK_FALSE(development.hashOnConfirm);

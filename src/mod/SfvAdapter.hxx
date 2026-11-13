@@ -74,6 +74,14 @@ public:
 	// before the session's first frame. False (logged) when a table or a
 	// fighter is missing or the game refused a value.
 	bool SetPracticeGauges();
+	// Only the EX (Critical Art) gauge, full at every round's start and
+	// otherwise as in a match (sfv::practice::kExtraFullAtRoundStart); vital
+	// and the V-gauge stay a match's. The same once-before-frame-0 write and
+	// the same results as SetPracticeGauges.
+	bool SetStartFullExtra();
+	// Writes each (param, value) of `gauges` into both players' tables (the
+	// battle data's and the fighter's copy); `what` names them in the log.
+	bool SetGaugeParams(const std::pair<int, int>* gauges, size_t count, const char* what);
 
 	// From the input-record hook: remembers what the game computed for each
 	// pad this tick, then writes the injected inputs over it while Advance runs.

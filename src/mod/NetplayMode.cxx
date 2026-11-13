@@ -595,6 +595,15 @@ NetplayMode::Prepared NetplayMode::PrepareStart(SfvAdapter& adapter)
 	// A test's -sfve_practice does the same outside rooms.
 	const bool practice = room_.Practice() || config_.practiceGauges;
 	if (practice && !adapter.SetPracticeGauges()) Log("netplay: the Practice match plays with a match's gauges");
+	// A test's -sfve_start_ex: only the EX gauge, full at every round's
+	// start, so a scripted Critical Art can end a round (with -vital, which
+	// Practice's refilling vital would undo). The tables are written once
+	// here, before anything is simulated, like Practice's, so both copies
+	// have it from the same frame and no rollback touches it; Practice
+	// already refills EX, so it needs nothing more.
+	if (config_.startFullExtra && !practice && !adapter.SetStartFullExtra()) {
+		Log("netplay: the EX gauge starts as a match's");
+	}
 	seed_ = seed;
 	startTime_ = adapter.StartTime();
 	// A test's difference in this copy's start state (-sfve_start_perturb),

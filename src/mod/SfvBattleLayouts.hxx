@@ -61,6 +61,15 @@ constexpr uint32_t kCharaSide = 1880;
 constexpr int kVitalParam = 22, kVitalRefill = 10;
 constexpr int kExtraParam = 24, kExtraRefill = 3;
 constexpr int kVGaugeParam = 26, kVGaugeRefill = 5;
+// EX (the Critical Art gauge) 2: every round starts with the gauge full and
+// nothing else changes (read in IDA, beta.9: the round's start, rva 0x357540,
+// fills it for 2, 3 and 5; the gauge's tick, rva 0x362AC0, has a case for 3
+// (refill), 4 (hold empty) and 5 (hold full) only, so 2 plays as a match
+// does). Training's menu has it as the second EX row. A one-time write of
+// the two tables before the first frame, like the Practice gauges, so it is
+// the same on both copies and no rollback undoes it: a test's way to a
+// Critical Art finish without Practice's refilling vital (-sfve_start_ex).
+constexpr int kExtraFullAtRoundStart = 2;
 } // namespace practice
 
 namespace flow {
