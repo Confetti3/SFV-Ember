@@ -17,6 +17,16 @@
 // reports waiting the oldest go to make room), hashes the mod for the build
 // id, reads the tail of the mod's log and writes the file. Nothing there can stall or end the game:
 // every failure is a log line and no report.
+//
+// What it gathers beyond the checkpoint's hashes (DesyncReport.hxx, Facts):
+// the match key both fighters share, the previous checkpoint that matched,
+// the rollbacks of the last 120 frames and both players' inputs for the 180
+// before the checkpoint (DesyncTrace.hxx), the socket-read counters, and,
+// on the report's thread, each fighter's script and frame read from the kept
+// state and the state file's pointer census (a pass over the state's
+// address-like words, VirtualQuery and ReadProcessMemory, after the mismatch
+// and never in the fight). The launcher sends the report within seconds
+// (DesyncCourier.hxx), with the state file beside it when the intake takes one.
 
 #include "core/StartAgreement.hxx"
 #include "ember/SfvVerification.hxx"

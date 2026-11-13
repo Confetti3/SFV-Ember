@@ -30,6 +30,9 @@ public:
 		int frame;
 		std::uint64_t local;
 		std::uint64_t remote;
+		// The last checkpoint, before this one, at which the players' hashes
+		// agreed; -1 when none did (the first checkpoint already differs).
+		int previousMatch = -1;
 	};
 	// Sends one hash to the room; false when the room did not take it (it is
 	// sent again on the next step).
@@ -69,6 +72,7 @@ private:
 	std::map<int, Checkpoint> local_;
 	int next_ = RollbackSession::kCheckpointInterval; // the next checkpoint to take
 	int lastConfirmed_ = -1;
+	int lastMatch_ = -1;            // the newest checkpoint whose hashes both players agreed on
 	bool mismatchReported_ = false; // this battle's mismatch was returned already
 };
 

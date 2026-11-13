@@ -20,6 +20,9 @@ using sf4e::SessionProtocol::BattleHashV2;
 
 namespace {
 
+// The session's checkpoint spacing: these tests hold for any of its values (60 in beta.8, 20 proposed for beta.9).
+constexpr int kInterval = RollbackSession::kCheckpointInterval;
+
 // Both peers' checks, each publishing into the other's remote hashes.
 struct Exchanges {
 	CheckpointExchange a, b;
@@ -105,8 +108,11 @@ TEST_CASE("a real desync shows as a mismatch at the first checkpoint after it, o
 	exchanges.RunTo(pair, 420);
 	REQUIRE(exchanges.mismatchA);
 	REQUIRE(exchanges.mismatchB);
-	CHECK(exchanges.mismatchA->frame == 300);
-	CHECK(exchanges.mismatchB->frame == 300);
+	CHECK(exchanges.mismatchA->frame == (kDesyncFrom / kInterval + 1) * kInterval);
+	CHECK(exchanges.mismatchB->frame == (kDesyncFrom / kInterval + 1) * kInterval);
+	// The checkpoint before it, at which the players still agreed, is what a report names as the last good one.
+	CHECK(exchanges.mismatchA->previousMatch == kDesyncFrom / kInterval * kInterval);
+	CHECK(exchanges.mismatchB->previousMatch == kDesyncFrom / kInterval * kInterval);
 	CHECK(exchanges.mismatchA->local == exchanges.mismatchB->remote);
 	CHECK(exchanges.mismatchA->remote == exchanges.mismatchB->local);
 }
@@ -119,10 +125,10 @@ TEST_CASE("a client that watches publishes nothing, and a watcher's hash never c
 	CheckpointExchange watcher;
 	std::map<int, BattleHashV2> remote;
 	BattleHashV2 watched;
-	watched.frameIdx = 60;
+	watched.frameIdx = kInterval;
 	watched.overall = 0x1234;
 	watched.fromPlayer = false;
-	remote[60] = watched;
+	remote[kInterval] = watched;
 	CHECK_FALSE(watcher.Step(pair.a, nullptr, remote));
 	CHECK(remote.empty()); // compared, so erased
 }
@@ -141,9 +147,10 @@ TEST_CASE("a check that starts late publishes from the oldest checkpoint the ses
 	std::map<int, BattleHashV2> remote;
 	exchange.Step(pair.a, &send, remote);
 	// The pair hashes every frame (verifyLoads) and the session keeps the
-	// last 256 of them, 165 to 420 here: 60 and 120 are gone.
+	// last 256 of them, 165 to 420 here: the checkpoints before 165 are gone.
 	REQUIRE(published.size() >= 4);
-	for (size_t i = 0; i < published.size(); i++) CHECK(published[i] == 180 + (int)i * 60);
+	const int firstKept = (165 + kInterval - 1) / kInterval * kInterval;
+	for (size_t i = 0; i < published.size(); i++) CHECK(published[i] == firstKept + (int)i * kInterval);
 }
 
 TEST_CASE("the check starts over when the session's confirmed frame goes back")
@@ -160,29 +167,29 @@ TEST_CASE("the check starts over when the session's confirmed frame goes back")
 		LoopbackPair first(kBugNone, 0);
 		REQUIRE(first.RunTo(140));
 		first.RunTo(160);
-		remote[60] = PlayerHash(60, kWrong);
+		remote[kInterval] = PlayerHash(kInterval, kWrong);
 		CHECK(exchange.Step(first.a, &send, remote));
 		// One mismatch a battle: the next is not reported again.
-		remote[120] = PlayerHash(120, kWrong);
+		remote[2 * kInterval] = PlayerHash(2 * kInterval, kWrong);
 		CHECK_FALSE(exchange.Step(first.a, &send, remote));
 	}
 	REQUIRE(!published.empty());
-	CHECK(published.front() == 60);
+	CHECK(published.front() == kInterval);
 	published.clear();
 	LoopbackPair second(kBugNone, 0);
 	REQUIRE(second.RunTo(80));
 	second.RunTo(100);
 	// A hash of the battle before, still waiting, is dropped, not compared
 	// with this battle's checkpoint of the same frame.
-	remote[60] = PlayerHash(60, kWrong);
+	remote[kInterval] = PlayerHash(kInterval, kWrong);
 	CHECK_FALSE(exchange.Step(second.a, &send, remote));
 	CHECK(remote.empty());
 	REQUIRE(!published.empty());
-	CHECK(published.front() == 60);
+	CHECK(published.front() == kInterval);
 	// The new battle's own mismatch is reported.
-	remote[60] = PlayerHash(60, kWrong);
+	remote[kInterval] = PlayerHash(kInterval, kWrong);
 	const auto mismatch = exchange.Step(second.a, &send, remote);
 	REQUIRE(mismatch);
-	CHECK(mismatch->frame == 60);
+	CHECK(mismatch->frame == kInterval);
 	CHECK(mismatch->remote == kWrong);
 }
