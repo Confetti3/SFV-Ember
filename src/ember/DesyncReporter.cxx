@@ -124,6 +124,8 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	// never read, a pose read at other roots only) and the conflicting records.
 	// The summary takes the counts' own lock, so it is safe from here.
 	facts.socketReads = mod::SocketReadsSummary();
+	// The battle's pose holds (the same lock): how many misses a hold put right.
+	facts.poseHolds = mod::PoseHoldsSummary();
 	// The battle's pace and controller events (mod/Pace.hxx; its own lock).
 	facts.pace = mod::pace::Current().Report();
 	// The misses among them from the frames before the checkpoint, copied

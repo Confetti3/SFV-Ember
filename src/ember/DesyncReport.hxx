@@ -157,6 +157,9 @@ struct Facts {
 	// This battle's socket-read counts (SocketReadsSummary: recorded, served
 	// exact, rebuilt, missed with the reason, conflicting); empty when not read.
 	std::string socketReads;
+	// This battle's pose holds (PoseHoldsSummary: the holds made, those whose
+	// replay was fresh, the failures by reason); empty when not read.
+	std::string poseHolds;
 	// This battle's pace so far (mod/Pace.hxx ReportText: the windows of 600
 	// updates, the slowest and the last in updates a second, how many were under
 	// 55, the controller removed / added events); empty when not read.

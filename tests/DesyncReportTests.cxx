@@ -512,6 +512,7 @@ TEST_CASE("the comment and the details carry what names a cause from one report"
 	facts.now = 2591;
 	facts.recent = {true, 2471, 2591, 5, 4};
 	facts.socketReads = "12 fresh read(s) recorded, 3 conflicting";
+	facts.poseHolds = "4 pose hold(s), 3 gave a fresh read; 1 failed";
 	facts.socketMissesKnown = true;
 	facts.socketMisses = {{2519, 1, 0x3BDB02, "Sock_Item_R", "never-seen pose"}, {2530, 0, 0x3A4B79, "b_C_Head", "rebuilding off"}};
 	facts.inputs.known = true;
@@ -535,6 +536,8 @@ TEST_CASE("the comment and the details carry what names a cause from one report"
 	CHECK(details.find("rollbacks, whole battle: 37, the longest 6 frames\n") != std::string::npos);
 	CHECK(details.find("rollbacks, frames 2471 to 2591: 5, the longest 4 frames\n") != std::string::npos);
 	CHECK(details.find("socket reads: 12 fresh read(s) recorded, 3 conflicting\n") != std::string::npos);
+	// The holds next to the socket counters.
+	CHECK(details.find("conflicting\npose holds: 4 pose hold(s), 3 gave a fresh read; 1 failed\n") != std::string::npos);
 	CHECK(details.find("socket read misses (the live value was given), frames 2460 to 2580, the latest 64 kept: 2\n") != std::string::npos);
 	CHECK(details.find("miss 2519 unit 1 Sock_Item_R from rva 0x3BDB02: never-seen pose\n") != std::string::npos);
 	CHECK(details.find("miss 2530 unit 0 b_C_Head from rva 0x3A4B79: rebuilding off\n") != std::string::npos);
@@ -551,6 +554,7 @@ TEST_CASE("the comment and the details carry what names a cause from one report"
 	CHECK(bareDetails.find("inputs: not recorded") != std::string::npos);
 	CHECK(bareDetails.find("rollbacks, last 120 frames: not counted\n") != std::string::npos);
 	CHECK(bareDetails.find("socket reads: not read\n") != std::string::npos);
+	CHECK(bareDetails.find("pose holds: not read\n") != std::string::npos);
 	CHECK(bareDetails.find("socket read misses") == std::string::npos);
 	CHECK(bareDetails.find("scripts at the checkpoint: not read (the state was not kept)\n") != std::string::npos);
 
@@ -565,6 +569,7 @@ TEST_CASE("a worst-case report's comment and log stay within the intake's limits
 	Facts facts = SampleFacts();
 	facts.recent = {true, 1, 121, 99999, 99999};
 	facts.socketReads = std::string(520, 's'); // SocketReadsSummary's text with every count at 20 digits
+	facts.poseHolds = std::string(330, 'h');   // PoseHoldsSummary's text with all nine counts at 20 digits
 	// The pace line at its longest: windows and rates at 20 digits, eight controller events listed.
 	facts.pace = std::string(400, 'p');
 	// The miss list full: 64 entries, the longest socket name, frame and unit numbers and reason.
@@ -582,6 +587,7 @@ TEST_CASE("a worst-case report's comment and log stay within the intake's limits
 	CHECK(details.size() < 24 * 1024); // 180 runs, about 40 bytes each, and 64 misses of about 110
 	CHECK(details.find("socket read misses") != std::string::npos);
 	CHECK(details.find("pace: ppp") != std::string::npos);
+	CHECK(details.find("pose holds: hhh") != std::string::npos);
 	// 400 regions, as SFV's layout has, still leave most of the log for the tail.
 	std::string regions;
 	for (int i = 0; i < 400; ++i) regions += "desync: checkpoint 2580 region CharaUnit[0].CharaStatusPart+0x238, 64 bytes, hash 00000000000000ab\n";

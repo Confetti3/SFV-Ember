@@ -287,6 +287,7 @@ std::string DetailLines(const Facts& facts)
 	}
 	text += "pace: " + (facts.pace.empty() ? std::string("not read") : facts.pace) + "\n";
 	text += "socket reads: " + (facts.socketReads.empty() ? std::string("not read") : facts.socketReads) + "\n";
+	text += "pose holds: " + (facts.poseHolds.empty() ? std::string("not read") : facts.poseHolds) + "\n";
 	if (facts.socketMissesKnown) {
 		text += "socket read misses (the live value was given), frames " + std::to_string(facts.frame - kRecentFrames) + " to " +
 			std::to_string(facts.frame) + ", the latest " + std::to_string(kMostSocketMisses) + " kept: " +
