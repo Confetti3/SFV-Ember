@@ -51,7 +51,17 @@
 //
 // With -sfve_socket_log=1 (development) every fight read is logged too, a
 // missed one with its call site, socket and why.
+//
+// A miss in a battle a session plays is put right by a pose hold
+// (core/PoseHold.hxx, docs/design/beta9/pose-hold.md): the update that missed
+// tells the session (GameAdapter::WantsDrawnFrame), which ends the tick at
+// that frame's start with the models placed for it; the engine draws it, and
+// the next tick plays the frame again, its read now fresh, recorded, and what
+// the copy that guessed right read. PoseFreshness below is the bookkeeping of
+// what the models show; one line is logged per hold ("socket: hold at ...")
+// and the holds are counted with the reads (PoseHoldsSummary).
 
+#include "core/PoseHold.hxx"
 #include "mod/SfvOffsets.hxx"
 
 #include <stddef.h>
@@ -68,7 +78,8 @@ namespace sfve::mod {
 constexpr int kMostFighterUnits = (int)sfv::unit::kMostCharaUnits;
 
 namespace socket_reads {
-struct Miss; // one stale read given the live value (below)
+struct Miss;        // one stale read given the live value (below)
+struct UpdateReads; // the reads of one update (below)
 }
 
 // One fighter unit as an update begins (SfvAdapter, the game thread).
@@ -105,6 +116,18 @@ std::string SocketReadsSummary();
 // lies in [first, last], oldest first, for a desync report (copied under the
 // reads' own lock: safe from any thread).
 std::vector<socket_reads::Miss> SocketMissesBetween(int32_t first, int32_t last);
+// The fight's reads in the update just run (since the last NoteSocketUpdate):
+// SfvAdapter asks after each update whether it wants a drawn frame.
+socket_reads::UpdateReads TakeUpdateReads();
+// The battle's pose holds (SfvAdapter, from the session's events): a hold
+// made, a hold whose first update after it was the held frame's and fresh,
+// and an update that wanted a drawn frame and got none, by why.
+void CountPoseHold();
+void CountPoseHoldFresh();
+void CountPoseHoldFailed(pose_hold::Refusal why);
+// "N pose hold(s), ..." (socket_reads::HoldsText), under the reads' lock: safe
+// from any thread. Forgotten with the record (ForgetSocketReads).
+std::string PoseHoldsSummary();
 
 // The same pose on every copy, whatever its window. The engine evaluates a
 // skeletal mesh's bones at the LOD the renderer picks from its size on
@@ -356,6 +379,81 @@ struct Counts {
 // every count, and `kept`. K counts both kinds, as tools/synctest.ps1 -check
 // fails on "[1-9]... conflicting".
 std::string CountsText(const Counts& counts, size_t kept, size_t neverRebuilt);
+
+// The fight's reads in one battle update (TakeUpdateReads).
+struct UpdateReads {
+	int fresh = 0;  // fresh reads recorded
+	int misses = 0; // stale reads given the live value (Miss)
+	Miss first;     // the first miss (its frame the update's input frame)
+	int32_t side = -1; // the first miss's fighter's side (0 P1, 1 P2; -1 not known)
+};
+
+// One battle's pose holds.
+struct HoldCounts {
+	uint64_t holds = 0; // ticks that ended held for a drawn frame
+	uint64_t fresh = 0; // holds whose first update after was the held frame's and fresh
+	uint64_t failed[pose_hold::kRefusals] = {}; // updates that wanted a drawn frame and got none, by pose_hold::Refusal
+};
+// "H pose hold(s), F gave a fresh read; K failed (state not kept a, held frame
+// b, not fresh after the hold c, chain limit d, refused by GGPO e, first frame
+// f)": every count.
+std::string HoldsText(const HoldCounts& counts);
+
+// What the fighters' models show, for the socket reads (SfvAdapter, the game
+// thread). The engine evaluates the poses once a drawn frame, from what the
+// last update's visual task set; a restore changes the state but not the
+// models.
+//   - fresh: the models show the state the next update starts from: a frame
+//     was drawn since the last update, and nothing was restored since.
+//   - placed: they stand where that state puts them: the last update placed
+//     them, and nothing was restored since (a rebuild needs it).
+// After a pose hold the next update should be the held frame's, fresh; Begin
+// says how it found them, once.
+class PoseFreshness {
+public:
+	enum class AfterHold : uint8_t {
+		None,     // no hold waited for its update
+		Fresh,    // the first update after the hold is the held frame's, and fresh
+		NotFresh, // it is another frame's, or no frame was drawn, or something was restored first
+	};
+	struct Begun {
+		bool fresh = false;
+		bool placed = false;
+		AfterHold afterHold = AfterHold::None;
+	};
+	// The engine drew a frame (the battle frame's hook, once a frame).
+	void Drawn() { fresh_ = true; }
+	// A state was restored (AfterLoad).
+	void Restored() { fresh_ = placed_ = false; }
+	// A new battle: nothing is placed, no hold waits (a drawn frame still counts).
+	void Forget()
+	{
+		placed_ = false;
+		awaitingHold_ = false;
+		heldFrame_ = -1;
+	}
+	// The session ended its tick held for the update at `inputFrame`.
+	void Held(int32_t inputFrame)
+	{
+		awaitingHold_ = true;
+		heldFrame_ = inputFrame;
+	}
+	// An update begins at `inputFrame`.
+	Begun Begin(int32_t inputFrame);
+	// The update ran: its visual task placed the models for the state it left,
+	// which the engine draws next.
+	void Ran()
+	{
+		fresh_ = false;
+		placed_ = true;
+	}
+
+private:
+	bool fresh_ = false;
+	bool placed_ = false;
+	bool awaitingHold_ = false;
+	int32_t heldFrame_ = -1;
+};
 
 } // namespace socket_reads
 

@@ -63,9 +63,12 @@ std::string MakeLayoutRulesId()
 	// battle that rolls back runs its tick's tasks (ModConfig.hxx): the
 	// placement this copy takes (a development build's -sfve_tasks changes
 	// it, so a -sfve_tasks=0 copy cannot meet a default one; the default's
-	// text is kRollbackTickTasks' name as before).
+	// text is kRollbackTickTasks' name as before); and whether a fight socket
+	// read that missed is held for a drawn frame (ChoosePoseHold: a
+	// development build's -sfve_pose_hold=0 copy cannot meet a default one).
 	text += "; socket grid 1/" + std::to_string(socket_reads::kGridSteps) + "; address rule " + std::to_string(kAddressRuleVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath) +
-		"; rollback tick tasks " + TickTasksName(ChooseTickTasks(Config(), true));
+		"; rollback tick tasks " + TickTasksName(ChooseTickTasks(Config(), true)) + "; pose hold " +
+		(ChoosePoseHold(Config()) ? "on" : "off");
 	return Hex(XXH3_64bits(text.data(), text.size()));
 }
 

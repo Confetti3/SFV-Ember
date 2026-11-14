@@ -488,6 +488,120 @@ TEST_CASE("the battle's counts, as the log and the synctest's check read them")
 }
 
 
+TEST_CASE("the pose holds' counts, as the sockets line and the desync report read them")
+{
+	using sfve::pose_hold::Refusal;
+	socket_reads::HoldCounts counts;
+	counts.holds = 9;
+	counts.fresh = 8;
+	counts.failed[(int)Refusal::StateNotKept] = 2;
+	counts.failed[(int)Refusal::NotFreshAfterHold] = 1;
+	counts.failed[(int)Refusal::ChainLimit] = 3;
+	const std::string text = socket_reads::HoldsText(counts);
+	CHECK(text == "9 pose hold(s), 8 gave a fresh read; 6 failed (state not kept 2, held frame 0, not fresh after the hold 1, "
+				  "chain limit 3, refused by GGPO 0, first frame 0)");
+	// Every count at its widest still fits.
+	socket_reads::HoldCounts widest;
+	widest.holds = widest.fresh = UINT64_MAX;
+	for (uint64_t& n : widest.failed) n = UINT64_MAX / sfve::pose_hold::kRefusals;
+	CHECK(socket_reads::HoldsText(widest).size() < 330);
+	CHECK(socket_reads::HoldsText(widest).back() == ')');
+}
+
+TEST_CASE("what the models show: fresh after a drawn frame until an update or a restore, placed by an update until a restore")
+{
+	using socket_reads::PoseFreshness;
+	using AfterHold = PoseFreshness::AfterHold;
+	PoseFreshness pose;
+	// Before anything is drawn or placed.
+	PoseFreshness::Begun begun = pose.Begin(10);
+	CHECK_FALSE(begun.fresh);
+	CHECK_FALSE(begun.placed);
+	pose.Ran();
+	// The engine draws what the update placed: the next update reads it fresh.
+	pose.Drawn();
+	begun = pose.Begin(11);
+	CHECK(begun.fresh);
+	CHECK(begun.placed);
+	CHECK(begun.afterHold == AfterHold::None);
+	pose.Ran();
+	// A second update in the same frame (a rollback's replay, the new frame
+	// after it): stale, placed.
+	begun = pose.Begin(12);
+	CHECK_FALSE(begun.fresh);
+	CHECK(begun.placed);
+	pose.Ran();
+	// A restore: neither, even after a drawn frame, until an update places
+	// the models again.
+	pose.Drawn();
+	pose.Restored();
+	begun = pose.Begin(9);
+	CHECK_FALSE(begun.fresh);
+	CHECK_FALSE(begun.placed);
+	pose.Ran();
+	begun = pose.Begin(10);
+	CHECK_FALSE(begun.fresh);
+	CHECK(begun.placed);
+}
+
+TEST_CASE("after a pose hold the held frame's update is fresh only if a frame was drawn and nothing ran or was restored first")
+{
+	using socket_reads::PoseFreshness;
+	using AfterHold = PoseFreshness::AfterHold;
+	// The hold: a restore of the state frame 41 starts from, frame 41 played
+	// again (it places the models for 42's start), the tick ends held for 42.
+	const auto held = [](PoseFreshness& pose) {
+		pose.Drawn();
+		pose.Restored();
+		pose.Begin(41);
+		pose.Ran();
+		pose.Held(42);
+	};
+	{
+		PoseFreshness pose;
+		held(pose);
+		pose.Drawn(); // the engine's frame
+		const PoseFreshness::Begun begun = pose.Begin(42);
+		CHECK(begun.fresh);
+		CHECK(begun.placed);
+		CHECK(begun.afterHold == AfterHold::Fresh);
+		pose.Ran();
+		// Said once: the frames after it are a replay's.
+		CHECK(pose.Begin(43).afterHold == AfterHold::None);
+	}
+	{
+		// No frame drawn between.
+		PoseFreshness pose;
+		held(pose);
+		const PoseFreshness::Begun begun = pose.Begin(42);
+		CHECK_FALSE(begun.fresh);
+		CHECK(begun.afterHold == AfterHold::NotFresh);
+	}
+	{
+		// Drawn, then something restored before the replay.
+		PoseFreshness pose;
+		held(pose);
+		pose.Drawn();
+		pose.Restored();
+		CHECK(pose.Begin(42).afterHold == AfterHold::NotFresh);
+	}
+	{
+		// Drawn, then another frame's update ran first.
+		PoseFreshness pose;
+		held(pose);
+		pose.Drawn();
+		CHECK(pose.Begin(40).afterHold == AfterHold::NotFresh);
+	}
+	{
+		// A new battle forgets the hold.
+		PoseFreshness pose;
+		held(pose);
+		pose.Forget();
+		pose.Drawn();
+		CHECK(pose.Begin(42).afterHold == AfterHold::None);
+	}
+}
+
 TEST_CASE("the latest misses are kept, 64 of them, oldest dropped, and read back by frame")
 {
 	socket_reads::MissRing ring;

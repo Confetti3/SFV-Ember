@@ -53,9 +53,10 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 // record's rules (its size, sfv::flowstate's base and every class's size,
 // own fields and leftover words); and of the rules no table shows, the
 // address rule's version (kAddressRuleVersion), the CRT math of the modes
-// that roll back (kRollbackCrtMath) and where their battles run the tick's
+// that roll back (kRollbackCrtMath), where their battles run the tick's
 // tasks (kRollbackTickTasks, or the placement -sfve_tasks gave a development
-// build: first computed once the config is loaded). The same for every copy of one build;
+// build) and whether they hold for a drawn frame (ChoosePoseHold): first
+// computed once the config is loaded. The same for every copy of one build;
 // any change to a table or rule that decides what is saved, restored,
 // computed or compared changes it, and a new one must feed it too.
 const std::string& LayoutRulesId();

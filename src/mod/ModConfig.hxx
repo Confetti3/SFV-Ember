@@ -24,6 +24,9 @@
 //   -sfve_socket_log=1   diagnostics: log every read of a fighter's model socket the
 //                        fight makes (SocketReads): fresh and recorded, or stale and
 //                        given the straight read, or missed
+//   -sfve_pose_hold=0|1  test: a fight socket read that missed ends the tick held at its
+//                        frame's start, drawn, and the frame is played again (1), or keeps
+//                        the live value (0); without it, kPoseHoldByDefault (ChoosePoseHold)
 //   -sfve_replay_any_build=1  diagnostics: Watch now plays a replay made with
 //                        another build (its result says nothing of this build)
 //   -sfve_rng_audit=1    diagnostics: every draw from a random generator in a battle
@@ -145,6 +148,9 @@ struct ModConfig {
 	uint32_t testTiny = 0;
 	// Log the fight's reads of a fighter's model socket (-sfve_socket_log).
 	bool socketLog = false;
+	// Pose holds as a test asks (-sfve_pose_hold): 0 off, 1 on; -1 (not
+	// given): kPoseHoldByDefault (ChoosePoseHold).
+	int poseHold = -1;
 	// Watch now plays a replay of another build (-sfve_replay_any_build).
 	bool replayAnyBuild = false;
 	// Check every random draw against the rollback state (-sfve_rng_audit).
@@ -334,5 +340,16 @@ constexpr bool SessionBattleSetUp(ModMode mode, bool rooms, bool launchedBattleL
 // battle too, for A/B runs), else kRollbackTickTasks for a session's battle
 // and the game's own for any other. A player build never reads the option.
 TickTasks ChooseTickTasks(const ModConfig& config, bool sessionBattle, BuildKind kind = kBuildKind);
+
+// Pose holds (core/PoseHold.hxx, docs/design/beta9/pose-hold.md): in a battle
+// a session plays (the netplay mode's fighters and lagged replays), a fight
+// socket read that kept the live value ends the tick held at its frame's
+// start, drawn, and the frame is played again with its read fresh. A copy
+// that holds and one that does not compute such a read differently, so it is
+// part of the room's build (mod::LayoutRulesId).
+constexpr bool kPoseHoldByDefault = true;
+// -sfve_pose_hold where a development build was given 0 or 1, else
+// kPoseHoldByDefault. A player build never reads the option.
+bool ChoosePoseHold(const ModConfig& config, BuildKind kind = kBuildKind);
 
 } // namespace sfve::mod

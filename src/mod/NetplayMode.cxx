@@ -584,6 +584,10 @@ NetplayMode::Prepared NetplayMode::PrepareStart(SfvAdapter& adapter)
 	c.skipUnloadableSaves = config_.skipSaves;
 	c.hashOnConfirm = config_.hashOnConfirm;
 	c.verifyLoadsEvery = config_.verifyLoadsEvery;
+	// A fight socket read that missed holds the tick for a drawn frame
+	// (core/PoseHold.hxx): a fighter's session and a lagged replay's playback;
+	// a watcher never holds.
+	c.poseHolds = ChoosePoseHold(config_);
 	// Both copies are at the battle's first frame: give the clock-seeded
 	// random generators the same seeds before anything is simulated.
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));

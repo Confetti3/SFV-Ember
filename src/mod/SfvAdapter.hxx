@@ -155,6 +155,11 @@ public:
 	void AfterLoad() override;
 	// The flow record's latched failure (FlowRollback::Failure).
 	const char* StateFailure() const override { return flow_.Failure(); }
+	// Pose holds (SocketReads, core/PoseHold.hxx): the update just run gave a
+	// fight socket read the live value (a miss), and what the session did
+	// about it: one log line per hold or refusal, and the battle's counts.
+	bool WantsDrawnFrame() const override { return wantsDrawnFrame_; }
+	void NotePoseHold(const pose_hold::Event& event) override;
 
 	std::string Describe() const; // JSON for the status report
 
@@ -240,13 +245,22 @@ private:
 	uint8_t* (*gameInstance_)() = nullptr; // sfv::kGameInstance
 	uint32_t ticksThisUpdate_ = 0;
 	bool replaying_ = false; // the update Advance runs replays a frame (SocketReads' log)
-	// The models show the state the next update starts from: the engine drew a
-	// frame since the last update, and nothing was restored (SocketReads).
-	bool poseFresh_ = false;
-	// The models stand where the state the next update starts from puts them:
-	// the last update's visual task placed them, and nothing was restored
-	// since (SocketReads' rebuilds).
-	bool modelsPlaced_ = false;
+	// What the fighters' models show: fresh (the engine drew a frame since the
+	// last update, and nothing was restored), placed (the last update's visual
+	// task placed them, and nothing was restored since), and whether the first
+	// update after a pose hold was the held frame's, fresh (SocketReads).
+	socket_reads::PoseFreshness pose_;
+	// Pose holds: the last update's reads, whether it wants a drawn frame
+	// (a miss), the reads of the update a hold is pending for (its session
+	// frame), and the hold lines logged this battle.
+	socket_reads::UpdateReads lastReads_;
+	bool wantsDrawnFrame_ = false;
+	socket_reads::UpdateReads holdReads_;
+	int holdFrame_ = -1;
+	int holdLines_ = 0;
+	static constexpr int kMostHoldLines = 400;
+	// As an update begins: a pose hold's outcome counted and logged.
+	void NoteAfterHold(socket_reads::PoseFreshness::AfterHold afterHold, int32_t inputFrame);
 	// The battle's fighter units, partners included, in its order (from Bind):
 	// what their socket reads are keyed by, and whose meshes are kept at LOD 0.
 	struct FighterUnit {

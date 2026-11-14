@@ -66,7 +66,7 @@ void SfvAdapter::SeeBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 	// The engine calls the battle once a frame, and evaluates the fighters'
 	// poses between two calls from what the last update's visual task set: the
 	// models now show the state the last update left (SocketReads).
-	poseFresh_ = true;
+	pose_.Drawn();
 	if (!identity_.See(battleFrame)) return;
 	const bool sameAddress = battleFrame == battleFrame_;
 	Forget();
@@ -93,7 +93,9 @@ void SfvAdapter::Forget()
 	flow_.Forget();
 	// The socket reads' counts are the battle's own (SocketReads): logged as
 	// it ends, then forgotten with the record.
-	if (fighterUnitCount_ > 0) Log("sockets: the battle ends: %s", SocketReadsSummary().c_str());
+	if (fighterUnitCount_ > 0) {
+		Log("sockets: the battle ends: %s; %s", SocketReadsSummary().c_str(), PoseHoldsSummary().c_str());
+	}
 	{
 		// The pace of the battle that ends and the controller events in it
 		// (mod/Pace.hxx); the next battle's record begins.
@@ -116,7 +118,11 @@ void SfvAdapter::Forget()
 	ForgetSocketReads();
 	keyedUpdates_ = 0;
 	keyTicks_ = 0;
-	modelsPlaced_ = false;
+	pose_.Forget();
+	lastReads_ = holdReads_ = {};
+	wantsDrawnFrame_ = false;
+	holdFrame_ = -1;
+	holdLines_ = 0;
 	RngAuditForget();
 	costs_ = {};
 	layout_.TakeCosts(); // the next battle's are its own
@@ -597,8 +603,10 @@ void SfvAdapter::RunUpdate()
 	SocketUpdate sockets;
 	sockets.inputFrame = inputUnit_ ? Field<int32_t>(inputUnit_, sfv::inputunit::kInputFrame) : -1;
 	sockets.replaying = replaying_;
-	sockets.fresh = poseFresh_;
-	sockets.placed = modelsPlaced_;
+	const socket_reads::PoseFreshness::Begun begun = pose_.Begin(sockets.inputFrame);
+	sockets.fresh = begun.fresh;
+	sockets.placed = begun.placed;
+	NoteAfterHold(begun.afterHold, sockets.inputFrame);
 	if (bound_) {
 		// The poses the engine evaluates next are at LOD 0 whatever the window
 		// (SocketReads): the same bones on every copy, partners' too.
@@ -616,18 +624,23 @@ void SfvAdapter::RunUpdate()
 	RngAuditUpdate(bound_, Fighting());
 	original_(battleFrame_);
 	RngAuditUpdate(false, false);
-	poseFresh_ = false; // the state moved on; the models show it after the engine's next frame
+	// The state moved on; the models show it after the engine's next frame.
 	// The update's last phase ran the visual task (rva 0x3A06C0), which gave
 	// every actor its position and layers for the state the update leaves.
-	modelsPlaced_ = true;
+	pose_.Ran();
+	// A fight read that kept the live value: a session that holds ends the
+	// tick at this frame's start, drawn (NotePoseHold).
+	lastReads_ = TakeUpdateReads();
+	wantsDrawnFrame_ = lastReads_.misses > 0;
 	if (bound_) NoteCommandQueues();
 	EndFightUpdate(visualParts);
 	if (bound_ && keyedUpdates_ % kSocketSummaryUpdates == 0) {
 		LARGE_INTEGER frequency{};
 		QueryPerformanceFrequency(&frequency);
 		const double us = frequency.QuadPart ? 1e6 * (double)keyTicks_ / (double)frequency.QuadPart / (double)keyedUpdates_ : 0.0;
-		Log("sockets: %llu updates keyed in this battle, %.1f us per update to key %d fighter unit(s); %s",
-			(unsigned long long)keyedUpdates_, us, fighterUnitCount_, SocketReadsSummary().c_str());
+		Log("sockets: %llu updates keyed in this battle, %.1f us per update to key %d fighter unit(s); %s; %s",
+			(unsigned long long)keyedUpdates_, us, fighterUnitCount_, SocketReadsSummary().c_str(),
+			PoseHoldsSummary().c_str());
 	}
 	ticksInLastUpdate_ = ticksThisUpdate_;
 	flow_.Capture(); // the record mirrors the game whenever it is saved or hashed
@@ -787,8 +800,7 @@ void SfvAdapter::AfterLoad()
 	const int64_t from = Ticks();
 	// A restored state: the models show another one, and stand where another
 	// one put them, until an update's visual task places them again (SocketReads).
-	poseFresh_ = false;
-	modelsPlaced_ = false;
+	pose_.Restored();
 	// The callbacks take the restored state's frame id, as the game's own load
 	// passes it (rva 0x48A310); the sound callbacks drop what was played after
 	// it (rva 0x4D5820, 0x4B6230).
@@ -801,6 +813,67 @@ void SfvAdapter::AfterLoad()
 	flow_.Capture(); // what the restore left in the game, so a load check sees it
 	costs_.callbacks++;
 	costs_.callbackTicks += Ticks() - from;
+}
+
+void SfvAdapter::NoteAfterHold(socket_reads::PoseFreshness::AfterHold afterHold, int32_t inputFrame)
+{
+	using AfterHold = socket_reads::PoseFreshness::AfterHold;
+	if (afterHold == AfterHold::None) return;
+	const bool fresh = afterHold == AfterHold::Fresh;
+	if (fresh) CountPoseHoldFresh();
+	else CountPoseHoldFailed(pose_hold::Refusal::NotFreshAfterHold);
+	if (holdLines_++ >= kMostHoldLines) return;
+	if (fresh) {
+		Log("socket: hold at frame %d: played again fresh", inputFrame);
+	} else {
+		Log("socket: hold at frame %d: the update after it (frame %d) found the models not fresh; its reads take the "
+			"record's value or the live one", holdReads_.first.frame, inputFrame);
+	}
+}
+
+void SfvAdapter::NotePoseHold(const pose_hold::Event& event)
+{
+	using Kind = pose_hold::Event::Kind;
+	using pose_hold::Refusal;
+	// The update a hold is pending for is the last one run when it is noted
+	// pending; a hold made, dropped or refused at the end of the tick is that
+	// update's. Any other refusal is the last update's.
+	if (event.kind == Kind::Pending) {
+		holdReads_ = lastReads_;
+		holdFrame_ = event.frame;
+		return;
+	}
+	const bool tickEnd = event.kind == Kind::Held || event.kind == Kind::Cancelled ||
+		(event.kind == Kind::Refused && event.why == Refusal::Refused);
+	const socket_reads::UpdateReads& reads = tickEnd && event.frame == holdFrame_ ? holdReads_ : lastReads_;
+	const socket_reads::Miss& miss = reads.first;
+	if (event.kind == Kind::Held) {
+		CountPoseHold();
+		// The next update should be this one's, fresh (NoteAfterHold).
+		pose_.Held(miss.frame);
+	} else if (event.kind == Kind::Refused && event.why != Refusal::NotFreshAfterHold) {
+		// Not fresh after a hold was counted as the update began (NoteAfterHold).
+		CountPoseHoldFailed(event.why);
+	}
+	if (holdLines_++ >= kMostHoldLines) return;
+	char who[96];
+	snprintf(who, sizeof(who), "unit %d (P%d), socket %s, from rva 0x%X", miss.unit, reads.side + 1, miss.socket, miss.from);
+	switch (event.kind) {
+	case Kind::Held:
+		Log("socket: hold at frame %d (session frame %d), %s: the tick ends at this frame's start, its pose drawn; %d "
+			"frame(s) played again (session frame %d now, %d to %d next)", miss.frame, event.frame, who, event.replayed,
+			event.frame - 1, event.frame, event.frame + event.replayed - 2);
+		break;
+	case Kind::Cancelled:
+		Log("socket: hold at frame %d (session frame %d), %s: dropped, a rollback in the same tick plays it again",
+			miss.frame, event.frame, who);
+		break;
+	case Kind::Refused:
+		Log("socket: hold at frame %d (session frame %d), %s: failed (%s); the read keeps the live value", miss.frame,
+			event.frame, who, pose_hold::RefusalName(event.why));
+		break;
+	case Kind::Pending: break;
+	}
 }
 
 std::string SfvAdapter::BuildId() const

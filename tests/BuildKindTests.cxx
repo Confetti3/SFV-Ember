@@ -190,6 +190,29 @@ TEST_CASE("the CRT math is SSE2 in every mode that rolls back, and a player buil
 	LoadConfigFromCommandLine(L"");
 }
 
+TEST_CASE("pose holds are on unless a development build's test turns them off; a player build cannot")
+{
+	using sfve::mod::ChoosePoseHold;
+	static_assert(sfve::mod::kPoseHoldByDefault);
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_room=1 -sfve_pose_hold=0", BuildKind::Player);
+	CHECK(Config().poseHold == -1);
+	CHECK(ChoosePoseHold(Config(), BuildKind::Player));
+	CHECK(sfve::mod::PlayerBuildIgnored().find("-sfve_pose_hold") != std::string::npos);
+	sfve::mod::ModConfig given;
+	given.poseHold = 0;
+	CHECK(ChoosePoseHold(given, BuildKind::Player));
+	CHECK_FALSE(ChoosePoseHold(given, BuildKind::Development));
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_pose_hold=0", BuildKind::Development);
+	CHECK_FALSE(ChoosePoseHold(Config(), BuildKind::Development));
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_pose_hold=1", BuildKind::Development);
+	CHECK(ChoosePoseHold(Config(), BuildKind::Development));
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_pose_hold=5", BuildKind::Development); // not a setting
+	CHECK(ChoosePoseHold(Config(), BuildKind::Development));
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay", BuildKind::Development);
+	CHECK(ChoosePoseHold(Config(), BuildKind::Development));
+	LoadConfigFromCommandLine(L"");
+}
+
 TEST_CASE("a battle that rolls back runs the tick's tasks on the battle's thread; Training as the game places them")
 {
 	using sfve::mod::ChooseTickTasks;

@@ -17,6 +17,7 @@
 #include <bit>
 #include <iterator>
 #include <mutex>
+#include <utility>
 #include <vector>
 
 namespace sfve::mod {
@@ -45,6 +46,9 @@ SocketUpdate s_update;
 socket_reads::Cache s_cache;
 socket_reads::MissRing s_misses;
 socket_reads::Counts s_counts;
+socket_reads::HoldCounts s_holds;
+// The update now running's reads (TakeUpdateReads), reset by NoteSocketUpdate.
+socket_reads::UpdateReads s_updateReads;
 std::atomic<int> s_lines;
 // A runaway caller cannot fill the disk: the log stops here.
 constexpr int kMostLines = 20000;
@@ -214,6 +218,7 @@ void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t f
 			s_cache.UseGrid(grid);
 			recorded = s_cache.Record(key, reading);
 			s_counts.recorded++;
+			s_updateReads.fresh++;
 			if (recorded == socket_reads::Recorded::Conflicting) s_counts.conflicting++;
 			if (recorded == socket_reads::Recorded::RebuildDisagrees) s_counts.disagreeing++;
 		}
@@ -273,6 +278,11 @@ void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t f
 		{
 			std::lock_guard lock(s_mutex);
 			s_misses.Add(miss);
+			// The update wants a drawn frame (SfvAdapter: a pose hold).
+			if (s_updateReads.misses++ == 0) {
+				s_updateReads.first = miss;
+				s_updateReads.side = read.side;
+			}
 		}
 		LogRead(read, MissText(found, placed, reading.model, rebuilding, socket_reads::RebuildableSocket(socket)), live.xyzw);
 		return;
@@ -701,6 +711,35 @@ bool Cache::Rebuilding(const Key& key) const
 	return it == values_.end() || !it->second.neverRebuild;
 }
 
+std::string HoldsText(const HoldCounts& c)
+{
+	using pose_hold::Refusal;
+	const auto failed = [&](Refusal why) { return (unsigned long long)c.failed[(int)why]; };
+	unsigned long long total = 0;
+	for (uint64_t n : c.failed) total += n;
+	char text[512];
+	snprintf(text, sizeof(text),
+		"%llu pose hold(s), %llu gave a fresh read; %llu failed (state not kept %llu, held frame %llu, not fresh after the "
+		"hold %llu, chain limit %llu, refused by GGPO %llu, first frame %llu)",
+		(unsigned long long)c.holds, (unsigned long long)c.fresh, total, failed(Refusal::StateNotKept),
+		failed(Refusal::HeldFrame), failed(Refusal::NotFreshAfterHold), failed(Refusal::ChainLimit),
+		failed(Refusal::Refused), failed(Refusal::FirstFrame));
+	return text;
+}
+
+PoseFreshness::Begun PoseFreshness::Begin(int32_t inputFrame)
+{
+	Begun begun;
+	begun.fresh = fresh_;
+	begun.placed = placed_;
+	if (awaitingHold_) {
+		begun.afterHold = fresh_ && inputFrame == heldFrame_ ? AfterHold::Fresh : AfterHold::NotFresh;
+		awaitingHold_ = false;
+		heldFrame_ = -1;
+	}
+	return begun;
+}
+
 std::string CountsText(const Counts& c, size_t kept, size_t neverRebuilt)
 {
 	char text[640];
@@ -722,6 +761,39 @@ void NoteSocketUpdate(const SocketUpdate& update)
 {
 	std::lock_guard lock(s_mutex);
 	s_update = update;
+	s_updateReads = {};
+}
+
+socket_reads::UpdateReads TakeUpdateReads()
+{
+	std::lock_guard lock(s_mutex);
+	return std::exchange(s_updateReads, socket_reads::UpdateReads{});
+}
+
+void CountPoseHold()
+{
+	std::lock_guard lock(s_mutex);
+	s_holds.holds++;
+}
+
+void CountPoseHoldFresh()
+{
+	std::lock_guard lock(s_mutex);
+	s_holds.fresh++;
+}
+
+void CountPoseHoldFailed(pose_hold::Refusal why)
+{
+	const int index = (int)why;
+	if (index <= 0 || index >= pose_hold::kRefusals) return;
+	std::lock_guard lock(s_mutex);
+	s_holds.failed[index]++;
+}
+
+std::string PoseHoldsSummary()
+{
+	std::lock_guard lock(s_mutex);
+	return socket_reads::HoldsText(s_holds);
 }
 
 void ForgetSocketReads()
@@ -731,7 +803,9 @@ void ForgetSocketReads()
 		s_cache.Clear();
 		s_misses.Clear();
 		s_counts = {};
+		s_holds = {};
 		s_update = {};
+		s_updateReads = {};
 	}
 	for (std::atomic<bool>& logged : s_meshesLogged) logged.store(false);
 	s_reforced.store(0);
