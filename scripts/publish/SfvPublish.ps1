@@ -118,8 +118,11 @@ function Read-PubRules([string[]]$Paths, [string[]]$MachineNames = @()) {
     if (!@($Paths | Where-Object { $_ }).Count) { throw 'Pass the rules file (-Rules): the forbidden strings live outside the repository.' }
     foreach ($path in $Paths) {
         if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw "No rules file at $path" }
+        $raw = [IO.File]::ReadAllBytes($path)
+        if ([Array]::IndexOf($raw, [byte]0) -ge 0) { throw "The rules file $(Split-Path $path -Leaf) holds NUL bytes; refused." }
+        try { $text = [Text.UTF8Encoding]::new($false, $true).GetString($raw) } catch { throw "The rules file $(Split-Path $path -Leaf) is not valid UTF-8; refused." }
         $number = 0
-        foreach ($line in [IO.File]::ReadAllLines($path)) {
+        foreach ($line in ($text.TrimStart([char]0xFEFF) -split "`r?`n")) {
             $number++
             if (!$line.Trim() -or $line.TrimStart().StartsWith('#')) { continue }
             $arrow = $line.IndexOf('==>')
@@ -129,13 +132,16 @@ function Read-PubRules([string[]]$Paths, [string[]]$MachineNames = @()) {
                 elseif ($spec.StartsWith('glob:')) { [regex]::Escape($spec.Substring(5)).Replace('\*', '.*').Replace('\?', '.') }
                 else { [regex]::Escape($spec) }
             if (!$pattern) { continue }
-            $rules.Add([pscustomobject]@{id = "$(Split-Path $path -Leaf)#$number"; regex = [regex]::new($pattern, 'Compiled, CultureInvariant')})
+            $id = "$(Split-Path $path -Leaf)#$number"
+            # A bad pattern is reported by its number only: the message of a regex error repeats the pattern.
+            try { $regex = [regex]::new($pattern, 'Compiled, CultureInvariant') } catch { throw "Rule $id is not a valid regular expression; refused." }
+            $rules.Add([pscustomobject]@{id = $id; regex = $regex})
         }
     }
     if (!$rules.Count) { throw 'The rules files hold no rule.' }
     # The scanning machine's own names (its user, profile folder and computer), read at run time.
     foreach ($name in @($MachineNames | Where-Object { $_ -and $_.Length -ge 3 } | Sort-Object -Unique)) {
-        $rules.Add([pscustomobject]@{id = 'machine-name'; regex = [regex]::new([regex]::Escape($name), 'CultureInvariant')})
+        $rules.Add([pscustomobject]@{id = 'machine-name'; regex = [regex]::new([regex]::Escape($name), 'CultureInvariant, IgnoreCase')})
     }
     $rules
 }
@@ -193,9 +199,10 @@ function Get-PubRangeScan([object]$Ctx, [string]$Repo, [string]$Commit, [string]
         $content = [byte[]]::new($size)
         [Array]::Copy($bytes, $end + 1, $content, 0, $size)
         $position = $end + 1 + $size + 1
-        $where = "$Name $type $($sha.Substring(0, 12))$(if ($objects[$sha]) { " $($objects[$sha])" })"
+        # Objects are named by their id only: a path may be the very text a rule forbids.
+        $where = "$Name $type $sha"
         foreach ($hit in (Find-PubHits $Rules $content $where)) { $hits.Add($hit) }
-        if ($objects[$sha]) { foreach ($hit in (Find-PubHits $Rules ([Text.UTF8Encoding]::new($false).GetBytes($objects[$sha])) "$Name path of $($sha.Substring(0, 12))")) { $hits.Add($hit) } }
+        if ($objects[$sha]) { foreach ($hit in (Find-PubHits $Rules ([Text.UTF8Encoding]::new($false).GetBytes($objects[$sha])) "$Name path of object $sha")) { $hits.Add($hit) } }
         if ($type -ceq 'commit') {
             $text = [Text.UTF8Encoding]::new($false).GetString($content)
             $split = $text.IndexOf("`n`n")
@@ -357,6 +364,7 @@ function Invoke-PubPlan([object]$Ctx, [hashtable]$P) {
     $rules = Read-PubRules $P.Rules (Get-PubMachineNames)
     $repo = $Ctx.Repo
     if (!$P.Source) { throw 'Pass the source (-Source <branch or commit>).' }
+    Assert-PubRemotes $Ctx
     $commit = Resolve-PubCommit $Ctx $repo $P.Source
     $tree = Get-PubTree $Ctx $repo $commit
     Write-PubLog $Ctx "Plan $($label.label): source $($P.Source) = $commit (tree $tree)"
@@ -489,6 +497,33 @@ function Assert-PubNoLiveDraft([object]$Ctx) {
     }
 }
 
+# The pipeline's own code is the code the plan recorded: its checkout is at plan.pipeline.commit and clean. Every
+# stage after the plan checks it, so a stage never runs code other than what made the plan.
+function Assert-PubPipeline([object]$Ctx, [object]$Plan) {
+    $head = Resolve-PubCommit $Ctx $Ctx.PipelineRoot 'HEAD'
+    if ($head -cne $Plan.pipeline.commit) { throw "The pipeline checkout is at $head, but the plan was made by the pipeline at $($Plan.pipeline.commit); run the stages from that commit." }
+    $status = ConvertTo-PubText (Invoke-PubGit $Ctx $Ctx.PipelineRoot @('status', '--porcelain', '--untracked-files=normal'))
+    if ($status.Trim()) { throw "The pipeline checkout $($Ctx.PipelineRoot) has uncommitted changes; the stages run only the committed pipeline." }
+}
+
+# A push URL that is this GitHub repository (https or ssh form, with or without .git).
+function Test-PubGithubUrl([string]$Url, [string]$Slug) {
+    $pattern = '^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)' + [regex]::Escape($Slug) + '(?:\.git)?/?$'
+    [regex]::IsMatch($Url.Trim(), $pattern, 'IgnoreCase')
+}
+# The remotes the pipeline pushes to are the repositories the config names: the public remote pushes to the public
+# repository, the private origin does not, and the library remote pushes to the library's repository.
+function Assert-PubRemotes([object]$Ctx) {
+    $cfg = $Ctx.Config
+    if (!$cfg.libraryGithubRepo) { throw 'config.json has no libraryGithubRepo (owner/name of the library''s GitHub repository).' }
+    $url = { param($Repo, $Remote) (ConvertTo-PubText (Invoke-PubGit $Ctx $Repo @('remote', 'get-url', '--push', $Remote))).Trim() }
+    $public = & $url $Ctx.Repo $cfg.publicRemote
+    if (!(Test-PubGithubUrl $public $cfg.publicRepo)) { throw "The remote $($cfg.publicRemote) pushes to $public, not to github.com/$($cfg.publicRepo)." }
+    $origin = & $url $Ctx.Repo $cfg.originRemote
+    if ((Test-PubGithubUrl $origin $cfg.publicRepo) -or $origin.Trim() -ieq $public.Trim()) { throw "The private remote $($cfg.originRemote) pushes to the public repository ($origin)." }
+    $library = & $url $Ctx.LibraryRepo $cfg.libraryRemote
+    if (!(Test-PubGithubUrl $library $cfg.libraryGithubRepo)) { throw "The library remote $($cfg.libraryRemote) pushes to $library, not to github.com/$($cfg.libraryGithubRepo)." }
+}
 # ---------------------------------------------------------------------------------------------------------------
 # Evidence: shape, chain and files
 
