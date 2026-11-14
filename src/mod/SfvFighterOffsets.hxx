@@ -280,6 +280,10 @@ constexpr uint32_t kMotionRun2Size = 192;
 constexpr uint32_t kUnitRun = 0xF8;
 constexpr uint32_t kUnitRunSize = 40;
 constexpr uint32_t kPlaceRun = 0x764;
+// The unit's fight position: four floats, x along the stage, y up, z depth, w
+// (what CharaUnit's virtual +0x88 returns), inside kPlaceRun, so in the
+// restored and hashed state. The socket anchors start from it (SocketReads).
+constexpr uint32_t kFightPosition = 0x780;
 constexpr uint32_t kPlaceRunSize = 300;
 constexpr uint32_t kPlaceBoneFrom = 88;
 constexpr uint32_t kPlaceBoneTo = 112;

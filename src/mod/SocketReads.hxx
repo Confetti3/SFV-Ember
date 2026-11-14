@@ -49,6 +49,27 @@
 // a rollback would change the picture after it, and the tick expects the
 // engine's tick function.
 //
+// Four of the reads are not recorded and served at all, in a battle a session
+// plays (-sfve_socket_anchor, on by default). Reverse engineering classified
+// every call site by return rva; only these four feed fight state, the rest
+// are drawn only (effects, camera, interface):
+//   0x3BDB02, 0x3BDF3B  CharaUniquePart_036 and _038: the item let go as the
+//                       V-Trigger ends (Sock_Item_R or Sock_Item_L), which
+//                       becomes a projectile (script 50, kind 200)
+//   0x3BC294            CharaUniquePart_015: a dropped prop (b_C_Head), the
+//                       same kind of projectile
+//   0x3A4B79            CharaUniquePart_008: where the claw (b_R_Hand,
+//                       b_L_Hand) or the mask (b_C_Head) starts when knocked off
+// What the bone evaluation gives there can differ between the two copies on
+// a replayed frame, and the projectile keeps it in hashed state. So these
+// reads are given a value computed from fight state alone, the same on both
+// copies: the owning fighter's fight position (CharaUnit +0x780, as the
+// update began) plus an offset for the call site and socket, mirrored by the
+// way the fighter faces (AnchorOffsetFor, AnchorPosition). The item or claw
+// starts from a fixed point near the hand or head, not the hand's own place.
+// When the fighter's unit, position or facing cannot be read, the read takes
+// the record's path as before and is counted (docs/design/beta9/socket-anchors.md).
+//
 // With -sfve_socket_log=1 (development) every fight read is logged too, a
 // missed one with its call site, socket and why.
 //
@@ -89,6 +110,12 @@ struct UnitKeys {
 	int32_t side = -1;
 	uint64_t pose = 0; // MakePoseKey; 0 unknown
 	uint64_t root = 0; // MakeRootKey
+	// The unit's fight position (sfv::fighter::kFightPosition) and facing as
+	// the update begins, for the socket anchors; `anchorable` only when both
+	// were read and the position is finite.
+	bool anchorable = false;
+	float position[4] = {};
+	bool facingLeft = false;
 };
 
 // The battle update about to run (SfvAdapter::RunUpdate, the game thread),
@@ -108,8 +135,9 @@ void NoteSocketUpdate(const SocketUpdate& update);
 // counts first, SocketReadsSummary).
 void ForgetSocketReads();
 // Hooks the socket read; false when it could not be hooked (the reads then
-// stay the game's). Once, from SfveStart. `log`: -sfve_socket_log.
-bool InstallSocketReads(uintptr_t imageBase, bool log);
+// stay the game's). Once, from SfveStart. `log`: -sfve_socket_log; `anchor`:
+// -sfve_socket_anchor.
+bool InstallSocketReads(uintptr_t imageBase, bool log, bool anchor);
 // The battle's counts so far, for the log (SfvAdapter, with the keys' cost).
 std::string SocketReadsSummary();
 // The latest misses (at most socket_reads::MissRing::kMostMisses) whose frame
@@ -213,6 +241,33 @@ struct ModelReading {
 // What the game's read writes for a world translation (sfv::kSocketWorldPosition):
 // x * 0.01f, z * 0.01f, y * -0.01f, 1, each one float multiply.
 Position FightPosition(const float socket[3]);
+
+// The fight's reads that are given a value computed from fight state alone
+// (see the top of this file), by return rva: 0x3BDB02, 0x3BDF3B, 0x3BC294 and
+// 0x3A4B79. Never one of the reads EveryTick lists.
+bool AnchoredSite(uint32_t returnRva);
+
+// Version of the offsets below: part of the room's build (LayoutRulesId).
+constexpr int kAnchorVersion = 1;
+
+// Where from the owner's fight position a read at an anchored site starts, in
+// the fight's units: `forward` along the way the fighter faces, `up` from the
+// feet.
+struct AnchorOffset {
+	float forward = 0;
+	float up = 0;
+};
+// The offset for a site and the socket it asked. A hand-held item
+// (0x3BDB02, 0x3BDF3B): 0.20, 1.00; the head at 0x3BC294: 0.00, 1.60; at
+// 0x3A4B79 a hand (b_R_Hand, b_L_Hand): 0.30, 1.20, the head (b_C_Head): 0.05,
+// 1.60. Any other name there takes the head's and sets `*otherName`, if given.
+// An rva that is not an anchored site gives zeros.
+AnchorOffset AnchorOffsetFor(uint32_t returnRva, const wchar_t* socket, bool* otherName = nullptr);
+
+// What the read writes: x = base x + (-1 facing left, else 1) * forward,
+// y = base y + up, z = 0 (the fight plane), w = 1. `base`: the owner's fight
+// position, four floats.
+Position AnchorPosition(const float base[4], bool facingLeft, const AnchorOffset& offset);
 
 // The grid every value a fight socket read hands the game is snapped to, per
 // component (x, y, z; w stays 1), in a battle a session plays: the fight's
@@ -374,10 +429,13 @@ struct Counts {
 	uint64_t conflicting = 0;  // Recorded::Conflicting
 	uint64_t disagreeing = 0;  // Recorded::RebuildDisagrees
 	uint64_t unkeyed = 0;      // a unit with no keys this update
+	uint64_t anchored = 0;     // reads at an anchored site given the fight's position
+	uint64_t anchorUnresolved = 0; // reads at an anchored site whose unit, position or facing was not known: the record's path
 };
-// "N fresh read(s) recorded, ..., K conflicting (D of them a rebuild's), ...":
-// every count, and `kept`. K counts both kinds, as tools/synctest.ps1 -check
-// fails on "[1-9]... conflicting".
+// "N fresh read(s) recorded, ..., K conflicting (D of them a rebuild's), ...,
+// A given from the fight's position, U anchor unresolved": every count, and
+// `kept`. K counts both kinds, as tools/synctest.ps1 -check fails on
+// "[1-9]... conflicting".
 std::string CountsText(const Counts& counts, size_t kept, size_t neverRebuilt);
 
 // The fight's reads in one battle update (TakeUpdateReads).

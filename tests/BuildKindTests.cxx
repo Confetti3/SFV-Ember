@@ -190,26 +190,49 @@ TEST_CASE("the CRT math is SSE2 in every mode that rolls back, and a player buil
 	LoadConfigFromCommandLine(L"");
 }
 
-TEST_CASE("pose holds are on unless a development build's test turns them off; a player build cannot")
+TEST_CASE("pose holds are off unless a development build's test turns them on; a player build cannot")
 {
 	using sfve::mod::ChoosePoseHold;
-	static_assert(sfve::mod::kPoseHoldByDefault);
-	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_room=1 -sfve_pose_hold=0", BuildKind::Player);
+	static_assert(!sfve::mod::kPoseHoldByDefault);
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_room=1 -sfve_pose_hold=1", BuildKind::Player);
 	CHECK(Config().poseHold == -1);
-	CHECK(ChoosePoseHold(Config(), BuildKind::Player));
+	CHECK_FALSE(ChoosePoseHold(Config(), BuildKind::Player));
 	CHECK(sfve::mod::PlayerBuildIgnored().find("-sfve_pose_hold") != std::string::npos);
 	sfve::mod::ModConfig given;
-	given.poseHold = 0;
-	CHECK(ChoosePoseHold(given, BuildKind::Player));
-	CHECK_FALSE(ChoosePoseHold(given, BuildKind::Development));
-	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_pose_hold=0", BuildKind::Development);
-	CHECK_FALSE(ChoosePoseHold(Config(), BuildKind::Development));
+	given.poseHold = 1;
+	CHECK_FALSE(ChoosePoseHold(given, BuildKind::Player));
+	CHECK(ChoosePoseHold(given, BuildKind::Development));
 	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_pose_hold=1", BuildKind::Development);
 	CHECK(ChoosePoseHold(Config(), BuildKind::Development));
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_pose_hold=0", BuildKind::Development);
+	CHECK_FALSE(ChoosePoseHold(Config(), BuildKind::Development));
 	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_pose_hold=5", BuildKind::Development); // not a setting
-	CHECK(ChoosePoseHold(Config(), BuildKind::Development));
+	CHECK_FALSE(ChoosePoseHold(Config(), BuildKind::Development));
 	LoadConfigFromCommandLine(L"x -sfve_mode=netplay", BuildKind::Development);
-	CHECK(ChoosePoseHold(Config(), BuildKind::Development));
+	CHECK_FALSE(ChoosePoseHold(Config(), BuildKind::Development));
+	LoadConfigFromCommandLine(L"");
+}
+
+TEST_CASE("socket anchors are on unless a development build's test turns them off; a player build cannot")
+{
+	using sfve::mod::ChooseSocketAnchor;
+	static_assert(sfve::mod::kSocketAnchorByDefault);
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_room=1 -sfve_socket_anchor=0", BuildKind::Player);
+	CHECK(Config().socketAnchor == -1);
+	CHECK(ChooseSocketAnchor(Config(), BuildKind::Player));
+	CHECK(sfve::mod::PlayerBuildIgnored().find("-sfve_socket_anchor") != std::string::npos);
+	sfve::mod::ModConfig given;
+	given.socketAnchor = 0;
+	CHECK(ChooseSocketAnchor(given, BuildKind::Player));
+	CHECK_FALSE(ChooseSocketAnchor(given, BuildKind::Development));
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_socket_anchor=0", BuildKind::Development);
+	CHECK_FALSE(ChooseSocketAnchor(Config(), BuildKind::Development));
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_socket_anchor=1", BuildKind::Development);
+	CHECK(ChooseSocketAnchor(Config(), BuildKind::Development));
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_socket_anchor=5", BuildKind::Development); // not a setting
+	CHECK(ChooseSocketAnchor(Config(), BuildKind::Development));
+	LoadConfigFromCommandLine(L"x -sfve_mode=netplay", BuildKind::Development);
+	CHECK(ChooseSocketAnchor(Config(), BuildKind::Development));
 	LoadConfigFromCommandLine(L"");
 }
 

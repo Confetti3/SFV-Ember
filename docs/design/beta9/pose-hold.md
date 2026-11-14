@@ -140,7 +140,7 @@ replayed with the rest), and the next tick replays and then plays its own.
   (state not kept a, held frame b, not fresh after the hold c, chain limit d, refused by GGPO e,
   first frame f)`; the session's `session costs:` line and the lagged replay's end line count
   holds and refusals; the desync report's details have a `pose holds:` line.
-- `-sfve_pose_hold=0|1` (development; default on) and the `pose hold on|off` token in
+- `-sfve_pose_hold=0|1` (development; default off since the socket anchors, `socket-anchors.md`) and the `pose hold on|off` token in
   `LayoutRulesId`: copies that hold and copies that do not never meet. The layout id changed
   (`ee964ab93eb142f6` with holds on, as `RoomBuildTests` computes it), so `data/pick-space.json`
   must be exported again from the game (the pipe's `catalog-export`, as for f25fa0e); until then

@@ -16,6 +16,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <iterator>
 
 namespace sfve::mod {
@@ -359,6 +362,19 @@ void SfvAdapter::KeyFighterUnits(SocketUpdate* sockets) const
 		keys.chara = unit.chara;
 		keys.unit = i;
 		keys.side = unit.side;
+		// Where the unit stands and which way it faces as the update begins:
+		// what the four reads that feed fight state are given
+		// (socket_reads::AnchorPosition). Both are in the game's snapshot, so
+		// the same on every copy at this point; a read in the update's middle
+		// could see the unit's movement task before or after it ran.
+		int32_t mirrored = 0;
+		std::array<float, 4> position{};
+		if (unit.chara && unit.action && TryRead(unit.chara + f::kFightPosition, &position) &&
+			TryRead(unit.action + f::kMirrored, &mirrored) && std::isfinite(position[0]) && std::isfinite(position[1])) {
+			std::copy(position.begin(), position.end(), keys.position);
+			keys.facingLeft = mirrored == 1;
+			keys.anchorable = true;
+		}
 		// A unit with no animation state has nothing that decides its pose:
 		// its reads stay unkeyed (pose 0) and keep the live value.
 		if (!unit.motion) continue;

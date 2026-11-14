@@ -211,6 +211,7 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.testTiny = (uint32_t)options.Number(L"sfve_tiny", 0) & 3u;
 	c.socketLog = options.Number(L"sfve_socket_log", 0) != 0;
 	c.poseHold = (int)options.Number(L"sfve_pose_hold", -1);
+	c.socketAnchor = (int)options.Number(L"sfve_socket_anchor", -1);
 	c.replayAnyBuild = options.Number(L"sfve_replay_any_build", 0) != 0;
 	c.rngAudit = options.Number(L"sfve_rng_audit", 0) != 0;
 	wchar_t perturb[96];
@@ -305,6 +306,12 @@ bool ChoosePoseHold(const ModConfig& config, BuildKind kind)
 {
 	if (kind == BuildKind::Development && (config.poseHold == 0 || config.poseHold == 1)) return config.poseHold == 1;
 	return kPoseHoldByDefault;
+}
+
+bool ChooseSocketAnchor(const ModConfig& config, BuildKind kind)
+{
+	if (kind == BuildKind::Development && (config.socketAnchor == 0 || config.socketAnchor == 1)) return config.socketAnchor == 1;
+	return kSocketAnchorByDefault;
 }
 
 TickTasks ChooseTickTasks(const ModConfig& config, bool sessionBattle, BuildKind kind)

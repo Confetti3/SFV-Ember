@@ -55,7 +55,9 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 // address rule's version (kAddressRuleVersion), the CRT math of the modes
 // that roll back (kRollbackCrtMath), where their battles run the tick's
 // tasks (kRollbackTickTasks, or the placement -sfve_tasks gave a development
-// build) and whether they hold for a drawn frame (ChoosePoseHold): first
+// build), whether they hold for a drawn frame (ChoosePoseHold) and whether
+// the fight socket reads that feed fight state are anchored to the fight's
+// position, with their offsets' version (ChooseSocketAnchor): first
 // computed once the config is loaded. The same for every copy of one build;
 // any change to a table or rule that decides what is saved, restored,
 // computed or compared changes it, and a new one must feed it too.

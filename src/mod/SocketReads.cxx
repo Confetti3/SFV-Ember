@@ -36,6 +36,9 @@ MakeNameFn s_makeName;
 SocketTransformFn s_socketTransform;
 uintptr_t s_base;
 bool s_log;
+// -sfve_socket_anchor: the four reads that feed fight state are given the
+// fight's position (socket_reads::AnchoredSite).
+bool s_anchor;
 
 // The update now running (NoteSocketUpdate, before the update's tasks
 // start), the record and the battle's counts. The reads run on the battle's
@@ -55,6 +58,11 @@ constexpr int kMostLines = 20000;
 // The conflicts logged in any build, a battle (ForgetSocketReads).
 std::atomic<int> s_conflictLines;
 constexpr int kMostConflictLines = 16;
+// The anchor lines logged in any build, once a battle each (ForgetSocketReads):
+// a read whose unit, position or facing was not known; a name the claw's site
+// has no offset for.
+std::atomic<bool> s_anchorUnresolvedLogged;
+std::atomic<bool> s_anchorNameLogged;
 
 // The calls of the socket read that are not the fight's, by their return
 // addresses (call site + 5; read in IDA, build 13173604).
@@ -65,7 +73,19 @@ constexpr uint32_t kNotTheFights[] = {
 	0x33C41F,                     // the camera's handler rva 0x33C1C0
 	0x3E3EF0, 0x3E3F57,           // rva 0x3E3E60, from rva 0x3E39F0
 	0x38F401, 0x38F69B, 0x38F6B7, // the head (b_C_Head) for Chara PostVisual (rva 0x3897C0 through 0x3A53E0), after the tick
+	0x39D8BB,                     // CharaUniquePart_010: a VFX at the head
+	0x404B2D,                     // CursorPart: interface
+	0x434FB5,                     // TutorialPart: interface
+	0x43986C, 0x439882,           // a TutorialPart sub-object: interface
 };
+// The spawn bone resolver (return rva 0x4CFC99) is drawn only (effects) and
+// stays on the record and serve path.
+
+// The four reads that feed fight state (socket_reads::AnchoredSite).
+constexpr uint32_t kItemSiteI = 0x3BDB02;  // CharaUniquePart_036: the item let go as V-Trigger I ends
+constexpr uint32_t kItemSiteII = 0x3BDF3B; // CharaUniquePart_038: the item let go as V-Trigger II ends
+constexpr uint32_t kPropSite = 0x3BC294;   // CharaUniquePart_015: a dropped prop, at the head
+constexpr uint32_t kClawSite = 0x3A4B79;   // CharaUniquePart_008: the claw or the mask knocked off
 
 float FloatOf(uint32_t bits)
 {
@@ -143,6 +163,41 @@ bool ReadModel(uint8_t* actor, const wchar_t* socket, socket_reads::ModelReading
 	return true;
 }
 
+// A read at an anchored site: the value computed from the owner's fight
+// position (socket_reads::AnchorOffsetFor), the same on every copy, written
+// over what the engine's read just wrote. False when the unit, its position or
+// its facing is not known: counted, and the read takes the record's path.
+bool GiveAnchor(const ReadContext& read, const UnitKeys& unit, const wchar_t* socket, float* out)
+{
+	if (!unit.anchorable) {
+		{
+			std::lock_guard lock(s_mutex);
+			s_counts.anchorUnresolved++;
+		}
+		if (!s_anchorUnresolvedLogged.exchange(true)) {
+			Log("socket: frame %d, unit %d (P%d), socket %s, from rva 0x%X: anchor unresolved (the fighter's unit, position or facing is "
+				"not known): taken as any other read; counted, logged once a battle",
+				read.frame, read.unit, read.side + 1, SocketName(socket).c_str(), read.from);
+		}
+		return false;
+	}
+	bool otherName = false;
+	const socket_reads::AnchorOffset offset = socket_reads::AnchorOffsetFor(read.from, socket, &otherName);
+	if (otherName && !s_anchorNameLogged.exchange(true)) {
+		Log("socket: frame %d, unit %d (P%d), socket %s, from rva 0x%X: anchor: no offset for this socket at this call site, the "
+			"head's is used (logged once a battle)",
+			read.frame, read.unit, read.side + 1, SocketName(socket).c_str(), read.from);
+	}
+	const socket_reads::Position given = socket_reads::AnchorPosition(unit.position, unit.facingLeft, offset);
+	memcpy(out, given.xyzw, sizeof(given.xyzw));
+	{
+		std::lock_guard lock(s_mutex);
+		s_counts.anchored++;
+	}
+	LogRead(read, "from the fight's position", given.xyzw);
+	return true;
+}
+
 const char* MissText(socket_reads::Found found, bool placed, bool model, bool rebuilding, bool bone)
 {
 	if (found == socket_reads::Found::NoPose) return "(stale pose; this pose never read fresh: live)";
@@ -175,6 +230,14 @@ void h_Socket(uint8_t* visualPart, const wchar_t* socket, float* out, uint64_t f
 	}
 	read.unit = unit.unit;
 	read.side = unit.side;
+	// The four reads that feed fight state take no part in the record: no
+	// recording, no serving, no miss, so no pose hold. The engine's read ran
+	// above (what it returns, if anything, is what the caller gets); its value
+	// is overwritten.
+	if (s_anchor && out && socket_reads::AnchoredSite(read.from) && BattleLatch().Latched() &&
+		GiveAnchor(read, unit, socket, out)) {
+		return;
+	}
 	// The read writes `out` whenever the part has an actor (rva 0x3919D0).
 	uint8_t* actor = nullptr;
 	if (!out || !visualPart || !TryRead(visualPart + sfv::visual::kActor, &actor) || !actor) {
@@ -410,6 +473,34 @@ int ForceLodZero(uint8_t* actor, std::vector<MeshLod>* seen)
 bool EveryTick(uint32_t returnRva)
 {
 	return std::find(std::begin(kNotTheFights), std::end(kNotTheFights), returnRva) != std::end(kNotTheFights);
+}
+
+bool AnchoredSite(uint32_t returnRva)
+{
+	return returnRva == kItemSiteI || returnRva == kItemSiteII || returnRva == kPropSite || returnRva == kClawSite;
+}
+
+AnchorOffset AnchorOffsetFor(uint32_t returnRva, const wchar_t* socket, bool* otherName)
+{
+	if (otherName) *otherName = false;
+	if (returnRva == kItemSiteI || returnRva == kItemSiteII) return {0.20f, 1.00f};
+	if (returnRva == kPropSite) return {0.00f, 1.60f};
+	if (returnRva != kClawSite) return {};
+	const uint64_t name = NameKey(socket);
+	if (name == NameKey(L"b_R_Hand") || name == NameKey(L"b_L_Hand")) return {0.30f, 1.20f};
+	if (name != NameKey(L"b_C_Head") && otherName) *otherName = true;
+	return {0.05f, 1.60f};
+}
+
+Position AnchorPosition(const float base[4], bool facingLeft, const AnchorOffset& offset)
+{
+	const float dir = facingLeft ? -1.0f : 1.0f;
+	Position p;
+	p.xyzw[0] = base[0] + dir * offset.forward;
+	p.xyzw[1] = base[1] + offset.up;
+	p.xyzw[2] = 0.0f;
+	p.xyzw[3] = 1.0f;
+	return p;
 }
 
 uint64_t NameKey(const wchar_t* name)
@@ -742,16 +833,17 @@ PoseFreshness::Begun PoseFreshness::Begin(int32_t inputFrame)
 
 std::string CountsText(const Counts& c, size_t kept, size_t neverRebuilt)
 {
-	char text[640];
+	char text[768];
 	char neverText[64];
 	snprintf(neverText, sizeof(neverText), "; %zu pose(s) never rebuilt", neverRebuilt);
 	snprintf(text, sizeof(text),
 		"%llu fresh read(s) recorded; stale read(s): %llu given the straight read of their pose and root, %llu rebuilt at their "
 		"root, %llu of a pose never read fresh, %llu of a pose read fresh at other roots only; %llu conflicting (%llu of them a "
-		"rebuild's), %llu without a key; %zu pose(s) kept%s",
+		"rebuild's), %llu without a key; %zu pose(s) kept%s; %llu given from the fight's position, %llu anchor unresolved",
 		(unsigned long long)c.recorded, (unsigned long long)c.exact, (unsigned long long)c.rebuilt, (unsigned long long)c.noPose,
 		(unsigned long long)c.otherRoot, (unsigned long long)(c.conflicting + c.disagreeing), (unsigned long long)c.disagreeing,
-		(unsigned long long)c.unkeyed, kept, neverRebuilt ? neverText : "");
+		(unsigned long long)c.unkeyed, kept, neverRebuilt ? neverText : "", (unsigned long long)c.anchored,
+		(unsigned long long)c.anchorUnresolved);
 	return text;
 }
 
@@ -810,6 +902,8 @@ void ForgetSocketReads()
 	for (std::atomic<bool>& logged : s_meshesLogged) logged.store(false);
 	s_reforced.store(0);
 	s_conflictLines.store(0);
+	s_anchorUnresolvedLogged.store(false);
+	s_anchorNameLogged.store(false);
 }
 
 std::string SocketReadsSummary()
@@ -824,10 +918,11 @@ std::vector<socket_reads::Miss> SocketMissesBetween(int32_t first, int32_t last)
 	return s_misses.Between(first, last);
 }
 
-bool InstallSocketReads(uintptr_t imageBase, bool log)
+bool InstallSocketReads(uintptr_t imageBase, bool log, bool anchor)
 {
 	s_base = imageBase;
 	s_log = log;
+	s_anchor = anchor;
 	// Called, not hooked: the build's check (BuildCheck, sfv::kSites) has read their bytes.
 	s_makeName = reinterpret_cast<MakeNameFn>(imageBase + sfv::kMakeName.rva);
 	s_socketTransform = reinterpret_cast<SocketTransformFn>(imageBase + sfv::kSocketTransform.rva);
@@ -835,6 +930,11 @@ bool InstallSocketReads(uintptr_t imageBase, bool log)
 		reinterpret_cast<void**>(&o_socket));
 	Log("socket: %s%s", ok ? "the fight's reads of the fighters' models take a straight play's pose" : "the socket read NOT hooked; replayed frames read the last drawn pose",
 		ok && log ? "; every read logged (-sfve_socket_log)" : "");
+	if (ok) {
+		Log("socket: the four reads that feed fight state (rva 0x3BDB02, 0x3BDF3B, 0x3BC294, 0x3A4B79) %s",
+			anchor ? "are given a value from the fighter's fight position in a battle a session plays (-sfve_socket_anchor)" :
+					 "are recorded and served like the others (-sfve_socket_anchor=0)");
+	}
 	return ok;
 }
 

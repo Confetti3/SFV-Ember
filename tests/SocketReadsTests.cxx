@@ -135,15 +135,101 @@ TEST_CASE("the socket read's site is in the build table")
 TEST_CASE("the reads that are not the fight's are left as they are")
 {
 	// Bone 28 in Chara PreInput, the camera's handlers, CharaManager's, and the
-	// head for Chara PostVisual (after the tick).
+	// head for Chara PostVisual (after the tick), CharaUniquePart_010's effect
+	// at the head, the cursor's and the tutorial's interface reads.
 	for (const uint32_t other : {0x37D48Eu, 0x31B10Eu, 0x31B1DEu, 0x32FA5Fu, 0x33C41Fu, 0x3E3EF0u, 0x3E3F57u, 0x38F401u, 0x38F69Bu,
-			 0x38F6B7u}) {
+			 0x38F6B7u, 0x39D8BBu, 0x404B2Du, 0x434FB5u, 0x43986Cu, 0x439882u}) {
 		CHECK(socket_reads::EveryTick(other));
+		CHECK_FALSE(socket_reads::AnchoredSite(other));
 	}
-	// Spawns at a bone: any script's spawn with a bone (through rva 0x32BAA0's
-	// jump, so from rva 0x4CFB70), Z33's part as its V-Trigger ends, and the
-	// other two parts that read a socket.
-	for (const uint32_t spawn : {0x4CFC99u, 0x3BDB02u, 0x3BC294u, 0x3BDF3Bu}) CHECK_FALSE(socket_reads::EveryTick(spawn));
+	// The spawn bone resolver (any script's spawn with a bone, through rva
+	// 0x32BAA0's jump, so from rva 0x4CFB70) is drawn only but stays on the
+	// record and serve path.
+	CHECK_FALSE(socket_reads::EveryTick(0x4CFC99));
+	CHECK_FALSE(socket_reads::AnchoredSite(0x4CFC99));
+	// The four reads that feed fight state are never left alone: they are
+	// anchored (or recorded and served when the anchor cannot be made).
+	for (const uint32_t site : {0x3BDB02u, 0x3BC294u, 0x3BDF3Bu, 0x3A4B79u}) {
+		CHECK_FALSE(socket_reads::EveryTick(site));
+		CHECK(socket_reads::AnchoredSite(site));
+	}
+}
+
+TEST_CASE("the anchor's offsets by call site and socket name")
+{
+	using socket_reads::AnchorOffsetFor;
+	bool other = true;
+	// A hand-held item, whichever hand.
+	for (const uint32_t site : {0x3BDB02u, 0x3BDF3Bu}) {
+		for (const wchar_t* name : {L"Sock_Item_R", L"Sock_Item_L"}) {
+			const auto offset = AnchorOffsetFor(site, name, &other);
+			CHECK(offset.forward == 0.20f);
+			CHECK(offset.up == 1.00f);
+			CHECK_FALSE(other);
+		}
+	}
+	// The dropped prop, at the head.
+	auto offset = AnchorOffsetFor(0x3BC294, L"b_C_Head", &other);
+	CHECK(offset.forward == 0.00f);
+	CHECK(offset.up == 1.60f);
+	CHECK_FALSE(other);
+	// The claw's site: a hand, the head, any other name.
+	for (const wchar_t* hand : {L"b_R_Hand", L"b_L_Hand"}) {
+		offset = AnchorOffsetFor(0x3A4B79, hand, &other);
+		CHECK(offset.forward == 0.30f);
+		CHECK(offset.up == 1.20f);
+		CHECK_FALSE(other);
+	}
+	offset = AnchorOffsetFor(0x3A4B79, L"b_C_Head", &other);
+	CHECK(offset.forward == 0.05f);
+	CHECK(offset.up == 1.60f);
+	CHECK_FALSE(other);
+	offset = AnchorOffsetFor(0x3A4B79, L"b_R_Foot", &other);
+	CHECK(offset.forward == 0.05f);
+	CHECK(offset.up == 1.60f);
+	CHECK(other);
+	// A name is its characters, not a prefix of them.
+	AnchorOffsetFor(0x3A4B79, L"b_R_Hand_IK", &other);
+	CHECK(other);
+	// A site that is not an anchored one has no offset.
+	offset = AnchorOffsetFor(0x4CFC99, L"b_C_Head", &other);
+	CHECK(offset.forward == 0.0f);
+	CHECK(offset.up == 0.0f);
+}
+
+TEST_CASE("the anchor's value: the fight's position plus the offset, mirrored by facing, on the fight plane")
+{
+	using socket_reads::AnchorOffset;
+	using socket_reads::AnchorPosition;
+	const float base[4] = {3.25f, 0.5f, 7.0f, 9.0f}; // the position's z and w are not used
+	const AnchorOffset offset{0.30f, 1.20f};
+	const Position right = AnchorPosition(base, false, offset);
+	CHECK(right.xyzw[0] == 3.25f + 0.30f);
+	CHECK(right.xyzw[1] == 0.5f + 1.20f);
+	CHECK(right.xyzw[2] == 0.0f);
+	CHECK(right.xyzw[3] == 1.0f);
+	const Position left = AnchorPosition(base, true, offset);
+	CHECK(left.xyzw[0] == 3.25f - 0.30f);
+	CHECK(left.xyzw[1] == right.xyzw[1]);
+	CHECK(left.xyzw[2] == 0.0f);
+	CHECK(left.xyzw[3] == 1.0f);
+	// A zero forward offset (the head's) is the same either way.
+	const float away[4] = {-4.0f, 0.0f, 0.0f, 1.0f};
+	const Position head = AnchorPosition(away, true, {0.00f, 1.60f});
+	CHECK(head.xyzw[0] == -4.0f);
+	CHECK(head.xyzw[1] == 1.60f);
+	// Only the position, facing and offset decide it: the same inputs give the same bits.
+	CHECK(AnchorPosition(base, true, offset) == left);
+}
+
+TEST_CASE("the counts text has the anchors' counts")
+{
+	socket_reads::Counts counts;
+	counts.anchored = 14;
+	counts.anchorUnresolved = 2;
+	const std::string text = socket_reads::CountsText(counts, 0, 0);
+	CHECK(text.find("14 given from the fight's position") != std::string::npos);
+	CHECK(text.find("2 anchor unresolved") != std::string::npos);
 }
 
 TEST_CASE("a socket's key is its name")
