@@ -27,9 +27,11 @@
 // the state they start from gives right. Draw() is the engine's frame: it
 // shows the pose the last update left. A read is fresh when a frame was
 // drawn since the last update and nothing was restored since; a stale read
-// takes a record of the poses read fresh before (SocketReads' record), and a
-// pose never read fresh keeps the drawn one, which is wrong: the update then
-// wants a drawn frame (WantsDrawnFrame).
+// takes a record of the poses read fresh before (SocketReads' record: the
+// same pose where the fighters stood then, exact; or, with `rebuild`, the
+// same stance read fresh at other places, rebuilt, only while the models
+// stand where the last update placed them), and any other keeps the drawn
+// pose, which is wrong: the update then wants a drawn frame (WantsDrawnFrame).
 
 #include "core/GameAdapter.hxx"
 
@@ -105,11 +107,11 @@ public:
 	const std::vector<int>& RollbackTargets() const { return rollbackTargets_; }
 
 	// Frames f > 0 with f % every < run that read inputs make a pose read.
-	// `needsPlacement`: a stale read takes the record only once an update has
-	// run since the last restore (as SFV's rebuild at another root needs the
-	// models placed), so a rollback's first replayed frame misses even a pose
-	// read before.
-	void PoseReadsEvery(int every, int run = 1, bool needsPlacement = false);
+	// `rebuild`: a stale read of a stance read fresh only where the fighters
+	// stood elsewhere is rebuilt, once an update has run since the last
+	// restore (as SFV's rebuild at another root needs the models placed), so
+	// a rollback's first replayed frame, or a hold's own replay, misses it.
+	void PoseReadsEvery(int every, int run = 1, bool rebuild = false);
 	// The engine draws a frame: the pose the last update placed is shown.
 	void Draw()
 	{
@@ -164,6 +166,8 @@ private:
 	void Build();
 	// The pose a state shows: where the fighters stand and what they do.
 	static uint32_t PoseOf(const World& world);
+	// The stance alone: what the fighters do, not where they stand.
+	static uint32_t StanceOf(const World& world);
 	// The frame's pose read, if it makes one (PoseReadsEvery).
 	void ReadPose();
 	// The end of the ignored frames: ignoreTo_, or earlier once skipped.
@@ -193,11 +197,12 @@ private:
 	// restore), the poses read fresh (never rollback state: SFV's record is
 	// not either), whether the last update missed, and the counts.
 	int poseEvery_ = 0, poseRun_ = 1;
-	bool poseNeedsPlacement_ = false;
+	bool poseRebuild_ = false;
 	uint32_t placed_ = 0, drawn_ = 0;
 	bool fresh_ = false;
 	bool placedSinceRestore_ = false;
 	std::unordered_set<uint32_t> posesSeen_;
+	std::unordered_set<uint32_t> stancesSeen_;
 	bool missed_ = false;
 	int awaitingHold_ = -1;
 	int poseMisses_ = 0, poseHolds_ = 0, poseRefused_ = 0, poseCancelled_ = 0, freshAfterHold_ = 0, posePending_ = 0;

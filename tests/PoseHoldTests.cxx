@@ -131,7 +131,7 @@ constexpr int kFrameMs = 4;
 struct Poses {
 	int every = 5;
 	int run = 1;
-	bool needsPlacement = false;
+	bool rebuild = false;
 };
 
 // Two sessions over a lossy, laggy loopback link (as RollbackCostTests'), the
@@ -146,8 +146,8 @@ struct HoldPair {
 		// Every frame's hash kept, so every final frame compares.
 		pair = std::make_unique<LoopbackPair>(kBugNone, kDelay, true,
 			[&](MockFighter& a, MockFighter& b, uint16_t, uint16_t) {
-				a.PoseReadsEvery(poses.every, poses.run, poses.needsPlacement);
-				b.PoseReadsEvery(poses.every, poses.run, poses.needsPlacement);
+				a.PoseReadsEvery(poses.every, poses.run, poses.rebuild);
+				b.PoseReadsEvery(poses.every, poses.run, poses.rebuild);
 				// The engine has drawn the battle's first state.
 				a.Draw();
 				b.Draw();
@@ -222,7 +222,7 @@ bool RunDrawn(LoopbackPair& pair, int frames, double settleMs = 400, double dead
 std::vector<uint64_t> DrawnReference(int frames, const Poses& poses)
 {
 	MockFighter reference;
-	reference.PoseReadsEvery(poses.every, poses.run, poses.needsPlacement);
+	reference.PoseReadsEvery(poses.every, poses.run, poses.rebuild);
 	std::vector<uint64_t> hashes{reference.Layout().HashLive(HashScope::Peers)};
 	for (int f = 0; f < frames; f++) {
 		reference.Draw();
@@ -326,10 +326,10 @@ TEST_CASE("without holds the same match leaves the straight run: the misses are 
 
 TEST_CASE("a hold whose own replay of the frame before misses too goes back a frame, over GGPO")
 {
-	// Two reading frames in every three, and a stale read takes the record
-	// only once an update ran since the last restore: a rollback's first
-	// replayed frame, and a hold's own replay of the frame before the held
-	// one, miss whenever they read.
+	// Two reading frames in every three, and a stale read of a stance read
+	// fresh only at other places is rebuilt only once an update ran since the
+	// last restore: a rollback's first replayed frame, and a hold's own
+	// replay of the frame before the held one, miss such a read.
 	constexpr int kFrames = 900;
 	const Poses poses{3, 2, true};
 	const std::vector<uint64_t> reference = DrawnReference(kFrames + 40, poses);
@@ -342,10 +342,9 @@ TEST_CASE("a hold whose own replay of the frame before misses too goes back a fr
 	const RollbackSession::Stats& sb = pair.b.GetStats();
 	CHECK(sa.poseHolds + sb.poseHolds > 0);
 	CHECK(pair.gameA.NotFreshAfterHold() + pair.gameB.NotFreshAfterHold() == 0);
-	// Some chains reach past the saves still kept and are refused (the hold
-	// one frame later stands): the mock's record needs the models placed for
-	// every stale read, harsher than SFV's, whose exact readings do not.
-	// Whatever was refused was on frames a later rollback or hold replays.
+	// A chain that would reach past the saves still kept is refused (the
+	// hold one frame later stands); whatever a refusal left live was on frames
+	// a later rollback or hold replays.
 	// Some holds were chained: more pending holds than holds made and dropped.
 	CHECK(pair.gameA.PoseHoldsPending() + pair.gameB.PoseHoldsPending() >
 		pair.gameA.PoseHoldsMade() + pair.gameB.PoseHoldsMade() + pair.gameA.PoseHoldsCancelled() +
@@ -372,7 +371,7 @@ ReplayFrames Recording(int count)
 int LaggedWithPoses(const ReplayFrames& frames, const std::vector<uint64_t>& straight, const Poses& poses, bool holds,
 	int lag, int remote, MockFighter& game, int* compared, int* holdsMade)
 {
-	game.PoseReadsEvery(poses.every, poses.run, poses.needsPlacement);
+	game.PoseReadsEvery(poses.every, poses.run, poses.rebuild);
 	game.Draw();
 	LaggedReplay replay(game, frames, remote, lag, 0, holds);
 	int differing = 0;
@@ -411,7 +410,7 @@ TEST_CASE("a lagged replay holds as a session does, and its final states are the
 		std::vector<uint64_t> straight;
 		{
 			MockFighter game;
-			game.PoseReadsEvery(poses.every, poses.run, poses.needsPlacement);
+			game.PoseReadsEvery(poses.every, poses.run, poses.rebuild);
 			for (int frame = 0; frame < kFrames; frame++) {
 				straight.push_back(game.Layout().HashLive(HashScope::Peers));
 				game.Draw();

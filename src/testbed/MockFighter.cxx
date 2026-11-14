@@ -59,13 +59,28 @@ std::string MockFighter::BuildId() const
 	return "mockfighter-1";
 }
 
-void MockFighter::PoseReadsEvery(int every, int run, bool needsPlacement)
+void MockFighter::PoseReadsEvery(int every, int run, bool rebuild)
 {
 	poseEvery_ = every;
 	poseRun_ = run < 1 ? 1 : run;
-	poseNeedsPlacement_ = needsPlacement;
+	poseRebuild_ = rebuild;
 	placed_ = PoseOf(world_);
 	placedSinceRestore_ = true;
+}
+
+uint32_t MockFighter::StanceOf(const World& world)
+{
+	uint32_t h = 2166136261u;
+	const auto mix = [&](int32_t v) {
+		for (int i = 0; i < 4; i++) h = (h ^ (uint8_t)(v >> (8 * i))) * 16777619u;
+	};
+	for (const Fighter& f : world.fighters) {
+		mix(f.y);
+		mix(f.attackFrames);
+		mix(f.hitstun);
+		mix(f.facing);
+	}
+	return h;
 }
 
 uint32_t MockFighter::PoseOf(const World& world)
@@ -94,8 +109,11 @@ void MockFighter::ReadPose()
 		// What the engine drew: the pose of this state.
 		value = drawn_;
 		posesSeen_.insert(pose);
-	} else if (posesSeen_.count(pose) && (!poseNeedsPlacement_ || placedSinceRestore_)) {
-		value = pose;
+		stancesSeen_.insert(StanceOf(world_));
+	} else if (posesSeen_.count(pose)) {
+		value = pose; // the straight read of this pose where the fighters stand
+	} else if (poseRebuild_ && placedSinceRestore_ && stancesSeen_.count(StanceOf(world_))) {
+		value = pose; // rebuilt where they stand now
 	} else {
 		// The live value: the pose last drawn, another state's.
 		value = drawn_;
