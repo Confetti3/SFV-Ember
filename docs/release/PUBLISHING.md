@@ -46,8 +46,22 @@ Each outward step is logged in `outward.log` (START / DONE / FAILED / SKIPPED). 
 | `push-public` | promote | fast-forwards the public `main` to the source commit |
 | `publish` | promote | publishes the draft by id with `target_commitish` = the source commit |
 
-Pushes are never forced. A remote branch that moved somewhere else stops the run. `push-public` comes before
-`publish` because GitHub creates the tag from the commit, which has to be in the public repository by then.
+Pushes are never forced and never carry tags (`--no-follow-tags`). Each push starts only when the branch is
+exactly where the plan saw it, and when `git push --dry-run` shows exactly that range (old tip..release commit, or a
+new branch). A branch that moved since the plan stops the run, even if the release would still fast-forward it.
+`push-public` and `publish` also require the library commit the README pins to be on the library's public branch,
+even when `push-library` was skipped. `push-public` comes before `publish` because GitHub creates the tag from the
+commit, which has to be in the public repository by then.
+
+Right before `publish`, promote reads the draft again by id and checks that no tag for the label has appeared. If
+an earlier run published the release but lost the reply, the next run sees the release published, with the tag on
+the planned commit, and goes on to confirm. The server check runs on every promote run until the release is
+published.
+
+The pipeline itself is pinned: every stage after the plan refuses unless the pipeline checkout is at the commit
+the plan recorded and clean. The plan and promote check that the remotes push where the config says. The public
+remote must push to `github.com/<publicRepo>`, the private origin must not push there, and the library remote must
+push to `github.com/<libraryGithubRepo>`.
 
 Promote records each phase in `promote\state.json`. After a failure, running it again resumes at the first
 unfinished phase. A skipped phase stays open and runs on the next run without `-Skip`.
@@ -89,6 +103,7 @@ compares the installed files with these hashes, as for a built pair.
 {
   "publicRepo": "Confetti3/SFV-Ember", "publicRemote": "public", "originRemote": "origin",
   "libraryRepo": "<the desktop's library repository>", "libraryRemote": "origin", "libraryBranch": "feat/ember-library",
+  "libraryGithubRepo": "Confetti3/SF4-Ember-Netplay",
   "rules": ["<the release rules file>"], "notesForbidden": ["<words public text never uses>"],
   "laptop": { "host": "director", "work": "D:\\sf4\\publish", "interactive": "D:\\sf4\\interactive",
               "sourceCheckout": "D:\\sf4\\wt\\sfv-b9", "libraryCheckout": "D:\\sf4\\wt\\lib-b9",
@@ -160,8 +175,27 @@ flag stands in for that last read only: the hash comparison and the room host's 
 - The room build on the VPS: `sudo bash ~/ember-sfv-bridge/upgrade.sh rollback-rooms`. The previous stage folder
   is kept as `~/ember-sfv-bridge.before-<label>`.
 
+## First real run: what to look at before each irreversible step
+
+- `gh auth status`: the account that owns `Confetti3/SFV-Ember`, with `repo` scope.
+- The plan's counts against what you expect: the commits since the last release (71 for beta.9 on 6668eb2), the
+  library commits to push (1: 3515bca6f..8f56f3c25), and the room build marked changed.
+- After `-Stage draft`: open the draft by the URL it prints and check the tag, title, notes and both assets. Promote
+  reads it back by id again.
+- Promote runs `git push --dry-run --porcelain` for every push and refuses any range other than the planned one.
+  For a manual look first: `git push --dry-run --porcelain --no-follow-tags public <commit>:refs/heads/main`, and
+  the same for the library's `feat/ember-library`.
+- Run promote once with `-Skip publish`. Check the public `main`, `release/beta.N` on origin and the library tip.
+  Then run promote again without it to publish.
+
+## Known limits
+
+- Review findings 12, 14 and 15 of the review of commit 75138f5 are not addressed in this version.
+- The `server1` Linux back end is not written; rooms builds in the build PC's WSL, or adopts a kit.
+- When the supervisor's `config.json` is root-only, whether it lists the build rests on the owner's
+  `-RoomsConfirmed`. The installed hashes and the room host's own answer are still checked by the pipeline.
 ## Tests
 
-`pwsh -NoProfile -File tests\PublishTests.ps1` runs every stage on a fixture of local git repositories. GitHub,
+`pwsh -NoProfile -File tests\PublishTests.ps1` and `tests\PublishReviewTests.ps1` (one test per review finding; `-Only <name>`) run every stage on a fixture of local git repositories. GitHub,
 the build PC and the VPS are faked (`scripts/publish/SfvPublishFakes.ps1`), and a push to anything outside the
 fixture throws.
