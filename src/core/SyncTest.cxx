@@ -172,13 +172,15 @@ FrameInputs SyncTester::Perturbed(const FrameInputs& inputs, int frame)
 	return wrong;
 }
 
-LaggedReplay::LaggedReplay(GameAdapter& game, const ReplayFrames& frames, int remote, int lag, uint32_t jitterSeed)
+LaggedReplay::LaggedReplay(GameAdapter& game, const ReplayFrames& frames, int remote, int lag, uint32_t jitterSeed,
+	bool poseHolds)
 	: jitter_(jitterSeed), game_(game), frames_(frames), remote_(remote), lag_(lag < 1 ? 1 : lag),
 	  saved_((size_t)lag_ + 3)
 {
 	for (Saved& s : saved_) s.bytes.resize(game.Layout().TotalSize());
 	arrival_.resize(frames.size());
 	delay_ = (lag_ + 1) / 2;
+	holds_.Start(poseHolds);
 }
 
 int LaggedReplay::Known(int frame)
@@ -206,21 +208,28 @@ void LaggedReplay::Step(int frame)
 {
 	if (frame != next_) return;
 	const int known = Known(frame);
+	// A hold's frames first, as a session's GGPO replays them before it
+	// receives anything.
+	ResumePoseHold(known);
 	Resolve(known);
 	Play(frame, known);
 	next_ = frame + 1;
 	if (known + 1 > confirmedThrough_) confirmedThrough_ = known + 1;
+	FinishPoseHold(known);
 }
 
-void LaggedReplay::Finish()
+bool LaggedReplay::Finish()
 {
+	ResumePoseHold(next_ - 1);
 	Resolve(next_ - 1);
 	confirmedThrough_ = next_;
+	FinishPoseHold(next_ - 1);
+	return !holds_.Resuming();
 }
 
 const uint8_t* LaggedReplay::SavedAt(int frame) const
 {
-	if (frame < 0 || frame > confirmedThrough_) return nullptr;
+	if (frame < 0 || frame > ConfirmedThrough()) return nullptr;
 	const Saved& s = saved_[(size_t)frame % saved_.size()];
 	return s.frame == frame ? s.bytes.data() : nullptr;
 }
@@ -243,6 +252,9 @@ void LaggedReplay::Resolve(int known)
 	game_.AfterLoad();
 	rollbacks_++;
 	if (next_ - wrong > longest_) longest_ = next_ - wrong;
+	// A pending hold at or after the frame loaded: its frame is played again.
+	const int dropped = holds_.Loaded(wrong);
+	if (dropped >= 0) game_.NotePoseHold({pose_hold::Event::Kind::Cancelled, dropped, 0, pose_hold::Refusal::None});
 	for (int k = wrong; k < next_; k++) Play(k, known);
 }
 
@@ -258,6 +270,92 @@ void LaggedReplay::Play(int frame, int known)
 	const FrameInputs given = GivenInputs(game_, inputs, frame);
 	s.remote = given.p[remote_];
 	game_.Advance(given, frame < next_);
+	if (!holds_.On()) return;
+	const bool wanted = game_.WantsDrawnFrame();
+	if (holding_) {
+		replayWanted_ = replayWanted_ || wanted;
+		return;
+	}
+	pose_hold::Refusal why = pose_hold::Refusal::None;
+	const int candidate = holds_.Wanted(frame, wanted, &why);
+	if (candidate >= 0) ConsiderPoseHold(candidate, why);
+}
+
+void LaggedReplay::ConsiderPoseHold(int frame, pose_hold::Refusal why)
+{
+	using pose_hold::Refusal;
+	if (why == Refusal::None && !Kept(frame - 1)) why = Refusal::StateNotKept;
+	if (why != Refusal::None) {
+		holds_.Refuse(frame);
+		poseHoldsRefused_++;
+		game_.NotePoseHold({pose_hold::Event::Kind::Refused, frame, 0, why});
+		return;
+	}
+	holds_.Pend(frame);
+	game_.NotePoseHold({pose_hold::Event::Kind::Pending, frame, 0, Refusal::None});
+}
+
+void LaggedReplay::FinishPoseHold(int known)
+{
+	using pose_hold::Event;
+	using pose_hold::Refusal;
+	int frame = holds_.Pending();
+	if (frame < 0) {
+		holds_.EndTick();
+		return;
+	}
+	// The frames played so far: the hold's replay comes back to them.
+	const int resumeTo = next_;
+	StateLayout& layout = game_.Layout();
+	int held = -1;
+	for (int chained = 0;; chained++) {
+		if (!Kept(frame - 1)) {
+			// Never expected: checked when the hold was pending.
+			poseHoldsRefused_++;
+			game_.NotePoseHold({Event::Kind::Refused, frame, 0, Refusal::Refused});
+			if (held < 0) {
+				holds_.EndTick();
+				return;
+			}
+			break;
+		}
+		// The state the frame before starts from, played again: its update
+		// places the models for the held frame's start.
+		layout.LoadFrom(At(frame - 1).bytes.data());
+		game_.AfterLoad();
+		holding_ = true;
+		replayWanted_ = false;
+		Play(frame - 1, known);
+		holding_ = false;
+		held = frame;
+		if (!replayWanted_) break;
+		// That replay wanted a drawn frame too: one frame further back.
+		Refusal why = Refusal::None;
+		if (chained + 1 >= pose_hold::kChainLimit) why = Refusal::ChainLimit;
+		else if (frame - 1 < 1) why = Refusal::FirstFrame;
+		else if (!Kept(frame - 2)) why = Refusal::StateNotKept;
+		if (why != Refusal::None) {
+			poseHoldsRefused_++;
+			game_.NotePoseHold({Event::Kind::Refused, frame - 1, 0, why});
+			break;
+		}
+		frame--;
+		holds_.Pend(frame);
+		game_.NotePoseHold({Event::Kind::Pending, frame, 0, Refusal::None});
+	}
+	holds_.Held(held, resumeTo);
+	holds_.EndTick();
+	poseHolds_++;
+	game_.NotePoseHold({Event::Kind::Held, held, resumeTo - (held - 1), Refusal::None});
+}
+
+void LaggedReplay::ResumePoseHold(int known)
+{
+	if (!holds_.Resuming()) return;
+	const int from = holds_.HeldAt();
+	const int to = holds_.ResumeTo();
+	for (int k = from; k < to; k++) Play(k, known);
+	holds_.Resumed();
 }
 
 SyncTestReport RunSyncTest(GameAdapter& game, const SyncTestOptions& options)

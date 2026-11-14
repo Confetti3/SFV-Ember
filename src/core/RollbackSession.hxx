@@ -40,6 +40,14 @@
 // * A replay plays such frames back as a watcher plays P1's stream
 //   (Config::replay): the same path, the same held frames and hashes, with
 //   no GGPO session and no network at all.
+//
+// Pose holds (Config::poseHolds, core/PoseHold.hxx): a fighter's update that
+// wanted a drawn frame (GameAdapter::WantsDrawnFrame) ends the call it ran
+// in held at its frame's start (ggpo_hold_at, the GGPO port's
+// pose-hold.patch), and the next call's GGPO first plays the frames from it
+// again. Meanwhile the saves made after it are junk: never hashed, reported
+// final or dumped; Frame() stays the frame the call stood at, and
+// LastConfirmedFrame() stops before the held frame.
 
 #include "core/GameAdapter.hxx"
 #include "core/ReplayFrames.hxx"
@@ -50,6 +58,7 @@
 #include "sf4e__GgpoGate.hxx"
 
 #include <ggponet.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -154,6 +163,12 @@ public:
 		int replayLag = 0;
 		int replayLagPlayer = 0;
 		uint32_t replayLagJitter = 0; // nonzero: the delay wanders up to replayLag (LaggedReplay), from this seed
+		// Pose holds (core/PoseHold.hxx): an update that wanted a drawn frame
+		// (GameAdapter::WantsDrawnFrame) ends the tick held at its frame's
+		// start, drawn, and the frames from it are played again first thing
+		// in the next call. A fighter's session over GGPO, and a lagged
+		// replay (LaggedReplay); a watcher never rolls back and never holds.
+		bool poseHolds = false;
 		// Each frame as this session plays it, before the game sees it: its
 		// number and what it gave the game (RecordedFrame). A rollback's replay
 		// reports the frame again; the last report of a confirmed frame is
@@ -192,6 +207,8 @@ public:
 		uint64_t heldFrames = 0;           // StepHeld's frames
 		uint64_t heldReplays = 0;          // held frames a rollback replayed (never expected)
 		uint64_t waitingSteps = 0;         // Step / StepHeld calls that returned Waiting: no frame run, the other player's inputs or the gate not there yet (pace log)
+		uint64_t poseHolds = 0;            // ticks that ended held for a drawn frame (Config::poseHolds; each also counts as a rollback)
+		uint64_t poseHoldsRefused = 0;     // updates that wanted a drawn frame and kept the live value (pose_hold::Refusal)
 	};
 
 	explicit RollbackSession(GameAdapter& game);
@@ -231,7 +248,11 @@ public:
 	bool Running() const { return gate_.phase == sf4e::gate::PHASE_RUNNING; }
 	bool Failed() const { return failed_; }
 	const std::string& FailureReason() const { return failure_; }
-	int Frame() const { return frame_; }
+	// The frame the next Step plays. While a pose hold's frames wait to be
+	// played again, the game stands at the held frame's start and this is
+	// still the frame the tick stood at; LastConfirmedFrame then says no
+	// frame from the held one is final yet.
+	int Frame() const { return poseHolds_.Resuming() ? poseHolds_.ResumeTo() : frame_; }
 	// The last frame whose inputs both fighters have given. A watcher plays
 	// only such frames, so for it every state it has reached is final: its
 	// current frame.
@@ -316,6 +337,11 @@ private:
 		bool used = false;
 		bool copied = false;     // bytes hold the frame's state; false: a save no load can reach
 		bool pending = false;    // to be hashed once the frame is final (Config::hashOnConfirm)
+		// Saved after a frame whose update wanted a drawn frame, while the
+		// pose hold for it is pending or its frames wait to be replayed: the
+		// replay replaces it, so it is never hashed (unless no hold comes),
+		// and it always keeps its copy.
+		bool junk = false;
 		int frame = -1;
 		long long copyTicks = 0; // the copy's time, for the checkpoint line
 		std::vector<uint8_t> bytes;
@@ -360,6 +386,22 @@ private:
 	bool Load(unsigned char* buffer);
 	void Free(void* buffer);
 	bool AdvanceFromRollback();
+	// Advances the game one frame (frame_), then notes whether its update
+	// wanted a drawn frame (pose holds).
+	void AdvanceGame(const FrameInputs& given, bool resimulating);
+	// The update of `frame` wanted a drawn frame and the book did not rule it
+	// out (`why`, or None): the hold is pending, or refused.
+	void ConsiderPoseHold(int frame, pose_hold::Refusal why);
+	// After each call that may have rolled back (Step, StepHeld, Poll): the
+	// pending hold is made (ggpo_hold_at), chained one frame back at a time
+	// while its own replay wants a drawn frame too.
+	void FinishPoseHold();
+	// The saves of frames after `frame` are a pending hold's to replace.
+	void MarkJunkAbove(int frame);
+	// No hold replaces the saves of frames in (above, through]: hashed as
+	// usual once final.
+	void Unjunk(int above, int through);
+	void UnjunkAll() { Unjunk(-1, INT_MAX); }
 	// The frame about to be advanced as the game gets it; reported to
 	// onFrame as this frame's.
 	FrameInputs InputsForThisFrame(const FrameInputs& inputs);
@@ -442,6 +484,12 @@ private:
 	bool holding_ = false;
 	int heldFrom_ = -1, heldTo_ = -1;
 	bool Held(int frame) const { return frame >= heldFrom_ && (holding_ || frame < heldTo_); }
+	// Pose holds (Config::poseHolds): the book, whether a hold's own load and
+	// replay are running (FinishPoseHold), and whether that replay wanted a
+	// drawn frame too.
+	pose_hold::Book poseHolds_;
+	bool poseHolding_ = false;
+	bool poseReplayWanted_ = false;
 	bool failed_ = false;
 	std::string failure_;
 	Stats stats_;

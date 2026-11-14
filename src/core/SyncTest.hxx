@@ -146,18 +146,31 @@ SyncTestReport RunSyncTest(GameAdapter& game, const SyncTestOptions& options);
 // each frame's input arrives 1 to `lag` frames late, the delay a random walk
 // with occasional jumps to `lag`, and inputs arrive in order, so a late one
 // holds back those after it and they then arrive together.
+//
+// With pose holds (core/PoseHold.hxx) it holds as a fighter's session does: a
+// frame whose update wanted a drawn frame (GameAdapter::WantsDrawnFrame) ends
+// the rendered frame at that frame's start, its state placed by playing the
+// frame before again, and the next Step (or Finish) first plays the frames
+// from it again. Until then the states from the held frame on are not final.
 class LaggedReplay {
 public:
-	LaggedReplay(GameAdapter& game, const ReplayFrames& frames, int remote, int lag, uint32_t jitterSeed = 0);
+	LaggedReplay(GameAdapter& game, const ReplayFrames& frames, int remote, int lag, uint32_t jitterSeed = 0,
+		bool poseHolds = false);
 
 	// Plays frame `frame`, the next one, after the rollback the inputs known
 	// by now call for.
 	void Step(int frame);
 	// Every input known: the rollback the last guesses call for; nothing new
-	// is played.
-	void Finish();
+	// is played. False while a pose hold waits for a drawn frame: call it
+	// again on the next rendered frame.
+	bool Finish();
 	// The states at the start of frames 0 to this one are final.
-	int ConfirmedThrough() const { return confirmedThrough_; }
+	int ConfirmedThrough() const
+	{
+		return holds_.Resuming() && confirmedThrough_ > holds_.HeldAt() ? holds_.HeldAt() : confirmedThrough_;
+	}
+	int PoseHolds() const { return poseHolds_; }
+	int PoseHoldsRefused() const { return poseHoldsRefused_; }
 	// The final state at the start of `frame` while it is kept (the last
 	// lag + 2 frames played), or null.
 	const uint8_t* SavedAt(int frame) const;
@@ -181,6 +194,19 @@ private:
 	void Play(int frame, int known);
 	// The last frame whose remote input has arrived when `frame` is played.
 	int Known(int frame);
+	// Pose holds: the state `frame` starts from is still kept.
+	bool Kept(int frame) { return frame >= 0 && At(frame).frame == frame; }
+	// The update of `frame` wanted a drawn frame (Book::Wanted let it through).
+	void ConsiderPoseHold(int frame, pose_hold::Refusal why);
+	// The end of a Step: the pending hold is made.
+	void FinishPoseHold(int known);
+	// The start of a Step: a hold's frames are played again.
+	void ResumePoseHold(int known);
+	pose_hold::Book holds_;
+	bool holding_ = false;      // the hold's own replay of the frame before the held one
+	bool replayWanted_ = false; // ...wanted a drawn frame too
+	int poseHolds_ = 0;
+	int poseHoldsRefused_ = 0;
 
 	uint32_t jitter_;     // xorshift32 state; 0: a fixed delay
 	int delay_ = 1;       // the walk's current delay

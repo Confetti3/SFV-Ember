@@ -21,10 +21,20 @@
 // battle records it. It is part of the rollback state, as the SFV adapter
 // makes the game's flow; kBugFlowOutsideLayout leaves it out (as the game's
 // own snapshot does), so a KO on guessed inputs can be latched for good.
+//
+// Pose reads (PoseReadsEvery, for the pose holds of core/PoseHold.hxx): like
+// SFV's fight socket reads, some frames read a value only a drawn picture of
+// the state they start from gives right. Draw() is the engine's frame: it
+// shows the pose the last update left. A read is fresh when a frame was
+// drawn since the last update and nothing was restored since; a stale read
+// takes a record of the poses read fresh before (SocketReads' record), and a
+// pose never read fresh keeps the drawn one, which is wrong: the update then
+// wants a drawn frame (WantsDrawnFrame).
 
 #include "core/GameAdapter.hxx"
 
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 namespace sfve::testbed {
@@ -86,10 +96,36 @@ public:
 	void AfterLoad() override
 	{
 		if (failNextRestore_) stateFailure_ = kStateFailure;
+		// A restore changes the state, not the models.
+		fresh_ = false;
+		placedSinceRestore_ = false;
 	}
 	const char* StateFailure() const override { return stateFailure_; }
 	// The frame each resimulation started from (each rollback's target).
 	const std::vector<int>& RollbackTargets() const { return rollbackTargets_; }
+
+	// Frames f > 0 with f % every < run that read inputs make a pose read.
+	// `needsPlacement`: a stale read takes the record only once an update has
+	// run since the last restore (as SFV's rebuild at another root needs the
+	// models placed), so a rollback's first replayed frame misses even a pose
+	// read before.
+	void PoseReadsEvery(int every, int run = 1, bool needsPlacement = false);
+	// The engine draws a frame: the pose the last update placed is shown.
+	void Draw()
+	{
+		drawn_ = placed_;
+		fresh_ = true;
+	}
+	bool WantsDrawnFrame() const override { return missed_; }
+	void NotePoseHold(const pose_hold::Event& event) override;
+	int PoseMisses() const { return poseMisses_; }
+	int PoseHoldsMade() const { return poseHolds_; }
+	int PoseHoldsRefused() const { return poseRefused_; }
+	int PoseHoldsCancelled() const { return poseCancelled_; }
+	// Holds whose first update after was the held frame's, fresh.
+	int FreshAfterHold() const { return freshAfterHold_; }
+	// Pending holds noted, a chained one's included.
+	int PoseHoldsPending() const { return posePending_; }
 
 	int Frame() const { return world_.frame; }
 	int Health(int player) const { return world_.fighters[player].health; }
@@ -123,6 +159,10 @@ private:
 	};
 
 	void Build();
+	// The pose a state shows: where the fighters stand and what they do.
+	static uint32_t PoseOf(const World& world);
+	// The frame's pose read, if it makes one (PoseReadsEvery).
+	void ReadPose();
 	// The end of the ignored frames: ignoreTo_, or earlier once skipped.
 	int IgnoredUntil() const
 	{
@@ -145,6 +185,19 @@ private:
 	int32_t flowKoFrame_ = -1;   // the round flow (outside the layout with kBugFlowOutsideLayout)
 	std::unique_ptr<int> heapMarker_;
 	StateLayout layout_;
+	// Pose reads: the frames that make one, what the models show (placed by
+	// the last update, drawn by the last Draw, fresh, placed since the last
+	// restore), the poses read fresh (never rollback state: SFV's record is
+	// not either), whether the last update missed, and the counts.
+	int poseEvery_ = 0, poseRun_ = 1;
+	bool poseNeedsPlacement_ = false;
+	uint32_t placed_ = 0, drawn_ = 0;
+	bool fresh_ = false;
+	bool placedSinceRestore_ = false;
+	std::unordered_set<uint32_t> posesSeen_;
+	bool missed_ = false;
+	int awaitingHold_ = -1;
+	int poseMisses_ = 0, poseHolds_ = 0, poseRefused_ = 0, poseCancelled_ = 0, freshAfterHold_ = 0, posePending_ = 0;
 };
 
 } // namespace sfve::testbed

@@ -7,6 +7,7 @@
 // fighter so the session, the synctest harness and desync detection are
 // tested without the game.
 
+#include "core/PoseHold.hxx"
 #include "core/StateRegions.hxx"
 
 #include <stdint.h>
@@ -89,6 +90,17 @@ public:
 	// rest of the battle: a session over it fails with this reason, since a
 	// rollback would restore bytes without the game they describe.
 	virtual const char* StateFailure() const { return nullptr; }
+
+	// Pose holds (core/PoseHold.hxx). After Advance: the update just run made
+	// a read whose right value only a drawn frame of the state it started
+	// from gives, and did not have one (SFV: a fight socket read of a pose
+	// never read fresh, which kept the live value). A session that holds
+	// ends its tick at that frame's start, drawn, and plays the frame again
+	// on the next.
+	virtual bool WantsDrawnFrame() const { return false; }
+	// What the session did about such an update, for the game's log and
+	// counts. Called inside the session's calls; must not call the session.
+	virtual void NotePoseHold(const pose_hold::Event& event) { (void)event; }
 };
 
 // The bits session frame `frame` reads of the players' inputs, from the state
