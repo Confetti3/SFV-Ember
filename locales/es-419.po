@@ -160,10 +160,13 @@ msgid "replays.open_folder_detail"
 msgstr "Abre la carpeta de repeticiones en el Explorador."
 
 msgid "inputs.unreadable_detail"
-msgstr "Esta repetición no se puede reproducir: su archivo está dañado o la creó otra compilación de SFV Ember. El registro indica el motivo."
+msgstr "Esta repetición no se puede reproducir: su archivo está dañado o su combate no se puede iniciar aquí. El registro indica el motivo."
 
 msgid "replays.not_added"
 msgstr "Esta repetición no se reprodujo hasta el final. El registro indica el motivo."
+
+msgid "replays.not_added_files"
+msgstr "Esta repetición se grabó en otra versión y no se puede reproducir en esta."
 
 msgid "home.training_detail"
 msgstr "Entra al modo Entrenamiento de Street Fighter V con tu luchador, contra el muñeco que elijas."

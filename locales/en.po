@@ -160,10 +160,13 @@ msgid "replays.open_folder_detail"
 msgstr "Opens the replay folder in Explorer."
 
 msgid "inputs.unreadable_detail"
-msgstr "This replay cannot be played: its file is damaged, or another SFV Ember build made it. The log has the reason."
+msgstr "This replay cannot be played: its file is damaged, or its battle cannot be started here. The log has the reason."
 
 msgid "replays.not_added"
 msgstr "This replay did not play to its end. The log has the reason."
+
+msgid "replays.not_added_files"
+msgstr "This replay was recorded on another version and can't be played in this one."
 
 msgid "home.training_detail"
 msgstr "Go into Street Fighter V's Training mode with your fighter, against the dummy you choose."

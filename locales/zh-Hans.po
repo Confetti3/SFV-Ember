@@ -160,10 +160,13 @@ msgid "replays.open_folder_detail"
 msgstr "在资源管理器中打开录像文件夹。"
 
 msgid "inputs.unreadable_detail"
-msgstr "无法播放此回放：文件已损坏，或由其他 SFV Ember 构建版本生成。原因见日志。"
+msgstr "无法播放此回放：文件已损坏，或无法在此处开始其对战。原因见日志。"
 
 msgid "replays.not_added"
 msgstr "此回放未能播放到结尾。原因见日志。"
+
+msgid "replays.not_added_files"
+msgstr "此回放录制于其他版本，无法在当前版本中播放。"
 
 msgid "home.training_detail"
 msgstr "用你的角色进入《街头霸王V》的训练模式，对手是你选择的陪练。"

@@ -160,10 +160,13 @@ msgid "replays.open_folder_detail"
 msgstr "Ouvre le dossier des replays dans l'Explorateur."
 
 msgid "inputs.unreadable_detail"
-msgstr "Ce replay ne peut pas être lu : son fichier est endommagé, ou il a été créé par une autre version de SFV Ember. Le journal en donne la raison."
+msgstr "Ce replay ne peut pas être lu : son fichier est endommagé, ou son combat ne peut pas être lancé ici. Le journal en donne la raison."
 
 msgid "replays.not_added"
 msgstr "Ce replay n'est pas allé jusqu'à sa fin. Le journal en donne la raison."
+
+msgid "replays.not_added_files"
+msgstr "Ce replay a été enregistré avec une autre version et ne peut pas être lu dans celle-ci."
 
 msgid "home.training_detail"
 msgstr "Aller dans le mode Entraînement de Street Fighter V avec votre combattant, contre le mannequin de votre choix."

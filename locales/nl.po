@@ -160,10 +160,13 @@ msgid "replays.open_folder_detail"
 msgstr "Opent de replaymap in Verkenner."
 
 msgid "inputs.unreadable_detail"
-msgstr "Deze replay kan niet worden afgespeeld: het bestand is beschadigd of is gemaakt met een andere SFV Ember-build. Het logboek geeft de reden."
+msgstr "Deze replay kan niet worden afgespeeld: het bestand is beschadigd of het gevecht kan hier niet worden gestart. Het logboek geeft de reden."
 
 msgid "replays.not_added"
 msgstr "Deze replay is niet tot het einde afgespeeld. Het logboek geeft de reden."
+
+msgid "replays.not_added_files"
+msgstr "Deze replay is opgenomen met een andere versie en kan in deze versie niet worden afgespeeld."
 
 msgid "home.training_detail"
 msgstr "Ga naar de Training-modus van Street Fighter V met je personage, tegen de dummy die je kiest."

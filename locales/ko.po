@@ -160,10 +160,13 @@ msgid "replays.open_folder_detail"
 msgstr "탐색기에서 리플레이 폴더를 엽니다."
 
 msgid "inputs.unreadable_detail"
-msgstr "이 리플레이를 재생할 수 없습니다. 파일이 손상되었거나 다른 SFV Ember 빌드에서 만든 것입니다. 이유는 로그에 있습니다."
+msgstr "이 리플레이를 재생할 수 없습니다. 파일이 손상되었거나 여기서 대전을 시작할 수 없습니다. 이유는 로그에 있습니다."
 
 msgid "replays.not_added"
 msgstr "이 리플레이는 끝까지 재생되지 않았습니다. 이유는 로그에 있습니다."
+
+msgid "replays.not_added_files"
+msgstr "이 리플레이는 다른 버전에서 녹화되어 이 버전에서는 재생할 수 없습니다."
 
 msgid "home.training_detail"
 msgstr "내 파이터로 Street Fighter V의 트레이닝 모드에 들어가, 선택한 더미를 상대합니다."

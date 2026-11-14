@@ -160,10 +160,13 @@ msgid "replays.open_folder_detail"
 msgstr "Öffnet den Replay-Ordner im Explorer."
 
 msgid "inputs.unreadable_detail"
-msgstr "Dieses Replay lässt sich nicht abspielen: Die Datei ist beschädigt oder stammt aus einem anderen SFV Ember-Build. Der Grund steht im Log."
+msgstr "Dieses Replay lässt sich nicht abspielen: Die Datei ist beschädigt, oder der Kampf lässt sich hier nicht starten. Der Grund steht im Log."
 
 msgid "replays.not_added"
 msgstr "Dieses Replay wurde nicht bis zum Ende abgespielt. Der Grund steht im Log."
+
+msgid "replays.not_added_files"
+msgstr "Dieses Replay wurde mit einer anderen Version aufgenommen und lässt sich in dieser nicht abspielen."
 
 msgid "home.training_detail"
 msgstr "Mit deinem Kämpfer in den Trainingsmodus von Street Fighter V, gegen den Dummy deiner Wahl."

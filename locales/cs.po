@@ -160,10 +160,13 @@ msgid "replays.open_folder_detail"
 msgstr "Otevře složku se záznamy v Průzkumníku."
 
 msgid "inputs.unreadable_detail"
-msgstr "Tento záznam nelze přehrát: jeho soubor je poškozený, nebo ho vytvořilo jiné sestavení SFV Ember. Důvod je v protokolu."
+msgstr "Tento záznam nelze přehrát: jeho soubor je poškozený, nebo se jeho zápas tady nedá spustit. Důvod je v protokolu."
 
 msgid "replays.not_added"
 msgstr "Tento záznam se nepřehrál až do konce. Důvod je v protokolu."
+
+msgid "replays.not_added_files"
+msgstr "Tento záznam byl pořízen v jiné verzi a v této verzi se nedá přehrát."
 
 msgid "home.training_detail"
 msgstr "Přejít do režimu Trénink ve Street Fighter V se svým bojovníkem, proti figuríně, kterou si vybereš."

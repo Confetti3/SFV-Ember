@@ -160,10 +160,13 @@ msgid "replays.open_folder_detail"
 msgstr "Otwiera folder powtórek w Eksploratorze."
 
 msgid "inputs.unreadable_detail"
-msgstr "Nie można odtworzyć tej powtórki: jej plik jest uszkodzony albo utworzyła ją inna wersja SFV Ember. Przyczyna jest w dzienniku."
+msgstr "Nie można odtworzyć tej powtórki: jej plik jest uszkodzony albo jej walki nie da się tu uruchomić. Przyczyna jest w dzienniku."
 
 msgid "replays.not_added"
 msgstr "Ta powtórka nie odtworzyła się do końca. Przyczyna jest w dzienniku."
+
+msgid "replays.not_added_files"
+msgstr "Ta powtórka została nagrana w innej wersji i nie można jej odtworzyć w tej."
 
 msgid "home.training_detail"
 msgstr "Przejdź do trybu Trening w Street Fighter V swoją postacią, przeciwko wybranemu manekinowi."

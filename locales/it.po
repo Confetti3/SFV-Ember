@@ -160,10 +160,13 @@ msgid "replays.open_folder_detail"
 msgstr "Apre la cartella dei replay in Esplora file."
 
 msgid "inputs.unreadable_detail"
-msgstr "Questo replay non può essere riprodotto: il file è danneggiato oppure è stato creato da un'altra build di SFV Ember. Il motivo è nel log."
+msgstr "Questo replay non può essere riprodotto: il file è danneggiato oppure il suo incontro non può essere avviato qui. Il motivo è nel log."
 
 msgid "replays.not_added"
 msgstr "Questo replay non è stato riprodotto fino alla fine. Il motivo è nel log."
+
+msgid "replays.not_added_files"
+msgstr "Questo replay è stato registrato con un'altra versione e non può essere riprodotto in questa."
 
 msgid "home.training_detail"
 msgstr "Entra nella modalità Allenamento di Street Fighter V con il tuo lottatore, contro il dummy che scegli."

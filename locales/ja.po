@@ -160,10 +160,13 @@ msgid "replays.open_folder_detail"
 msgstr "リプレイのフォルダーをエクスプローラーで開きます。"
 
 msgid "inputs.unreadable_detail"
-msgstr "このリプレイは再生できません。ファイルが壊れているか、別のSFV Emberビルドで作成されたものです。理由はログに記録されています。"
+msgstr "このリプレイは再生できません。ファイルが壊れているか、この環境では対戦を開始できません。理由はログに記録されています。"
 
 msgid "replays.not_added"
 msgstr "このリプレイは最後まで再生されませんでした。理由はログに記録されています。"
+
+msgid "replays.not_added_files"
+msgstr "このリプレイは別のバージョンで記録されたため、このバージョンでは再生できません。"
 
 msgid "home.training_detail"
 msgstr "Street Fighter Vのトレーニングモードに、自分のファイターで、選んだダミーを相手に入ります。"
