@@ -1,0 +1,378 @@
+diff --git a/src/include/ggponet.h b/src/include/ggponet.h
+index 735735e..d9c6fca 100644
+--- a/src/include/ggponet.h
++++ b/src/include/ggponet.h
+@@ -535,6 +535,35 @@ GGPO_API GGPOErrorCode __cdecl ggpo_get_last_confirmed_frame(GGPOSession *,
+ GGPO_API GGPOErrorCode __cdecl ggpo_get_confirmed_input_frame(GGPOSession *,
+                                                             int *frame);
+ 
++/*
++ * Pose holds (peer-to-peer sessions only).  A game whose frame `frame` read
++ * something only a drawn picture of the state that frame starts from gives
++ * right ends its tick at that state instead, drawn, and plays the frames from
++ * `frame` again on the next.
++ *
++ * ggpo_can_hold_at: whether ggpo_hold_at(frame) could hold now: frame - 1's
++ * save is in the ring and every connected player's input for frame - 1 can
++ * still be read (queued, or predicted).  Read-only; may be called inside the
++ * advance_frame callback.  GGPO_OK, or INVALID_REQUEST.
++ *
++ * ggpo_hold_at: outside every callback, once the step's own calls are done:
++ * loads frame - 1's save and advances it once (load_game_state, then one
++ * advance_frame callback, as a rollback does), so the session stands at
++ * `frame`, and leaves the frames from `frame` up to the frame that was
++ * current to be played again (advance_frame callbacks, as a rollback's) first
++ * thing in the next ggpo_idle, ggpo_add_local_input or ggpo_disconnect_player,
++ * before anything is received; *frames_left gets how many.  Until then no
++ * other frame is loaded or advanced.  Called again before that replay (the
++ * replay of frame - 1 itself read such a thing), it holds further back and
++ * the frames left reach the same frame.  INVALID_REQUEST when it cannot:
++ * frame - 1 not kept, inside a callback, a misprediction not rolled back yet.
++ *
++ * So that a hold can replay from any saved frame, every input stays queued for
++ * as long as its frame's save is in the ring.
++ */
++GGPO_API GGPOErrorCode __cdecl ggpo_can_hold_at(GGPOSession *, int frame);
++GGPO_API GGPOErrorCode __cdecl ggpo_hold_at(GGPOSession *, int frame, int *frames_left);
++
+ /*
+  * Spectator sessions only: the number of confirmed frames received from the
+  * host that ggpo_synchronize_input has not returned yet. The host never waits
+diff --git a/src/lib/ggpo/backends/backend.h b/src/lib/ggpo/backends/backend.h
+index c2449e2..18c79cb 100644
+--- a/src/lib/ggpo/backends/backend.h
++++ b/src/lib/ggpo/backends/backend.h
+@@ -25,6 +25,8 @@ struct GGPOSession {
+ 
+    virtual GGPOErrorCode GetLastConfirmedFrame(int *frame) { return GGPO_ERRORCODE_UNSUPPORTED; }
+    virtual GGPOErrorCode GetConfirmedInputFrame(int *frame) { return GGPO_ERRORCODE_UNSUPPORTED; }
++   virtual GGPOErrorCode CanHoldAt(int frame) { return GGPO_ERRORCODE_UNSUPPORTED; }
++   virtual GGPOErrorCode HoldAt(int frame, int *frames_left) { return GGPO_ERRORCODE_UNSUPPORTED; }
+    virtual GGPOErrorCode GetSpectatorBacklog(int *frames) { return GGPO_ERRORCODE_UNSUPPORTED; }
+    virtual GGPOErrorCode SetFrameDelay(GGPOPlayerHandle player, int delay) { return GGPO_ERRORCODE_UNSUPPORTED; }
+    virtual GGPOErrorCode SetInputsIgnored(bool ignored) { return GGPO_ERRORCODE_UNSUPPORTED; }
+diff --git a/src/lib/ggpo/backends/p2p.cpp b/src/lib/ggpo/backends/p2p.cpp
+index 09cdf56..667728b 100644
+--- a/src/lib/ggpo/backends/p2p.cpp
++++ b/src/lib/ggpo/backends/p2p.cpp
+@@ -103,6 +103,12 @@ GGPOErrorCode
+ Peer2PeerBackend::DoPoll(int timeout)
+ {
+    if (!_sync.InRollback()) {
++      /*
++       * A pose hold's frames are played again before anything is received
++       * (ggpo_hold_at): the saves after the held frame hold what will be
++       * replaced, and no rollback may load one of them first.
++       */
++      _sync.ResumeHold();
+       _poll.Pump(0);
+ 
+       PollUdpProtocolEvents();
+@@ -287,6 +293,9 @@ Peer2PeerBackend::AddLocalInput(GGPOPlayerHandle player,
+       return result;
+    }
+ 
++   /* The input is the frame's after a pose hold's: its frames come first. */
++   _sync.ResumeHold();
++
+    input.init(-1, (char *)values, size);
+ 
+    // Feed the input for the current frame into the synchronzation layer.
+@@ -496,6 +505,11 @@ Peer2PeerBackend::DisconnectPlayer(GGPOPlayerHandle player)
+       return GGPO_ERRORCODE_PLAYER_DISCONNECTED;
+    }
+ 
++   /* A disconnect may roll back: a pose hold's frames come first. */
++   if (!_sync.InRollback()) {
++      _sync.ResumeHold();
++   }
++
+    if (!_endpoints[queue].IsInitialized()) {
+       int current_frame = _sync.GetFrameCount();
+       // xxx: we should be tracking who the local player is, but for now assume
+@@ -570,7 +584,33 @@ Peer2PeerBackend::GetConfirmedInputFrame(int *frame)
+ }
+ 
+ GGPOErrorCode
+-Peer2PeerBackend::GetNetworkStats(GGPONetworkStats *stats, GGPOPlayerHandle player)
++Peer2PeerBackend::CanHoldAt(int frame)
++{
++   if (_synchronizing) {
++      return GGPO_ERRORCODE_NOT_SYNCHRONIZED;
++   }
++   return _sync.CanHold(frame) ? GGPO_OK : GGPO_ERRORCODE_INVALID_REQUEST;
++}
++
++GGPOErrorCode
++Peer2PeerBackend::HoldAt(int frame, int *frames_left)
++{
++   if (_sync.InRollback()) {
++      return GGPO_ERRORCODE_IN_ROLLBACK;
++   }
++   if (_synchronizing) {
++      return GGPO_ERRORCODE_NOT_SYNCHRONIZED;
++   }
++   int left = _sync.Hold(frame);
++   if (left < 0) {
++      return GGPO_ERRORCODE_INVALID_REQUEST;
++   }
++   *frames_left = left;
++   return GGPO_OK;
++}
++
++GGPOErrorCode
++Peer2PeerBackend::GetNetworkStats(GGPONetworkStats *stats, GGPOPlayerHandle player)
+ {
+    int queue;
+    GGPOErrorCode result;
+diff --git a/src/lib/ggpo/backends/p2p.h b/src/lib/ggpo/backends/p2p.h
+index 7a022ea..d21f46c 100644
+--- a/src/lib/ggpo/backends/p2p.h
++++ b/src/lib/ggpo/backends/p2p.h
+@@ -31,6 +31,8 @@ public:
+    virtual GGPOErrorCode GetNetworkStats(GGPONetworkStats *stats, GGPOPlayerHandle handle);
+    virtual GGPOErrorCode GetLastConfirmedFrame(int *frame) { *frame = _sync.GetLastConfirmedFrame(); return GGPO_OK; }
+    virtual GGPOErrorCode GetConfirmedInputFrame(int *frame);
++   virtual GGPOErrorCode CanHoldAt(int frame);
++   virtual GGPOErrorCode HoldAt(int frame, int *frames_left);
+    virtual GGPOErrorCode SetFrameDelay(GGPOPlayerHandle player, int delay);
+    virtual GGPOErrorCode SetInputsIgnored(bool ignored) { _sync.SetInputsIgnored(ignored); return GGPO_OK; }
+    virtual GGPOErrorCode SetDisconnectTimeout(int timeout);
+diff --git a/src/lib/ggpo/input_queue.cpp b/src/lib/ggpo/input_queue.cpp
+index 476588d..4559efb 100644
+--- a/src/lib/ggpo/input_queue.cpp
++++ b/src/lib/ggpo/input_queue.cpp
+@@ -181,6 +181,19 @@ InputQueue::GetInput(int requested_frame, GameInput *input)
+    return false;
+ }
+ 
++bool
++InputQueue::CanGetInput(int frame)
++{
++   if (frame < 0) {
++      return false;
++   }
++   if (_last_added_frame == GameInput::NullFrame || frame > _last_added_frame) {
++      return true; /* a prediction */
++   }
++   /* Queued unless discarded: the queue holds the frames from its tail on. */
++   return _length > 0 && frame >= _inputs[_tail].frame;
++}
++
+ void
+ InputQueue::AddInput(GameInput &input)
+ {
+diff --git a/src/lib/ggpo/input_queue.h b/src/lib/ggpo/input_queue.h
+index 29c790a..a718f26 100644
+--- a/src/lib/ggpo/input_queue.h
++++ b/src/lib/ggpo/input_queue.h
+@@ -43,6 +43,8 @@ public:
+    void DiscardConfirmedFrames(int frame);
+    bool GetConfirmedInput(int frame, GameInput *input);
+    bool GetInput(int frame, GameInput *input);
++   /* Whether GetInput(frame) can answer: queued, or past the last input added (predicted). */
++   bool CanGetInput(int frame);
+    void AddInput(GameInput &input);
+    void SetIgnoredFrames(const IgnoredFrames *ignored) { _ignored = ignored; }
+ 
+diff --git a/src/lib/ggpo/main.cpp b/src/lib/ggpo/main.cpp
+index 7ba0760..93bd94d 100644
+--- a/src/lib/ggpo/main.cpp
++++ b/src/lib/ggpo/main.cpp
+@@ -185,6 +185,22 @@ ggpo_get_confirmed_input_frame(GGPOSession *ggpo, int *frame)
+    return ggpo->GetConfirmedInputFrame(frame);
+ }
+ 
++GGPOErrorCode
++ggpo_can_hold_at(GGPOSession *ggpo, int frame)
++{
++   if (!ggpo) { return GGPO_ERRORCODE_INVALID_SESSION; }
++   return ggpo->CanHoldAt(frame);
++}
++
++GGPOErrorCode
++ggpo_hold_at(GGPOSession *ggpo, int frame, int *frames_left)
++{
++   if (!ggpo) { return GGPO_ERRORCODE_INVALID_SESSION; }
++   if (!frames_left) { return GGPO_ERRORCODE_INVALID_REQUEST; }
++   *frames_left = 0;
++   return ggpo->HoldAt(frame, frames_left);
++}
++
+ GGPOErrorCode
+ ggpo_get_spectator_backlog(GGPOSession *ggpo, int *frames)
+ {
+diff --git a/src/lib/ggpo/sync.cpp b/src/lib/ggpo/sync.cpp
+index 8c0e82d..fe9b960 100644
+--- a/src/lib/ggpo/sync.cpp
++++ b/src/lib/ggpo/sync.cpp
+@@ -14,6 +14,7 @@ Sync::Sync(UdpMsg::connect_status *connect_status) :
+    _framecount = 0;
+    _last_confirmed_frame = -1;
+    _max_prediction_frames = 0;
++   _held_to = -1;
+    memset(&_savedstate, 0, sizeof(_savedstate));
+ }
+ 
+@@ -37,6 +38,7 @@ Sync::Init(Sync::Config &config)
+    _callbacks = config.callbacks;
+    _framecount = 0;
+    _rollingback = false;
++   _held_to = -1;
+ 
+    _max_prediction_frames = config.num_prediction_frames;
+ 
+@@ -48,8 +50,19 @@ Sync::SetLastConfirmedFrame(int frame)
+ {   
+    _last_confirmed_frame = frame;
+    if (_last_confirmed_frame > 0) {
+-      for (int i = 0; i < _config.num_players; i++) {
+-         _input_queues[i].DiscardConfirmedFrames(frame - 1);
++      /*
++       * Pose holds: the inputs of every frame whose save is still in the ring
++       * stay queued, so a hold can replay from any of them (ggpo_hold_at).
++       */
++      int discard = frame - 1;
++      int keep_from = _framecount - (ARRAY_SIZE(_savedstate.frames) - 1);
++      if (discard >= keep_from) {
++         discard = keep_from - 1;
++      }
++      if (discard >= 0) {
++         for (int i = 0; i < _config.num_players; i++) {
++            _input_queues[i].DiscardConfirmedFrames(discard);
++         }
+       }
+    }
+ }
+@@ -225,6 +238,93 @@ Sync::GetLastSavedFrame()
+ }
+ 
+ 
++int
++Sync::FindSavedFrameIndexOrNone(int frame)
++{
++   for (int i = 0; i < ARRAY_SIZE(_savedstate.frames); i++) {
++      if (_savedstate.frames[i].frame == frame && _savedstate.frames[i].buf && _savedstate.frames[i].cbuf) {
++         return i;
++      }
++   }
++   return -1;
++}
++
++bool
++Sync::CanHold(int frame)
++{
++   if (frame < 1 || frame > _framecount) {
++      return false;
++   }
++   if (FindSavedFrameIndexOrNone(frame - 1) < 0) {
++      return false;
++   }
++   for (int i = 0; i < _config.num_players; i++) {
++      /* SynchronizeInputs gives a dropped player's frames after its last as erased. */
++      if (_local_connect_status[i].disconnected && frame - 1 > _local_connect_status[i].last_frame) {
++         continue;
++      }
++      if (!_input_queues[i].CanGetInput(frame - 1)) {
++         return false;
++      }
++   }
++   return true;
++}
++
++int
++Sync::Hold(int frame)
++{
++   if (_rollingback || !CanHold(frame)) {
++      return -1;
++   }
++   int seek_to;
++   if (!CheckSimulationConsistency(&seek_to)) {
++      /* A misprediction the last poll did not roll back: never expected here. */
++      return -1;
++   }
++   /* Held again before the replay: it still reaches the same frame. */
++   int resume_to = _held_to >= 0 ? _held_to : _framecount;
++   if (frame > resume_to) {
++      return -1;
++   }
++
++   Log("Pose hold at frame %d: replaying %d now, %d to %d next.\n", frame, frame - 1, frame, resume_to - 1);
++   _held_to = -1;
++   _rollingback = true;
++   LoadFrame(frame - 1);
++   ASSERT(_framecount == frame - 1);
++   ResetPrediction(_framecount);
++   _callbacks.advance_frame(0);
++   ASSERT(_framecount == frame);
++   _rollingback = false;
++
++   if (_framecount < resume_to) {
++      _held_to = resume_to;
++   }
++   return resume_to - _framecount;
++}
++
++bool
++Sync::ResumeHold()
++{
++   if (_held_to < 0 || _rollingback) {
++      return false;
++   }
++   int to = _held_to;
++   _held_to = -1;
++   Log("Resuming a pose hold: frames %d to %d.\n", _framecount, to - 1);
++   _rollingback = true;
++   while (_framecount < to) {
++      int before = _framecount;
++      _callbacks.advance_frame(0);
++      if (_framecount == before) {
++         ASSERT(FALSE); /* the callback did not advance */
++         break;
++      }
++   }
++   _rollingback = false;
++   return true;
++}
++
+ int
+ Sync::FindSavedFrameIndex(int frame)
+ {
+diff --git a/src/lib/ggpo/sync.h b/src/lib/ggpo/sync.h
+index 5c40781..ffcd189 100644
+--- a/src/lib/ggpo/sync.h
++++ b/src/lib/ggpo/sync.h
+@@ -60,6 +60,17 @@ public:
+    int GetLastConfirmedFrame() const { return _last_confirmed_frame; }
+    bool InRollback() { return _rollingback; }
+ 
++   /*
++    * Pose holds (ggpo_hold_at).  CanHold: frame - 1's save is in the ring
++    * and its inputs can be read.  Hold: loads frame - 1 and advances it once;
++    * returns the frames left to replay, or -1 when it cannot.  ResumeHold:
++    * replays them; false when there were none.
++    */
++   bool CanHold(int frame);
++   int Hold(int frame);
++   bool ResumeHold();
++   bool Holding() const { return _held_to >= 0; }
++
+    bool GetEvent(Event &e);
+ 
+ protected:
+@@ -80,6 +91,7 @@ protected:
+    void LoadFrame(int frame);
+    void SaveCurrentFrame();
+    int FindSavedFrameIndex(int frame);
++   int FindSavedFrameIndexOrNone(int frame);
+    SavedFrame &GetLastSavedFrame();
+ 
+    bool CreateQueues(Config &config);
+@@ -95,6 +107,7 @@ protected:
+    int            _last_confirmed_frame;
+    int            _framecount;
+    int            _max_prediction_frames;
++   int            _held_to;              /* a pose hold's frames replay up to this frame; -1 none */
+ 
+    InputQueue     *_input_queues;
+    IgnoredFrames  _ignored_frames;

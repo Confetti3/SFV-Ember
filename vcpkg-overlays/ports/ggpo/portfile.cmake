@@ -23,6 +23,7 @@ vcpkg_from_github(
         "bound-input-decoding.patch"
         "ignored-inputs.patch"
         "confirmed-input-frame.patch"
+        "pose-hold.patch"
 )
 
 # One canonical policy is compiled by both GGPO and the portable tests.

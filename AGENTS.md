@@ -10,7 +10,8 @@
 - Ember's code comes from the Ember library checkout the build names
   (`scripts/build.ps1 -EmberRoot`, docs/design/EMBER_LIBRARY.md). Change it in
   the library, never by copying it here. `vcpkg-overlays/ports/ggpo` is Ember's
-  GGPO port plus `ignored-inputs.patch` and `confirmed-input-frame.patch`.
+  GGPO port plus `ignored-inputs.patch`, `confirmed-input-frame.patch` and
+  `pose-hold.patch` (docs/design/beta9/pose-hold.md).
 - SFV grants every player everything in the game itself (every fighter,
   costume, colour and stage installed, in all of SFV's modes; `EntitlementGrant`,
   EMBER_LIBRARY.md section 57; the maintainer, 2026-11-10). Ownership, when it
