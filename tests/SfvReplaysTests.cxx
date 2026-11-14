@@ -78,6 +78,7 @@ std::shared_ptr<const std::vector<ArchivedReplay>> ListingWhen(Done done)
 
 TEST_CASE("the Replays screen lists the saved battles, keeps the player's mark and refuses what cannot play")
 {
+	catalog_fixture::FillTestCatalog(); // the build id the battles below carry
 	wchar_t temp[MAX_PATH];
 	REQUIRE(GetTempPathW(MAX_PATH, temp) > 0);
 	const fs::path folder = fs::path(temp) / (L"sfve-replays-test-" + std::to_wstring(GetCurrentProcessId()));
@@ -87,10 +88,17 @@ TEST_CASE("the Replays screen lists the saved battles, keeps the player's mark a
 	CHECK(adapter::ReplayFolder() == folder);
 
 	// One game, P2 2-1; and, later, a watched battle of two games in place.
-	const replay::Replay one = Battle(1'762'500'000, 0, {{true, 1, {1, 2}, 3, 3, 380}});
-	const replay::Replay two = Battle(1'762'500'600, 2, {{true, 0, {2, 0}, 2, 3, 190}, {true, 1, {0, 2}, 2, 3, 390}});
+	replay::Replay one = Battle(1'762'500'000, 0, {{true, 1, {1, 2}, 3, 3, 380}});
+	replay::Replay two = Battle(1'762'500'600, 2, {{true, 0, {2, 0}, 2, 3, 190}, {true, 1, {0, 2}, 2, 3, 390}});
+	one.header.build = two.header.build = adapter::MatchBuildId();
+	// A third, recorded on another build (an older version's): not listed, and
+	// Watch now says so; its file is left as it is.
+	const replay::Replay old = Battle(1'762'499'000, 0, {{true, 1, {1, 2}, 3, 3, 380}});
 	const fs::path fileOne = adapter::SaveReplay(one);
 	const fs::path fileTwo = adapter::SaveReplay(two);
+	const fs::path fileOld = adapter::SaveReplay(old);
+	REQUIRE(fs::exists(fileOld));
+	const auto oldSize = fs::file_size(fileOld);
 	REQUIRE(fs::exists(fileOne));
 	REQUIRE(fs::exists(fileTwo));
 	CHECK(fileOne.parent_path() == folder);
@@ -103,7 +111,8 @@ TEST_CASE("the Replays screen lists the saved battles, keeps the player's mark a
 
 	const auto listing = ListingWhen([](const std::vector<ArchivedReplay>& l) { return l.size() >= 2; });
 	REQUIRE(listing);
-	REQUIRE(listing->size() == 2u); // the damaged file is not listed
+	REQUIRE(listing->size() == 2u); // neither the damaged file nor the other build's is listed
+	CHECK(fs::file_size(fileOld) == oldSize);
 	const ArchivedReplay& newest = (*listing)[0];
 	const ArchivedReplay& older = (*listing)[1];
 	CHECK(newest.path == fileTwo);
@@ -167,9 +176,13 @@ TEST_CASE("the Replays screen lists the saved battles, keeps the player's mark a
 	CHECK(replays.Status().step == sf4e::replaystore::Step::Idle);
 	replays.Start(watch, true, false);
 	CHECK(replays.Status().notice == sf4e::loc::T("replays.not_ready"));
-	replays.Start(watch, true, true); // another build made it
-	CHECK(replays.Status().notice == sf4e::loc::T("inputs.unreadable_detail"));
+	watch.path = sf4e::platform::WideToUtf8(fileOld.wstring());
+	replays.Start(watch, true, true); // another build made it: said so, not as a damaged file
+	CHECK(replays.Status().notice == sf4e::loc::T("replays.not_added_files"));
+	CHECK(replays.Status().notice != sf4e::loc::T("inputs.unreadable_detail"));
+	CHECK(replays.Status().noticeError);
 	CHECK(replays.Status().step == sf4e::replaystore::Step::Idle);
+	CHECK(fs::file_size(fileOld) == oldSize);
 	watch.path = sf4e::platform::WideToUtf8((folder / L"damaged.sfvreplay").wstring());
 	replays.Start(watch, true, true);
 	CHECK(replays.Status().notice == sf4e::loc::T("inputs.unreadable_detail"));

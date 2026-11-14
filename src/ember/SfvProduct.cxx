@@ -28,10 +28,12 @@ namespace {
 // folders, and SF4's "Not owned on Steam." where SFV's answer is the game's
 // own (EMBER_LIBRARY.md section 23), and the Replays screen's words that name
 // SF4's Battle Log, its adding and its inputs reader, which SFV does not
-// offer (section 26). Two of those notices, never shown otherwise in SFV,
+// offer (section 26). Three of those notices, never shown otherwise in SFV,
 // say what an SFV replay's playback needs said: a replay that cannot be
-// played (inputs.unreadable_detail) and one that did not play to its end
-// (replays.not_added). Training's words where SF4's name SF4's own (its
+// played (inputs.unreadable_detail), one recorded on another version
+// (replays.not_added_files, a library msgid SFV never shows for adding) and
+// one that did not play to its end (replays.not_added).
+// Training's words where SF4's name SF4's own (its
 // Fight Request, a Practice room's 9999-second clock) say SFV's
 // (EMBER_LIBRARY.md section 27).
 // The catalogs: locales/<tag>.po, the same msgids in every language the

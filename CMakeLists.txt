@@ -327,6 +327,7 @@ add_executable(sfve_ember_tests
     tests/BattleIdentityTests.cxx
     tests/ProjectileReleaseTests.cxx
     tests/HudLayoutTests.cxx
+    tests/SfvReplayBuildTests.cxx
     tests/SfvReplaysTests.cxx
     tests/CrashRecordTests.cxx
     tests/LocaleOverlayTests.cxx

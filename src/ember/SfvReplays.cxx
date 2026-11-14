@@ -2,6 +2,7 @@
 
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
+#include "ember/SfvReplayBuild.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
@@ -195,6 +196,7 @@ private:
 		uintmax_t size = 0;
 		fs::file_time_type time{};
 		std::optional<ArchivedReplay> entry; // none: the file is not a replay that plays
+		std::string build;                   // its header's build, when the header was read
 	};
 
 	void Run()
@@ -231,11 +233,13 @@ private:
 			const auto known = cache_.find(file);
 			if (known != cache_.end() && known->second.size == c.size && known->second.time == c.time) {
 				c.entry = known->second.entry;
+				c.build = known->second.build;
 			} else if (const auto bytes = ReadFile(file, replay::kMostFileBytes)) {
 				replay::Header header;
 				std::string why;
 				if (replay::DecodeHeader(bytes->data(), bytes->size(), &header, &why)) {
 					c.entry = EntryOf(file, header);
+					c.build = header.build;
 				} else {
 					Log("replays: %ls is not listed: %s", file.filename().c_str(), why.c_str());
 				}
@@ -244,13 +248,29 @@ private:
 		}
 		cache_ = std::move(seen);
 		const auto kept = ReadList(folder, kKeptList), watched = ReadList(folder, kWatchedList);
+		const std::string& current = MatchBuildId();
+		const bool anyBuild = mod::Config().replayAnyBuild;
+		std::size_t otherBuild = 0;
 		for (const auto& [file, c] : cache_) {
 			if (!c.entry) continue;
+			// Another build's replay does not play here (Watch now's rule), and the
+			// list's rows have no way to say so: it is left out, the file stays.
+			if (LeftOutForBuild(c.build, current, anyBuild)) {
+				otherBuild++;
+				continue;
+			}
 			ArchivedReplay r = *c.entry;
 			const std::string name = NameOf(file);
 			r.kept = kept.count(name) != 0;
 			r.watched = watched.count(name) != 0;
 			out.push_back(std::move(r));
+		}
+		if (otherBuild != loggedOtherBuild_) {
+			loggedOtherBuild_ = otherBuild;
+			if (otherBuild) {
+				Log("replays: %zu replay(s) left out of the list: recorded on another build than this copy's (%s); "
+					"the files are untouched", otherBuild, current.c_str());
+			}
 		}
 		std::sort(out.begin(), out.end(), [](const ArchivedReplay& a, const ArchivedReplay& b) {
 			return a.time != b.time ? a.time > b.time : a.path.filename() > b.path.filename();
@@ -265,6 +285,7 @@ private:
 	std::chrono::steady_clock::time_point listedAt_{};
 	std::shared_ptr<const std::vector<ArchivedReplay>> latest_;
 	std::map<fs::path, Cached> cache_; // the lister's thread only
+	std::size_t loggedOtherBuild_ = 0; // the lister's thread only: the count last logged
 };
 
 // The launch a replay asks for, as the room's match was launched; empty for
@@ -445,13 +466,15 @@ private:
 		const fs::path path = sf4e::platform::Utf8ToWide(file.c_str());
 		auto loaded = std::make_shared<replay::Replay>();
 		std::string why;
+		bool otherBuild = false;
 		const auto bytes = InReplayFolder(path) ? ReadFile(path, replay::kMostFileBytes) : std::nullopt;
 		if (!bytes) {
 			why = "not a file in the replay folder that can be read";
 		} else if (!replay::Decode(bytes->data(), bytes->size(), loaded.get(), &why)) {
 			// why says it
-		} else if (loaded->header.build != MatchBuildId() && !mod::Config().replayAnyBuild) {
+		} else if (!PlaysOnBuild(loaded->header.build, MatchBuildId(), mod::Config().replayAnyBuild)) {
 			why = "made with build " + loaded->header.build + ", this copy is " + MatchBuildId();
+			otherBuild = true;
 		} else if (loaded->frames.empty()) {
 			why = "it holds no frame";
 		}
@@ -459,7 +482,9 @@ private:
 		if (why.empty() && !picks) why = "its fighters, stage or rules are not ones this copy can launch, or its stage is not installed here";
 		if (!why.empty()) {
 			Log("replays: %ls cannot be watched: %s", path.filename().c_str(), why.c_str());
-			Notice("inputs.unreadable_detail", true);
+			// Another build's replay is told apart from a damaged one (the list leaves
+			// it out; this is the way in from a link or a file).
+			Notice(otherBuild ? "replays.not_added_files" : "inputs.unreadable_detail", true);
 			return;
 		}
 		if (loaded->header.build != MatchBuildId()) {
