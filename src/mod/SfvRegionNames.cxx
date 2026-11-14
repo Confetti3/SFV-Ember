@@ -55,7 +55,7 @@ const OwnerSpec kUnits[] = {
 	{"ComboObserverUnit", 0x3A692C8, {{248, 32}}, {}},
 	{"StatusObserverUnit", 0x3A657A0, {{248, 240}}, {}},
 	{"StatsUnit", 0x3A665F0, {{248, 77804}}, {}},
-	{"VfxManagerUnit", 0x3A64BE8, {{248, 496}}, {}},
+	{"TimeUnit", 0x3A64BE8, {{248, 496}}, {}},
 	{"ReplayUnit", sfv::unit::kReplayUnitType, {{248, 16}}, {}},
 };
 

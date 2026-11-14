@@ -169,9 +169,9 @@ FIGHT = decides the fight; PRESENTATION = visual; STATS = statistics; ENGINE = r
 | **ComboObserverUnit** | 0x143A692C8 | `sub_140425770` | +248, 32: 16 bytes + **two qwords**; read by UI (`sub_140445F50`) | STATS | L:H C:M |
 | **StatusObserverUnit** | 0x143A657A0 | `sub_140427440` | +248, 240: two 120-byte blocks | UNKNOWN | L:L C:L |
 | **StatsUnit** (size 0x130E8) | 0x143A665F0 | `sub_1404B0570`; fn pointer stored at 0x142C72430 (base 0x142C723F0 *if* slot 8, unchecked) | +248, 77804: statistics | STATS | L:H C:H (synctest; not every getter caller read) |
-| **VfxManagerUnit** | 0x143A64BE8 | `sub_1404B0800`; fn pointer stored at 0x142C72838 (base 0x142C727F8 if slot 8) | +248, 496 | PRESENTATION | L:L C:L |
+| **TimeUnit** | 0x143A64BE8 | `sub_1404B0800`; fn pointer stored at 0x142C72838 (base 0x142C727F8 if slot 8) | +248, 496 | PRESENTATION | L:L C:L |
 | **ReplayUnit** | 0x143A69C48 | `sub_140480D20`; fn pointer stored at 0x142C6FFD8 (base 0x142C6FF98 if slot 8) | +248, 16: replay cursor | ENGINE | L:L C:L |
-| TimeUnit / SoundUnit | 0x143A64830 / 0x143A64D38 | `sub_1404B0500` / `sub_1404D4970` | none (post-restore callbacks `sub_1404B6230` / `sub_1404D5820` only) | n/a | H |
+| SoundUnit / VfxManagerUnit | 0x143A64830 / 0x143A64D38 | `sub_1404B0500` / `sub_1404D4970` | none (post-restore callbacks `sub_1404B6230` / `sub_1404D5820` only) | n/a | H |
 | FieldUnit | 0x143A64B78 | none | none. Simulation reads its +672..+760 stage-bounds matrix | n/a (unregistered) | H |
 
 ### Parts
@@ -258,7 +258,7 @@ The last group's layouts are single-source, but the regions are small and their 
 | StatsUnit +248/77804 | STATS: synctest-confirmed `.stats` region. Not every getter caller was read, so trial or challenge modes could read it in simulation. |
 | CharaStatusPart +0x2C0, 8 | STATS: read only by the statistics listener. |
 | ComboObserverUnit +248/32 | STATS: drives combo UI widgets; also contains pointer-candidate qwords. |
-| CharaMaterialPart, CharaVisualPart, ProjectileVisualPart, VfxManagerUnit | PRESENTATION by type role; layouts are single-source and readers were not searched. A later pass could move them to the advisory hash. |
+| CharaMaterialPart, CharaVisualPart, ProjectileVisualPart, TimeUnit | PRESENTATION by type role; layouts are single-source and readers were not searched. A later pass could move them to the advisory hash. |
 | HUD part elements, KunaiGauge +432, cockpit elements | PRESENTATION (HUD). |
 | ReplayUnit +248/16 | ENGINE: replay cursor. |
 | Manager internals (root+0x8A400..) | Not registered; ENGINE. |
@@ -271,8 +271,8 @@ The last group's layouts are single-source, but the regions are small and their 
 
 **Attribution and layout**
 1. The 112-byte drifting region is attributed to CharaManagerUnit +448 only by elimination. CameraUnit also produces a 112-byte run when `sub_14032D350()` is false. Which owner it belongs to, and whether the 528-byte region is CameraUnit +256, both depend on that function's value in versus. Settle it by address with Step 6.
-2. Layouts reported by only one analysis (R): CharaUniquePart_NNN (all type objects and fields), CharaAbilityPart, CharaCommandPart and its 1760-byte object, CharaItemPart, CharaMaterialPart, CharaMotionPart, CharaVisualPart, AttackDataPart, VersusRuleUnit, ProjectileUnit's conditionals, StatusObserverUnit, VfxManagerUnit, ReplayUnit, HUD and cockpit layouts, and the ProjectileVisualPart type object.
-3. The vtable bases for StatsUnit, VfxManagerUnit and ReplayUnit are unchecked; only the location of each function pointer is known.
+2. Layouts reported by only one analysis (R): CharaUniquePart_NNN (all type objects and fields), CharaAbilityPart, CharaCommandPart and its 1760-byte object, CharaItemPart, CharaMaterialPart, CharaMotionPart, CharaVisualPart, AttackDataPart, VersusRuleUnit, ProjectileUnit's conditionals, StatusObserverUnit, TimeUnit, ReplayUnit, HUD and cockpit layouts, and the ProjectileVisualPart type object.
+3. The vtable bases for StatsUnit, TimeUnit and ReplayUnit are unchecked; only the location of each function pointer is known.
 4. Not established:
    - ModeUnit's parent chain to RootUnit;
    - which concrete mode types versus and training use, and their sizes;
