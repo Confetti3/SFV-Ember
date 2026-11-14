@@ -1,0 +1,137 @@
+# Publishing an SFV Ember release
+
+`scripts\publish.ps1` publishes a release in five stages. It runs on the desktop (where `gh` is signed in and
+`ssh vps` works). The Windows build runs on the build PC over `ssh director`. The Linux room hosts build in the
+build PC's WSL. The VPS only receives files: every root step stays with the owner. Nothing becomes public before
+the last stage, and the last stage publishes only after it has checked everything again.
+
+## The stages and what each proves
+
+| Stage | Where it runs | What it leaves (state folder) | What it proves |
+|---|---|---|---|
+| `plan` | desktop, read-only | `plan.json`, `notes.md` | The label is newer than every published release, and no release, draft or tag has it yet. The source commit descends from the last release's tag and fast-forwards the public `main` and the private `release/beta.N`. Every worktree on that commit or branch is clean, and so is the pipeline's own checkout. `CMakeLists.txt` makes this version. `data/pick-space.json`'s room build agrees with `kMatchBuild`, and the plan records whether it changed since the last release. The README's library pin names the library commit, which is on the library's public branch or fast-forwards it. The notes exist and use none of the words `notesForbidden` lists (the option public text never mentions). No forbidden string (the owner's rules file, plus this PC's user, profile and computer names) appears in the notes, the Discord draft, or any commit, tree, blob or path being released, raw or UTF-16. That covers both repositories. Every released commit has the last release's identity and no `...-by:` trailer. |
+| `build` | build PC (Interactive task queue) | `build\files\*`, `build\evidence.json` | Both build PC checkouts are fast-forwarded to exactly the plan's commits and trees, are clean, and have their fingerprints recorded before the build. A development build and a player build ran, with their tests (ctest's own count must equal the receipt's list), then the helper and `package.ps1 -VersionLabel <label>`. Back on the desktop: both receipts name the plan's commits, the checkouts' fingerprints, the right kind and passing tests. The fingerprints did not move during the job. The zip, its `.sha256` and the receipt inside it agree with each other. Every packaged binary is the player build's, by hash. `sfv_ember.dll` carries the plan's room build and match line. No file or file name in the package carries a forbidden string or a name of the desktop or the build PC. |
+| `rooms` | build PC WSL (`server1` slot not written yet) | `rooms\out\*`, `rooms\kit.tar`, `rooms\evidence.json` | `sf4-net` (`--profile server`) and `sfve-room-host` are built from `git archive`s of the plan's two commits, checked by hash. Both are Linux binaries named in `SHA256SUMS`. The room host answers `helper_unavailable` for its own build and `other_build` for another, and embeds exactly the plan's build. They hold no build-machine path or forbidden string. The kit is the last release's stage folder, checked against its own `SHA256SUMS`, with the library's `upgrade.sh` at the plan's commit and `room-build/` replaced. It is staged on the VPS without sudo, and the stage prints the owner's command. When the room build is unchanged, the stage records that and does nothing else. |
+| `draft` | desktop → GitHub | `draft\draft-state.json`, `draft\evidence.json` | The stage creates a draft pre-release by API (it keeps the id) and uploads the zip and its `.sha256` to that id. It reads the draft back: tag, title, pre-release, notes and both assets by size and SHA-256 digest. It refuses when any other release has the tag or a release as new or newer is published. |
+| `promote` | desktop → VPS (read-only), GitHub, git remotes | `promote\state.json`, `promote\downloaded\*`, `promote\evidence.json` | Every run first checks the whole chain again, then rechecks the build from its files, with the zip scanned again. It checks the draft by the recorded id: the only release with the tag, unchanged assets and notes, nothing newer published, no tag elsewhere. Then the server gate: the live VPS must offer the room build. Then it pushes the library (if needed), the private `release/beta.N` and the public `main`, each only as a fast-forward. It publishes the release by id at the source commit. Finally it reads the release back, checks that the tag is on the commit, downloads the zip and `.sha256`, and compares them. |
+
+`status` prints where each stage stands and checks every evidence file again.
+
+### How the evidence holds together
+
+- `plan.json` is written once. Every later stage reads it through the ledger (`ledger.jsonl`, append-only), which
+  holds the SHA-256 of each evidence file as it was written. Evidence files are read-only.
+- Each evidence file names the plan's SHA-256 and id, the source and library commit and tree, the SHA-256 of
+  every file it vouches for, and the SHA-256 of each evidence file it relied on. Draft relies on build and rooms;
+  promote relies on all three. Every stage verifies that chain before it starts, so a file replaced later no
+  longer matches the ledger or the evidence that came after it.
+- `-Redo` moves a stage, and every stage that relies on it, to `superseded\<time>\` and records that in the ledger.
+  Nothing is overwritten. While a draft made from that work still exists on GitHub, the stage cannot be redone.
+- The draft is always addressed by the id the draft stage recorded. A second draft with the same tag (an older
+  attempt) stops promote, as does any release as new or newer.
+- The zip carries its own receipt (`build-provenance.json`), which promote reads again. The published assets are
+  compared with the build's files by GitHub's own digest and by downloading them again.
+
+## Outward steps
+
+Each outward step is logged in `outward.log` (START / DONE / FAILED / SKIPPED). Each can be skipped with
+`-Skip <name>` and does nothing in `-DryRun`:
+
+| Step | Stage | What it does |
+|---|---|---|
+| `vps-stage` | rooms | copies `kit.tar` to `vps:~/ember-sfv-bridge.incoming-<label>.tar`, unpacks and checks it there, keeps the old folder as `~/ember-sfv-bridge.before-<label>` and moves the kit into `~/ember-sfv-bridge` (`scripts/publish/vps.sh`, no sudo) |
+| `draft` | draft | creates the draft and uploads the two assets |
+| `push-library` | promote | fast-forwards the library's `feat/ember-library` to the pinned commit (only when the plan says it is needed) |
+| `push-origin` | promote | pushes the source commit to the private origin's `release/beta.N` |
+| `push-public` | promote | fast-forwards the public `main` to the source commit |
+| `publish` | promote | publishes the draft by id with `target_commitish` = the source commit |
+
+Pushes are never forced. A remote branch that moved somewhere else stops the run. `push-public` comes before
+`publish` because GitHub creates the tag from the commit, which has to be in the public repository by then.
+
+Promote records each phase in `promote\state.json`. After a failure, running it again resumes at the first
+unfinished phase. A skipped phase stays open and runs on the next run without `-Skip`.
+
+## Before the first run
+
+`D:\sfv-ember-dist\publish\config.json` holds this PC's paths, outside the repository:
+
+```json
+{
+  "publicRepo": "Confetti3/SFV-Ember", "publicRemote": "public", "originRemote": "origin",
+  "libraryRepo": "<the desktop's library repository>", "libraryRemote": "origin", "libraryBranch": "feat/ember-library",
+  "rules": ["<the release rules file>"], "notesForbidden": ["<words public text never uses>"],
+  "laptop": { "host": "director", "work": "D:\\sf4\\publish", "interactive": "D:\\sf4\\interactive",
+              "sourceCheckout": "D:\\sf4\\wt\\sfv-b9", "libraryCheckout": "D:\\sf4\\wt\\lib-b9",
+              "buildDev": "D:\\sfv-b9-build", "buildPlayer": "D:\\sfv-b9-build-player", "vcpkgRoot": "D:\\sf4\\vcpkg",
+              "renderStore": "D:\\sfv-ember-renders-b8", "oldPackageCheck": "D:\\keep\\beta6\\sfve_package_check.exe",
+              "dist": "D:\\sfv-ember-dist\\publish", "pollSeconds": 60,
+              "startTimeoutMinutes": 90, "buildTimeoutMinutes": 300, "roomsTimeoutMinutes": 90 },
+  "rooms": { "backend": "wsl", "baseStage": "<the folder staged on the VPS for the last release>" },
+  "vps": { "host": "vps", "stage": "ember-sfv-bridge", "roomsLib": "/usr/local/lib/ember-rooms" }
+}
+```
+
+The rules file is the forbidden-string list kept outside the repository (git filter-repo's replace-text format).
+It has to be the same file at every stage: the plan pins its SHA-256.
+
+Fetch first, so the plan can see the remotes' commits: `git fetch public; git fetch origin`, and in the library
+repository `git fetch origin`.
+
+## A release from start to finish
+
+```powershell
+# 1. Plan (read-only; a dry run first is free)
+pwsh scripts\publish.ps1 -Stage plan -Label 0.1.0-beta.9 -Source b9/integrate `
+    -Notes <release notes .md> -DiscordDraft <Discord draft .md> -DryRun
+pwsh scripts\publish.ps1 -Stage plan -Label 0.1.0-beta.9 -Source b9/integrate `
+    -Notes <release notes .md> -DiscordDraft <Discord draft .md>
+
+# 2. Windows build, tests and package on the build PC (waits; run it again to keep waiting)
+pwsh scripts\publish.ps1 -Stage build -Label 0.1.0-beta.9
+
+# 3. Linux room hosts, the kit staged on the VPS (prints the owner's command)
+pwsh scripts\publish.ps1 -Stage rooms -Label 0.1.0-beta.9
+
+# 4. The owner, on the VPS
+ssh -t vps "sudo bash ~/ember-sfv-bridge/upgrade.sh rooms"
+ssh -t vps "sudo bash ~/ember-sfv-bridge/upgrade.sh check"
+
+# 5. Draft pre-release (private until published)
+pwsh scripts\publish.ps1 -Stage draft -Label 0.1.0-beta.9
+
+# 6. Promote: dry run, then the real one when the owner says "publish"
+pwsh scripts\publish.ps1 -Stage promote -Label 0.1.0-beta.9 -DryRun
+pwsh scripts\publish.ps1 -Stage promote -Label 0.1.0-beta.9
+```
+
+Promote refuses until the VPS offers the room build. Its read-only check (`vps.sh check`, as the operator account)
+needs the build's folder under the room library with the stage's binaries, and a room host that accepts its own
+build. It also needs the supervisor's `config.json` to list the build. If that file is readable only by root, the
+check says so. The owner then runs `upgrade.sh check`, sees the build under "SFV builds", and promotes with
+`-RoomsConfirmed`.
+
+### What only the owner does
+
+- Supply the release notes and the Discord draft. Neither mentions the option `notesForbidden` names, and the pipeline never writes
+  or posts them.
+- Run `sudo bash ~/ember-sfv-bridge/upgrade.sh rooms` and `... check` on the VPS. The pipeline never runs sudo.
+- Say "publish" before `-Stage promote` without `-DryRun`.
+- Post the Discord announcement.
+
+## Recovering
+
+- A stage that failed: fix the cause and run it again. Finished stages are only checked again.
+- A build PC job that failed: `-Stage build -NewAttempt` (a fresh folder on the build PC, a fresh package folder).
+- Another commit or other notes: `-Stage plan -Replan`. First delete the draft on GitHub if one exists; the
+  pipeline never deletes releases.
+- A rebuilt stage after the draft: delete the draft on GitHub, then `-Stage build -Redo` (or `rooms`), then
+  `-Stage draft`.
+- The room build on the VPS: `sudo bash ~/ember-sfv-bridge/upgrade.sh rollback-rooms`. The previous stage folder
+  is kept as `~/ember-sfv-bridge.before-<label>`.
+
+## Tests
+
+`pwsh -NoProfile -File tests\PublishTests.ps1` runs every stage on a fixture of local git repositories. GitHub,
+the build PC and the VPS are faked (`scripts/publish/SfvPublishFakes.ps1`), and a push to anything outside the
+fixture throws.
