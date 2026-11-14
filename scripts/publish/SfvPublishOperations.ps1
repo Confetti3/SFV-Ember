@@ -4,7 +4,8 @@
 # through Invoke-PubOutward.
 
 # Runs a program with exact bytes in and out, a timeout, and no shell in between.
-function Invoke-PubProcess([string]$FilePath, [string[]]$Arguments, [byte[]]$Stdin = $null, [int]$TimeoutSeconds = 600) {
+# Its output streams are drained for at most $DrainSeconds after it exits (a child it left behind may hold them open).
+function Invoke-PubProcess([string]$FilePath, [string[]]$Arguments, [byte[]]$Stdin = $null, [int]$TimeoutSeconds = 600, [int]$DrainSeconds = 30) {
     $info = [Diagnostics.ProcessStartInfo]::new($FilePath)
     foreach ($argument in $Arguments) { $info.ArgumentList.Add($argument) }
     $info.RedirectStandardOutput = $true; $info.RedirectStandardError = $true; $info.RedirectStandardInput = $true
@@ -21,7 +22,10 @@ function Invoke-PubProcess([string]$FilePath, [string[]]$Arguments, [byte[]]$Std
         try { $process.Kill($true) } catch { }
         throw "$FilePath timed out after $TimeoutSeconds s ($($Arguments[0..([Math]::Min(2, $Arguments.Count - 1))] -join ' '))"
     }
-    $copy.Wait(); $process.WaitForExit()
+    $process.WaitForExit()
+    if (!$copy.Wait($DrainSeconds * 1000) -or !$err.Wait($DrainSeconds * 1000)) {
+        throw "$FilePath exited, but its output was still open $DrainSeconds s later (a process it started holds it)"
+    }
     [pscustomobject]@{exitCode = $process.ExitCode; bytes = $out.ToArray(); stderr = $err.Result}
 }
 
@@ -32,9 +36,10 @@ function New-PubOperations {
             if ('push' -cin $Arguments) { throw 'git push goes through the Push operation only.' }
             Invoke-PubProcess 'git' (@('-C', $Repo) + $Arguments) $Stdin 900
         }
+        # Never a tag along with the branch; -DryRun asks the remote what the push would do (git push --dry-run).
         Push = {
-            param([string]$Repo, [string]$Remote, [string]$Commit, [string]$Ref)
-            Invoke-PubProcess 'git' @('-C', $Repo, 'push', '--porcelain', $Remote, "${Commit}:$Ref") $null 600
+            param([string]$Repo, [string]$Remote, [string]$Commit, [string]$Ref, [bool]$DryRun)
+            Invoke-PubProcess 'git' (@('-C', $Repo, 'push', '--porcelain', '--no-follow-tags') + @(if ($DryRun) { '--dry-run' }) + @($Remote, "${Commit}:$Ref")) $null 600
         }
         Gh = { param([string[]]$Arguments) Invoke-PubProcess 'gh' $Arguments $null 1800 }
         Ssh = {
