@@ -3,7 +3,7 @@
 # The desktop pipes this file over SSH; nothing is left behind but the staged kit:
 #   ssh vps 'bash -s -- state   <stage folder> <label> <SHA-256 of SHA256SUMS>'   < vps.sh
 #   ssh vps 'bash -s -- install <stage folder> <label> <SHA-256 of SHA256SUMS>'   < vps.sh
-#   ssh vps 'bash -s -- check   <room build> <room host SHA-256|-> <sf4-net SHA-256|-> <room library>' < vps.sh
+#   ssh vps 'bash -s -- check   <room build> <room host SHA-256> <sf4-net SHA-256> <room library>' < vps.sh
 # state    whether ~/<stage folder> is that kit already (RESULT staged / not-staged)
 # install  ~/<stage folder>.incoming-<label>.tar (scp'd before) unpacked and checked against its SHA256SUMS, the
 #          current ~/<stage folder> kept as ~/<stage folder>.before-<label>, the kit moved into its place
@@ -50,10 +50,10 @@ check)
     [[ "$build" =~ ^sfv-ember/[0-9]+/[0-9]+\.[0-9]+/[0-9a-f]{16}/layout-[0-9a-f]{16}$ ]] || { echo "RESULT bad-build"; exit 2; }
     dir="$lib/builds/sfv-$(echo "${build#sfv-ember/}" | tr / -)"
     if [ ! -d "$dir" ]; then echo "RESULT not-installed"; exit 0; fi
-    if [ "$host" != "-" ]; then
-        if [ "$(sha256sum "$dir/sfve-room-host" | cut -d' ' -f1)" != "$host" ] || [ "$(sha256sum "$dir/sf4-net" | cut -d' ' -f1)" != "$net" ]; then
-            echo "RESULT other-binaries"; exit 0
-        fi
+    [[ "$host" =~ ^[0-9a-f]{64}$ ]] && [[ "$net" =~ ^[0-9a-f]{64}$ ]] || { echo "RESULT bad-hashes"; exit 2; }
+    # The installed pair is compared in every case, before anything else is looked at.
+    if [ "$(sha256sum "$dir/sfve-room-host" | cut -d' ' -f1)" != "$host" ] || [ "$(sha256sum "$dir/sf4-net" | cut -d' ' -f1)" != "$net" ]; then
+        echo "RESULT other-binaries"; exit 0
     fi
     line='{"room_id":"0123456789abcdef0123456789abcdef","name":"check","capacity":2,"build_id":"%s","bridge_id":"brg_check","ticket_key":"key","ticket_kid":"kid","helper":"/nonexistent","game":"sfv"}'
     out=$(printf "$line\n" "$build" | timeout 10 "$dir/sfve-room-host" 2>/dev/null | grep -o '"reason":"[a-z_]*"' | head -1 || true)

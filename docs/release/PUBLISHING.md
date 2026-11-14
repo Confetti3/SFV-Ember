@@ -11,7 +11,7 @@ the last stage, and the last stage publishes only after it has checked everythin
 |---|---|---|---|
 | `plan` | desktop, read-only | `plan.json`, `notes.md` | The label is newer than every published release, and no release, draft or tag has it yet. The source commit descends from the last release's tag and fast-forwards the public `main` and the private `release/beta.N`. Every worktree on that commit or branch is clean, and so is the pipeline's own checkout. `CMakeLists.txt` makes this version. `data/pick-space.json`'s room build agrees with `kMatchBuild`, and the plan records whether it changed since the last release. The README's library pin names the library commit, which is on the library's public branch or fast-forwards it. The notes exist and use none of the words `notesForbidden` lists (the option public text never mentions). No forbidden string (the owner's rules file, plus this PC's user, profile and computer names) appears in the notes, the Discord draft, or any commit, tree, blob or path being released, raw or UTF-16. That covers both repositories. Every released commit has the last release's identity and no `...-by:` trailer. |
 | `build` | build PC (Interactive task queue) | `build\files\*`, `build\evidence.json` | Both build PC checkouts are fast-forwarded to exactly the plan's commits and trees, are clean, and have their fingerprints recorded before the build. A development build and a player build ran, with their tests (ctest's own count must equal the receipt's list), then the helper and `package.ps1 -VersionLabel <label>`. Back on the desktop: both receipts name the plan's commits, the checkouts' fingerprints, the right kind and passing tests. The fingerprints did not move during the job. The zip, its `.sha256` and the receipt inside it agree with each other. Every packaged binary is the player build's, by hash. `sfv_ember.dll` carries the plan's room build and match line. No file or file name in the package carries a forbidden string or a name of the desktop or the build PC. |
-| `rooms` | build PC WSL (`server1` slot not written yet) | `rooms\out\*`, `rooms\kit.tar`, `rooms\evidence.json` | `sf4-net` (`--profile server`) and `sfve-room-host` are built from `git archive`s of the plan's two commits, checked by hash. Both are Linux binaries named in `SHA256SUMS`. The room host answers `helper_unavailable` for its own build and `other_build` for another, and embeds exactly the plan's build. They hold no build-machine path or forbidden string. The kit is the last release's stage folder, checked against its own `SHA256SUMS`, with the library's `upgrade.sh` at the plan's commit and `room-build/` replaced. It is staged on the VPS without sudo, and the stage prints the owner's command. When the room build is unchanged, the stage records that and does nothing else. |
+| `rooms` | build PC WSL (`server1` slot not written yet) | `rooms\out\*`, `rooms\kit.tar`, `rooms\evidence.json` | `sf4-net` (`--profile server`) and `sfve-room-host` are built from `git archive`s of the plan's two commits, checked by hash. Both are Linux binaries named in `SHA256SUMS`. The room host answers `helper_unavailable` for its own build and `other_build` for another, and embeds exactly the plan's build. They hold no build-machine path or forbidden string. The kit is the last release's stage folder, checked against its own `SHA256SUMS`, with the library's `upgrade.sh` at the plan's commit and `room-build/` replaced. It is staged on the VPS without sudo, and the stage prints the owner's command. A pair built earlier can be adopted instead (below); a room build the last release already has must be adopted, never skipped, so promote always has hashes to compare. |
 | `draft` | desktop → GitHub | `draft\draft-state.json`, `draft\evidence.json` | The stage creates a draft pre-release by API (it keeps the id) and uploads the zip and its `.sha256` to that id. It reads the draft back: tag, title, pre-release, notes and both assets by size and SHA-256 digest. It refuses when any other release has the tag or a release as new or newer is published. |
 | `promote` | desktop → VPS (read-only), GitHub, git remotes | `promote\state.json`, `promote\downloaded\*`, `promote\evidence.json` | Every run first checks the whole chain again, then rechecks the build from its files, with the zip scanned again. It checks the draft by the recorded id: the only release with the tag, unchanged assets and notes, nothing newer published, no tag elsewhere. Then the server gate: the live VPS must offer the room build. Then it pushes the library (if needed), the private `release/beta.N` and the public `main`, each only as a fast-forward. It publishes the release by id at the source commit. Finally it reads the release back, checks that the tag is on the commit, downloads the zip and `.sha256`, and compares them. |
 
@@ -52,6 +52,35 @@ Pushes are never forced. A remote branch that moved somewhere else stops the run
 Promote records each phase in `promote\state.json`. After a failure, running it again resumes at the first
 unfinished phase. A skipped phase stays open and runs on the next run without `-Skip`.
 
+## Adopting a room-host pair built earlier
+
+When the room hosts were already built, staged and installed for this room build (by hand, or by an earlier run),
+a second sudo step for byte-different but equivalent binaries is avoided by adopting them:
+
+```powershell
+pwsh scripts\publish.ps1 -Stage rooms -Label <label> -AdoptKit <kit folder> -KitSource <sfv-ember commit> -KitLibrary <library commit>
+```
+
+Nothing is built or staged. The kit folder holds `room-build\sfve-room-host`, `room-build\sf4-net` and optionally
+`room-build\BUILD_ID` and `SHA256SUMS`. The stage hashes the pair and checks it:
+
+- `BUILD_ID` (when present) and the room build embedded in the room host are the plan's.
+- On the build PC's Linux, `build-rooms-linux.sh --check` runs the checks a built pair gets: the host accepts its
+  own build and refuses another, the embedded build, and the path scan. The desktop scans both files for forbidden
+  strings.
+- The kit's commits are ancestors of the plan's commits in both repositories.
+- Nothing the two binaries are made from changed between them (`git diff`). The path lists are read from each
+  commit pair:
+  - sfv-ember: `data/pick-space.json`, `scripts/build-room-host-linux.sh`, the catalog sources it names, and every
+    header they include.
+  - library: `server/roomhost/build-linux.sh`, `sources.txt`, the sources it lists for a data catalog, and every
+    header included from `src/` or `server/roomhost/`. Also sf4-net's `Cargo.toml`, `Cargo.lock`, `build.rs`,
+    `rust-toolchain.toml`, `resource.rc` and `src/`, with its path dependencies (not dev-dependencies).
+
+  A change refuses the adoption and names the path.
+
+The evidence records `adopted`, the kit's commits, both hashes and both path lists. Promote's server check then
+compares the installed files with these hashes, as for a built pair.
 ## Before the first run
 
 `D:\sfv-ember-dist\publish\config.json` holds this PC's paths, outside the repository:
@@ -106,10 +135,11 @@ pwsh scripts\publish.ps1 -Stage promote -Label 0.1.0-beta.9
 ```
 
 Promote refuses until the VPS offers the room build. Its read-only check (`vps.sh check`, as the operator account)
-needs the build's folder under the room library with the stage's binaries, and a room host that accepts its own
-build. It also needs the supervisor's `config.json` to list the build. If that file is readable only by root, the
-check says so. The owner then runs `upgrade.sh check`, sees the build under "SFV builds", and promotes with
-`-RoomsConfirmed`.
+always compares the installed `sfve-room-host` and `sf4-net` in the build's folder under the room library with the
+rooms evidence's SHA-256 (built or adopted), then runs the installed room host on its own build, then reads the
+supervisor's `config.json`, which must list the build. If that file is readable only by root, the check says so.
+The owner then runs `upgrade.sh check`, sees the build under "SFV builds", and promotes with `-RoomsConfirmed`. The
+flag stands in for that last read only: the hash comparison and the room host's answer still have to pass.
 
 ### What only the owner does
 

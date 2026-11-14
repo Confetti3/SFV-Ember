@@ -41,7 +41,19 @@ function New-Fixture {
     G $F @('init', '-q', '-b', 'feat/ember-library', 'lib') | Out-Null
     Write-File "$lib\src\core.txt" 'library one'
     Write-File "$lib\server\sfv-bridge\upgrade.sh" "#!/usr/bin/env bash`necho upgrade v1`n"
-    Write-File "$lib\rust\sf4-net\Cargo.toml" "[package]`n"
+    Write-File "$lib\server\roomhost\sources.txt" "# [host]`nserver/roomhost/main.cxx`n`n# [host_windows]`nserver/roomhost/Win.cxx`n`n# [catalog]`nsrc/common/Sf4Catalog.cxx`n"
+    Write-File "$lib\server\roomhost\build-linux.sh" "#!/usr/bin/env bash`n"
+    Write-File "$lib\server\roomhost\main.cxx" "#include `"RoomHost.hxx`"`n#include <vector>`n"
+    Write-File "$lib\server\roomhost\RoomHost.hxx" "#include `"common/Catalog.hxx`"`n"
+    Write-File "$lib\server\roomhost\Win.cxx" 'windows only'
+    Write-File "$lib\src\common\Catalog.hxx" 'catalog'
+    Write-File "$lib\src\common\Sf4Catalog.cxx" 'sf4 only'
+    Write-File "$lib\rust\sf4-net\Cargo.toml" "[package]`nname = `"sf4-net`"`n[dependencies]`nember-protocol = { path = `"../../server/ember/protocol`" }`n[dev-dependencies]`nember-bridge = { path = `"../../server/ember/bridge`" }`n"
+    Write-File "$lib\rust\sf4-net\Cargo.lock" 'lock'
+    Write-File "$lib\rust\sf4-net\src\main.rs" 'fn main() {}'
+    Write-File "$lib\server\ember\protocol\Cargo.toml" "[package]`n"
+    Write-File "$lib\server\ember\protocol\src\lib.rs" 'protocol'
+    Write-File "$lib\server\ember\bridge\src\lib.rs" 'bridge'
     $L1 = Commit $lib 'library one'
     G $lib @('remote', 'add', 'origin', "$F\lib-origin.git") | Out-Null
     G $lib @('push', '-q', 'origin', 'feat/ember-library') | Out-Null
@@ -55,7 +67,9 @@ function New-Fixture {
     Write-File "$sfv\data\pick-space.json" "{`n`t`"build`": `"$oldBuild`"`n}`n"
     Write-File "$sfv\src\ember\SfvPickSpace.hxx" "constexpr const char* kMatchBuild = `"sfv-ember/13173604/0.6`";`n"
     Write-File "$sfv\README.md" "This release builds against library commit ``$($L1.Substring(0, 9))``.`n"
-    Write-File "$sfv\scripts\build-room-host-linux.sh" "#!/usr/bin/env bash`n"
+    Write-File "$sfv\scripts\build-room-host-linux.sh" "#!/usr/bin/env bash`nCATALOG_SOURCES=`"`$SFV/src/roomhost/SfvHostCatalog.cxx `$SFV/src/ember/SfvPickSpace.cxx `$GEN/SfvHostPickSpace.cxx`"`n"
+    Write-File "$sfv\src\roomhost\SfvHostCatalog.cxx" "#include `"ember/SfvPickSpace.hxx`"`n#include `"RoomHost.hxx`"`n"
+    Write-File "$sfv\src\ember\SfvPickSpace.cxx" "#include `"ember/SfvPickSpace.hxx`"`n#include `"common/Catalog.hxx`"`n"
     $C0 = Commit $sfv '0.1.0-beta.8'
     G $sfv @('remote', 'add', 'public', "$F\public.git") | Out-Null
     G $sfv @('remote', 'add', 'origin', "$F\origin.git") | Out-Null
@@ -65,7 +79,7 @@ function New-Fixture {
     Write-File "$sfv\data\pick-space.json" "{`n`t`"build`": `"$newBuild`"`n}`n"
     Write-File "$sfv\src\ember\SfvPickSpace.hxx" "constexpr const char* kMatchBuild = `"sfv-ember/13173604/0.7`";`n"
     Write-File "$sfv\src\feature.txt" 'new work'
-    $null = Commit $sfv 'beta.9 work'
+    $K = Commit $sfv 'beta.9 work'
     Write-File "$sfv\README.md" "This release builds against library commit ``$($L2.Substring(0, 9))``.`n"
     $C1 = Commit $sfv '0.1.0-beta.9; README pins the library'
     # The owner's files.
@@ -95,9 +109,21 @@ function New-Fixture {
         Repo = $sfv; PipelineRoot = $sfv; LibraryRepo = $lib; AgentPath = (Join-Path $scripts 'laptop-agent.ps1'); RoomScriptPath = (Join-Path $scripts 'build-rooms-linux.sh')
         VpsStagePath = (Join-Path $scripts 'vps.sh')}
     New-Item -ItemType Directory -Path $ctx.Root -Force | Out-Null
-    [pscustomobject]@{F = $F; Ctx = $ctx; World = $world; Sfv = $sfv; Lib = $lib; C0 = $C0; C1 = $C1; L1 = $L1; L2 = $L2
+    [pscustomobject]@{F = $F; Ctx = $ctx; World = $world; Sfv = $sfv; Lib = $lib; C0 = $C0; C1 = $C1; K = $K; L1 = $L1; L2 = $L2
         P = @{Source = 'b9/integrate'; Notes = "$F\notes.md"; Rules = @("$F\rules.txt"); RoomsConfirmed = $false}}
 }
+# A hand-built kit: room-build/ with the pair and BUILD_ID, SHA256SUMS beside it.
+function New-Kit($X, [string]$Build, [string]$Embedded = '') {
+    $kit = Join-Path $X.F "kit-$([Guid]::NewGuid().ToString('N').Substring(0, 6))"
+    if (!$Embedded) { $Embedded = $Build }
+    New-Item -ItemType Directory -Path "$kit\room-build" -Force | Out-Null
+    [IO.File]::WriteAllText("$kit\room-build\sfve-room-host", "`u{7f}ELF hand-built room host $Embedded", [Text.Encoding]::Latin1)
+    [IO.File]::WriteAllText("$kit\room-build\sf4-net", "`u{7f}ELF hand-built helper", [Text.Encoding]::Latin1)
+    Write-File "$kit\room-build\BUILD_ID" "$Build`n"
+    Write-File "$kit\SHA256SUMS" ((@('sf4-net', 'sfve-room-host', 'BUILD_ID') | ForEach-Object { "$((Get-FileHash "$kit\room-build\$_" -Algorithm SHA256).Hash.ToLowerInvariant())  room-build/$_" }) -join "`n")
+    $kit
+}
+function Adopt($X, [string]$Kit, [string]$Source, [string]$Library) { $p = $X.P.Clone(); $p.AdoptKit = $Kit; $p.KitSource = $Source; $p.KitLibrary = $Library; Invoke-PubRooms $X.Ctx $p 6>$null }
 function Invoke-Quiet([scriptblock]$Action) { & $Action 6>$null | Out-Null }
 function Plan($X) { $r = Invoke-PubPlan $X.Ctx $X.P 6>$null; $X.World.Plan = (Read-PubPlan $X.Ctx).plan; $r }
 function Through($X, [string]$Last) {
@@ -372,15 +398,71 @@ try {
     Reject { Invoke-PubPromote $y.Ctx $y.P 6>$null } '*would not fast-forward*'
     Pass 'promote: never forces a push; a public main that moved elsewhere stops it'
 
-    # unchanged room build: no rooms work, the server check still runs
+    # --- rooms by adoption ------------------------------------------------------------------------------------------
+    $y = Fresh; $null = Plan $y; Invoke-Quiet { Invoke-PubBuild $y.Ctx $y.P }
+    $kit = New-Kit $y $newBuild
+    Adopt $y $kit $y.K $y.L2 | Out-Null
+    $rooms = Read-PubEvidence $y.Ctx 'rooms' (Read-PubPlan $y.Ctx)
+    Check ($rooms.facts.adopted -and $rooms.facts.kit.sfvCommit -ceq $y.K -and $rooms.facts.kit.libraryCommit -ceq $y.L2) 'adopted facts'
+    Check ($rooms.facts.'sfve-room-host' -ceq (Get-PubSha256 "$kit\room-build\sfve-room-host") -and $rooms.facts.'sf4-net' -ceq (Get-PubSha256 "$kit\room-build\sf4-net")) 'kit hashes recorded'
+    $sp = @($rooms.facts.kit.sfvPaths); $lp = @($rooms.facts.kit.libraryPaths)
+    foreach ($path in 'data/pick-space.json', 'scripts/build-room-host-linux.sh', 'src/roomhost/SfvHostCatalog.cxx', 'src/ember/SfvPickSpace.cxx', 'src/ember/SfvPickSpace.hxx') { Check ($path -cin $sp) "sfv path $path" }
+    foreach ($path in 'server/roomhost/main.cxx', 'server/roomhost/RoomHost.hxx', 'src/common/Catalog.hxx', 'server/roomhost/sources.txt', 'rust/sf4-net/Cargo.lock', 'rust/sf4-net/src/main.rs', 'server/ember/protocol/src/lib.rs') { Check ($path -cin $lp) "library path $path" }
+    foreach ($path in 'server/roomhost/Win.cxx', 'src/common/Sf4Catalog.cxx', 'server/ember/bridge/src/lib.rs', 'src/core.txt') { Check ($path -cnotin $lp) "not a room-host input: $path" }
+    Check (!@($y.World.Commands | Where-Object { $_ -like '*sfv.tar*' -or $_ -like '*vps*install*' -or $_ -like 'scp*vps:*' }).Count) 'nothing built or staged'
+    Check (@($y.World.Commands | Where-Object { $_ -like '*rooms-install*-Mode ''check''*' }).Count -eq 1) 'the pair is checked on the build PC''s Linux'
+    Invoke-Quiet { Invoke-PubDraft $y.Ctx $y.P }
+    Invoke-Quiet { Invoke-PubPromote $y.Ctx $y.P }
+    $check = @($y.World.Commands | Where-Object { $_ -like 'ssh vps bash -s -- check*' })[0]
+    Check ($check -like "*$($rooms.facts.'sfve-room-host')*$($rooms.facts.'sf4-net')*") 'the server check compares the kit''s hashes'
+    Check (Test-Path "$($y.Ctx.Root)\promote\evidence.json") 'promoted'
+    Pass 'rooms -AdoptKit: no build, no staging; the pair checked on Linux, the kit''s commits proven equivalent, the input paths recorded; promote compares the installed hashes with the kit''s'
+
+    $y = Fresh; $null = Plan $y
+    $kit = New-Kit $y $oldBuild
+    Reject { Adopt $y $kit $y.K $y.L2 } '*is for room build*'
+    $kit = New-Kit $y $newBuild $oldBuild; Remove-Item "$kit\room-build\BUILD_ID"
+    Reject { Adopt $y $kit $y.K $y.L2 } '*does not carry the plan''s room build*'
+    Pass 'rooms -AdoptKit: refuses a kit for another room build (by its BUILD_ID or the build its room host embeds)'
+
+    foreach ($case in @(@('data\pick-space.json', "{`n`t`"build`": `"$newBuild`",`n`t`"unshipped`": []`n}`n", '*changed data/pick-space.json*'),
+                        @('src\ember\SfvPickSpace.hxx', "constexpr const char* kMatchBuild = `"sfv-ember/13173604/0.7`"; // edited`n", '*changed src/ember/SfvPickSpace.hxx*'))) {
+        $y = Fresh
+        Write-File "$($y.Sfv)\$($case[0])" $case[1]; $null = Commit $y.Sfv 'after the kit'
+        $null = Plan $y
+        Reject { Adopt $y (New-Kit $y $newBuild) $y.K $y.L2 } $case[2]
+    }
+    $y = Fresh; Write-File "$($y.Lib)\rust\sf4-net\src\main.rs" 'fn main() { changed() }'; $l3 = Commit $y.Lib 'helper'
+    Write-File "$($y.Sfv)\README.md" "This release builds against library commit ``$($l3.Substring(0, 9))``.`n"; $null = Commit $y.Sfv 'pin'
+    $null = Plan $y
+    Reject { Adopt $y (New-Kit $y $newBuild) $y.K $y.L2 } '*library changed rust/sf4-net/src/main.rs*'
+    $y = Fresh; Write-File "$($y.Lib)\server\ember\bridge\src\lib.rs" 'dev only'; Write-File "$($y.Lib)\src\core.txt" 'unrelated'; $l3 = Commit $y.Lib 'not in the build'
+    Write-File "$($y.Sfv)\README.md" "This release builds against library commit ``$($l3.Substring(0, 9))``.`n"; Write-File "$($y.Sfv)\src\feature.txt" 'more'; $null = Commit $y.Sfv 'pin'
+    $null = Plan $y
+    Adopt $y (New-Kit $y $newBuild) $y.K $y.L2 | Out-Null
+    Check (Test-Path "$($y.Ctx.Root)\rooms\evidence.json") 'changes outside the build do not stop adoption'
+    Pass 'rooms -AdoptKit: refuses a change between the kit''s and the plan''s commits in the pick space, an included header or the helper''s crate, naming the path; changes outside the build pass'
+
+    $y = Fresh; $null = Plan $y
+    G $y.Sfv @('checkout', '-q', '-b', 'elsewhere', $y.C0) | Out-Null; Write-File "$($y.Sfv)\src\x.txt" 'x'; $side = Commit $y.Sfv 'elsewhere'; G $y.Sfv @('checkout', '-q', 'b9/integrate') | Out-Null
+    Reject { Adopt $y (New-Kit $y $newBuild) $side $y.L2 } '*is not an ancestor of the plan''s*'
+    G $y.Lib @('checkout', '-q', '-b', 'elsewhere', $y.L1) | Out-Null; Write-File "$($y.Lib)\src\y.txt" 'y'; $libSide = Commit $y.Lib 'elsewhere'; G $y.Lib @('checkout', '-q', 'feat/ember-library') | Out-Null
+    Reject { Adopt $y (New-Kit $y $newBuild) $y.K $libSide } '*library commit*is not an ancestor*'
+    Pass 'rooms -AdoptKit: refuses a kit commit that is not an ancestor of the plan''s, in either repository'
+
+    $y = Fresh; $null = Plan $y; Invoke-Quiet { Invoke-PubBuild $y.Ctx $y.P }
+    Adopt $y (New-Kit $y $newBuild) $y.K $y.L2 | Out-Null
+    $bin = "$($y.Ctx.Root)\rooms\kit-in\sfve-room-host"; (Get-Item $bin).Attributes = 'Normal'; [IO.File]::AppendAllText($bin, 'x')
+    Reject { Invoke-PubDraft $y.Ctx $y.P 6>$null } '*kit-in/sfve-room-host changed since its evidence was written*'
+    Pass 'rooms -AdoptKit: a kit binary changed after adoption stops every later stage'
+
+    # unchanged room build: it must be adopted (promote needs hashes to compare), never skipped
     $y = Fresh
     Write-File "$($y.Sfv)\data\pick-space.json" "{`n`t`"build`": `"$oldBuild`"`n}`n"; Write-File "$($y.Sfv)\src\ember\SfvPickSpace.hxx" "constexpr const char* kMatchBuild = `"sfv-ember/13173604/0.6`";`n"
     $null = Commit $y.Sfv 'same room build'
-    Through $y 'rooms'
-    $rooms = Read-PubEvidence $y.Ctx 'rooms' (Read-PubPlan $y.Ctx)
-    Check ($rooms.facts.unchanged -and !@($y.World.Commands | Where-Object { $_ -like '*rooms-install*' }).Count) 'no rooms build'
-    Pass 'rooms: an unchanged room build records that and builds and stages nothing'
-
+    $null = Plan $y
+    Reject { Invoke-PubRooms $y.Ctx $y.P } '*adopt that kit*'
+    Pass 'rooms: an unchanged room build is refused unless its installed kit is adopted'
     # the build PC agent itself (scripts/publish/laptop-agent.ps1), on fixture checkouts here
     $y = Fresh
     Write-File "$($y.Lib)\scripts\BuildProvenance.ps1" "function Get-SourceFingerprint([string]`$Root) { ('F' * 64) }`n"

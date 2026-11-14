@@ -5,11 +5,17 @@
 # and writes to <out>: sfve-room-host, sf4-net, SHA256SUMS and result.txt (KEY=value lines the desktop checks).
 #
 #   build-rooms-linux.sh <in> <out> <room build id>
+#   build-rooms-linux.sh --check <in> <out> <room build id>
+#
+# --check builds nothing: <in> holds a kit's sfve-room-host and sf4-net (built earlier from equivalent commits),
+# which get every check below that needs no build (MODE=check in result.txt).
 #
 # The room build id is data/pick-space.json's "build"; the room host must accept it and refuse another. Build
 # paths are remapped (rustc --remap-path-prefix, g++ -ffile-prefix-map) and the binaries are scanned for what
 # would name this machine.
 set -euo pipefail
+MODE=build
+if [ "${1:-}" = --check ]; then MODE=check; shift; fi
 IN=${1:?usage: build-rooms-linux.sh <in> <out> <room build id>}
 OUT=${2:?usage}
 BUILD_ID=${3:?usage}
@@ -19,7 +25,12 @@ rm -rf "$W/src" "$OUT"
 mkdir -p "$W/src/lib" "$W/src/sfv" "$OUT"
 put() { echo "$1=$2" >> "$OUT/result.txt"; }
 : > "$OUT/result.txt"
+put MODE "$MODE"
 put BUILD_ID "$BUILD_ID"
+if [ "$MODE" = check ]; then
+    cp "$IN/sfve-room-host" "$IN/sf4-net" "$OUT/"
+    chmod 0755 "$OUT/sfve-room-host" "$OUT/sf4-net"
+else
 put SFV_TAR "$(sha256sum "$IN/sfv.tar" | cut -d' ' -f1)"
 put LIBRARY_TAR "$(sha256sum "$IN/library.tar" | cut -d' ' -f1)"
 tar -xf "$IN/library.tar" -C "$W/src/lib"
@@ -43,6 +54,7 @@ if ! echo '#include <xxhash.h>' | g++ -std=c++17 -x c++ -fsyntax-only - 2>/dev/n
 fi
 echo "== room host"
 (cd "$W/src" && bash sfv/scripts/build-room-host-linux.sh lib "$OUT/sfve-room-host")
+fi
 cd "$OUT"
 line='{"room_id":"0123456789abcdef0123456789abcdef","name":"check","capacity":2,"build_id":"%s","bridge_id":"brg_check","ticket_key":"key","ticket_kid":"kid","helper":"/nonexistent","game":"sfv"}'
 answer() { printf "$line\n" "$1" | timeout 10 ./sfve-room-host 2>/dev/null | grep -o '"reason":"[a-z_]*"' | head -1 | sed 's/.*:"\(.*\)"/\1/' || true; }

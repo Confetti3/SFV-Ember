@@ -157,6 +157,7 @@ function Invoke-FakeLaptop([object]$World, [string]$Command) {
         'rooms-install' {
             Set-Content -LiteralPath (Join-Path $local 'job-name.txt') -Value (& $arg 'JobName')
             Set-Content -LiteralPath (Join-Path $local 'build-id.txt') -Value (& $arg 'BuildId')
+            Set-Content -LiteralPath (Join-Path $local 'mode.txt') -Value (& $arg 'Mode')
             return ConvertTo-FakeResult "RESULT {`"ok`":true}`n"
         }
         'poll' {
@@ -225,12 +226,23 @@ function New-FakeRoomOutput([object]$World, [string]$Work) {
     $build = (Get-Content -LiteralPath (Join-Path $Work 'build-id.txt')).Trim()
     $r = @{own = 'helper_unavailable'; other = 'other_build'; embedded = $build; paths = '0'; hostBytes = "`u{7f}ELF room host $build"; status = 'ok'}
     if ($World.RoomsTweak) { & $World.RoomsTweak $r }
-    [IO.File]::WriteAllText((Join-Path $out 'sfve-room-host'), $r.hostBytes, [Text.Encoding]::Latin1)
-    [IO.File]::WriteAllText((Join-Path $out 'sf4-net'), "`u{7f}ELF helper", [Text.Encoding]::Latin1)
+    $mode = if (Test-Path -LiteralPath (Join-Path $Work 'mode.txt')) { (Get-Content -LiteralPath (Join-Path $Work 'mode.txt')).Trim() } else { 'build' }
+    if ($mode -ceq 'check') {
+        # A kit is checked, not built: its own bytes, its own answers.
+        Copy-Item -LiteralPath (Join-Path $Work 'sfve-room-host'), (Join-Path $Work 'sf4-net') -Destination $out
+        $text = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes((Join-Path $out 'sfve-room-host')))
+        $embedded = [regex]::Match($text, 'sfv-ember/[0-9]+/[0-9.]+/[0-9a-f]+/layout-[0-9a-f]+').Value
+        if ($embedded) { $r.embedded = $embedded }
+        if ($embedded -cne $build) { $r.own = 'other_build' }
+    } else {
+        [IO.File]::WriteAllText((Join-Path $out 'sfve-room-host'), $r.hostBytes, [Text.Encoding]::Latin1)
+        [IO.File]::WriteAllText((Join-Path $out 'sf4-net'), "`u{7f}ELF helper", [Text.Encoding]::Latin1)
+    }
     $sums = @('sfve-room-host', 'sf4-net') | ForEach-Object { "$((Get-FileHash -LiteralPath (Join-Path $out $_) -Algorithm SHA256).Hash.ToLowerInvariant())  $_" }
     Set-Content -LiteralPath (Join-Path $out 'SHA256SUMS') -Value $sums
     $sha = { param($N) (Get-FileHash -LiteralPath (Join-Path $Work $N) -Algorithm SHA256).Hash.ToLowerInvariant() }
-    Set-Content -LiteralPath (Join-Path $out 'result.txt') -Value @("BUILD_ID=$build", "SFV_TAR=$(& $sha 'sfv.tar')", "LIBRARY_TAR=$(& $sha 'library.tar')",
-        "ANSWER_OWN=$($r.own)", "ANSWER_OTHER=$($r.other)", "EMBEDDED=$($r.embedded)", "PATHS_SFVE_ROOM_HOST=$($r.paths)", 'PATHS_SF4_NET=0', "STATUS=$($r.status)")
+    $inputsLines = if ($mode -ceq 'check') { @('MODE=check') } else { @('MODE=build', "SFV_TAR=$(& $sha 'sfv.tar')", "LIBRARY_TAR=$(& $sha 'library.tar')") }
+    Set-Content -LiteralPath (Join-Path $out 'result.txt') -Value (@("BUILD_ID=$build") + $inputsLines + @(
+        "ANSWER_OWN=$($r.own)", "ANSWER_OTHER=$($r.other)", "EMBEDDED=$($r.embedded)", "PATHS_SFVE_ROOM_HOST=$($r.paths)", 'PATHS_SF4_NET=0', "STATUS=$($r.status)"))
     Set-Content -LiteralPath (Join-Path $out 'job.log') -Value 'fake rooms'
 }

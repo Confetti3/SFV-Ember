@@ -234,12 +234,11 @@ function Invoke-PubRooms([object]$Ctx, [hashtable]$P) {
     }
     $null = Test-PubStageToDo $Ctx 'rooms' $planRead -Redo:$P.Redo
     $rules = Read-PubRulesForPlan $Ctx $plan $P.Rules
+    if ($P.AdoptKit) { Invoke-PubRoomsAdopt $Ctx $planRead $rules $P; return }
+    # Promote compares the installed binaries with this stage's hashes, so every rooms evidence names a pair: a room
+    # build the last release already installed is adopted from its kit, not skipped.
     if (!$plan.roomBuild.changed -and !$P.Force) {
-        if ($Ctx.DryRun) { Write-PubLog $Ctx "Dry run: the room build $($plan.roomBuild.id) is $($plan.previous.tag)'s; would record that no room host is needed."; return }
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        $null = Write-PubEvidence $Ctx 'rooms' (New-PubEvidence $Ctx 'rooms' $planRead @() @{unchanged = $true; buildId = $plan.roomBuild.id; previous = $plan.previous.tag})
-        Write-PubLog $Ctx "The room build $($plan.roomBuild.id) is unchanged since $($plan.previous.tag): nothing to build or stage."
-        return
+        throw "The room build $($plan.roomBuild.id) is $($plan.previous.tag)'s, which the VPS has installed: adopt that kit (-AdoptKit <folder> -KitSource <sfv commit> -KitLibrary <library commit>), or build it again with -Force."
     }
     $backend = if ($P.LinuxBackend) { $P.LinuxBackend } else { $Ctx.Config.rooms.backend }
     if ($backend -cnotin @('wsl', 'server1')) { throw "No Linux back end $backend (wsl or server1)." }
@@ -267,19 +266,21 @@ function Invoke-PubRooms([object]$Ctx, [hashtable]$P) {
     Publish-PubRoomKit $Ctx $plan $evidence
 }
 
-function Invoke-PubRoomsWsl([object]$Ctx, [object]$Plan, [string]$Inputs, [string]$Out, [hashtable]$P) {
+# -Check: the kit's two binaries (in $Inputs) are checked by the same script in its --check mode; nothing is built.
+function Invoke-PubRoomsWsl([object]$Ctx, [object]$Plan, [string]$Inputs, [string]$Out, [hashtable]$P, [switch]$Check) {
     $lap = $Ctx.Config.laptop
     $attempt = if ((Test-Path -LiteralPath (Join-Path (Get-PubStageDir $Ctx 'rooms') 'attempt.json')) -and !$P.NewAttempt) { Get-PubAttempt $Ctx 'rooms' } else { $null }
     if (!$attempt) {
         $attempt = Get-PubAttempt $Ctx 'rooms' -New
         Invoke-PubLaptop $Ctx "pwsh -NoProfile -Command `"New-Item -ItemType Directory -Force -Path '$($attempt.work)' | Out-Null`"" | Out-Null
         Copy-PubToLaptop $Ctx $Ctx.AgentPath "$($attempt.work)\laptop-agent.ps1"
-        $null = Assert-PubLaptopFree $Ctx $attempt.work
+        if (!$Check) { $null = Assert-PubLaptopFree $Ctx $attempt.work }
         Copy-PubToLaptop $Ctx $Ctx.RoomScriptPath "$($attempt.work)\build-rooms-linux.sh"
-        Copy-PubToLaptop $Ctx (Join-Path $Inputs 'sfv.tar') "$($attempt.work)\sfv.tar"
-        Copy-PubToLaptop $Ctx (Join-Path $Inputs 'library.tar') "$($attempt.work)\library.tar"
+        $names = if ($Check) { @('sfve-room-host', 'sf4-net') } else { @('sfv.tar', 'library.tar') }
+        foreach ($name in $names) { Copy-PubToLaptop $Ctx (Join-Path $Inputs $name) "$($attempt.work)\$name" }
         $job = Invoke-PubAgent $Ctx $attempt.work 'rooms-install' @('-BuildId', $Plan.roomBuild.id, '-Interactive', $lap.interactive, '-JobName', $attempt.job,
-            '-SfvTar', (Get-PubSha256 (Join-Path $Inputs 'sfv.tar')), '-LibraryTar', (Get-PubSha256 (Join-Path $Inputs 'library.tar')))
+            '-Mode', $(if ($Check) { 'check' } else { 'build' }),
+            '-SfvTar', (Get-PubSha256 (Join-Path $Inputs $names[0])), '-LibraryTar', (Get-PubSha256 (Join-Path $Inputs $names[1])))
         if (!$job.ok) { throw "The laptop could not prepare the room-host job: $($job.error)" }
     }
     $state = Wait-PubLaptopJob $Ctx $attempt.work $attempt.job ([int]$lap.startTimeoutMinutes) ([int]$lap.roomsTimeoutMinutes)
@@ -296,12 +297,15 @@ function Invoke-PubRoomsServer1([object]$Ctx, [object]$Plan, [string]$Inputs, [s
 
 # The pair, checked from the files: Linux binaries, the hashes SHA256SUMS names, the room host's own answers for
 # its build and another, the build it embeds, no build-machine path, no forbidden string.
-function Assert-PubRoomFiles([object]$Ctx, [object]$Plan, [string]$Out, [object[]]$Rules) {
+# -Adopted: the files are a kit's, checked by the script's --check mode (no archives; the hashes must be the kit's).
+function Assert-PubRoomFiles([object]$Ctx, [object]$Plan, [string]$Out, [object[]]$Rules, [switch]$Adopted, [hashtable]$KitHashes = @{}) {
     $result = @{}
     foreach ($line in [IO.File]::ReadAllLines((Join-Path $Out 'result.txt'))) { if ($line -cmatch '^([A-Z_]+)=(.*)$') { $result[$Matches[1]] = $Matches[2] } }
     if ($result.STATUS -cne 'ok') { throw "The room-host build did not finish (STATUS $($result.STATUS))." }
     if ($result.BUILD_ID -cne $Plan.roomBuild.id) { throw "The room host was built for $($result.BUILD_ID), not $($Plan.roomBuild.id)." }
-    if ($result.SFV_TAR -cne (Get-PubSha256 (Join-Path (Get-PubStageDir $Ctx 'rooms') 'inputs\sfv.tar')) -or
+    if ($Adopted) {
+        if ($result.MODE -cne 'check') { throw 'The kit was not checked in check mode.' }
+    } elseif ($result.SFV_TAR -cne (Get-PubSha256 (Join-Path (Get-PubStageDir $Ctx 'rooms') 'inputs\sfv.tar')) -or
         $result.LIBRARY_TAR -cne (Get-PubSha256 (Join-Path (Get-PubStageDir $Ctx 'rooms') 'inputs\library.tar'))) { throw 'The room host was built from other archives than the plan''s.' }
     if ($result.ANSWER_OWN -cne 'helper_unavailable') { throw "The room host answers $($result.ANSWER_OWN) for its own build (helper_unavailable expected)." }
     if ($result.ANSWER_OTHER -cne 'other_build') { throw "The room host answers $($result.ANSWER_OTHER) for another build (other_build expected)." }
@@ -309,13 +313,14 @@ function Assert-PubRoomFiles([object]$Ctx, [object]$Plan, [string]$Out, [object[
     foreach ($key in @($result.Keys | Where-Object { $_ -clike 'PATHS_*' })) { if ($result[$key] -cne '0') { throw "The Linux build left build-machine paths in its binaries ($key=$($result[$key]))." } }
     $sums = @{}
     foreach ($line in [IO.File]::ReadAllLines((Join-Path $Out 'SHA256SUMS'))) { if ($line -cmatch '^([0-9a-f]{64}) [ *]?(.+)$') { $sums[$Matches[2]] = $Matches[1] } }
-    $facts = @{buildId = $Plan.roomBuild.id; unchanged = $false}
+    $facts = @{buildId = $Plan.roomBuild.id; adopted = [bool]$Adopted}
     foreach ($name in @('sfve-room-host', 'sf4-net')) {
         $path = Join-Path $Out $name
         $bytes = [IO.File]::ReadAllBytes($path)
         if ($bytes.Length -lt 4 -or $bytes[0] -ne 0x7F -or $bytes[1] -ne 0x45 -or $bytes[2] -ne 0x4C -or $bytes[3] -ne 0x46) { throw "$name is not a Linux binary." }
         $sha = Get-PubBytesSha256 $bytes
         if ($sums[$name] -cne $sha) { throw "$name is not the file SHA256SUMS names." }
+        if ($Adopted -and $KitHashes[$name] -cne $sha) { throw "The checked $name is not the kit's ($($KitHashes[$name]))" }
         Assert-PubNoHits (Find-PubHits $Rules $bytes "room host $name") "The Linux $name"
         $facts[$name] = $sha
     }
@@ -364,7 +369,10 @@ function New-PubRoomKit([object]$Ctx, [object]$Plan, [string]$Dir, [string]$Out)
 # Puts the kit on the VPS (no sudo): kit.tar to ~/<stage>.incoming-<label>.tar, unpacked and checked there, the old
 # folder kept as ~/<stage>.before-<label>. Then the owner's command.
 function Publish-PubRoomKit([object]$Ctx, [object]$Plan, [object]$Evidence) {
-    if ($Evidence.facts.unchanged) { Write-PubLog $Ctx 'No room kit: the room build is unchanged.'; return }
+    if ($Evidence.facts.adopted) {
+        Write-PubLog $Ctx "Adopted kit: nothing to stage. Promote checks that the VPS has room host $($Evidence.facts.'sfve-room-host'.Substring(0, 12)) and helper $($Evidence.facts.'sf4-net'.Substring(0, 12)) installed for $($Plan.roomBuild.id)."
+        return
+    }
     $vps = $Ctx.Config.vps
     $script = [IO.File]::ReadAllBytes($Ctx.VpsStagePath)
     $tar = Join-Path (Get-PubStageDir $Ctx 'rooms') 'kit.tar'
@@ -514,8 +522,9 @@ function Push-PubBranch([object]$Ctx, [string]$Step, [string]$Repo, [string]$Rem
 # The server gate: the live VPS offers the plan's room build (read-only ssh, no sudo; scripts/publish/vps.sh check).
 function Test-PubServer([object]$Ctx, [object]$Plan, [object]$Rooms, [switch]$RoomsConfirmed) {
     $vps = $Ctx.Config.vps
-    $hostSha = if ($Rooms.facts.unchanged) { '-' } else { $Rooms.facts.'sfve-room-host' }
-    $netSha = if ($Rooms.facts.unchanged) { '-' } else { $Rooms.facts.'sf4-net' }
+    $hostSha = [string]$Rooms.facts.'sfve-room-host'
+    $netSha = [string]$Rooms.facts.'sf4-net'
+    if ($hostSha -cnotmatch '^[0-9a-f]{64}$' -or $netSha -cnotmatch '^[0-9a-f]{64}$') { throw 'The rooms evidence names no room host and helper hashes to compare with the VPS.' }
     $result = & $Ctx.Ops.Ssh $vps.host "bash -s -- check '$($Plan.roomBuild.id)' '$hostSha' '$netSha' '$($vps.roomsLib)'" ([IO.File]::ReadAllBytes($Ctx.VpsStagePath)) 120
     $text = ConvertTo-PubText $result
     $line = @($text -split "`n" | Where-Object { $_ -cmatch '^RESULT ' }) | Select-Object -Last 1
@@ -551,7 +560,7 @@ function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
     if ($draft.inputs.build -cne $build.sha256 -or $draft.inputs.rooms -cne $rooms.sha256) { throw 'The draft was made from other build or rooms evidence than the current one.' }
     $facts = Assert-PubBuildFiles $Ctx $planRead (Join-Path (Get-PubStageDir $Ctx 'build') 'files') $rules
     if ($facts.zipSha256 -cne $build.facts.zipSha256) { throw 'The zip is not the one the build evidence names.' }
-    if (!$rooms.facts.unchanged -and ($rooms.facts.buildId -cne $plan.roomBuild.id)) { throw 'The rooms evidence is for another room build.' }
+    if ($rooms.facts.buildId -cne $plan.roomBuild.id) { throw 'The rooms evidence is for another room build.' }
     if ((Resolve-PubCommit $Ctx $Ctx.Repo $plan.source.commit) -cne $plan.source.commit -or (Get-PubTree $Ctx $Ctx.Repo $plan.source.commit) -cne $plan.source.tree) { throw 'The plan''s source commit is not here as planned.' }
     $assets = Get-PubReleaseAssets $Ctx $plan
     $id = [string]$draft.facts.releaseId
@@ -653,4 +662,137 @@ function Show-PubStatus([object]$Ctx) {
         try { $evidence = Read-PubEvidence $Ctx $stage $planRead; Write-Host "$($stage.PadRight(8)) done, checked ($($evidence.sha256.Substring(0, 12)))" }
         catch { Write-Host "$($stage.PadRight(8)) BROKEN: $($_.Exception.Message)" }
     }
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+# Rooms by adoption: a room-host pair built and installed earlier (a kit folder) taken as this release's, when the
+# plan's commits would build the same binaries.
+
+# What the Linux build compiles, read from the commits themselves (the same derivation for any commit pair):
+#   sfv-ember: data/pick-space.json (embedded), scripts/build-room-host-linux.sh, the catalog sources that script
+#              names (CATALOG_SOURCES) and every header they include from sfv-ember's src/.
+#   library:   server/roomhost/build-linux.sh and sources.txt, every source sources.txt lists for a data catalog
+#              (all groups but host_windows, host_catalog, selection and catalog) and every header those and the
+#              sfv-ember sources include from the library's src/ and server/roomhost/; and sf4-net's crate as
+#              `cargo build --profile server` reads it (Cargo.toml, Cargo.lock, build.rs, rust-toolchain.toml,
+#              resource.rc, src/) with its path dependencies (not dev-dependencies), each the same way.
+# Includes resolve as g++ does with -I<sfv>/src -I<library>/src -I<library>/server/roomhost: "..." first beside the
+# including file; a name found in neither tree (a system header) is not a source.
+function Get-PubRoomInputs([object]$Ctx, [string]$SfvCommit, [string]$LibraryCommit) {
+    $trees = @{}
+    foreach ($side in @(@('sfv', $Ctx.Repo, $SfvCommit), @('library', $Ctx.LibraryRepo, $LibraryCommit))) {
+        $set = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        foreach ($line in ((ConvertTo-PubText (Invoke-PubGit $Ctx $side[1] @('ls-tree', '-r', '--name-only', '--full-tree', $side[2]))) -split "`n")) { if ($line.Trim()) { $null = $set.Add($line.Trim()) } }
+        $trees[$side[0]] = @{repo = $side[1]; commit = $side[2]; files = $set}
+    }
+    $read = { param($Side, $Path) Get-PubShow $Ctx $trees[$Side].repo $trees[$Side].commit $Path }
+    $normal = { param($Path) $parts = [Collections.Generic.List[string]]::new()
+        foreach ($part in ($Path -split '/')) { if ($part -ceq '..') { if ($parts.Count) { $parts.RemoveAt($parts.Count - 1) } } elseif ($part -and $part -cne '.') { $parts.Add($part) } }
+        $parts -join '/' }
+    $found = @{sfv = [Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal); library = [Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)}
+    foreach ($fixed in @('data/pick-space.json', 'scripts/build-room-host-linux.sh')) { $null = $found.sfv.Add($fixed) }
+    foreach ($fixed in @('server/roomhost/build-linux.sh', 'server/roomhost/sources.txt')) { $null = $found.library.Add($fixed) }
+    $queue = [Collections.Generic.Queue[object]]::new()
+    $script = & $read 'sfv' 'scripts/build-room-host-linux.sh'
+    foreach ($m in [regex]::Matches($script, '\$SFV/(src/[^\s"$]+\.cxx)')) { $queue.Enqueue(@('sfv', $m.Groups[1].Value)) }
+    $group = ''
+    foreach ($line in ((& $read 'library' 'server/roomhost/sources.txt') -split "`n")) {
+        $line = $line.TrimEnd("`r")
+        if ($line -cmatch '^# \[([a-z_]+)\]$') { $group = $Matches[1]; continue }
+        if (!$line.Trim() -or $line.StartsWith('#')) { continue }
+        if ($group -cnotin @('host_windows', 'host_catalog', 'selection', 'catalog')) { $queue.Enqueue(@('library', $line.Trim())) }
+    }
+    if ($queue.Count -lt 3) { throw 'Could not read the room host''s sources from the build scripts.' }
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    while ($queue.Count) {
+        $side, $path = $queue.Dequeue()
+        if (!$seen.Add("${side}:$path")) { continue }
+        if (!$trees[$side].files.Contains($path)) { throw "The room host's source $side $path is not in $($trees[$side].commit)." }
+        $null = $found[$side].Add($path)
+        $dir = if ($path.Contains('/')) { $path.Substring(0, $path.LastIndexOf('/')) } else { '' }
+        foreach ($m in [regex]::Matches((& $read $side $path), '(?m)^\s*#\s*include\s*([<"])([^>"]+)[>"]')) {
+            $name = $m.Groups[2].Value
+            $candidates = @()
+            if ($m.Groups[1].Value -ceq '"') { $candidates += , @($side, (& $normal "$dir/$name")) }
+            $candidates += @(, @('sfv', (& $normal "src/$name"))) + @(, @('library', (& $normal "src/$name"))) + @(, @('library', (& $normal "server/roomhost/$name")))
+            foreach ($candidate in $candidates) {
+                if ($trees[$candidate[0]].files.Contains($candidate[1])) { $queue.Enqueue($candidate); break }
+            }
+        }
+    }
+    # sf4-net and its path dependencies.
+    $crates = [Collections.Generic.Queue[string]]::new(); $crates.Enqueue('rust/sf4-net')
+    $crateSeen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    while ($crates.Count) {
+        $crate = $crates.Dequeue()
+        if (!$crateSeen.Add($crate)) { continue }
+        foreach ($name in @('Cargo.toml', 'Cargo.lock', 'build.rs', 'rust-toolchain.toml', 'resource.rc')) { if ($trees.library.files.Contains("$crate/$name")) { $null = $found.library.Add("$crate/$name") } }
+        foreach ($file in $trees.library.files) { if ($file.StartsWith("$crate/src/")) { $null = $found.library.Add($file) } }
+        $section = ''
+        foreach ($line in ((& $read 'library' "$crate/Cargo.toml") -split "`n")) {
+            if ($line -cmatch '^\s*\[([^\]]+)\]') { $section = $Matches[1]; continue }
+            if ($section -cmatch 'dev-dependencies' -or $section -cnotmatch 'dependencies') { continue }
+            if ($line -cmatch 'path\s*=\s*"([^"]+)"') { $crates.Enqueue((& $normal "$crate/$($Matches[1])")) }
+        }
+    }
+    @{sfv = @($found.sfv); library = @($found.library)}
+}
+
+# The kit's commits are the plan's or behind them on the same line, and nothing that goes into the two binaries
+# changed between them. Returns the path lists (the union of what each commit pair compiles).
+function Assert-PubKitEquivalent([object]$Ctx, [object]$Plan, [string]$KitSource, [string]$KitLibrary) {
+    $kitSfv = Resolve-PubCommit $Ctx $Ctx.Repo $KitSource
+    $kitLib = Resolve-PubCommit $Ctx $Ctx.LibraryRepo $KitLibrary
+    if (!(Test-PubAncestor $Ctx $Ctx.Repo $kitSfv $Plan.source.commit)) { throw "The kit's sfv-ember commit $kitSfv is not an ancestor of the plan's $($Plan.source.commit)." }
+    if (!(Test-PubAncestor $Ctx $Ctx.LibraryRepo $kitLib $Plan.library.commit)) { throw "The kit's library commit $kitLib is not an ancestor of the plan's $($Plan.library.commit)." }
+    $atKit = Get-PubRoomInputs $Ctx $kitSfv $kitLib
+    $atPlan = Get-PubRoomInputs $Ctx $Plan.source.commit $Plan.library.commit
+    $paths = @{sfv = @(@($atKit.sfv) + @($atPlan.sfv) | Sort-Object -Unique -CaseSensitive); library = @(@($atKit.library) + @($atPlan.library) | Sort-Object -Unique -CaseSensitive)}
+    foreach ($side in @(@('sfv', $Ctx.Repo, $kitSfv, $Plan.source.commit), @('library', $Ctx.LibraryRepo, $kitLib, $Plan.library.commit))) {
+        if ($side[2] -ceq $side[3]) { continue }
+        $changed = (ConvertTo-PubText (Invoke-PubGit $Ctx $side[1] (@('diff', '--name-only', $side[2], $side[3], '--') + @($paths[$side[0]])))).Trim()
+        if ($changed) { throw "The kit is not what the plan's commits build: $($side[0]) changed $(($changed -split "`n") -join ', ') between $($side[2].Substring(0, 12)) and $($side[3].Substring(0, 12))." }
+    }
+    [pscustomobject]@{sfvCommit = $kitSfv; libraryCommit = $kitLib; paths = $paths}
+}
+
+# -Stage rooms -AdoptKit <folder> -KitSource <commit> -KitLibrary <commit>: nothing is built or staged. The kit's
+# two binaries are checked as a built pair is (on the same Linux, by build-rooms-linux.sh --check), and the kit
+# must be equivalent to the plan's commits (Assert-PubKitEquivalent).
+function Invoke-PubRoomsAdopt([object]$Ctx, [object]$PlanRead, [object[]]$Rules, [hashtable]$P) {
+    $plan = $PlanRead.plan
+    if (!$P.KitSource -or !$P.KitLibrary) { throw '-AdoptKit needs -KitSource <sfv-ember commit> and -KitLibrary <library commit>: the commits the kit was built from.' }
+    $folder = $P.AdoptKit
+    $bin = if (Test-Path -LiteralPath (Join-Path $folder 'room-build\sfve-room-host')) { Join-Path $folder 'room-build' } else { $folder }
+    foreach ($name in @('sfve-room-host', 'sf4-net')) { if (!(Test-Path -LiteralPath (Join-Path $bin $name) -PathType Leaf)) { throw "No $name in the kit at $bin." } }
+    $kitHashes = @{'sfve-room-host' = (Get-PubSha256 (Join-Path $bin 'sfve-room-host')); 'sf4-net' = (Get-PubSha256 (Join-Path $bin 'sf4-net'))}
+    if (Test-Path -LiteralPath (Join-Path $bin 'BUILD_ID')) {
+        $named = ([IO.File]::ReadAllText((Join-Path $bin 'BUILD_ID'))).Trim()
+        if ($named -cne $plan.roomBuild.id) { throw "The kit is for room build $named, not the plan's $($plan.roomBuild.id)." }
+    }
+    $sumsFile = Join-Path $folder 'SHA256SUMS'
+    if ((Test-Path -LiteralPath $sumsFile) -and $bin -ne $folder) {
+        foreach ($line in [IO.File]::ReadAllLines($sumsFile)) {
+            if ($line -cmatch '^([0-9a-f]{64}) [ *]?room-build/(sfve-room-host|sf4-net)$' -and $Matches[1] -cne $kitHashes[$Matches[2]]) { throw "The kit's $($Matches[2]) is not the file its SHA256SUMS names." }
+        }
+    }
+    if (![Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes((Join-Path $bin 'sfve-room-host'))).Contains($plan.roomBuild.id)) { throw "The kit's room host does not carry the plan's room build $($plan.roomBuild.id)." }
+    $equivalent = Assert-PubKitEquivalent $Ctx $plan $P.KitSource $P.KitLibrary
+    Write-PubLog $Ctx "Kit from sfv-ember $($equivalent.sfvCommit.Substring(0, 12)) and library $($equivalent.libraryCommit.Substring(0, 12)) is equivalent: $($equivalent.paths.sfv.Count) sfv-ember and $($equivalent.paths.library.Count) library paths unchanged."
+    if ($Ctx.DryRun) { Write-PubLog $Ctx "Dry run: would check the kit's pair on the build PC's Linux and record it as adopted (room host $($kitHashes.'sfve-room-host'.Substring(0, 12)), helper $($kitHashes.'sf4-net'.Substring(0, 12)))."; return }
+    $dir = Get-PubStageDir $Ctx 'rooms'
+    $inputs = Join-Path $dir 'kit-in'
+    if (Test-Path -LiteralPath $inputs) { Remove-Item -LiteralPath $inputs -Recurse -Force }
+    New-Item -ItemType Directory -Path $inputs -Force | Out-Null
+    foreach ($name in $kitHashes.Keys) { Copy-Item -LiteralPath (Join-Path $bin $name) -Destination (Join-Path $inputs $name) }
+    foreach ($name in $kitHashes.Keys) { if ((Get-PubSha256 (Join-Path $inputs $name)) -cne $kitHashes[$name]) { throw "The kit's $name changed while it was copied." } }
+    $out = Join-Path $dir 'out'
+    Invoke-PubRoomsWsl $Ctx $plan $inputs $out $P -Check
+    $facts = Assert-PubRoomFiles $Ctx $plan $out $Rules -Adopted -KitHashes $kitHashes
+    $facts.backend = 'wsl-check'
+    $facts.buildScript = Get-PubSha256 $Ctx.RoomScriptPath
+    $facts.kit = @{folder = $folder; sfvCommit = $equivalent.sfvCommit; libraryCommit = $equivalent.libraryCommit; sfvPaths = $equivalent.paths.sfv; libraryPaths = $equivalent.paths.library}
+    $files = @(@('kit-in\sfve-room-host', 'kit-in\sf4-net', 'out\SHA256SUMS', 'out\result.txt') | ForEach-Object { Get-PubFileRecord $dir $_ })
+    $null = Write-PubEvidence $Ctx 'rooms' (New-PubEvidence $Ctx 'rooms' $PlanRead $files $facts)
+    Publish-PubRoomKit $Ctx $plan (Read-PubEvidence $Ctx 'rooms' $PlanRead)
 }

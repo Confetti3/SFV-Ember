@@ -8,7 +8,8 @@
 #                   trees, clean; their source fingerprints; job.json, and the build job's .cmd in the task folder
 #   job             (in the task) development and player builds with their tests, the helper, the package;
 #                   out\ gets the files the desktop takes back; result.json last
-#   rooms-install   the room-host job's .cmd, after the two archives are checked against their SHA-256
+#   rooms-install   the room-host job's .cmd, after its two inputs are checked against their SHA-256 (-Mode build:
+#                   sfv.tar and library.tar; -Mode check: a kit's sfve-room-host and sf4-net, checked but not built)
 #   rooms-job       (in the task) the WSL build of sf4-net and sfve-room-host from the archives
 #   poll            new, starting, running, done or failed, with the log's last line
 param([Parameter(Mandatory = $true)][ValidateSet('status', 'sync', 'job', 'rooms-install', 'rooms-job', 'poll')][string]$Phase,
@@ -16,7 +17,7 @@ param([Parameter(Mandatory = $true)][ValidateSet('status', 'sync', 'job', 'rooms
       [string]$Label = '', [string]$Source = '', [string]$SourceTree = '', [string]$Library = '', [string]$LibraryTree = '',
       [string]$SourceCheckout = '', [string]$LibraryCheckout = '', [string]$BuildDev = '', [string]$BuildPlayer = '',
       [string]$VcpkgRoot = '', [string]$RenderStore = '', [string]$OldPackageCheck = '', [string]$Dist = '',
-      [string]$Interactive = 'D:\sf4\interactive', [string]$JobName = '', [string]$BuildId = '', [string]$SfvTar = '', [string]$LibraryTar = '')
+      [string]$Interactive = 'D:\sf4\interactive', [string]$JobName = '', [string]$BuildId = '', [string]$SfvTar = '', [string]$LibraryTar = '', [ValidateSet('build', 'check')][string]$Mode = 'build')
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
@@ -162,9 +163,10 @@ switch ($Phase) {
     }
     'rooms-install' {
         try {
-            if ((Sha (Join-Path $Work 'sfv.tar')) -cne $SfvTar -or (Sha (Join-Path $Work 'library.tar')) -cne $LibraryTar) { throw 'The archives on this PC are not the desktop''s.' }
+            $names = if ($Mode -ceq 'check') { @('sfve-room-host', 'sf4-net') } else { @('sfv.tar', 'library.tar') }
+            if ((Sha (Join-Path $Work $names[0])) -cne $SfvTar -or (Sha (Join-Path $Work $names[1])) -cne $LibraryTar) { throw 'The inputs on this PC are not the desktop''s.' }
             if ($BuildId -cnotmatch '^sfv-ember/[0-9]+/[0-9]+\.[0-9]+/[0-9a-f]{16}/layout-[0-9a-f]{16}$') { throw "Not a room build: $BuildId" }
-            Save-Json (Join-Path $Work 'job.json') @{buildId = $BuildId}
+            Save-Json (Join-Path $Work 'job.json') @{buildId = $BuildId; mode = $Mode}
             Write-JobCmd $JobName 'rooms-job'
             Out-Result @{ok = $true}
         } catch { Out-Result @{ok = $false; error = $_.Exception.Message} }
@@ -177,7 +179,10 @@ switch ($Phase) {
             $drive = $Work.Substring(0, 1).ToLowerInvariant()
             $mnt = "/mnt/$drive/$($Work.Substring(3).Replace('\', '/'))"
             $log = Join-Path $Work 'rooms.log'
-            & wsl -e bash -lc "bash '$mnt/build-rooms-linux.sh' '$mnt' '$mnt/out' '$($job.buildId)'" *> $log
+            $flag = if ($job.mode -ceq 'check') { '--check ' } else { '' }
+            $in = if ($job.mode -ceq 'check') { "$mnt/kit-in" } else { $mnt }
+            if ($job.mode -ceq 'check') { New-Item -ItemType Directory -Path (Join-Path $Work 'kit-in') -Force | Out-Null; Copy-Item -LiteralPath (Join-Path $Work 'sfve-room-host'), (Join-Path $Work 'sf4-net') -Destination (Join-Path $Work 'kit-in') -Force }
+            & wsl -e bash -lc "bash '$mnt/build-rooms-linux.sh' $flag'$in' '$mnt/out' '$($job.buildId)'" *> $log
             $result.exit = $LASTEXITCODE
             $text = if (Test-Path -LiteralPath (Join-Path $Work 'out\result.txt')) { Get-Content -LiteralPath (Join-Path $Work 'out\result.txt') -Raw } else { '' }
             $result.ok = ($result.exit -eq 0 -and $text -cmatch '(?m)^STATUS=ok')

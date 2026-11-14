@@ -4,7 +4,7 @@
 #
 #   scripts\publish.ps1 -Stage plan    -Label 0.1.0-beta.9 -Source b9/integrate -Notes <notes.md> [-DiscordDraft <file>]
 #   scripts\publish.ps1 -Stage build   -Label 0.1.0-beta.9
-#   scripts\publish.ps1 -Stage rooms   -Label 0.1.0-beta.9
+#   scripts\publish.ps1 -Stage rooms   -Label 0.1.0-beta.9 [-AdoptKit <kit folder> -KitSource <sfv commit> -KitLibrary <library commit>]
 #   scripts\publish.ps1 -Stage draft   -Label 0.1.0-beta.9
 #   scripts\publish.ps1 -Stage promote -Label 0.1.0-beta.9 [-RoomsConfirmed]
 #   scripts\publish.ps1 -Stage status  -Label 0.1.0-beta.9
@@ -18,6 +18,7 @@ param(
     [Parameter(Mandatory = $true)][ValidateSet('plan', 'build', 'rooms', 'draft', 'promote', 'status')][string]$Stage,
     [Parameter(Mandatory = $true)][string]$Label,
     [string]$Source = '', [string]$Library = '', [string]$Notes = '', [string]$DiscordDraft = '',
+    [string]$AdoptKit = '', [string]$KitSource = '', [string]$KitLibrary = '',
     [string[]]$Rules = @(), [string[]]$AllowIdentity = @(),
     [string]$StateRoot = 'D:\sfv-ember-dist\publish', [string]$ConfigPath = '',
     [ValidateSet('vps-stage', 'draft', 'push-library', 'push-origin', 'push-public', 'publish')][string[]]$Skip = @(),
@@ -48,7 +49,8 @@ $ctx = [pscustomobject]@{
     VpsStagePath = (Join-Path $PSScriptRoot 'publish\vps.sh')
 }
 $parameters = @{Source = $Source; Library = $Library; Notes = $Notes; Rules = $Rules; DiscordDraft = $DiscordDraft; AllowIdentity = $AllowIdentity
-    Replan = [bool]$Replan; Redo = [bool]$Redo; NewAttempt = [bool]$NewAttempt; Force = [bool]$Force; LinuxBackend = $LinuxBackend; RoomsConfirmed = [bool]$RoomsConfirmed}
+    Replan = [bool]$Replan; Redo = [bool]$Redo; NewAttempt = [bool]$NewAttempt; Force = [bool]$Force; LinuxBackend = $LinuxBackend; RoomsConfirmed = [bool]$RoomsConfirmed
+    AdoptKit = $AdoptKit; KitSource = $KitSource; KitLibrary = $KitLibrary}
 
 # One run per label at a time.
 $lock = $null
