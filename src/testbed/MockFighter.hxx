@@ -121,6 +121,9 @@ public:
 	int PoseMisses() const { return poseMisses_; }
 	int PoseHoldsMade() const { return poseHolds_; }
 	int PoseHoldsRefused() const { return poseRefused_; }
+	int PoseHoldsRefused(pose_hold::Refusal why) const { return refusedBy_[(int)why]; }
+	// Holds whose first update after was another frame's, or not fresh.
+	int NotFreshAfterHold() const { return notFreshAfterHold_; }
 	int PoseHoldsCancelled() const { return poseCancelled_; }
 	// Holds whose first update after was the held frame's, fresh.
 	int FreshAfterHold() const { return freshAfterHold_; }
@@ -198,6 +201,8 @@ private:
 	bool missed_ = false;
 	int awaitingHold_ = -1;
 	int poseMisses_ = 0, poseHolds_ = 0, poseRefused_ = 0, poseCancelled_ = 0, freshAfterHold_ = 0, posePending_ = 0;
+	int notFreshAfterHold_ = 0;
+	int refusedBy_[pose_hold::kRefusals] = {};
 };
 
 } // namespace sfve::testbed

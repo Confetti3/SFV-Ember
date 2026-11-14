@@ -114,7 +114,10 @@ void MockFighter::NotePoseHold(const pose_hold::Event& event)
 		poseHolds_++;
 		awaitingHold_ = event.frame;
 		break;
-	case pose_hold::Event::Kind::Refused: poseRefused_++; break;
+	case pose_hold::Event::Kind::Refused:
+		poseRefused_++;
+		refusedBy_[(int)event.why]++;
+		break;
 	}
 }
 
@@ -122,6 +125,7 @@ void MockFighter::Advance(const FrameInputs& inputs, bool resimulating)
 {
 	if (awaitingHold_ >= 0) {
 		if (fresh_ && world_.frame == awaitingHold_) freshAfterHold_++;
+		else notFreshAfterHold_++;
 		awaitingHold_ = -1;
 	}
 	ReadPose();

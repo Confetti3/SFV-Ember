@@ -143,7 +143,8 @@ struct HoldPair {
 
 	HoldPair(uint32_t seed, bool holds, const Poses& poses)
 	{
-		pair = std::make_unique<LoopbackPair>(kBugNone, kDelay, false,
+		// Every frame's hash kept, so every final frame compares.
+		pair = std::make_unique<LoopbackPair>(kBugNone, kDelay, true,
 			[&](MockFighter& a, MockFighter& b, uint16_t, uint16_t) {
 				a.PoseReadsEvery(poses.every, poses.run, poses.needsPlacement);
 				b.PoseReadsEvery(poses.every, poses.run, poses.needsPlacement);
@@ -252,13 +253,24 @@ int Differing(const LoopbackPair& pair, const std::vector<uint64_t>& reference, 
 	return differing;
 }
 
+std::string RefusalsText(const MockFighter& game)
+{
+	std::string text;
+	for (int i = 1; i < pose_hold::kRefusals; i++) {
+		const Refusal why = static_cast<Refusal>(i);
+		if (game.PoseHoldsRefused(why)) text += std::string(pose_hold::RefusalName(why)) + " " + std::to_string(game.PoseHoldsRefused(why)) + "; ";
+	}
+	return text;
+}
+
 void Describe(const char* name, const RollbackSession& s, const MockFighter& game)
 {
 	const RollbackSession::Stats& st = s.GetStats();
 	MESSAGE(name << ": " << st.rollbacks << " rollbacks, " << st.poseHolds << " pose holds, " << st.poseHoldsRefused
 				 << " refused; the mock: " << game.PoseMisses() << " misses, " << game.PoseHoldsPending() << " pending, "
 				 << game.PoseHoldsCancelled() << " dropped, " << game.PoseHoldsMade() << " held, " << game.FreshAfterHold()
-				 << " fresh after, " << game.PoseHoldsRefused() << " refused");
+				 << " fresh after, " << game.NotFreshAfterHold() << " not fresh after, " << game.PoseHoldsRefused()
+				 << " refused: " << RefusalsText(game));
 }
 
 } // namespace
@@ -407,6 +419,8 @@ TEST_CASE("a lagged replay holds as a session does, and its final states are the
 			CHECK(LaggedWithPoses(frames, straight, poses, true, lag, 0, held, &compared, &holdsMade) == 0);
 			CHECK(compared >= kFrames - 10);
 			CHECK(holdsMade > 0);
+			MESSAGE("lag " << lag << ", every " << poses.every << " run " << poses.run << ": " << holdsMade << " holds, "
+				<< held.FreshAfterHold() << " fresh after, " << held.NotFreshAfterHold() << " not, refused: " << RefusalsText(held));
 			CHECK(held.PoseHoldsRefused() == 0);
 			CHECK(held.FreshAfterHold() == held.PoseHoldsMade());
 			MockFighter live;
