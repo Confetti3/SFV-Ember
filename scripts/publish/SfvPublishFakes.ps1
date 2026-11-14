@@ -9,7 +9,7 @@ function New-FakeWorld([string]$Fixture) {
         Releases = [Collections.Generic.List[object]]::new(); NextId = 1000; Assets = @{}; FailPatch = $false
         Commands = [Collections.Generic.List[string]]::new(); Pushes = [Collections.Generic.List[string]]::new()
         LaptopBusy = ''; JobStarted = @{}; BuildTweak = $null; RoomsTweak = $null; JobFails = $false
-        VpsCheck = 'offered'; VpsStaged = ''; VpsUploads = @{}
+        VpsCheck = 'offered'; VpsStaged = ''; VpsUploads = @{}; Patches = 0; PatchThenFail = $false; OnPush = $null
         Fingerprints = @{source = ('A' * 64); library = ('B' * 64)}
         Plan = $null
     }
@@ -46,17 +46,21 @@ function New-FakeOperations([object]$World, [string]$PublicBare) {
         Tar = $real.Tar
         Now = [scriptblock]::Create("$w; `$W.Clock = `$W.Clock.AddSeconds(1); `$W.Clock")
         Sleep = [scriptblock]::Create("param(`$Seconds) $w; `$W.Sleeps++; `$W.Clock = `$W.Clock.AddSeconds(`$Seconds)")
-        Push = [scriptblock]::Create("param(`$Repo, `$Remote, `$Commit, `$Ref) $w; Invoke-FakePush `$W `$Repo `$Remote `$Commit `$Ref")
+        Push = [scriptblock]::Create("param(`$Repo, `$Remote, `$Commit, `$Ref, `$DryRun) $w; Invoke-FakePush `$W `$Repo `$Remote `$Commit `$Ref `$DryRun")
         Scp = [scriptblock]::Create("param(`$From, `$To, `$Timeout) $w; Invoke-FakeScp `$W `$From `$To")
         Ssh = [scriptblock]::Create("param(`$HostAlias, `$Command, `$Stdin, `$Timeout) $w; `$W.Commands.Add(`"ssh `$HostAlias `$Command`"); if (`$HostAlias -ceq 'laptop') { return Invoke-FakeLaptop `$W `$Command }; if (`$HostAlias -ceq 'vps') { return Invoke-FakeVps `$W `$Command }; throw `"A test reached an unknown host `$HostAlias`"")
         Gh = [scriptblock]::Create("param(`$Arguments) $w; `$W.Commands.Add(`"gh `$(`$Arguments -join ' ')`"); Invoke-FakeGh `$W `$W.PublicBare `$Arguments")
     }
 }
-function Invoke-FakePush([object]$World, [string]$Repo, [string]$Remote, [string]$Commit, [string]$Ref) {
+# Pushes go to the remote's fetch URL (a fixture folder), never by the remote's name: a fixture's push URLs name
+# GitHub repositories for the URL checks.
+function Invoke-FakePush([object]$World, [string]$Repo, [string]$Remote, [string]$Commit, [string]$Ref, $DryRun = $false) {
     $url = (& git -C $Repo remote get-url $Remote).Trim()
     if (![IO.Path]::GetFullPath($url).StartsWith($World.Fixture, [StringComparison]::OrdinalIgnoreCase)) { throw "A test tried to push outside the fixture: $url" }
+    if ($DryRun) { return Invoke-PubProcess 'git' @('-C', $Repo, 'push', '--porcelain', '--no-follow-tags', '--dry-run', $url, "${Commit}:$Ref") $null 60 }
     $World.Pushes.Add("$Remote $Ref $Commit")
-    Invoke-PubProcess 'git' @('-C', $Repo, 'push', '--quiet', $Remote, "${Commit}:$Ref") $null 60
+    if ($World.OnPush) { & $World.OnPush $Remote $Ref }
+    Invoke-PubProcess 'git' @('-C', $Repo, 'push', '--quiet', '--no-follow-tags', $url, "${Commit}:$Ref") $null 60
 }
 function Invoke-FakeScp([object]$World, [string]$From, [string]$To) {
     $World.Commands.Add("scp $From $To")
@@ -96,12 +100,14 @@ function Invoke-FakeGh([object]$World, [string]$PublicBare, [string[]]$A) {
     }
     if ($joined -cmatch '^api -X PATCH repos/[^/]+/[^/]+/releases/([0-9]+) --input') {
         if ($World.FailPatch) { return ConvertTo-FakeResult '' 1 'gh: Server Error (HTTP 502)' }
+        $World.Patches++
         $release = Get-FakeRelease $World $Matches[1]
         $request = Get-Content -LiteralPath $inputFile -Raw | ConvertFrom-Json
         & git -C $PublicBare cat-file -e "$($request.target_commitish)^{commit}" 2>$null
         if ($LASTEXITCODE) { return ConvertTo-FakeResult '' 1 'gh: Validation Failed (HTTP 422) target_commitish' }
         & git -C $PublicBare update-ref "refs/tags/$($release.tag_name)" $request.target_commitish
         $release.draft = $false; $release.target_commitish = $request.target_commitish; $release.published_at = $World.Clock.ToString('o')
+        if ($World.PatchThenFail) { return ConvertTo-FakeResult '' 1 'gh: connection reset after the request was applied' }
         return ConvertTo-FakeResult ($release | ConvertTo-Json -Depth 5)
     }
     if ($joined -cmatch '^release download (\S+) --repo \S+ --dir (\S+)') {
@@ -149,12 +155,14 @@ function Invoke-FakeLaptop([object]$World, [string]$Command) {
             return ConvertTo-FakeResult ("RESULT " + (@{task = $task; job = $World.LaptopBusy; game = @(); heavy = @()} | ConvertTo-Json -Compress) + "`n")
         }
         'sync' {
+            if (Test-Path -LiteralPath (Join-Path $local 'out')) { return ConvertTo-FakeResult "RESULT {`"ok`":false,`"error`":`"used folder`"}`n" }
             foreach ($b in 'source.bundle', 'library.bundle') { if (!(Test-Path -LiteralPath (Join-Path $local $b))) { return ConvertTo-FakeResult "RESULT {`"ok`":false,`"error`":`"no $b`"}`n" } }
             $job = & $arg 'JobName'
             Set-Content -LiteralPath (Join-Path $local 'job-name.txt') -Value $job
             return ConvertTo-FakeResult ("RESULT " + (@{ok = $true; sourceFingerprint = $World.Fingerprints.source; libraryFingerprint = $World.Fingerprints.library} | ConvertTo-Json -Compress) + "`n")
         }
         'rooms-install' {
+            if (Test-Path -LiteralPath (Join-Path $local 'out')) { return ConvertTo-FakeResult "RESULT {`"ok`":false,`"error`":`"used folder`"}`n" }
             Set-Content -LiteralPath (Join-Path $local 'job-name.txt') -Value (& $arg 'JobName')
             Set-Content -LiteralPath (Join-Path $local 'build-id.txt') -Value (& $arg 'BuildId')
             Set-Content -LiteralPath (Join-Path $local 'mode.txt') -Value (& $arg 'Mode')
@@ -186,7 +194,7 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
     New-Item -ItemType Directory -Path $staging -Force | Out-Null
     $f = @{
         dll = "MZ fake mod; room build $($plan.roomBuild.id); match $($plan.roomBuild.matchLine);"
-        launcher = 'MZ launcher'; extra = 'START HERE'
+        launcher = 'MZ launcher'; extra = 'START HERE'; extraName = 'START_HERE.md'
         sourceRevision = $plan.source.commit; emberRevision = $plan.library.commit
         sourceFingerprint = $World.Fingerprints.source; emberFingerprint = $World.Fingerprints.library
         tests = @('RoomBuild', 'Picks', 'Render'); ctestTotal = 3; ctestFailed = 0; version = $plan.version; label = $label
@@ -195,7 +203,7 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
     if ($World.BuildTweak) { & $World.BuildTweak $f }
     [IO.File]::WriteAllText((Join-Path $staging 'sfv_ember.dll'), $f.dll, [Text.Encoding]::Latin1)
     [IO.File]::WriteAllText((Join-Path $staging 'Launcher.exe'), $f.launcher)
-    [IO.File]::WriteAllBytes((Join-Path $staging 'START_HERE.md'), [Text.Encoding]::Unicode.GetBytes($f.extra))
+    [IO.File]::WriteAllBytes((Join-Path $staging $f.extraName), [Text.Encoding]::Unicode.GetBytes($f.extra))
     $binaries = @('sfv_ember.dll', 'Launcher.exe') | ForEach-Object { [ordered]@{path = $_; sha256 = (Get-FileHash -LiteralPath (Join-Path $staging $_) -Algorithm SHA256).Hash} }
     $receipt = { param($Kind) [ordered]@{schema = 1; product = 'SFV Ember'; version = $f.version; sourceRevision = $f.sourceRevision; sourceFingerprint = $f.sourceFingerprint
         emberRevision = $f.emberRevision; emberFingerprint = $f.emberFingerprint; buildKind = $Kind; testsPassed = $true; tests = $f.tests; binaries = $binaries} }
