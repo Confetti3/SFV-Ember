@@ -67,7 +67,7 @@ build turns it on). The layout id changed, so `data/pick-space.json` is owed a n
 
 ## What a game run must show
 
-- Rooms c, d, e of `D:\sf4-wt` field runs (`D:\sfv-re\b9-pass\s3`) and the lagged-replay variants with
+- Rooms c, d, e of `D:\sfv-re\b9-pass\s3` and the lagged-replay variants with
   `-sfve_pose_hold` at its default (off): no desync; `anchor unresolved` 0 and `given from the fight's position`
   above 0 in a match that uses Z33's, Z35's, the prop's or BLR's objects.
 - In the socket log, each anchored read's value the same on both copies, including on replayed frames, and
