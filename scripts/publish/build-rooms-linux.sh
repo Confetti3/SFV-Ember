@@ -60,13 +60,14 @@ line='{"room_id":"0123456789abcdef0123456789abcdef","name":"check","capacity":2,
 answer() { printf "$line\n" "$1" | timeout 10 ./sfve-room-host 2>/dev/null | grep -o '"reason":"[a-z_]*"' | head -1 | sed 's/.*:"\(.*\)"/\1/' || true; }
 put ANSWER_OWN "$(answer "$BUILD_ID")"
 put ANSWER_OTHER "$(answer sfv-ember/0/0.0/0000000000000000/layout-0000000000000000)"
-embedded=$(strings -a sfve-room-host | grep -o 'sfv-ember/[0-9]*/[0-9.]*/[0-9a-f]*/layout-[0-9a-f]*' | sort -u | tr '\n' ' ' | sed 's/ $//')
+embedded=$( { strings -a sfve-room-host | grep -o 'sfv-ember/[0-9]*/[0-9.]*/[0-9a-f]*/layout-[0-9a-f]*' || true; } | sort -u | tr '\n' ' ' | sed 's/ $//')
 put EMBEDDED "$embedded"
-count() { grep -a -o -F -- "$1" "$2" | wc -l | tr -d ' '; }
+# grep finds nothing in the clean case and returns 1, which must not end the script (set -e, pipefail).
+count() { { grep -a -o -F -- "$1" "$2" || true; } | wc -l | tr -d ' '; }
 for f in sfve-room-host sf4-net; do
     k=$(echo "$f" | tr 'a-z-' 'A-Z_')
     n=0
-    for needle in /home/ /mnt/ /root/ .cargo/ .rustup/ sfv-publish-rooms "$USER" "$(hostname)"; do
+    for needle in /home/ /mnt/ /root/ .cargo/ .rustup/ sfv-publish-rooms "${USER:-$(id -un)}" "$(hostname)"; do
         [ ${#needle} -ge 3 ] || continue
         n=$((n + $(count "$needle" "$f")))
     done
