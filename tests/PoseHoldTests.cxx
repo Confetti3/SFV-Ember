@@ -342,9 +342,9 @@ TEST_CASE("a hold whose own replay of the frame before misses too goes back a fr
 	const RollbackSession::Stats& sb = pair.b.GetStats();
 	CHECK(sa.poseHolds + sb.poseHolds > 0);
 	CHECK(pair.gameA.NotFreshAfterHold() + pair.gameB.NotFreshAfterHold() == 0);
-	// A chain that would reach past the saves still kept is refused (the
-	// hold one frame later stands); whatever a refusal left live was on frames
-	// a later rollback or hold replays.
+	// A chain loads a state a frame before the one a hold loads: its save
+	// kept its copy (holds keep kChainLimit frames more), so none is refused.
+	CHECK(sa.poseHoldsRefused + sb.poseHoldsRefused == 0);
 	// Some holds were chained: more pending holds than holds made and dropped.
 	CHECK(pair.gameA.PoseHoldsPending() + pair.gameB.PoseHoldsPending() >
 		pair.gameA.PoseHoldsMade() + pair.gameB.PoseHoldsMade() + pair.gameA.PoseHoldsCancelled() +

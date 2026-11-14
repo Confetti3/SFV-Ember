@@ -66,7 +66,10 @@ replayed with the rest), and the next tick replays and then plays its own.
   dropped unhashed when the replay frees them. If no hold comes (GGPO refuses at the end of the
   tick, never expected), `Unjunk` hashes them as usual.
 - **Copies**: with holds on, a rollback's and a hold's replay saves keep their copy (a later hold
-  may load any of them); the save rule otherwise unchanged.
+  may load any of them), and the cheaper-rollbacks rule keeps a save's copy until the inputs
+  `kChainLimit` frames further past it are confirmed (a chain loads up to that much earlier than
+  a rollback could). With the input delays rooms use this copies nearly every save (about 1 MB
+  each); the price of holds in the no-lag case.
 - **Frame() and LastConfirmedFrame()** while a hold's frames wait: `Frame()` is still the frame
   the tick stood at (the host's scripts, scenes and pacing see no jump back); `LastConfirmedFrame()`
   stops at F - 1, so no checkpoint after F is taken by the verifier, no frame after F is

@@ -890,7 +890,13 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 	// pending: what the tick played on a live value, which the hold's replay
 	// replaces (never hashed unless the hold does not come).
 	slot->junk = poseHolds_.Pending() >= 0 && frame > poseHolds_.Pending();
-	slot->copied = !config_.skipUnloadableSaves || frame == keepSave_ || confirmed_ < frame + 1 ||
+	// A pose hold loads the state the frame before the held one starts from,
+	// and a chain up to kChainLimit - 1 frames before that: a hold reaches
+	// that much further back than a rollback (FinishPoseHold), so with holds
+	// on a save keeps its copy until the inputs that far past it are
+	// confirmed.
+	const int holdReach = poseHolds_.On() ? pose_hold::kChainLimit : 0;
+	slot->copied = !config_.skipUnloadableSaves || frame == keepSave_ || confirmed_ < frame + 1 + holdReach ||
 		(poseHolds_.On() && (replaySave || slot->junk));
 	if (slot->copied) {
 		LARGE_INTEGER started, copied;
