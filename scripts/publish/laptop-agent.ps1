@@ -77,6 +77,8 @@ function Invoke-Step([string]$Name, [string]$Script, [string[]]$Arguments) {
 }
 
 New-Item -ItemType Directory -Path $Work -Force | Out-Null
+# A job is set up only in a folder no job has used: an earlier attempt's out\ or result.json would answer for it.
+function Assert-FreshWork { foreach ($name in 'out', 'result.json', 'started.json', 'job.json', 'checkout.json') { if (Test-Path -LiteralPath (Join-Path $Work $name)) { throw "$Work was used by an earlier job ($name); each attempt needs a new folder." } } }
 switch ($Phase) {
     'status' {
         $task = ((schtasks /query /tn 'Ember Interactive' /fo LIST | Select-String 'Status:').ToString() -replace '^Status:\s*', '').Trim()
@@ -88,6 +90,7 @@ switch ($Phase) {
     }
     'sync' {
         try {
+            Assert-FreshWork
             $sides = [ordered]@{source = @($SourceCheckout, $Source, $SourceTree); library = @($LibraryCheckout, $Library, $LibraryTree)}
             foreach ($side in $sides.Keys) {
                 $path, $commit, $tree = $sides[$side]
@@ -163,6 +166,7 @@ switch ($Phase) {
     }
     'rooms-install' {
         try {
+            Assert-FreshWork
             $names = if ($Mode -ceq 'check') { @('sfve-room-host', 'sf4-net') } else { @('sfv.tar', 'library.tar') }
             if ((Sha (Join-Path $Work $names[0])) -cne $SfvTar -or (Sha (Join-Path $Work $names[1])) -cne $LibraryTar) { throw 'The inputs on this PC are not the desktop''s.' }
             if ($BuildId -cnotmatch '^sfv-ember/[0-9]+/[0-9]+\.[0-9]+/[0-9a-f]{16}/layout-[0-9a-f]{16}$') { throw "Not a room build: $BuildId" }

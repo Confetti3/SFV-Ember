@@ -68,26 +68,40 @@ function Wait-PubLaptopJob([object]$Ctx, [string]$Work, [string]$JobName, [int]$
         & $Ctx.Ops.Sleep $poll
     }
 }
-# A stage's laptop attempt: a folder of its own under the laptop's work folder, recorded in <stage>\attempt.json.
+# A stage's laptop attempt: a folder of its own under the laptop's work folder, named for the time and a random part
+# so that no attempt (a -Redo or -NewAttempt included) ever meets an earlier one's files. It is recorded in
+# <stage>\attempt.json only once its job is installed: until then a re-run starts a fresh attempt.
 function Get-PubAttempt([object]$Ctx, [string]$Stage, [switch]$New) {
     $path = Join-Path (Get-PubStageDir $Ctx $Stage) 'attempt.json'
     if ((Test-Path -LiteralPath $path) -and !$New) { return Read-PubJson $path }
-    $number = 1
-    if (Test-Path -LiteralPath $path) { $number = [int](Read-PubJson $path).number + 1; Move-Item -LiteralPath $path -Destination "$path.$($number - 1)" }
-    $attempt = [pscustomobject]@{
-        number = $number; job = "sfv-publish-$($Ctx.Label -replace '[^A-Za-z0-9]', '')-$Stage-$number"
-        work = "$($Ctx.Config.laptop.work)\$($Ctx.Label)\$Stage-$number"; startedAt = Get-PubNow $Ctx
+    $id = "$((& $Ctx.Ops.Now).ToUniversalTime().ToString('yyyyMMdd-HHmmss'))-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
+    [pscustomobject]@{
+        id = $id; job = "sfv-publish-$($Ctx.Label -replace '[^A-Za-z0-9]', '')-$Stage-$id"
+        work = "$($Ctx.Config.laptop.work)\$($Ctx.Label)\$Stage-$id"; startedAt = Get-PubNow $Ctx
     }
-    Write-PubText $path (ConvertTo-PubJsonText $attempt)
+}
+function Save-PubAttempt([object]$Ctx, [string]$Stage, [object]$Attempt) {
+    $path = Join-Path (Get-PubStageDir $Ctx $Stage) 'attempt.json'
+    if (Test-Path -LiteralPath $path) { Move-Item -LiteralPath $path -Destination "$path.$((Read-PubJson $path).id)" -Force }
+    Write-PubText $path (ConvertTo-PubJsonText $Attempt)
+}
+# A fresh attempt folder on the laptop with the agent in it, and the laptop free (unless -Queue: a short job that
+# waits its turn in the task queue).
+function New-PubLaptopAttempt([object]$Ctx, [string]$Stage, [switch]$Queue) {
+    $attempt = Get-PubAttempt $Ctx $Stage -New
+    Invoke-PubLaptop $Ctx "pwsh -NoProfile -Command `"New-Item -ItemType Directory -Force -Path '$($attempt.work)' | Out-Null`"" | Out-Null
+    Copy-PubToLaptop $Ctx $Ctx.AgentPath "$($attempt.work)\laptop-agent.ps1"
+    if (!$Queue) { $null = Assert-PubLaptopFree $Ctx $attempt.work }
+    Write-PubLog $Ctx "$Stage attempt $($attempt.id) in $($attempt.work) on the laptop."
     $attempt
 }
-
 # ---------------------------------------------------------------------------------------------------------------
 # Build: development and player builds with their tests, the helper and the package, on the laptop.
 
 function Invoke-PubBuild([object]$Ctx, [hashtable]$P) {
     $planRead = Read-PubPlan $Ctx
     $plan = $planRead.plan
+    Assert-PubPipeline $Ctx $plan
     if (!(Test-PubStageToDo $Ctx 'build' $planRead -Redo:$P.Redo)) { return }
     $rules = Read-PubRulesForPlan $Ctx $plan $P.Rules
     $dir = Get-PubStageDir $Ctx 'build'
@@ -99,11 +113,7 @@ function Invoke-PubBuild([object]$Ctx, [hashtable]$P) {
         return
     }
     if (!$attempt) {
-        $attempt = Get-PubAttempt $Ctx 'build' -New
-        Write-PubLog $Ctx "Build attempt $($attempt.number) in $($attempt.work) on the laptop."
-        Invoke-PubLaptop $Ctx "pwsh -NoProfile -Command `"New-Item -ItemType Directory -Force -Path '$($attempt.work)' | Out-Null`"" | Out-Null
-        Copy-PubToLaptop $Ctx $Ctx.AgentPath "$($attempt.work)\laptop-agent.ps1"
-        $null = Assert-PubLaptopFree $Ctx $attempt.work
+        $attempt = New-PubLaptopAttempt $Ctx 'build'
         # The two commits travel as bundles of a ref made for them.
         $bundles = Join-Path $dir 'bundles'
         New-Item -ItemType Directory -Path $bundles -Force | Out-Null
@@ -118,9 +128,10 @@ function Invoke-PubBuild([object]$Ctx, [hashtable]$P) {
         $sync = Invoke-PubAgent $Ctx $attempt.work 'sync' @(
             '-Label', $plan.label, '-Source', $plan.source.commit, '-SourceTree', $plan.source.tree, '-Library', $plan.library.commit, '-LibraryTree', $plan.library.tree,
             '-SourceCheckout', $lap.sourceCheckout, '-LibraryCheckout', $lap.libraryCheckout, '-BuildDev', $lap.buildDev, '-BuildPlayer', $lap.buildPlayer,
-            '-VcpkgRoot', $lap.vcpkgRoot, '-RenderStore', $lap.renderStore, '-OldPackageCheck', $lap.oldPackageCheck, '-Dist', "$($lap.dist)\$($plan.label)-$($attempt.number)",
+            '-VcpkgRoot', $lap.vcpkgRoot, '-RenderStore', $lap.renderStore, '-OldPackageCheck', $lap.oldPackageCheck, '-Dist', "$($lap.dist)\$($plan.label)-$($attempt.id)",
             '-Interactive', $lap.interactive, '-JobName', $attempt.job) 1800
         if (!$sync.ok) { throw "The laptop could not check out the plan's commits: $($sync.error)" }
+        Save-PubAttempt $Ctx 'build' $attempt
         Write-PubLog $Ctx "Laptop checkouts at the plan's commits; source fingerprint $($sync.sourceFingerprint)."
     }
     $state = Wait-PubLaptopJob $Ctx $attempt.work $attempt.job ([int]$lap.startTimeoutMinutes) ([int]$lap.buildTimeoutMinutes)
@@ -133,7 +144,7 @@ function Invoke-PubBuild([object]$Ctx, [hashtable]$P) {
     }
     $facts = Assert-PubBuildFiles $Ctx $planRead $fetch $rules
     $files = @(Get-ChildItem -LiteralPath $fetch -File | Sort-Object Name | ForEach-Object { Get-PubFileRecord $dir "files\$($_.Name)" })
-    $facts.attempt = $attempt.number
+    $facts.attempt = $attempt.id
     $facts.agentSha256 = Get-PubSha256 $Ctx.AgentPath
     $null = Write-PubEvidence $Ctx 'build' (New-PubEvidence $Ctx 'build' $planRead $files $facts)
     Write-PubLog $Ctx "Build done: $($plan.zip) $($facts.zipSha256)."
@@ -202,10 +213,13 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
         # Every file and file name of the package, raw and UTF-16.
         $hits = [Collections.Generic.List[object]]::new()
         $count = 0
+        # An entry is named by its index and the SHA-256 of its name: the name may be the very text a rule forbids.
         foreach ($entry in $entries) {
             $stream = $entry.Open(); $memory = [IO.MemoryStream]::new(); try { $stream.CopyTo($memory) } finally { $stream.Dispose() }
-            foreach ($hit in (Find-PubHits $Rules $memory.ToArray() "package $($entry.FullName)")) { $hits.Add($hit) }
-            foreach ($hit in (Find-PubHits $Rules ([Text.UTF8Encoding]::new($false).GetBytes($entry.FullName)) "package name $($entry.FullName)")) { $hits.Add($hit) }
+            $nameBytes = [Text.UTF8Encoding]::new($false).GetBytes($entry.FullName)
+            $label = "package entry #$count (name sha256 $((Get-PubBytesSha256 $nameBytes).Substring(0, 16)))"
+            foreach ($hit in (Find-PubHits $Rules $memory.ToArray() $label)) { $hits.Add($hit) }
+            foreach ($hit in (Find-PubHits $Rules $nameBytes "$label, its name")) { $hits.Add($hit) }
             $count++
         }
         Assert-PubNoHits @($hits) 'The package'
@@ -224,6 +238,7 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
 function Invoke-PubRooms([object]$Ctx, [hashtable]$P) {
     $planRead = Read-PubPlan $Ctx
     $plan = $planRead.plan
+    Assert-PubPipeline $Ctx $plan
     $dir = Get-PubStageDir $Ctx 'rooms'
     $evidencePath = Get-PubEvidencePath $Ctx 'rooms'
     if ((Test-Path -LiteralPath $evidencePath) -and !$P.Redo) {
@@ -271,10 +286,7 @@ function Invoke-PubRoomsWsl([object]$Ctx, [object]$Plan, [string]$Inputs, [strin
     $lap = $Ctx.Config.laptop
     $attempt = if ((Test-Path -LiteralPath (Join-Path (Get-PubStageDir $Ctx 'rooms') 'attempt.json')) -and !$P.NewAttempt) { Get-PubAttempt $Ctx 'rooms' } else { $null }
     if (!$attempt) {
-        $attempt = Get-PubAttempt $Ctx 'rooms' -New
-        Invoke-PubLaptop $Ctx "pwsh -NoProfile -Command `"New-Item -ItemType Directory -Force -Path '$($attempt.work)' | Out-Null`"" | Out-Null
-        Copy-PubToLaptop $Ctx $Ctx.AgentPath "$($attempt.work)\laptop-agent.ps1"
-        if (!$Check) { $null = Assert-PubLaptopFree $Ctx $attempt.work }
+        $attempt = New-PubLaptopAttempt $Ctx 'rooms' -Queue:$Check
         Copy-PubToLaptop $Ctx $Ctx.RoomScriptPath "$($attempt.work)\build-rooms-linux.sh"
         $names = if ($Check) { @('sfve-room-host', 'sf4-net') } else { @('sfv.tar', 'library.tar') }
         foreach ($name in $names) { Copy-PubToLaptop $Ctx (Join-Path $Inputs $name) "$($attempt.work)\$name" }
@@ -282,6 +294,7 @@ function Invoke-PubRoomsWsl([object]$Ctx, [object]$Plan, [string]$Inputs, [strin
             '-Mode', $(if ($Check) { 'check' } else { 'build' }),
             '-SfvTar', (Get-PubSha256 (Join-Path $Inputs $names[0])), '-LibraryTar', (Get-PubSha256 (Join-Path $Inputs $names[1])))
         if (!$job.ok) { throw "The laptop could not prepare the room-host job: $($job.error)" }
+        Save-PubAttempt $Ctx 'rooms' $attempt
     }
     $state = Wait-PubLaptopJob $Ctx $attempt.work $attempt.job ([int]$lap.startTimeoutMinutes) ([int]$lap.roomsTimeoutMinutes)
     if ($state.state -ceq 'failed') { throw "The room-host build failed: $($state.tail)`nIts log: $($attempt.work)\job.log. Run -Stage rooms -NewAttempt after fixing it." }
@@ -425,6 +438,7 @@ function Assert-PubDraftRelease([object]$Ctx, [object]$Plan, [object]$Release, [
 function Invoke-PubDraft([object]$Ctx, [hashtable]$P) {
     $planRead = Read-PubPlan $Ctx
     $plan = $planRead.plan
+    Assert-PubPipeline $Ctx $plan
     if (!(Test-PubStageToDo $Ctx 'draft' $planRead -Redo:$P.Redo)) { return }
     $build = Read-PubEvidence $Ctx 'build' $planRead
     $null = Read-PubEvidence $Ctx 'rooms' $planRead
@@ -502,14 +516,22 @@ function Set-PubPhase([object]$Ctx, [object]$State, [string]$Phase, [string]$Sta
 }
 function Test-PubPhaseDone([object]$State, [string]$Phase) { $State.phases.$Phase -and $State.phases.$Phase.status -ceq 'done' }
 
-# Pushes $Commit to $Remote's $Branch only as a fast-forward (or not at all when it is there already).
-function Push-PubBranch([object]$Ctx, [string]$Step, [string]$Repo, [string]$Remote, [string]$Commit, [string]$Branch) {
+# Pushes $Commit to $Remote's $Branch only as a fast-forward from $Expected, the tip the plan saw ('' for a branch
+# that did not exist), or not at all when it is there already. git push --dry-run must show exactly that range
+# before the push itself.
+function Push-PubBranch([object]$Ctx, [string]$Step, [string]$Repo, [string]$Remote, [string]$Commit, [string]$Branch, [string]$Expected) {
     $tip = Get-PubRemoteRef $Ctx $Repo $Remote "refs/heads/$Branch"
     if ($tip -ceq $Commit) { Write-PubLog $Ctx "$Step`: $Remote $Branch is at $($Commit.Substring(0, 12)) already."; return 'there' }
-    if ($tip -and (Test-PubObject $Ctx $Repo $tip) -and (Test-PubAncestor $Ctx $Repo $Commit $tip)) { Write-PubLog $Ctx "$Step`: $Remote $Branch already contains $($Commit.Substring(0, 12))."; return 'contained' }
+    if ($tip -cne $Expected) { throw "$Remote $Branch is at $(if ($tip) { $tip } else { 'nothing' }), not $(if ($Expected) { $Expected } else { 'absent' }) as when the plan was made; nothing pushed." }
     if ($tip -and (!(Test-PubObject $Ctx $Repo $tip) -or !(Test-PubAncestor $Ctx $Repo $tip $Commit))) { throw "$Remote $Branch ($tip) would not fast-forward to $Commit; nothing pushed." }
+    $dry = & $Ctx.Ops.Push $Repo $Remote $Commit "refs/heads/$Branch" $true
+    $line = @((ConvertTo-PubText $dry) -split "`n" | Where-Object { $_ -cmatch "^.\t[^\t]*:refs/heads/$([regex]::Escape($Branch))\t" }) | Select-Object -First 1
+    $want = if ($tip) { "^ \t[^\t]*\t([0-9a-f]{7,40})\.\.([0-9a-f]{7,40})\s*$" } else { "^\*\t[^\t]*\t\[new branch\]\s*$" }
+    if ($dry.exitCode -or !$line -or $line -cnotmatch $want -or ($tip -and (!$tip.StartsWith($Matches[1]) -or !$Commit.StartsWith($Matches[2])))) {
+        throw "git push --dry-run to $Remote $Branch does not show exactly $(if ($tip) { "$($tip.Substring(0, 12))..$($Commit.Substring(0, 12))" } else { 'a new branch' }): '$line' $($dry.stderr); nothing pushed."
+    }
     $outcome = Invoke-PubOutward $Ctx $Step "push $($Commit.Substring(0, 12)) to $Remote $Branch (fast-forward from $(if ($tip) { $tip.Substring(0, 12) } else { 'nothing' }))" {
-        $result = & $Ctx.Ops.Push $Repo $Remote $Commit "refs/heads/$Branch"
+        $result = & $Ctx.Ops.Push $Repo $Remote $Commit "refs/heads/$Branch" $false
         if ($result.exitCode) { throw "git push to $Remote $Branch failed: $($result.stderr)" }
         if ((Get-PubRemoteRef $Ctx $Repo $Remote "refs/heads/$Branch") -cne $Commit) { throw "$Remote $Branch is not at $Commit after the push." }
         'pushed'
@@ -517,6 +539,17 @@ function Push-PubBranch([object]$Ctx, [string]$Step, [string]$Repo, [string]$Rem
     if ($outcome.done) { return 'pushed' }
     if ($outcome.skipped) { return 'skipped' }
     'dry-run'
+}
+
+# The library commit the README pins is on the library's public branch (ls-remote), whatever was skipped: neither
+# the public main nor the release goes out pinning a commit nobody can fetch.
+function Assert-PubLibraryPublic([object]$Ctx, [object]$Plan) {
+    if ($Ctx.DryRun) { Write-PubLog $Ctx 'Dry run: a real run requires the library commit on its public branch here.'; return }
+    $tip = Get-PubRemoteRef $Ctx $Ctx.LibraryRepo $Ctx.Config.libraryRemote "refs/heads/$($Plan.library.branch)"
+    $lib = $Plan.library.commit
+    if ($tip -ceq $lib) { return }
+    if ($tip -and (Test-PubObject $Ctx $Ctx.LibraryRepo $tip) -and (Test-PubAncestor $Ctx $Ctx.LibraryRepo $lib $tip)) { return }
+    throw "The library's $($Plan.library.branch) on $($Ctx.Config.libraryRemote) ($tip) does not contain $lib, which the README pins; push the library first (phase push-library)."
 }
 
 # The server gate: the live VPS offers the plan's room build (read-only ssh, no sudo; scripts/publish/vps.sh check).
@@ -542,6 +575,8 @@ function Test-PubServer([object]$Ctx, [object]$Plan, [object]$Rooms, [switch]$Ro
 function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
     $planRead = Read-PubPlan $Ctx
     $plan = $planRead.plan
+    Assert-PubPipeline $Ctx $plan
+    Assert-PubRemotes $Ctx
     $rules = Read-PubRulesForPlan $Ctx $plan $P.Rules
     $dir = Get-PubStageDir $Ctx 'promote'
     if (Test-Path -LiteralPath (Get-PubEvidencePath $Ctx 'promote')) {
@@ -567,6 +602,14 @@ function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
     $release = Get-PubReleaseById $Ctx $id -AllowMissing
     if (!$release) { throw "Release $id (the draft this pipeline made) is gone from $repo; plan again." }
     $published = Test-PubPhaseDone $state 'publish'
+    if (!$published -and $release.draft -eq $false) {
+        # Published by an earlier run whose reply was lost: done if the tag is on the planned commit.
+        $tagThen = Get-PubRemoteRef $Ctx $Ctx.Repo $Ctx.Config.publicRemote "refs/tags/$($plan.tag)"
+        if ($tagThen -cne $plan.source.commit) { throw "Release $id is published, but the tag $($plan.tag) points at '$tagThen', not $($plan.source.commit); check it by hand." }
+        Write-PubLog $Ctx "Release $id is published already at $($plan.source.commit.Substring(0, 12)) (an earlier reply was lost); going on to confirm."
+        Set-PubPhase $Ctx $state 'publish' 'done' 'found published'
+        $published = $true
+    }
     Assert-PubDraftRelease $Ctx $plan $release $assets -Published:$published
     # Releases are published by id: the draft must be the only release with this tag, and not older than any.
     $named = @(Get-PubReleases $Ctx | Where-Object { $_.tag_name -ceq $plan.tag })
@@ -579,8 +622,8 @@ function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
     Set-PubPhase $Ctx $state 'verify' 'done' "draft $id, zip $($facts.zipSha256)"
     Write-PubLog $Ctx "Verified: plan $($planRead.sha256.Substring(0, 12)), build, rooms and draft $id; zip $($facts.zipSha256)."
 
-    # server: the gate, not skippable.
-    if (!(Test-PubPhaseDone $state 'server')) {
+    # server: the gate, not skippable, asked again on every run until the release is published.
+    if (!$published) {
         $server = Test-PubServer $Ctx $plan $rooms -RoomsConfirmed:$P.RoomsConfirmed
         Set-PubPhase $Ctx $state 'server' 'done' $server
     }
@@ -589,9 +632,9 @@ function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
     foreach ($phase in @('push-library', 'push-origin', 'push-public')) {
         if (Test-PubPhaseDone $state $phase) { continue }
         $outcome = switch ($phase) {
-            'push-library' { if ($plan.library.needsPush) { Push-PubBranch $Ctx $phase $Ctx.LibraryRepo $Ctx.Config.libraryRemote $plan.library.commit $plan.library.branch } else { 'not needed' } }
-            'push-origin' { Push-PubBranch $Ctx $phase $Ctx.Repo $Ctx.Config.originRemote $plan.source.commit $plan.releaseBranch }
-            'push-public' { Push-PubBranch $Ctx $phase $Ctx.Repo $Ctx.Config.publicRemote $plan.source.commit 'main' }
+            'push-library' { if ($plan.library.needsPush) { Push-PubBranch $Ctx $phase $Ctx.LibraryRepo $Ctx.Config.libraryRemote $plan.library.commit $plan.library.branch $plan.library.publicTip } else { 'not needed' } }
+            'push-origin' { Push-PubBranch $Ctx $phase $Ctx.Repo $Ctx.Config.originRemote $plan.source.commit $plan.releaseBranch ([string]$plan.previous.originBranch) }
+            'push-public' { Assert-PubLibraryPublic $Ctx $plan; Push-PubBranch $Ctx $phase $Ctx.Repo $Ctx.Config.publicRemote $plan.source.commit 'main' ([string]$plan.previous.publicMain) }
         }
         if ($outcome -cin @('pushed', 'there', 'contained', 'not needed')) { Set-PubPhase $Ctx $state $phase 'done' $outcome }
         elseif ($outcome -ceq 'skipped') { Set-PubPhase $Ctx $state $phase 'skipped' }
@@ -604,6 +647,10 @@ function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
             if ($main -cne $plan.source.commit -and !($main -and (Test-PubObject $Ctx $Ctx.Repo $main) -and (Test-PubAncestor $Ctx $Ctx.Repo $plan.source.commit $main))) {
                 throw "The public main is $main, which does not contain $($plan.source.commit): fast-forward it first (phase push-public)."
             }
+            Assert-PubLibraryPublic $Ctx $plan
+            # Just before the irreversible step: the draft is still exactly the checked one and no tag has appeared.
+            Assert-PubDraftRelease $Ctx $plan (Get-PubReleaseById $Ctx $id) $assets
+            if (Get-PubRemoteRef $Ctx $Ctx.Repo $Ctx.Config.publicRemote "refs/tags/$($plan.tag)") { throw "A tag $($plan.tag) appeared on the public repository; nothing published." }
         }
         $outcome = Invoke-PubOutward $Ctx 'publish' "publish release $id ($($plan.tag)) at $($plan.source.commit.Substring(0, 12))" {
             $request = Join-Path $dir 'publish-request.json'
