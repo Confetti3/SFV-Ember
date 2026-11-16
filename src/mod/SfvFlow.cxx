@@ -109,7 +109,7 @@ bool FlowRollback::Bind(uint8_t* flowUnit, uintptr_t imageBase)
 			Log("flow: state %zu has an unknown class (vtable rva 0x%llx); only its base is kept",
 				size_t(s - begin), (unsigned long long)vtable);
 		}
-		const size_t kept = known && known->keepOwn ? known->size : fs::kBaseSize;
+		const size_t kept = known ? known->kept : fs::kBaseSize;
 		states_.push_back({s->object, s->control, kept, known ? known->leftoverWords : uint8_t(0)});
 	}
 	flow_ = flowUnit;

@@ -223,6 +223,30 @@ namespace ruleunit {
 constexpr uint32_t kJudgeState = 248;
 } // namespace ruleunit
 
+// The round's end wait (IDA, build 13173604): a unit of type 0x3A649B8
+// (vtable rva 0x2C602F8, 0x140 bytes, constructor rva 0x3C7AE0), found as the
+// other units are. A KO's flow event arms it (rva 0x3D4550): +0xF8, +0xFC and
+// the latch +0x100 to 1, the mode +0x104, +0x108 and +0x10C to -1, +0x110 to
+// 0, the reference at +0x118 cleared through the game's assign (rva 0x2F02D0),
+// and +0x120 the position of the fighter it finds (16 bytes, the fighter's
+// +1936); its own code sets the mode, 6 or 7 for a stage transition KO (rva
+// 0x3D0D10 tests them). Finish's phase 12 (rva 0x40BC00, the end of every
+// round won by KO) asks it each tick through rva 0x2F2E90: a mode of 6 or 7
+// waits; otherwise the first ask clears the latch and the next goes on. None
+// of it is in the game's snapshot, so a load between the KO and the round's
+// end left it as the abandoned timeline had it, and the replayed round's end
+// could run on another frame. +0xF8..+0x10F and +0x120..+0x12F are saved,
+// restored and hashed (SfvLayoutRules). +0x110 (a qword only the arm and the
+// constructor were seen to write) and +0x118 (a reference the game counts:
+// never copied as bytes) stay out.
+namespace kowait {
+constexpr uint32_t kUnitType = 0x3A649B8;
+constexpr uint32_t kState = 0xF8;
+constexpr uint32_t kStateSize = 0x18;
+constexpr uint32_t kPosition = 0x120;
+constexpr uint32_t kPositionSize = 0x10;
+} // namespace kowait
+
 // Fighter state the game's snapshot leaves out, by the part that holds it:
 // each fighter's part of that type, if it has one, gets the run saved,
 // restored and hashed as state outside the snapshot (SfvLayoutRules).
@@ -407,10 +431,15 @@ constexpr uint32_t kEnabled = 128;     // int
 constexpr uint32_t kMarkedPhase = 136; // int
 constexpr uint32_t kMarkCount = 140;   // int
 constexpr uint32_t kBaseSize = 144;    // the base class; +144.. is the state's own
+constexpr uint32_t kMaxSize = 184;
 struct ClassSize {
 	uint32_t vtable;
 	uint32_t size;
-	bool keepOwn = true; // false: its own fields hold pointers the record must not restore
+	// The bytes from the state's start the record keeps: the base
+	// (kBaseSize) and its own fields up to here. `size` for most; the base
+	// alone for a class whose own fields hold pointers the record must not
+	// restore.
+	uint32_t kept;
 	// Bit k: the 8-byte word at kBaseSize + 8k holds heap leftovers until the
 	// state first runs (seen differing between two copies); kept, not hashed.
 	uint8_t leftoverWords = 0;
@@ -419,15 +448,33 @@ struct ClassSize {
 // before each allocation in the flow builders (rva 0x4257F0, and 0x423DD0 for
 // 0x2C6A3F8); a class's size is the same in every builder. A state of a class
 // not listed keeps only the base: its own fields are never read or written.
+//
+// Finish (0x2C6A668, 168 bytes; resultflow::kFinishVtable) keeps its own ints
+// +144..+163 and not +164: its phase 0 (rva 0x40DDD0) sets +152 (the winning
+// side, from the match data), +156 and +160 (rva 0x2F9B90's results), which
+// phases 4, 6 and 7 read to play the round's end (rva 0x4080E0 announces +152;
+// 0x4085A0, 0x4081F0), and its last phase (0x40EBE0) hands +144 and +148 to
+// the flow's request. A load into Finish after its phase 0 kept the abandoned
+// timeline's values, so a round's end replayed after a rollback across a KO
+// could announce the other timeline's winner. +164 is padding the heap left
+// (the "address" seen at +160 was its upper half). The KO stop timer itself
+// (a phase's wait: 1.0 and then 180.0 frames, rva 0x3EEE00's table) is the
+// base's kWait, kept for every class.
 constexpr ClassSize kClassSizes[] = {
-	{0x2C6A390, 152}, {0x2C6A4C8, 152}, {0x2C6A530, 152}, {0x2C6A598, 160},
-	{0x2C6A600, 152}, {0x2C6A6D0, 144}, {0x2C6A7A8, 144}, {0x2C6A810, 144},
-	{0x2C6A878, 184, true, 0x18}, {0x2C6A8E0, 144}, {0x2C6A948, 144}, {0x2C6A460, 144}, {0x2C6A2C0, 152},
-	{0x2C6A328, 160}, {0x2C6AB00, 176}, {0x2C6A258, 160},
+	{0x2C6A390, 152, 152}, {0x2C6A4C8, 152, 152}, {0x2C6A530, 152, 152}, {0x2C6A598, 160, 160},
+	{0x2C6A600, 152, 152}, {0x2C6A6D0, 144, 144}, {0x2C6A7A8, 144, 144}, {0x2C6A810, 144, 144},
+	{0x2C6A878, 184, 184, 0x18}, {0x2C6A8E0, 144, 144}, {0x2C6A948, 144, 144}, {0x2C6A460, 144, 144}, {0x2C6A2C0, 152, 152},
+	{0x2C6A328, 160, 160}, {0x2C6AB00, 176, 176}, {0x2C6A258, 160, 160},
 	// Own fields holding heap pointers: the builder's closure and callback
-	// (0x2C6AA18), addresses seen at +152 (0x2C6A3F8) and +160 (0x2C6A668, Finish).
-	{0x2C6AA18, 184, false}, {0x2C6A3F8, 160, false}, {0x2C6A668, 168, false}};
-constexpr uint32_t kMaxSize = 184;
+	// (0x2C6AA18), addresses seen at +152 (0x2C6A3F8).
+	{0x2C6AA18, 184, kBaseSize}, {0x2C6A3F8, 160, kBaseSize},
+	{0x2C6A668, 168, 164}};
+static_assert([] {
+	for (const ClassSize& c : kClassSizes) {
+		if (c.kept < kBaseSize || c.kept > c.size || c.size > kMaxSize) return false;
+	}
+	return true;
+}(), "a class keeps at least its base and no more than its size");
 } // namespace flowstate
 
 namespace manager {

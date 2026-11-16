@@ -33,7 +33,7 @@ std::string MakeLayoutRulesId()
 {
 	// The outside state laid out at fixed made-up addresses, so each region's
 	// place in its object (its offset) is hashed with its size, flags and masks.
-	OutsideState where = {0x10000000, 0x20000000, 0x30000000, 0x40000000, 0x50000000};
+	OutsideState where = {0x10000000, 0x20000000, 0x30000000, 0x40000000, 0x50000000, 0x58000000};
 	for (size_t fighter = 0; fighter < std::size(where.fighterParts); fighter++) {
 		for (size_t row = 0; row < kMaxPartRuns; row++) where.fighterParts[fighter][row] = 0x60000000 + (fighter * kMaxPartRuns + row) * 0x1000000;
 	}
@@ -53,7 +53,7 @@ std::string MakeLayoutRulesId()
 	text += "; flow record " + std::to_string(sizeof(FlowRecord)) + ", " + std::to_string(kMaxFlowStates) + " states, base " +
 		std::to_string(fs::kBaseSize) + ", largest " + std::to_string(fs::kMaxSize) + "; classes";
 	for (const fs::ClassSize& state : fs::kClassSizes) {
-		text += " " + Hex(state.vtable) + ":" + std::to_string(state.size) + (state.keepOwn ? "+own" : "") + "/" +
+		text += " " + Hex(state.vtable) + ":" + std::to_string(state.size) + (state.kept == state.size ? std::string("+own") : state.kept > fs::kBaseSize ? "+own to " + std::to_string(state.kept) : std::string()) + "/" +
 			std::to_string(state.leftoverWords);
 	}
 	// What every copy must do alike that no table above shows
@@ -98,6 +98,11 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 	}
 	layout.Add("battledata.judgement", At(where.battleData, bd::kDecided), bd::kResults + bd::kResultsSize - bd::kDecided);
 	layout.Add("battledata.flowflags", At(where.battleData, bd::kFlowFlags), bd::kFlowFlagsSize);
+	if (where.koWait) {
+		namespace kw = sfv::kowait;
+		layout.Add("kowait.state", At(where.koWait, kw::kState), kw::kStateSize);
+		layout.Add("kowait.position", At(where.koWait, kw::kPosition), kw::kPositionSize);
+	}
 	static_assert(std::size(sfv::kPartRunsOutsideSnapshot) <= kMaxPartRuns);
 	for (size_t fighter = 0; fighter < std::size(where.fighterParts); fighter++) {
 		for (size_t row = 0; row < std::size(sfv::kPartRunsOutsideSnapshot); row++) {

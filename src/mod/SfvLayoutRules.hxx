@@ -22,7 +22,8 @@
 namespace sfve::mod {
 
 // Where one battle keeps the state its snapshot leaves out: the rule unit,
-// the match data, the battle frame, the input unit, the exe's base and each
+// the match data, the battle frame, the input unit, the exe's base, the
+// round's end wait unit and each
 // fighter unit's parts that sfv::kPartRunsOutsideSnapshot names, by the
 // unit's place among the battle's CharaUnits (partners after the two
 // fighters, sfv::unit::kMostCharaUnits) and the row (0: the unit has no such
@@ -35,6 +36,7 @@ struct OutsideState {
 	uintptr_t battleFrame = 0;
 	uintptr_t inputUnit = 0;
 	uintptr_t base = 0;
+	uintptr_t koWait = 0; // the round's end wait unit (sfv::kowait); 0 for a battle without one
 	uintptr_t fighterParts[kMaxFighterUnits][kMaxPartRuns] = {};
 };
 

@@ -151,7 +151,9 @@ bool SfvAdapter::Bind()
 	}
 	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
 	OutsideState outside = {reinterpret_cast<uintptr_t>(ruleUnit), reinterpret_cast<uintptr_t>(battleData),
-		reinterpret_cast<uintptr_t>(battleFrame_), reinterpret_cast<uintptr_t>(inputUnit_), base};
+		reinterpret_cast<uintptr_t>(battleFrame_), reinterpret_cast<uintptr_t>(inputUnit_), base,
+		reinterpret_cast<uintptr_t>(FindUnit(sfv::kowait::kUnitType))};
+	if (!outside.koWait) Log("adapter: this battle has no round's end wait unit (sfv::kowait); its state is not kept");
 	// Every fighter unit, the two fighters first and then any partners (Akira's,
 	// sfv::unit::kMostCharaUnits), as the battle added them and as RegionNames
 	// numbers their regions: their parts' state outside the snapshot, and what
