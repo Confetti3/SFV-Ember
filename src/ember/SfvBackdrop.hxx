@@ -48,8 +48,8 @@ namespace sfve::adapter {
 void InstallSfvBackdrop();
 
 // Render thread, every frame, before the shell draws: whether the backdrop
-// may show now (the shell shown over the game's main menu, with no match,
-// watched match or replay), and the shell's screen, whose kind of page sets
+// may show now (backdrop::Allowed: the shell shown over the game's main menu,
+// with no game being played, watched or replayed), and the shell's screen, whose kind of page sets
 // the scrim. Lets go of what is no longer shown, before anything is drawn.
 void BackdropFrame(bool allowed, const std::string& screen);
 
