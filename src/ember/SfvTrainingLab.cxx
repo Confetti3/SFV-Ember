@@ -16,9 +16,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include <windows.h>
+
 #include <array>
 #include <atomic>
-#include <cstdlib>
 #include <deque>
 #include <optional>
 #include <string>
@@ -39,8 +40,8 @@ using training::Mode;
 bool TraceOn()
 {
 	static const bool on = [] {
-		const char* env = std::getenv("SFVE_TRAINING_TRACE");
-		return env && env[0] == '1';
+		char env[2] = {};
+		return GetEnvironmentVariableA("SFVE_TRAINING_TRACE", env, sizeof env) == 1 && env[0] == '1';
 	}();
 	return on;
 }
