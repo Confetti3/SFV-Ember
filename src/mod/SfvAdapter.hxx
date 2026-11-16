@@ -20,6 +20,8 @@
 #include "mod/GameHooks.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/IntroSkip.hxx"
+#include "mod/Pace.hxx"
+#include "mod/RegionTable.hxx"
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvRegionNames.hxx"
 #include "mod/SocketReads.hxx"
@@ -153,8 +155,13 @@ public:
 	// What the game's own Restore does after copying the regions back, then
 	// the flow record written back.
 	void AfterLoad() override;
-	// The flow record's latched failure (FlowRollback::Failure).
-	const char* StateFailure() const override { return flow_.Failure(); }
+	// The flow record's latched failure (FlowRollback::Failure), or the game's
+	// region table no longer the one the layout was built from (RegionTable).
+	const char* StateFailure() const override
+	{
+		const char* flow = flow_.Failure();
+		return flow ? flow : regionTable_.Changed();
+	}
 	// Pose holds (SocketReads, core/PoseHold.hxx): the update just run gave a
 	// fight socket read the live value (a miss), and what the session did
 	// about it: one log line per hold or refusal, and the battle's counts.
@@ -220,6 +227,11 @@ public:
 		uint64_t waiting = 0;
 	};
 	void SetPaceSource(std::function<PaceCounts()> source) { paceSource_ = std::move(source); }
+	// An update is due in the frame now running: the mode steps its session
+	// (whether a frame is played or waits for the other player's inputs), so
+	// the frame's time is the pace line's. A frame Advance plays forward is
+	// due by itself; one the battle stands still in is not (pace::FrameClock).
+	void NoteUpdateDue() { paceClock_.Due(); }
 
 private:
 
@@ -232,6 +244,7 @@ private:
 	bool bound_ = false;
 	const char* waitingFor_ = nullptr; // what Bind last waited for (logged once)
 	StateLayout layout_;
+	RegionTable regionTable_; // the game's table the layout was built from
 	size_t gameRegions_ = 0;
 	RegionNames regionNames_;
 	std::vector<PostRestore> postRestore_;
@@ -291,11 +304,14 @@ private:
 		int64_t tickTicks = 0, replayedTicks = 0, callbackTicks = 0;
 	};
 	UpdateCosts costs_;
-	// The pace of the updates played forward (mod/Pace.hxx): when the window
-	// the next costs line covers began (a monotonic tick, 0 not begun), and
-	// the session's counts then.
+	// The pace of the updates played forward (mod/Pace.hxx): the battle's
+	// frames' time (QueryPerformanceCounter ticks, split by whether an update
+	// was due), whether the window the next costs line covers has begun, and
+	// the clock's and the session's counts then.
 	std::function<PaceCounts()> paceSource_;
-	int64_t paceFrom_ = 0;
+	pace::FrameClock paceClock_;
+	bool paceBegun_ = false;
+	pace::FrameClock::Totals clockAtStart_;
 	PaceCounts paceAtStart_;
 
 	// Ending the decided match's scenes (EndScenes); the game's functions

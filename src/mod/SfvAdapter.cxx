@@ -66,6 +66,7 @@ int CharaIndexOf(const std::string& name)
 void SfvAdapter::SeeBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 {
 	original_ = original;
+	paceClock_.Frame(Ticks()); // the frame before has ended
 	// The engine calls the battle once a frame, and evaluates the fighters'
 	// poses between two calls from what the last update's visual task set: the
 	// models now show the state the last update left (SocketReads).
@@ -87,6 +88,7 @@ void SfvAdapter::Forget()
 	bound_ = false;
 	battleData_ = nullptr;
 	layout_.Clear();
+	regionTable_.Forget();
 	gameRegions_ = 0;
 	postRestore_.clear();
 	inputUnit_ = nullptr;
@@ -110,7 +112,9 @@ void SfvAdapter::Forget()
 		if (summary.windows || totalEvents) Log("pace: %s", pace::PadEventsText(events, totalEvents).c_str());
 		pace::Current().Begin();
 	}
-	paceFrom_ = 0;
+	paceClock_ = {};
+	paceBegun_ = false;
+	clockAtStart_ = {};
 	paceAtStart_ = {};
 	if (queuesCarried_) Log("actions: the battle ends: %llu time(s) a fighter unit's command queue was not empty between updates",
 		(unsigned long long)queuesCarried_);
@@ -185,7 +189,7 @@ bool SfvAdapter::Bind()
 	layout_.Clear();
 	layout_.SetAddressTest(LooksLikeAddress);
 	uint8_t* manager = GameGetManager(rollbackUnit_);
-	if (!AddGameRegions(manager)) {
+	if (!AddGameRegions(manager) || !regionTable_.Bind(manager)) {
 		layout_.Clear();
 		flow_.Forget();
 		WaitingToBind("a usable region table");
@@ -703,8 +707,9 @@ void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)
 	// they ask the pads.
 	if (InjectedAny(intro_skip::kSkipBit) && intro_skip::Scenes(FlowState(), MatchDecided())) EndScenes();
 	const int64_t from = Ticks();
-	if (!resimulating && !paceFrom_) {
-		paceFrom_ = from;
+	if (!resimulating && !paceBegun_) {
+		paceBegun_ = true;
+		clockAtStart_ = paceClock_.Read();
 		paceAtStart_ = paceSource_ ? paceSource_() : PaceCounts{};
 	}
 	RunUpdate();
@@ -721,6 +726,7 @@ void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)
 	}
 	costs_.ticks++;
 	costs_.tickTicks += took;
+	paceClock_.Due();
 	if (paceSource_) pace::Current().SetFrame(paceSource_().frame);
 	if (costs_.ticks >= kCostAdvances) LogCosts();
 }
@@ -744,14 +750,17 @@ void SfvAdapter::LogCosts()
 	const StateLayout::Costs layout = layout_.TakeCosts();
 	LARGE_INTEGER frequency{};
 	QueryPerformanceFrequency(&frequency);
-	// The wall-clock time of this window's updates (a monotonic clock), and
-	// what the session did in it: a slow own game has few rollbacks and no
-	// waiting steps, waiting on the peer has waiting steps.
-	const int64_t nowTicks = Ticks();
+	// The time of this window's frames an update was due in, and what the
+	// session did in it: a slow own game has few rollbacks and no waiting
+	// steps, waiting on the peer has waiting steps. The frames the battle
+	// stood still in (the WIN's answers, a decided match's end) are told apart.
+	const pace::FrameClock::Totals clock = paceClock_.Read();
 	const PaceCounts counts = paceSource_ ? paceSource_() : PaceCounts{};
+	const auto seconds = [&](int64_t ticks) { return frequency.QuadPart ? (double)ticks / (double)frequency.QuadPart : 0.0; };
 	pace::Window window;
 	window.updates = costs_.ticks;
-	window.seconds = paceFrom_ && frequency.QuadPart ? (double)(nowTicks - paceFrom_) / (double)frequency.QuadPart : 0.0;
+	window.seconds = seconds(clock.due - clockAtStart_.due);
+	window.heldSeconds = seconds(clock.held - clockAtStart_.held);
 	window.rollbacks = counts.rollbacks - paceAtStart_.rollbacks;
 	window.waiting = counts.waiting - paceAtStart_.waiting;
 	const bool slow = pace::Current().AddWindow(window);
@@ -773,7 +782,7 @@ void SfvAdapter::LogCosts()
 		(unsigned long long)costs_.callbacks, paceText.c_str());
 	if (slow) Log("%s", pace::SlowText(window).c_str());
 	costs_ = {};
-	paceFrom_ = nowTicks;
+	clockAtStart_ = clock;
 	paceAtStart_ = counts;
 }
 

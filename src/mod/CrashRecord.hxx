@@ -27,8 +27,10 @@
 // it once, so a vectored handler asks the launcher first, then records it.
 // The mod's own C runtime faults (a pure call, an invalid parameter,
 // std::terminate on the thread that installed the record) and a GGPO
-// assertion are recorded too. The game's C runtime (MSVCR120) is its own and
-// is not hooked.
+// assertion are recorded too; the assertion with a dump of the stack it
+// failed on, after which the game ends at once (GGPO would call exit()). Only
+// the crash record installs process-wide handlers. The game's C runtime
+// (MSVCR120) is its own and is not hooked.
 
 #include "mod/ModConfig.hxx"
 
@@ -37,6 +39,10 @@
 #include <string>
 
 namespace sfve::mod {
+
+// The exception code a GGPO assertion is recorded with: a software code of
+// the customer range, 'G' (0x47) and 1, which no fault of Windows' has.
+constexpr DWORD kGgpoAssertionCode = 0xE0470001;
 
 struct CrashRecordSetup {
 	std::wstring logsFolder;   // where the record and an in-process dump go
@@ -61,9 +67,9 @@ CrashRecordState InstallCrashRecord(const CrashRecordSetup& setup);
 void RecordCrash(const char* kind, EXCEPTION_POINTERS* pointers, const char* message, DWORD threadId);
 
 // The pipe's status field "crashRecord" (what InstallCrashRecord set up), and
-// its "crash game|thread" (only with -sfve_crash_command=1): faults
-// on the game thread, or on a thread of the mod's own, to try the record end
-// to end.
+// its "crash game|thread|ggpo" (only with -sfve_crash_command=1): faults on
+// the game thread, or on a thread of the mod's own, or fails a GGPO assertion
+// on the game thread, to try the record end to end.
 void RegisterCrashCommand();
 
 } // namespace sfve::mod

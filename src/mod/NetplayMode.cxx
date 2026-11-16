@@ -11,6 +11,7 @@
 #include "ember/SfvTraining.hxx"
 #include "ember/SfvVerification.hxx"
 #include "mod/ControlPipe.hxx"
+#include "mod/GameExit.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/GameMemory.hxx"
@@ -52,6 +53,14 @@ const char* StepName(RollbackSession::StepResult r)
 void NetplayMode::Install()
 {
 	RegisterCommands();
+	// The mode is never destroyed (the driver lives as long as the process):
+	// its sessions close in the game's exit work, with every thread still
+	// running, after the room's leave has gone out (EmberHost's steps).
+	OnGameExit({nullptr, nullptr, [this] {
+		std::lock_guard lock(mutex_);
+		EndDrain();
+		if (session_ && session_->Live()) session_->Close();
+	}});
 	if (!config_.room) return;
 	adapter::RegisterRoomCommands();
 	adapter::RegisterReplayCommands();
@@ -83,10 +92,13 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	});
 	session_ = std::move(session);
 	// The pace line's counts (mod/Pace.hxx), read on the battle's thread
-	// inside the session's own calls: no lock of this mode's.
-	adapter.SetPaceSource([raw = session_.get()]() {
-		const RollbackSession::Stats& s = raw->GetStats();
-		return SfvAdapter::PaceCounts{raw->Frame(), s.rollbacks, s.waitingSteps + s.predictionStalls};
+	// inside the session's own calls, under Frame's lock. Of the battle's
+	// session, whichever that is now: none once it is kept for the watchers
+	// (PollBattle), so the adapter never holds a session the drain frees.
+	adapter.SetPaceSource([this]() {
+		if (!session_) return SfvAdapter::PaceCounts{};
+		const RollbackSession::Stats& s = session_->GetStats();
+		return SfvAdapter::PaceCounts{session_->Frame(), s.rollbacks, s.waitingSteps + s.predictionStalls};
 	});
 	replay_.reset();
 	replayEnd_.clear();
@@ -239,6 +251,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 			startTime_);
 		adapter.SetStartTime(startTime_);
 	}
+	adapter.NoteUpdateDue();
 	last_ = session_->Step(local);
 	NoteScenesSkip(adapter);
 	DumpIfRequested();
@@ -373,6 +386,7 @@ bool NetplayMode::WatchFrame(SfvAdapter& adapter)
 		adapter.SetStartTime(startTime_);
 	}
 	NoteFightStart(adapter, session_->Frame());
+	adapter.NoteUpdateDue();
 	last_ = session_->Step(0);
 	NoteScenesSkip(adapter);
 	const bool advanced = last_ == RollbackSession::StepResult::Advanced;
