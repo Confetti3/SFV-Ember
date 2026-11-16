@@ -6,8 +6,11 @@ Three copies (development build): copy 0 hosts a private room, copy 1 and the
 watcher (copy 2) join, copy 0 is P1 and copy 1 is P2, the watcher watches the
 table. The room's lag simulation holds the other player's inputs back (--lag,
 80 ms by default), so when the fight ends P1 has predicted frames its peer never
-confirmed. As copy 0 logs that the match is decided, copy 1's process is ended
-(taskkill /F /T of that copy's pid only). Then (commit da53c91, the session kept
+confirmed. As copy 0 logs the WIN's answers (the match's result answered by both:
+the battle closes and goes back to the room), copy 1's process is ended (taskkill
+/F /T of that copy's pid only). Ending it any earlier, at the decision, is a drop
+during the scenes: copy 0's session fails within seconds and the room's game is
+cancelled, the session is never kept. Then (commit da53c91, the session kept
 for the watchers):
 - copy 0 logs "session: kept for N watcher stream(s) after the fight; the game
   is let go" (the session goes on for the watcher; the game's battle is let go);
@@ -93,7 +96,7 @@ def main(argv: list[str]) -> int:
             print("copy 1 pick:", lib.request_ok(1, "pick CNL:0:2"))
             starts = [lib.count_log(i, "netplay: room match as P") for i in (0, 1)]
             watched = lib.count_log(2, "netplay: room match watched")
-            decided = lib.count_log(0, "netplay: the match is decided at frame")
+            answered = lib.count_log(0, "netplay: the WIN's answers")
             kept = lib.count_log(0, KEPT)
 
             def started() -> bool:
@@ -103,10 +106,10 @@ def main(argv: list[str]) -> int:
                 return all(lib.count_log(i, "netplay: room match as P") > starts[i] for i in (0, 1))
             wait_for("the battle's sessions", 180, started)
             wait_for("the watcher's stream", 120, lambda: lib.count_log(2, "netplay: room match watched") > watched)
-            print("the battle and the watcher's stream have started; waiting for copy 0 to decide the match")
-            wait_for("copy 0 to decide the match", 240, lambda: lib.count_log(0, "netplay: the match is decided at frame") > decided)
+            print("the battle and the watcher's stream have started; waiting for the match's WIN to be answered")
+            wait_for("copy 0 to hear the WIN's answers", 240, lambda: lib.count_log(0, "netplay: the WIN's answers") > answered)
             killed = subprocess.run(["taskkill", "/F", "/T", "/PID", str(pids[1])], capture_output=True, text=True)
-            print(f"copy 1 (pid {pids[1]}) ended as copy 0 decided the match: {killed.stdout.strip() or killed.stderr.strip()}")
+            print(f"copy 1 (pid {pids[1]}) ended as copy 0 heard the WIN's answers: {killed.stdout.strip() or killed.stderr.strip()}")
             if killed.returncode != 0:
                 raise lib.SfveError("copy 1's process could not be ended")
             if a.shots:
