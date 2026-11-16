@@ -21,6 +21,7 @@ TEST_CASE("a loaded module is described by its path and version, and one that is
 	wchar_t system[MAX_PATH] = {};
 	GetSystemDirectoryW(system, MAX_PATH);
 	const std::string kernel = sfve::mod::DescribeModule(L"kernel32.dll", L"C:\\Games\\SFV\\Win64");
+	CAPTURE(kernel);
 	CHECK(kernel.rfind("kernel32.dll 10.", 0) == 0);
 	CHECK(kernel.find(" at ") != std::string::npos);
 	CHECK(kernel.find("the game's own folder") == std::string::npos);

@@ -35,9 +35,15 @@ TEST_CASE("a file that is missing is an empty object with no problem, and one th
 {
 	const std::filesystem::path folder = FreshFolder("read");
 	std::string problem = "left over";
+	// The library reads a folder that is gone as a failure, never as a fresh
+	// profile (a lost drive), so only a file absent from a folder that exists
+	// is missing.
+	CHECK(ReadSettingsFile(folder, kFile, problem) == nlohmann::json::object());
+	CHECK_FALSE(problem.empty());
+	std::filesystem::create_directories(folder);
+	problem = "left over";
 	CHECK(ReadSettingsFile(folder, kFile, problem) == nlohmann::json::object());
 	CHECK(problem.empty());
-	std::filesystem::create_directories(folder);
 	std::ofstream(folder / kFile, std::ios::binary) << "[1, 2]";
 	CHECK(ReadSettingsFile(folder, kFile, problem) == nlohmann::json::object());
 	CHECK(problem.find("settings-file-test.json is no settings object") == 0);
