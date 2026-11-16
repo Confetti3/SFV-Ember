@@ -141,23 +141,25 @@ TEST_CASE("the status part's four effect switches keep their kind, level, shown 
 
 TEST_CASE("the round's end wait unit keeps its state and the fighter's position, never its reference")
 {
-	sfve::mod::OutsideState where{0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x70000};
+	// A made-up address clear of the other regions' (battledata's later rounds reach 0x70000).
+	constexpr uintptr_t kUnit = 0x40000000;
+	sfve::mod::OutsideState where{0x1000, 0x2000, 0x3000, 0x4000, 0x5000, kUnit};
 	sfve::StateLayout layout;
 	sfve::mod::AddStateOutsideTheGameSnapshot(layout, where);
 	const sfve::StateRegion* state = layout.Find("kowait.state");
 	const sfve::StateRegion* position = layout.Find("kowait.position");
 	REQUIRE(state != nullptr);
 	REQUIRE(position != nullptr);
-	CHECK(reinterpret_cast<uintptr_t>(state->ptr) == 0x70000 + 0xF8);
+	CHECK(reinterpret_cast<uintptr_t>(state->ptr) == kUnit + 0xF8);
 	CHECK(state->size == 0x18); // +0xF8..+0x10F: the latch (+0x100) and the mode (+0x104) among them
-	CHECK(reinterpret_cast<uintptr_t>(position->ptr) == 0x70000 + 0x120);
+	CHECK(reinterpret_cast<uintptr_t>(position->ptr) == kUnit + 0x120);
 	CHECK(position->size == 0x10);
 	CHECK(state->checked);
 	// +0x110 and the counted reference at +0x118 are in no region.
 	for (const sfve::StateRegion& r : layout.Regions()) {
 		const uintptr_t from = reinterpret_cast<uintptr_t>(r.ptr), to = from + r.size;
 		CAPTURE(r.name);
-		CHECK_FALSE((from < 0x70000 + 0x120 && to > 0x70000 + 0x110));
+		CHECK_FALSE((from < kUnit + 0x120 && to > kUnit + 0x110));
 	}
 	// A battle without the unit adds neither.
 	where.koWait = 0;
