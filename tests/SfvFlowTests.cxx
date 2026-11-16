@@ -22,6 +22,7 @@ constexpr uintptr_t kBase = 0x140000000; // the image base the vtables are read 
 constexpr uint32_t kPlainClass = 0x2C6A390;   // 152 bytes: its 8 own bytes are kept
 constexpr uint32_t kPointerClass = 0x2C6AA18; // the flow builder's state, 184 bytes: own fields hold heap pointers, only the base is kept
 constexpr uint32_t kUnlistedClass = 0x1234560; // in no table: only the base is kept
+constexpr uint32_t kFinishClass = 0x2C6A668;  // Finish, 168 bytes: its own ints +144..+163 are kept, not the padding at +164
 constexpr int kStates = 3;
 
 // A FlowUnit and its states as SFV lays them out: the state list (a vector of
@@ -34,9 +35,9 @@ struct FakeFlow {
 	alignas(16) uint8_t controls[kStates][16] = {};
 	GameSharedPtr list[kStates] = {};
 
-	FakeFlow()
+	explicit FakeFlow(uint32_t thirdClass = kUnlistedClass)
 	{
-		const uint32_t classes[kStates] = {kPlainClass, kPointerClass, kUnlistedClass};
+		const uint32_t classes[kStates] = {kPlainClass, kPointerClass, thirdClass};
 		for (int i = 0; i < kStates; i++) {
 			Field<uintptr_t>(states[i], 0) = kBase + classes[i];
 			Field<int32_t>(controls[i], kControlUses) = 2; // the list's use and the current pointer's
@@ -76,6 +77,38 @@ TEST_CASE("what a flow state keeps is fixed by its class, whatever its fields ho
 	CHECK(flow.Own(0) == addressLike); // a plain class's own fields are restored as recorded
 	CHECK(flow.Own(1) == 8);           // a class whose own fields hold pointers keeps only its base
 	CHECK(flow.Own(2) == 9);           // so does a class not listed
+}
+
+TEST_CASE("Finish keeps its own ints +144..+163 with the flow, so a round's end replays as recorded, and not the padding after them")
+{
+	constexpr uint32_t kOwnFrom = 144, kOwnTo = 164, kWinner = 152, kPadding = 164;
+	FakeFlow flow(kFinishClass);
+	uint8_t* finish = flow.states[2];
+	// What its phase 0 left: +144 and +148 for the last phase's request, +152
+	// the winning side, +156 and +160 the round's results.
+	for (uint32_t at = kOwnFrom; at < kOwnTo; at += 4) Field<int32_t>(finish, at) = 1000 + (int32_t)at;
+	Field<int32_t>(finish, kWinner) = 1;
+	Field<uint32_t>(finish, kPadding) = 0xAAAAAAAA;
+	FlowRollback record;
+	REQUIRE(record.Bind(flow.unit, kBase));
+
+	// The abandoned timeline went on to another winner and other results.
+	for (uint32_t at = kOwnFrom; at < kOwnTo; at += 4) Field<int32_t>(finish, at) = -7;
+	Field<uint32_t>(finish, kPadding) = 0xBBBBBBBB;
+	record.Apply();
+	CHECK(record.Failure() == nullptr);
+	for (uint32_t at = kOwnFrom; at < kOwnTo; at += 4) {
+		CAPTURE(at);
+		CHECK(Field<int32_t>(finish, at) == (at == kWinner ? 1 : 1000 + (int32_t)at));
+	}
+	CHECK(Field<uint32_t>(finish, kPadding) == 0xBBBBBBBB); // heap leftovers: not restored
+
+	// A capture after a state change records what the flow holds now.
+	Field<int32_t>(finish, kWinner) = 0;
+	record.Capture();
+	Field<int32_t>(finish, kWinner) = 1;
+	record.Apply();
+	CHECK(Field<int32_t>(finish, kWinner) == 0);
 }
 
 TEST_CASE("a flow state list that changes after Bind latches a failure, and the record stops touching the game")
