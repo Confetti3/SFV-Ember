@@ -193,12 +193,14 @@ constexpr uintptr_t kStateTable = 0x3A66160; // data rva: [kind] -> singleton, k
 constexpr int kStateKinds = 29;
 
 // The state kinds, each as it was seen in game (EMBER_LIBRARY.md section 39).
-// 10, 11, 13, 20, 21 and 28 were not seen (rva 0x372540 enters 21 on a KO);
-// None is a state not in the table.
+// 10, 11, 13, 20 and 21 were not seen (rva 0x372540 enters 21 on a KO);
+// None is a state not in the table. 28 is the back rise: Training's recovery
+// setting (setting 2) at 2 puts the knocked-down dummy in it (script 244) until
+// it is free, where 0 (script 240) and 1 (script 246) get up in kind 27.
 enum class StateKind : int {
 	None = 0, Stand = 1, Crouch = 2, PreJump = 3, Jump = 4, Landing = 5, WalkForward = 6, WalkBack = 7, DashForward = 8,
 	DashBack = 9, Guard = 12, StandToCrouch = 14, CrouchToStand = 15, TurnStand = 16, TurnCrouch = 17, TurnWalk = 18,
-	Attack = 19, Hit = 22, GuardHit = 23, LaunchHit = 24, Down = 25, LyingDown = 26, Rise = 27, Held = 29
+	Attack = 19, Hit = 22, GuardHit = 23, LaunchHit = 24, Down = 25, LyingDown = 26, Rise = 27, BackRise = 28, Held = 29
 };
 
 // CharaActionPart (type below) +0xD8: the script player of what the fighter plays.

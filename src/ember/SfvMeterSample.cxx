@@ -48,7 +48,8 @@ std::optional<unsigned> MeterStatus(StateKind kind, int posture)
 	// Knocked into the air: a juggle's hit or a launcher's.
 	case StateKind::LaunchHit: return ActorStatus::DamageBlow;
 	case StateKind::Down: case StateKind::LyingDown: return ActorStatus::Down;
-	case StateKind::Rise: return ActorStatus::Rise;
+	// Getting up in place (quick or not), or rolling back first.
+	case StateKind::Rise: case StateKind::BackRise: return ActorStatus::Rise;
 	// Thrown: the thrower's script holds this fighter (the meter's sequence).
 	case StateKind::Held: return ActorStatus::Sequence;
 	}

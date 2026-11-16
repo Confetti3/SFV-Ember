@@ -16,7 +16,7 @@ int ScriptedFrames(const mod::FighterFrame& dummy)
 	if (!dummy.valid || dummy.untilActionable <= 0 || dummy.untilActionable >= mod::sfv::fighter::kUntimed) return -1;
 	switch (dummy.stateKind) {
 	case StateKind::Hit: case StateKind::GuardHit: case StateKind::LaunchHit:
-	case StateKind::Down: case StateKind::LyingDown: case StateKind::Rise:
+	case StateKind::Down: case StateKind::LyingDown: case StateKind::Rise: case StateKind::BackRise:
 		return dummy.untilActionable;
 	default:
 		return -1;

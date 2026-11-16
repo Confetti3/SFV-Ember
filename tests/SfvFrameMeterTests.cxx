@@ -269,9 +269,12 @@ TEST_CASE("every state kind seen in SFV is a status the meter knows")
 	CHECK(MeterStatus(StateKind::GuardHit, 1) == ActorStatus::DamageGuard);
 	CHECK(MeterStatus(StateKind::LaunchHit, 4) == ActorStatus::DamageBlow);
 	CHECK(MeterStatus(StateKind::LyingDown, 3) == ActorStatus::Down);
+	// Getting up, in place or by the back rise (kind 28, seen 2026-11-16).
+	CHECK(MeterStatus(StateKind::Rise, 0) == ActorStatus::Rise);
+	CHECK(MeterStatus(StateKind::BackRise, 0) == ActorStatus::Rise);
 	CHECK(MeterStatus(StateKind::Held, 4) == ActorStatus::Sequence);
 	// Kinds never seen in game are not guessed at.
-	for (const int unseen : {0, 10, 11, 13, 20, 21, 28, 30}) CHECK_FALSE(MeterStatus(static_cast<StateKind>(unseen), 0).has_value());
+	for (const int unseen : {0, 10, 11, 13, 20, 21, 30}) CHECK_FALSE(MeterStatus(static_cast<StateKind>(unseen), 0).has_value());
 }
 
 TEST_CASE("the game's frames until actionable are the meter's, and its untimed is the meter's")

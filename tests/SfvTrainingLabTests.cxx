@@ -85,6 +85,7 @@ TEST_CASE("The dummy's free frame is the game's own count while it is hit, block
 	CHECK(lab::ScriptedFrames(Frame(StateKind::GuardHit, 7)) == 7);
 	CHECK(lab::ScriptedFrames(Frame(StateKind::Hit, 12)) == 12);
 	CHECK(lab::ScriptedFrames(Frame(StateKind::Rise, 20)) == 20);
+	CHECK(lab::ScriptedFrames(Frame(StateKind::BackRise, 35)) == 35); // the back rise times its way up too
 	// Lying down the game cannot time it.
 	CHECK(lab::ScriptedFrames(Frame(StateKind::LyingDown, sfve::mod::sfv::fighter::kUntimed)) == -1);
 	// Free, or in a move of its own, the watch is not given a count.
