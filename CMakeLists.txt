@@ -305,7 +305,8 @@ set(SFVE_MOD_SHARED_SOURCES
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx src/mod/TinyFighters.cxx
     src/mod/ModConfig.cxx src/mod/PadLayer.cxx src/mod/RegionTable.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx
-    src/mod/SfvRegionNames.cxx src/mod/RngAudit.cxx src/mod/SocketReads.cxx src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx src/mod/XInputHooks.cxx)
+    src/mod/SfvRegionNames.cxx src/mod/RngAudit.cxx src/mod/SocketReads.cxx src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx src/mod/XInputHooks.cxx
+    src/mod/GameRegions.cxx src/mod/PracticeGauges.cxx src/mod/ScenesSkip.cxx src/mod/UpdateCosts.cxx src/mod/UpdateNotes.cxx)
 # Compiled once for the three test programs that link it.
 add_library(sfve_ember_test_mod OBJECT ${SFVE_MOD_SHARED_SOURCES})
 target_link_libraries(sfve_ember_test_mod PUBLIC sfve_ember minhook::minhook)

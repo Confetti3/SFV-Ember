@@ -14,19 +14,30 @@
 // count forced to zero, so one call is one GGPO frame, and both players'
 // inputs are written over the pads' values when the tick records them.
 // Rollbacks replay by calling Advance again, exactly like a forward frame.
+//
+// The adapter is the game's bind, save/load and advance surface; what it
+// does besides is composed from modules of its own: the regions the game's
+// rollback manager lists (GameRegions), Training's gauges (PracticeGauges),
+// ending the decided match's scenes on a skip frame (ScenesSkip), the cost
+// and pace lines (UpdateCosts) and the per-update diagnostics (UpdateNotes).
 
 #include "core/GameAdapter.hxx"
 #include "core/MatchData.hxx"
 #include "mod/BattleIdentity.hxx"
+#include "mod/FighterUnits.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameInput.hxx"
+#include "mod/GameRegions.hxx"
 #include "mod/IntroSkip.hxx"
 #include "mod/Pace.hxx"
 #include "mod/RegionTable.hxx"
+#include "mod/ScenesSkip.hxx"
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvRegionNames.hxx"
 #include "mod/SocketReads.hxx"
 #include "mod/TickCounts.hxx"
+#include "mod/UpdateCosts.hxx"
+#include "mod/UpdateNotes.hxx"
 
 #include <stdint.h>
 
@@ -88,16 +99,13 @@ public:
 	// V-gauges refill and nobody is knocked out, set as Training's menu sets
 	// them, in the battle data's tables and each fighter's copy. Once bound,
 	// before the session's first frame. False (logged) when a table or a
-	// fighter is missing or the game refused a value.
+	// fighter is missing or the game refused a value (mod/PracticeGauges.hxx).
 	bool SetPracticeGauges();
 	// Only the EX (Critical Art) gauge, full at every round's start and
 	// otherwise as in a match (sfv::practice::kExtraFullAtRoundStart); vital
 	// and the V-gauge stay a match's. The same once-before-frame-0 write and
 	// the same results as SetPracticeGauges.
 	bool SetStartFullExtra();
-	// Writes each (param, value) of `gauges` into both players' tables (the
-	// battle data's and the fighter's copy); `what` names them in the log.
-	bool SetGaugeParams(const std::pair<int, int>* gauges, size_t count, const char* what);
 
 	// From the input-record hook: remembers what the game computed for each
 	// pad this tick, then writes the injected inputs over it while Advance runs.
@@ -139,7 +147,7 @@ public:
 	// What the last Advance did to end the decided match's scenes (a line
 	// for the log, which the netplay mode gives its frame), taken once; null
 	// when it did nothing.
-	const char* TakeScenesSkip() { return std::exchange(scenesSkip_, nullptr); }
+	const char* TakeScenesSkip() { return scenes_.Take(); }
 	// Only the fight reads the players' inputs (GameAdapter::InputsMatter),
 	// and the intro and the decided match's scenes their skip request on
 	// their skip frames (IntroSkip.hxx).
@@ -203,53 +211,31 @@ public:
 	void Recapture() { flow_.Capture(); }
 
 	// The game's post-restore callbacks, run by its own Restore (logged at bind).
-	struct PostRestore {
-		void (*fn)(void* context, const int32_t* frameId);
-		void* context;
-	};
+	using PostRestore = GamePostRestore;
 	const std::vector<PostRestore>& PostRestoreCallbacks() const { return postRestore_; }
 
 private:
 	void Forget();
 	uint8_t* FindUnit(uint32_t typeRva) const;
 	void WaitingToBind(const char* what);
-	bool AddGameRegions(uint8_t* manager);
-	void CollectPostRestore(uint8_t* manager);
 	void RunUpdate();
 	// A frame whose inputs carry the skip bit with the match decided: the
-	// current flow state moved on (intro_skip::ScenesStepFor), before the
-	// frame's update.
+	// current flow state moved on (ScenesSkip), before the frame's update.
 	void EndScenes();
-	// The input unit's ticks per update while the match is decided: logged
-	// each time the count changes.
-	void NoteDecidedTicks();
-	// The battle frame's pause bits after a session's update (sfv::pause):
-	// logged each time they change.
-	void NotePause();
 	// Both fighters' CharaVisualParts, in the battle's order (null where
 	// there is none): TinyFighters' sides.
 	void FighterVisualParts(uint8_t* parts[kPlayers]) const;
-	// The cost line (every kCostAdvances updates played forward): each kind
-	// of update's time, and saving, loading, hashing (StateLayout::TakeCosts)
-	// and the restore's callbacks since the last line.
-	void LogCosts();
 
 public:
-	// What the pace line needs of the session (logging only): its frame, its
-	// rollbacks and the steps that ran no frame, read on the battle's thread
-	// at each update. The netplay mode sets it for each session; null where
-	// the battle has none.
-	struct PaceCounts {
-		int frame = -1;
-		uint64_t rollbacks = 0;
-		uint64_t waiting = 0;
-	};
-	void SetPaceSource(std::function<PaceCounts()> source) { paceSource_ = std::move(source); }
+	// What the pace line needs of the session (UpdateCosts::PaceCounts). The
+	// netplay mode sets it for each session; null where the battle has none.
+	using PaceCounts = UpdateCosts::PaceCounts;
+	void SetPaceSource(std::function<PaceCounts()> source) { updateCosts_.SetPaceSource(std::move(source)); }
 	// An update is due in the frame now running: the mode steps its session
 	// (whether a frame is played or waits for the other player's inputs), so
 	// the frame's time is the pace line's. A frame Advance plays forward is
 	// due by itself; one the battle stands still in is not (pace::FrameClock).
-	void NoteUpdateDue() { paceClock_.Due(); }
+	void NoteUpdateDue() { updateCosts_.Due(); }
 
 private:
 
@@ -276,61 +262,20 @@ private:
 	uint8_t* (*gameInstance_)() = nullptr; // sfv::kGameInstance
 	uint32_t ticksThisUpdate_ = 0;
 	bool replaying_ = false; // the update Advance runs replays a frame (SocketReads' log)
-	// The battle's fighter units, partners included, in its order (from Bind):
-	// where their anchored socket reads start, and whose meshes are kept at
-	// LOD 0.
-	struct FighterUnit {
-		uint8_t* chara = nullptr;
-		int32_t side = -1;
-		uint8_t* action = nullptr; // CharaActionPart, for the facing
-		uint8_t* visual = nullptr; // CharaVisualPart
-	};
 	// Where every fighter unit stands and faces as an update begins (SocketReads).
 	void PlaceFighterUnits(SocketUpdate* sockets) const;
-	// After an update: a fighter unit's command queue left not empty
-	// (sfv::fighter::kCommandQueueBegin), outside the snapshot, is counted
-	// and the first few logged. Diagnostics only: nothing is changed.
-	void NoteCommandQueues();
 	match_data::Facts battleFacts_;
 	TickCounts tickCounts_; // the bound battle's ticks per update
-	uint64_t queuesCarried_ = 0;
-	int queueLines_ = 0;
-	static constexpr int kMostQueueLines = 8;
+	// The battle's fighter units, partners included, in its order (from Bind,
+	// FighterUnits.hxx).
 	FighterUnit fighterUnits_[kMostFighterUnits];
 	int fighterUnitCount_ = 0;
 	uint64_t placedUpdates_ = 0; // this battle's updates whose fighter units were placed (the sockets line)
 	FlowRollback flow_;
-	// The costs since the last cost line (LogCosts), in QueryPerformanceCounter
-	// ticks: updates played forward and replayed, and AfterLoad's work.
-	struct UpdateCosts {
-		uint64_t ticks = 0, replayed = 0, callbacks = 0;
-		int64_t tickTicks = 0, replayedTicks = 0, callbackTicks = 0;
-	};
-	UpdateCosts costs_;
-	// The pace of the updates played forward (mod/Pace.hxx): the battle's
-	// frames' time (QueryPerformanceCounter ticks, split by whether an update
-	// was due), whether the window the next costs line covers has begun, and
-	// the clock's and the session's counts then.
-	std::function<PaceCounts()> paceSource_;
-	pace::FrameClock paceClock_;
-	bool paceBegun_ = false;
-	pace::FrameClock::Totals clockAtStart_;
-	PaceCounts paceAtStart_;
-
-	// Ending the decided match's scenes (EndScenes); the game's functions
-	// from the bind's image base.
-	uintptr_t imageBase_ = 0;
-	int64_t (*flowRequest_)(uint8_t* flowUnit, int32_t state, uint8_t flags, int32_t arg) = nullptr; // sfv::kFlowRequest
-	int64_t (*setFlowPhase_)(uint8_t* flowState, int32_t phase) = nullptr;                          // sfv::kSetFlowPhase
-	void (*markResultSkipped_)(uint8_t* unitContext) = nullptr;                                      // sfv::kMarkResultSkipped
-	bool resimulating_ = false;       // the update now running replays a frame after a rollback
-	const char* scenesSkip_ = nullptr; // TakeScenesSkip: points at scenesSkipText_
-	char scenesSkipText_[192] = {};
-	// What EndScenes last left alone (state id, phase), logged once each.
-	int scenesIdleState_ = -1;
-	int scenesIdlePhase_ = -1;
-	int64_t decidedTicks_ = -1; // the tick count last logged with the match decided; -1 none
-	uint32_t pausedBits_ = 0;   // the battle frame's pause bits last logged (NotePause)
+	UpdateCosts updateCosts_; // the cost and pace lines
+	ScenesSkip scenes_;       // ending the decided match's scenes (EndScenes)
+	UpdateNotes notes_;       // the per-update diagnostics
+	bool resimulating_ = false; // the update now running replays a frame after a rollback
 };
 
 } // namespace sfve::mod
