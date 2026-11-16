@@ -186,7 +186,7 @@ def lib_is_crash_exit(code: int) -> bool:
     """common/CrashReport.hxx's IsCrashExit, as the launcher judges an exit."""
     if code in (0xC0000135, 0xC0000139, 0xC0E90002):
         return False
-    return (code & 0xF0000000) == 0xC0000000 or code in (0xE06D7363, 3, 255)
+    return (code & 0xF0000000) == 0xC0000000 or code in (0xE06D7363, 0xE0470001, 3, 255)
 
 
 if __name__ == "__main__":
