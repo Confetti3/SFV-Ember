@@ -250,6 +250,8 @@ struct Shell {
 	std::shared_ptr<const facade::PresentationSnapshot> frame;
 	sf4e::ui::MenuPads::Taken openRequest;
 	bool started = false, wasShown = false;
+	// A room game is fought with none of Ember's windows over it: the pointer is hidden.
+	bool hideCursor = false;
 	// At the game's main menu last frame, and entered it with Ember not yet
 	// opened for that visit.
 	bool atMenu = false, menuOpenPending = false;
@@ -443,7 +445,11 @@ void BeginFrame()
 		case input::StartAnswer::None: break;
 		}
 	}
-	sf4e::ui::SetOverlayCursorOwnership(focused && presentation.Visible());
+	// Ember owns the pointer while its menu is shown, and during a room game
+	// fought with nothing of Ember's over it, to hide it there (the game's own
+	// cursor handling would put the arrow back on every mouse move).
+	shell.hideCursor = focused && !presentation.Visible() && sf4e::netplay::Fighting(snapshot.session.match) && !snapshot.practiceMatch;
+	sf4e::ui::SetOverlayCursorOwnership((focused && presentation.Visible()) || shell.hideCursor);
 	// The shell navigates by its own rows, not ImGui's spatial navigation.
 	ImGui::GetIO().ConfigFlags &= ~(ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard);
 	shell.navigation.Update(snapshot.menuController, input::ControllerMenuAvailable(snapshot.menuContext),
@@ -502,7 +508,11 @@ overlay::OverlayUi::Shown Draw()
 	auto& presentation = shell.presentation;
 	if (ImGui::IsKeyPressed(ImGuiKey_F10, false)) presentation.Toggle("F10");
 	sf4e::ui::SetMenuInput({shell.navigation.Buttons(), ImGui::GetTime()});
-	sf4e::ui::SetMenuGlyphs(snapshot.menuController.deviceType, snapshot.menuController.menu, snapshot.promptBrand);
+	// The runtime fills the sample only while the pad can drive the menu; a
+	// frame it did not fill leaves the prompts as they were.
+	if (snapshot.menuController.deviceType >= 0)
+		sf4e::ui::SetMenuGlyphs(snapshot.menuController.deviceType, snapshot.menuController.menu, snapshot.promptBrand);
+	if (shell.hideCursor) ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 	if (presentation.Reopened()) shell.host.Shell().ShowPlay();
 	// Under the shell: the match HUD, or only its notices while the shell is open.
 	DrawSfvMatchHud(*shell.frame, presentation.Visible());
