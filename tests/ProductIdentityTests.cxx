@@ -128,6 +128,28 @@ TEST_CASE("SFV Ember's launcher, updater and folders")
 	CHECK(nightly.latestVersion.empty());
 }
 
+TEST_CASE("SFV Ember's links are the community's Discord and Ko-fi and its own project page, with no Twitter")
+{
+	const ember::Link* link = ember::Product().links;
+	REQUIRE(link != nullptr);
+	std::array<std::string, 3> ids{"discord", "kofi", "project"};
+	std::array<std::string, 3> addresses{"discord.gg/uPNqF5A5uq", "ko-fi.com/confetti3", "github.com/Confetti3/SFV-Ember"};
+	for (std::size_t i = 0; i < ids.size(); ++i) {
+		REQUIRE(link[i].id != nullptr);
+		INFO(ids[i]);
+		CHECK(ids[i] == link[i].id);
+		CHECK(addresses[i] == link[i].address);
+		// Each one's words come from the catalog, and none names SF4.
+		const std::string label = sf4e::loc::T(link[i].label);
+		const std::string detail = sf4e::loc::Tf(link[i].detail, link[i].address);
+		CHECK(label != link[i].label);
+		CHECK(detail.find(addresses[i]) != std::string::npos);
+		CHECK_FALSE(HasSf4(label.c_str()));
+		CHECK_FALSE(HasSf4(detail.c_str()));
+	}
+	CHECK(link[3].id == nullptr);
+}
+
 TEST_CASE("SFV Ember's public room classes are SFV's ten league tiers, each with its league icon")
 {
 	// EMBER_LIBRARY.md section 28: the bridge's ten bands, band 1 first.

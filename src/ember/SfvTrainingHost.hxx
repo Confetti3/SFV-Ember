@@ -10,6 +10,8 @@
 // HUD and hitboxes, the dummy's reply. SFV's own pause menu keeps the game's
 // dummy settings, its own recording and its position reset.
 
+#include "ui/TrainingInRoom.hxx"
+
 namespace sfve::adapter {
 
 // The lab's settings folder and what SFV's lab offers, and the pipe's
@@ -19,7 +21,11 @@ void InstallSfvTrainingHost();
 // Render thread, each frame inside ImGui's: the lab's keys, controls and HUD
 // over the Training battle (available), under neither Ember's menu nor the
 // game's pause menu; outside the battle the controls close.
-void DrawSfvTrainingLab(bool available, bool shellShown, bool paused, bool focused, bool called);
+// `room`: where the member stands while the battle is a room's Training
+// (empty otherwise), which gives the controls' Back to room row, the HUD's F10
+// hint and F10 itself.
+void DrawSfvTrainingLab(bool available, bool shellShown, bool paused, bool focused, bool called,
+	const sf4e::ui::TrainingRoomStatus& room);
 
 // Whether the lab's controls are open, which hold the pad and the pointer as
 // Ember's menu does. Any thread.

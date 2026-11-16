@@ -129,6 +129,16 @@ constexpr ember::RankingClass SfvRanks[ember::RankingClassCount] = {
 // frame.
 constexpr ember::PictureShapes SfvPictures = {224.f, 352.f, true};
 
+// SFV Ember's outbound links (Home's header and Help & About): the community's Discord and Ko-fi, which
+// are the same author's and community's as SF4 Ember's, and SFV Ember's own project page in place of SF4
+// Ember's website. No Twitter link. The page wears Ember's mark.
+constexpr ember::Link SfvLinks[] = {
+	{"discord", "discord.gg/uPNqF5A5uq", ember::LinkMark::Discord, "about.discord", "about.discord_detail"},
+	{"kofi", "ko-fi.com/confetti3", ember::LinkMark::Coffee, "about.kofi", "about.kofi_detail"},
+	{"project", "github.com/Confetti3/SFV-Ember", ember::LinkMark::Ember, "about.project", "about.project_detail"},
+	{nullptr, nullptr, ember::LinkMark::Ember, nullptr, nullptr},
+};
+
 constexpr ember::ProductIdentity SfvEmber = {
 	{
 		"SFV Ember",
@@ -220,6 +230,7 @@ constexpr ember::ProductIdentity SfvEmber = {
 	// (cmake/ember-x64-probe EMBER_ACCOUNT_SERVICE, empty when it names SFV's
 	// own bridge again).
 	SF4E_ACCOUNT_SERVICE,
+	SfvLinks,
 };
 
 } // namespace

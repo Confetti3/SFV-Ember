@@ -289,7 +289,8 @@ void RecordFirstCrash(const char* kind, EXCEPTION_POINTERS* pointers, const char
 	// the process before the dump, so the launcher is asked first; the
 	// request allocates nothing.
 	const bool heapCorrupt = sf4e::crash::IsHeapCorruption(pointers);
-	const bool dumpedFirst = heapCorrupt && s_dumpClient.Request(pointers, threadId);
+	sf4e::crash::DumpAnswer answer = heapCorrupt ? s_dumpClient.Request(pointers, threadId) : sf4e::crash::DumpAnswer::NotAsked;
+	const bool dumpedFirst = answer == sf4e::crash::DumpAnswer::Written;
 	const sf4e::crash::CrashFacts facts = FactsFor(kind, pointers, message, threadId);
 	const size_t headerLength = sf4e::crash::FormatCrashHeader(s_header, sizeof(s_header), facts);
 	// The record holds this crash only: a report sends it, and one that also
@@ -305,10 +306,14 @@ void RecordFirstCrash(const char* kind, EXCEPTION_POINTERS* pointers, const char
 	snprintf(s_line, sizeof(s_line), "crash: %.*s", headerLength ? (int)headerLength - 1 : 0, s_header);
 	TryLogLine(s_line);
 	if (!pointers || dumpedFirst) return;
-	if (!heapCorrupt && s_dumpClient.Request(pointers, threadId)) {
+	if (!heapCorrupt) answer = s_dumpClient.Request(pointers, threadId);
+	if (answer == sf4e::crash::DumpAnswer::Written) {
 		TryLogLine("crash: the launcher wrote the dump");
 		return;
 	}
+	// Why the launcher's dump is missing, for a report that finds none.
+	snprintf(s_line, sizeof(s_line), "crash: the launcher's dump: %s", sf4e::crash::DumpAnswerName(answer));
+	TryLogLine(s_line);
 	if (!s_logsFolder[0]) return;
 	const bool written = sf4e::crash::WriteDump(GetCurrentProcess(), GetCurrentProcessId(), s_logsFolder, threadId, pointers, false,
 		s_dumpPath, Writer());

@@ -173,9 +173,10 @@ void DrawChallengerBand(const sf4e::ui::ChallengerCall& call)
 
 } // namespace
 
-void DrawSfvTraining(const facade::PresentationSnapshot& frame, bool shellShown, unsigned unread, bool focused)
+sf4e::ui::TrainingRoomStatus DrawSfvTraining(const facade::PresentationSnapshot& frame, bool shellShown, unsigned unread,
+	bool focused)
 {
-	if (!frame.runtime) return;
+	if (!frame.runtime) return {};
 	const auto& snapshot = *frame.runtime;
 	const TrainingView training = ReadTrainingView();
 	const bool paused = TrainingPaused();
@@ -187,13 +188,15 @@ void DrawSfvTraining(const facade::PresentationSnapshot& frame, bool shellShown,
 	// Ember's lab over the battle (SfvTrainingHost): its keys, its controls
 	// and its HUD (the boxes, the frame meter as the player set it), which
 	// close outside the battle.
-	DrawSfvTrainingLab(training.available, shellShown, paused, focused, called);
-	if (!training.available) return;
+	// Waiting in Training from a room: where the player stands there. The
+	// controls' Back to room row and F10 are offered exactly then.
 	const bool inRoom = snapshot.session.room == sf4e::netplay::RoomState::Joined;
-	if (!shellShown && !paused && inRoom && !called) {
-		DrawRoomLine(sf4e::ui::DescribeTrainingRoom(snapshot.Room(), unread));
-	}
-	if (!called) return;
+	const sf4e::ui::TrainingRoomStatus room = training.available && inRoom
+		? sf4e::ui::DescribeTrainingRoom(snapshot.Room(), unread) : sf4e::ui::TrainingRoomStatus{};
+	DrawSfvTrainingLab(training.available, shellShown, paused, focused, called, room);
+	if (!training.available) return room;
+	if (!shellShown && !paused && !called) DrawRoomLine(room);
+	if (!called) return room;
 	sf4e::ui::ChallengerCall challenger;
 	if (inRoom) challenger = sf4e::ui::DescribeChallenger(snapshot.Room(), call);
 	challenger.called = true;
@@ -205,6 +208,7 @@ void DrawSfvTraining(const facade::PresentationSnapshot& frame, bool shellShown,
 		challenger.goNowGlyph = sf4e::ui::GoNowGlyph(focused ? sf4e::ui::MenuPromptDevice() : sf4e::input::PadXInput);
 	}
 	DrawChallengerBand(challenger);
+	return room;
 }
 
 void InstallSfvHud()

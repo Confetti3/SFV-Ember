@@ -13,6 +13,7 @@
 // gauges and portraits.
 
 #include "sf4e/sf4e__NetplayFacade.hxx"
+#include "ui/TrainingInRoom.hxx"
 
 namespace sfve::adapter {
 
@@ -32,8 +33,11 @@ void DrawSfvMatchHud(const sf4e::NetplayFacade::PresentationSnapshot& frame, boo
 // room's call back runs its countdown a band across the screen says the
 // match is ready, with who sat down and go now's prompt while it can be
 // pressed. `unread`: the room chat's unread count, as the room screen shows
-// it; `focused`: the game's window has the focus.
-void DrawSfvTraining(const sf4e::NetplayFacade::PresentationSnapshot& frame, bool shellShown, unsigned unread,
-	bool focused);
+// it; `focused`: the game's window has the focus. Returns where the member
+// stands in their room while a room's Training battle runs (empty otherwise:
+// no battle, or no room), which is also when F10 is the way back to the room
+// (SfvShell hands it to the overlay).
+sf4e::ui::TrainingRoomStatus DrawSfvTraining(const sf4e::NetplayFacade::PresentationSnapshot& frame, bool shellShown,
+	unsigned unread, bool focused);
 
 } // namespace sfve::adapter

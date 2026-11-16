@@ -57,6 +57,13 @@ TrainingView ReadTrainingView();
 // battle tick ran in the last update. Any thread.
 bool TrainingPaused();
 
+// The player's own return to their room from the Training battle (F10, or the
+// controls' Back to room row): the battle leaves for the main menu at the next
+// update that may leave, as a call's countdown ends it, and the shell opens on
+// their table there. False while a call's count runs or the player already
+// asked. Game thread.
+bool LeaveTrainingToRoom();
+
 // Training select asked for by Home's Training row (Training::Request at the
 // idle main menu): true once per request, for the shell, which then shows its
 // Training select. Render thread.

@@ -528,8 +528,11 @@ overlay::OverlayUi::Shown Draw()
 	if (presentation.Reopened()) shell.host.Shell().ShowPlay();
 	// Under the shell: the match HUD, or only its notices while the shell is open.
 	DrawSfvMatchHud(*shell.frame, presentation.Visible());
-	// Over SFV's Training battle: the room line and the call's banner.
-	DrawSfvTraining(*shell.frame, presentation.Visible(), shell.host.Shell().UnreadChat(), overlay::GameWindowFocused());
+	// Over SFV's Training battle: the room line and the call's banner. A member
+	// waiting there from a room has F10 as the way back to it (the game never
+	// sees it, as at the main menu where it is Ember's menu's).
+	const sf4e::ui::TrainingRoomStatus trainingRoom =
+		DrawSfvTraining(*shell.frame, presentation.Visible(), shell.host.Shell().UnreadChat(), overlay::GameWindowFocused());
 	DrawReplayControls(shell, snapshot, presentation.Visible());
 	// The artwork behind the shell's pages only while it is shown over the
 	// game's main menu, with no game being played, watched or replayed: never
@@ -568,7 +571,8 @@ overlay::OverlayUi::Shown Draw()
 			input::RoomStateName(snapshot.session.room), input::MatchStateName(snapshot.session.match));
 	}
 	PublishStatus(shell);
-	return {presentation.Visible(), presentation.Available()};
+	return {presentation.Visible(), presentation.Available() ? sf4e::ui::F10Owner::Menu :
+		trainingRoom.InRoom() ? sf4e::ui::F10Owner::RoomTraining : sf4e::ui::F10Owner::Game};
 }
 
 // Game thread, for each pad state the game reads: Start on the gameplay pad

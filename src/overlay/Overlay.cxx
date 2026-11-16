@@ -56,7 +56,8 @@ PresentTap s_tap;              // as set; copied to the render thread under the 
 std::atomic<bool> s_haveTap;
 
 // What the render thread last published, for the window procedure.
-std::atomic<bool> s_shown, s_available;
+std::atomic<bool> s_shown;
+std::atomic<sf4e::ui::F10Owner> s_f10{sf4e::ui::F10Owner::Game};
 std::atomic<bool> s_focused{true};
 std::atomic<HWND> s_window; // the game's window, once its swap chain presents
 std::atomic<WNDPROC> s_gameWndProc;
@@ -125,7 +126,7 @@ LRESULT CALLBACK OverlayWndProc(HWND window, UINT message, WPARAM wParam, LPARAM
 		if (takesMessage && takesMessage(message, wParam, lParam)) return 0;
 		if (ImGui::GetCurrentContext() && s_r.ready) {
 			const LRESULT handled =
-				sf4e::ui::HandleOverlayMessage(window, message, wParam, lParam, s_shown && s_focused, s_available);
+				sf4e::ui::HandleOverlayMessage(window, message, wParam, lParam, s_shown && s_focused, s_f10);
 			if (handled && message != WM_KEYUP && message != WM_SYSKEYUP) return handled;
 		}
 		if (message == WM_KEYDOWN || message == WM_KEYUP) {
@@ -296,7 +297,7 @@ void Draw(IDXGISwapChain* swap)
 	s_r.art->Pump();
 	const OverlayUi::Shown shown = ui.draw();
 	s_shown = shown.shown;
-	s_available = shown.available;
+	s_f10 = shown.f10;
 	ImGui::Render();
 	ImDrawData* data = ImGui::GetDrawData();
 	if (data->CmdListsCount) Render(data);

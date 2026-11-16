@@ -150,6 +150,11 @@ SfvTraining s_training;
 
 } // namespace
 
+bool LeaveTrainingToRoom()
+{
+	return s_battle != 0 && !s_leaving && s_countdown.LeaveNow();
+}
+
 ember::game::Training& SfvTrainingService()
 {
 	return s_training;

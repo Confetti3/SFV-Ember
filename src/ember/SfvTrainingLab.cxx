@@ -225,6 +225,9 @@ bool Dispatch(const training::Command& command)
 		return true;
 	// SFV's lab has no position save, dummy settings or Combo check
 	// (TrainingFeatures): a command for them is refused.
+	// The way back to the room the player waits in (F10, Back to room): the
+	// battle leaves for the main menu as a call's count ends it.
+	case Action::LeaveToRoom: return LeaveTrainingToRoom();
 	case Action::Place: case Action::Save: case Action::Restore: case Action::DummyState:
 	case Action::ComboRecord: case Action::ComboStart: case Action::ComboStop: case Action::ComboPlay:
 		return false;

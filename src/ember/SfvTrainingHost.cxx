@@ -214,7 +214,8 @@ bool ChooseTrainingHitboxes(bool shown)
 	return true;
 }
 
-void DrawSfvTrainingLab(bool available, bool shellShown, bool paused, bool focused, bool called)
+void DrawSfvTrainingLab(bool available, bool shellShown, bool paused, bool focused, bool called,
+	const sf4e::ui::TrainingRoomStatus& room)
 {
 	const training::View view = ReadTrainingLab();
 	const bool lab = available && view.available;
@@ -253,7 +254,8 @@ void DrawSfvTrainingLab(bool available, bool shellShown, bool paused, bool focus
 			if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) s_hud = !s_hud;
 		}
 		// The dummy's plan each battle (the position keys are not SFV's).
-		ui::TrainingHotkeys(view, SubmitToLab);
+		// F10 goes back to the room in a room's Training, not under the call.
+		ui::TrainingHotkeys(view, SubmitToLab, room.InRoom() && !called);
 		if (ui::TrainingPressesAct(s_controls, called) && !io.WantTextInput && !io.KeyAlt) {
 			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_F1 + ui::TrainingRecordKey), false))
 				ui::TrainingRecordPress(view, SubmitToLab, s_controls.Sample());
@@ -268,10 +270,10 @@ void DrawSfvTrainingLab(bool available, bool shellShown, bool paused, bool focus
 	s_hudShown = s_hud;
 	// The boxes behind every window, then the HUD, never over the game's pause.
 	if (!paused && s_hud) DrawSfvHitboxes();
-	if (!shellShown && !paused && s_hud) ui::DrawTrainingHud(view, called);
+	if (!shellShown && !paused && s_hud) ui::DrawTrainingHud(view, called, room.InRoom());
 	if (open) {
 		ui::TakeForwardedMenuAction();
-		ui::DrawTrainingFlyout(view, SubmitToLab);
+		ui::DrawTrainingFlyout(view, SubmitToLab, room);
 		if (ui::TakeForwardedMenuAction().kind == ui::MenuAction::Close) s_controls.Close();
 	}
 	std::lock_guard lock(s_statusMutex);

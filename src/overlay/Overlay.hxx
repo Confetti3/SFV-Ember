@@ -24,6 +24,8 @@
 // assets/flags, Ember's own art. SFV's fighters and stages are drawn from
 // the game's own textures instead (ember/SfvArt), with nothing packaged.
 
+#include "ui/Win32Input.hxx"
+
 #include <functional>
 
 namespace sfve::overlay {
@@ -39,7 +41,9 @@ struct OverlayUi {
 	// Render thread, inside the ImGui frame, every frame the game presents.
 	struct Shown {
 		bool shown = false;     // the interface is on screen: the keys and the mouse are its own
-		bool available = false; // F10 may show it now
+		// Who F10 is for now: the interface when it may show, the way back to
+		// the room in a room's Training, else the game (ui/Win32Input.hxx).
+		sf4e::ui::F10Owner f10 = sf4e::ui::F10Owner::Game;
 	};
 	std::function<Shown()> draw;
 	// Game thread, for each pad state the game reads: the slot and its
