@@ -11,6 +11,7 @@
 #include "ember/SfvPick.hxx"
 #include "ember/SfvPickMemory.hxx"
 #include "ember/SfvPickSpace.hxx"
+#include "ember/SfvRandomFighter.hxx"
 
 #include "common/SelectionPick.hxx"
 
@@ -325,4 +326,91 @@ TEST_CASE("only what is saved bumps the revision, and Random's rolls and Eleven'
 	SetPickEleven(false);
 	SetPickRandom(false);
 	ForgetPickMemoryForTest();
+}
+
+TEST_CASE("what is made from the stored pick is remade only when the pick, its looks or Random change, never by a read")
+{
+	FillTestCatalog();
+	ForgetPickMemoryForTest();
+	SetPickRandom(false);
+	PlayerPick ryu;
+	ryu.pick = LookOf(kRyu, 4, 1, kTwoTwo);
+	SetPick(ryu);
+	const std::uint64_t base = PickChanges();
+	// Reads change nothing, however many.
+	for (int i = 0; i < 50; i++) {
+		CurrentPick();
+		CurrentDummy();
+		RememberedLook(kRyu);
+		LookFor(ryu.pick, kCnl, true);
+		PickRandom();
+		PickEleven();
+	}
+	CHECK(PickChanges() == base);
+	// Each way to change it rises the count.
+	std::uint64_t last = base;
+	const auto rose = [&last] {
+		const std::uint64_t now = PickChanges();
+		const bool up = now > last;
+		last = now;
+		return up;
+	};
+	SetPick(ryu);
+	CHECK(rose());
+	SetPickRandom(true);
+	CHECK(rose());
+	SetPickEleven(true);
+	CHECK(rose());
+	SetPickEleven(false);
+	SetPickRandom(false);
+	rose();
+	UpdatePick([](PlayerPick& pick) {
+		pick.pick.color = 2;
+		return true;
+	});
+	CHECK(rose());
+	UpdatePick([](PlayerPick&) { return false; });
+	CHECK_FALSE(rose());
+	ForgetPickMemoryForTest();
+	CHECK(rose());
+}
+
+TEST_CASE("the note to the runtime is due the first time and when what it is made from changes")
+{
+	RandomNoteGate gate;
+	RandomNoteInputs inputs;
+	inputs.fighters = 5;
+	inputs.pick = 3;
+	CHECK(gate.Due(inputs));
+	for (int frame = 0; frame < 100; frame++) CHECK_FALSE(gate.Due(inputs));
+	// Each input on its own.
+	const auto changes = [&](auto change) {
+		RandomNoteInputs other = inputs;
+		change(other);
+		const bool due = gate.Due(other);
+		CHECK_FALSE(gate.Due(other));
+		inputs = other;
+		return due;
+	};
+	CHECK(changes([](RandomNoteInputs& i) { i.random = true; }));
+	CHECK(changes([](RandomNoteInputs& i) { i.eleven = true; }));
+	CHECK(changes([](RandomNoteInputs& i) { i.tiny = true; }));
+	CHECK(changes([](RandomNoteInputs& i) { i.fighters = 6; }));
+	CHECK(changes([](RandomNoteInputs& i) { i.pick++; }));
+	CHECK(changes([](RandomNoteInputs& i) { i.voices++; }));
+	CHECK(changes([](RandomNoteInputs& i) { i.roll++; }));
+}
+
+TEST_CASE("the own voices' revision rises only when a read gives other voices than the last")
+{
+	FillTestCatalog();
+	const auto english = [](const std::string&) { return std::optional<int>(picks::kVoiceEnglish); };
+	const auto japanese = [](const std::string&) { return std::optional<int>(picks::kVoiceJapanese); };
+	RefreshOwnVoices(english);
+	const std::uint64_t base = OwnVoicesRevision();
+	RefreshOwnVoices(english);
+	CHECK(OwnVoicesRevision() == base);
+	RefreshOwnVoices(japanese);
+	CHECK(OwnVoicesRevision() > base);
+	RefreshOwnVoices(english); // as the other tests expect to find them
 }

@@ -39,7 +39,13 @@ struct PlayerPick {
 	int stage = 0;
 };
 
+// A copy of the stored pick, which is fitted when it is stored (and, for one
+// stored before the catalog was filled, at the first read after): no read
+// fits it again.
 PlayerPick CurrentPick();
+// Rises with each change to the stored pick, the remembered looks and the
+// Random and Eleven flags; any thread. For what is made from them and kept.
+std::uint64_t PickChanges();
 // Stores the pick, fitted; returns what was stored.
 PlayerPick SetPick(const PlayerPick& pick);
 // Changes the stored pick as one step: `edit` gets a copy of it under the

@@ -39,6 +39,7 @@ std::vector<int> s_rosterOrder;
 // read by any thread; empty before the first read.
 std::mutex s_voicesMutex;
 std::vector<int> s_ownVoices;
+std::uint64_t s_voicesRevision = 0;
 static_assert(picks::kVoiceJapanese == mod::sfv::jump::kVoiceJapanese && picks::kVoiceEnglish == mod::sfv::jump::kVoiceEnglish,
 	"a pick carries the voice as the game numbers it");
 // The table rules a room offers that SFV plays (VersusLaunch's
@@ -660,7 +661,15 @@ void RefreshOwnVoices(const std::function<std::optional<int>(const std::string& 
 		voices.push_back(voice && (*voice == picks::kVoiceJapanese || *voice == picks::kVoiceEnglish) ? *voice : picks::kVoiceEnglish);
 	}
 	std::lock_guard lock(s_voicesMutex);
+	if (voices == s_ownVoices) return;
 	s_ownVoices = std::move(voices);
+	s_voicesRevision++;
+}
+
+std::uint64_t OwnVoicesRevision()
+{
+	std::lock_guard lock(s_voicesMutex);
+	return s_voicesRevision;
 }
 
 int OwnVoice(std::int64_t fighter)

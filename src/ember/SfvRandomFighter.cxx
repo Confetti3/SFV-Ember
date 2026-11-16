@@ -8,9 +8,11 @@
 #include "common/GameCatalog.hxx"
 #include "common/MatchWireTypes.hxx"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 
 namespace sfve::adapter {
 
@@ -23,31 +25,50 @@ std::atomic<std::uint64_t> s_taken{0};
 // roll already taken is taken again when the pick changes from one to the
 // other, so the stored look follows the pick.
 std::atomic<int> s_takenAs{0};
+std::mutex s_noteMutex;
+RandomNoteGate s_noteGate;
 
 } // namespace
 
+bool RandomNoteGate::Due(const RandomNoteInputs& inputs)
+{
+	if (last_ == inputs) return false;
+	last_ = inputs;
+	return true;
+}
+
 void NoteRandomFighter(bool random)
 {
+	const auto runtime = sf4e::NetplayFacade::GetRuntimeSnapshotShared();
+	const bool eleven = PickEleven();
+	RandomNoteInputs inputs;
+	inputs.random = random;
+	inputs.eleven = eleven;
+	inputs.tiny = runtime && runtime->Room().tinyFighters;
+	inputs.fighters = (std::min)(ember::Catalog().fighterCount, ember::MaxFighters);
+	inputs.pick = PickChanges();
+	inputs.voices = OwnVoicesRevision();
+	// Eleven's looks for the next game's roll (the runtime numbers rolls from
+	// 1 and counts each new one), so a Ready the runtime remakes over a new
+	// roll still carries the Eleven look and the loadout drawn for that game.
+	inputs.roll = eleven ? (runtime ? runtime->randomRoll : 0) + 1 : 0;
+	{
+		std::lock_guard lock(s_noteMutex);
+		if (!s_noteGate.Due(inputs)) return;
+	}
 	// The wire's picks, as a Ready sends them (SfvPick's ToWire): the stored
 	// pick, and each fighter's remembered look, or the fighter alone for one
 	// not stored this run, which the runtime fits as it rolls
 	// (selection::RolledPick).
-	const auto runtime = sf4e::NetplayFacade::GetRuntimeSnapshotShared();
-	const bool tiny = runtime && runtime->Room().tinyFighters;
 	sf4e::wire::ConfirmedCharaConditions lobby{};
-	ToWire(CurrentPick().pick, tiny, lobby);
+	ToWire(CurrentPick().pick, inputs.tiny, lobby);
 	std::array<sf4e::wire::ConfirmedCharaConditions, ember::MaxFighters> remembered{};
-	const int fighters = ember::Catalog().fighterCount;
-	// Eleven's looks for the next game's roll (the runtime numbers rolls from
-	// 1 and counts each new one), so a Ready the runtime remakes over a new
-	// roll still carries the Eleven look and the loadout drawn for that game.
-	const bool eleven = PickEleven();
-	const std::uint64_t nextSeed = ElevenSeed(ElevenSalt(), (runtime ? runtime->randomRoll : 0) + 1);
-	for (int fighter = 0; fighter < fighters && fighter < ember::MaxFighters; fighter++) {
+	const std::uint64_t nextSeed = ElevenSeed(ElevenSalt(), inputs.roll);
+	for (int fighter = 0; fighter < inputs.fighters; fighter++) {
 		sf4e::selection::Pick look;
 		look.fighter = fighter;
 		look = eleven ? ElevenPick(fighter, nextSeed) : RememberedLook(fighter).value_or(look);
-		ToWire(look, tiny, remembered[(size_t)fighter]);
+		ToWire(look, inputs.tiny, remembered[(size_t)fighter]);
 	}
 	sf4e::NetplayFacade::NoteRandomFighter(random, lobby, remembered);
 }
