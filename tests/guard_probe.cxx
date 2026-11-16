@@ -8,6 +8,7 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS // gethostbyname is exactly what is tested
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <mswsock.h>
 #include <windows.h>
 
 #include <stdio.h>
@@ -67,6 +68,41 @@ int main()
 	char buf[4];
 	Expect(recv(u, buf, sizeof(buf), 0) == 1 && buf[0] == 'y', "loopback datagram received");
 	Expect(getaddrinfo("localhost", "80", nullptr, &result) == 0, "getaddrinfo(localhost) works");
+
+	// WSASendMsg, the exported one and the provider's (fetched through
+	// WSAIoctl, as ConnectEx is): the same policy as sendto.
+	char payload[] = "z";
+	WSABUF buffer = {1, payload};
+	WSAMSG toInternet = {};
+	toInternet.name = (LPSOCKADDR)&out;
+	toInternet.namelen = sizeof(out);
+	toInternet.lpBuffers = &buffer;
+	toInternet.dwBufferCount = 1;
+	WSAMSG toLoopback = toInternet;
+	toLoopback.name = (LPSOCKADDR)&local;
+	toLoopback.namelen = sizeof(local);
+	DWORD sentBytes = 0;
+	Expect(WSASendMsg(u, &toInternet, 0, &sentBytes, nullptr, nullptr) == SOCKET_ERROR && WSAGetLastError() == WSAENETUNREACH,
+		"WSASendMsg to 1.1.1.1 refused");
+	Expect(WSASendMsg(u, &toLoopback, 0, &sentBytes, nullptr, nullptr) == 0 && sentBytes == 1, "WSASendMsg to loopback allowed");
+	Expect(recv(u, buf, sizeof(buf), 0) == 1 && buf[0] == 'z', "loopback WSASendMsg datagram received");
+	GUID sendMsgId = WSAID_WSASENDMSG;
+	LPFN_WSASENDMSG provider = nullptr;
+	DWORD returned = 0;
+	Expect(WSAIoctl(u, SIO_GET_EXTENSION_FUNCTION_POINTER, &sendMsgId, sizeof(sendMsgId), &provider, sizeof(provider), &returned,
+			   nullptr, nullptr) == 0 && provider,
+		"the provider's WSASendMsg is handed out");
+	Expect(provider && provider(u, &toInternet, 0, &sentBytes, nullptr, nullptr) == SOCKET_ERROR && WSAGetLastError() == WSAENETUNREACH,
+		"the provider's WSASendMsg to 1.1.1.1 refused");
+	sentBytes = 0;
+	Expect(provider && provider(u, &toLoopback, 0, &sentBytes, nullptr, nullptr) == 0 && sentBytes == 1,
+		"the provider's WSASendMsg to loopback allowed");
+	Expect(recv(u, buf, sizeof(buf), 0) == 1 && buf[0] == 'z', "loopback datagram of the provider's WSASendMsg received");
+	GUID rioId = WSAID_MULTIPLE_RIO;
+	RIO_EXTENSION_FUNCTION_TABLE rio = {};
+	Expect(WSAIoctl(u, SIO_GET_MULTIPLE_EXTENSION_FUNCTION_POINTER, &rioId, sizeof(rioId), &rio, sizeof(rio), &returned, nullptr,
+			   nullptr) == SOCKET_ERROR && WSAGetLastError() == WSAEOPNOTSUPP,
+		"the registered I/O function table is not handed out");
 	closesocket(u);
 
 	WSACleanup();

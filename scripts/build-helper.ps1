@@ -73,7 +73,7 @@ $trims = @()
 foreach ($name in $remaps.Keys) {
 	$from = $remaps[$name]
 	if (!$from) { continue }
-	$from = [IO.Path]::GetFullPath($from).TrimEnd('')
+	$from = [IO.Path]::GetFullPath($from).TrimEnd('\')
 	$rustFlags.Add("--remap-path-prefix=$from=$name")
 	$trims += "/d1trimfile:$from\"
 }

@@ -39,17 +39,19 @@ bool WriteValue(const wchar_t* name, DWORD value)
 	return RegSetKeyValueW(HKEY_CURRENT_USER, kActiveProcess, name, REG_DWORD, &value, sizeof(value)) == ERROR_SUCCESS;
 }
 
-// Every running steam.exe (the client; steamwebhelper.exe and
-// SteamService.exe do not count).
-std::vector<DWORD> SteamProcesses()
+// Every running process.
+std::vector<ProcessEntry> RunningProcesses()
 {
-	std::vector<DWORD> found;
+	std::vector<ProcessEntry> found;
 	const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 	if (snapshot == INVALID_HANDLE_VALUE) return found;
 	PROCESSENTRY32W entry{};
 	entry.dwSize = sizeof(entry);
 	for (BOOL more = Process32FirstW(snapshot, &entry); more; more = Process32NextW(snapshot, &entry)) {
-		if (lstrcmpiW(entry.szExeFile, L"steam.exe") == 0) found.push_back(entry.th32ProcessID);
+		DWORD session = 0;
+		// A process whose session cannot be asked is counted in no session.
+		const bool known = ProcessIdToSessionId(entry.th32ProcessID, &session) != 0;
+		found.push_back({entry.th32ProcessID, known ? session : 0xFFFFFFFFu, entry.szExeFile});
 	}
 	CloseHandle(snapshot);
 	return found;
@@ -110,6 +112,15 @@ std::vector<std::string_view> Tokens(std::string_view text)
 
 } // namespace
 
+std::vector<uint32_t> SteamClientsInSession(const std::vector<ProcessEntry>& processes, uint32_t session)
+{
+	std::vector<uint32_t> found;
+	for (const ProcessEntry& process : processes) {
+		if (process.session == session && lstrcmpiW(process.exe.c_str(), L"steam.exe") == 0) found.push_back(process.pid);
+	}
+	return found;
+}
+
 std::optional<uint32_t> MostRecentAccount(std::string_view vdf)
 {
 	// "users" { "<SteamID64>" { "AccountName" "..." ... "MostRecent" "1" } ... }
@@ -140,7 +151,9 @@ std::optional<uint32_t> MostRecentAccount(std::string_view vdf)
 SteamRecord RepairSteamRecord()
 {
 	const Record record = ReadRecord();
-	const std::vector<DWORD> running = SteamProcesses();
+	DWORD session = 0;
+	ProcessIdToSessionId(GetCurrentProcessId(), &session);
+	const std::vector<uint32_t> running = SteamClientsInSession(RunningProcesses(), session);
 	if (running.empty()) {
 		spdlog::info("Steam record: no steam.exe runs (pid {}, user {}); the game's start opens Steam", record.pid, record.user);
 		return SteamRecord::NotRunning;

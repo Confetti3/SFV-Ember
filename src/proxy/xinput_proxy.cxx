@@ -18,7 +18,10 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <optional>
+
 #include "../mod/GuardedStart.hxx"
+#include "XInputReentry.hxx"
 
 namespace {
 
@@ -26,25 +29,55 @@ using sfve::start::Refusal;
 
 HMODULE s_self;
 HMODULE s_real;
+HMODULE s_fallback;
 
+HMODULE LoadSystemLibrary(const wchar_t* name)
+{
+	wchar_t path[MAX_PATH];
+	const UINT n = GetSystemDirectoryW(path, MAX_PATH);
+	if (n == 0 || n + wcslen(name) >= MAX_PATH) return nullptr;
+	wcscat_s(path, name);
+	return LoadLibraryW(path);
+}
+
+// System32's XInput, by full path so that this proxy is not what is loaded.
 HMODULE RealXInput()
 {
 	if (s_real) return s_real;
-	const wchar_t* names[] = {L"\\xinput1_3.dll", L"\\xinput1_4.dll", L"\\xinput9_1_0.dll"};
-	wchar_t path[MAX_PATH];
-	for (const wchar_t* name : names) {
-		const UINT n = GetSystemDirectoryW(path, MAX_PATH);
-		if (n == 0 || n + wcslen(name) >= MAX_PATH) break;
-		wcscat_s(path, name);
-		if ((s_real = LoadLibraryW(path)) != nullptr) break;
+	for (const wchar_t* name : {L"\\xinput1_3.dll", L"\\xinput1_4.dll", L"\\xinput9_1_0.dll"}) {
+		if ((s_real = LoadSystemLibrary(name)) != nullptr) break;
 	}
 	return s_real;
 }
 
-FARPROC Real(const char* nameOrOrdinal)
+// Where a call that came back in through a tool that hooks XInput goes.
+HMODULE FallbackXInput()
 {
-	HMODULE real = RealXInput();
+	if (!s_fallback) s_fallback = LoadSystemLibrary(L"\\xinput1_4.dll");
+	return s_fallback;
+}
+
+// The real function `nameOrOrdinal` for a call at the depth `scope` records,
+// or null when there is none to call (sfve::proxy::XInputReentry.hxx).
+FARPROC Real(const sfve::proxy::ReentryScope& scope, const char* nameOrOrdinal)
+{
+	HMODULE real = nullptr;
+	switch (scope.Route()) {
+	case sfve::proxy::XInputRoute::Primary: real = RealXInput(); break;
+	case sfve::proxy::XInputRoute::Fallback: real = FallbackXInput(); break;
+	case sfve::proxy::XInputRoute::None: break;
+	}
 	return real ? GetProcAddress(real, nameOrOrdinal) : nullptr;
+}
+
+// The real function's answer to `args`, or nothing when it is not there.
+template <typename... Args>
+std::optional<DWORD> CallReal(const char* nameOrOrdinal, Args... args)
+{
+	const sfve::proxy::ReentryScope scope;
+	auto f = reinterpret_cast<DWORD(WINAPI*)(Args...)>(Real(scope, nameOrOrdinal));
+	if (!f) return std::nullopt;
+	return f(args...);
 }
 
 // Outside the loader lock only: a refusal the player sees before the game
@@ -116,68 +149,61 @@ extern "C" {
 
 DWORD WINAPI XInputGetState(DWORD user, void* state)
 {
-	auto f = reinterpret_cast<DWORD(WINAPI*)(DWORD, void*)>(Real("XInputGetState"));
-	return f ? f(user, state) : ERROR_DEVICE_NOT_CONNECTED;
+	return CallReal("XInputGetState", user, state).value_or(ERROR_DEVICE_NOT_CONNECTED);
 }
 
 DWORD WINAPI XInputSetState(DWORD user, void* vibration)
 {
-	auto f = reinterpret_cast<DWORD(WINAPI*)(DWORD, void*)>(Real("XInputSetState"));
-	return f ? f(user, vibration) : ERROR_DEVICE_NOT_CONNECTED;
+	return CallReal("XInputSetState", user, vibration).value_or(ERROR_DEVICE_NOT_CONNECTED);
 }
 
 DWORD WINAPI XInputGetCapabilities(DWORD user, DWORD flags, void* caps)
 {
-	auto f = reinterpret_cast<DWORD(WINAPI*)(DWORD, DWORD, void*)>(Real("XInputGetCapabilities"));
-	return f ? f(user, flags, caps) : ERROR_DEVICE_NOT_CONNECTED;
+	return CallReal("XInputGetCapabilities", user, flags, caps).value_or(ERROR_DEVICE_NOT_CONNECTED);
 }
 
 void WINAPI XInputEnable(BOOL enable)
 {
-	auto f = reinterpret_cast<void(WINAPI*)(BOOL)>(Real("XInputEnable"));
+	const sfve::proxy::ReentryScope scope;
+	auto f = reinterpret_cast<void(WINAPI*)(BOOL)>(Real(scope, "XInputEnable"));
 	if (f) f(enable);
 }
 
 DWORD WINAPI XInputGetDSoundAudioDeviceGuids(DWORD user, GUID* render, GUID* capture)
 {
-	auto f = reinterpret_cast<DWORD(WINAPI*)(DWORD, GUID*, GUID*)>(Real("XInputGetDSoundAudioDeviceGuids"));
-	return f ? f(user, render, capture) : ERROR_DEVICE_NOT_CONNECTED;
+	return CallReal("XInputGetDSoundAudioDeviceGuids", user, render, capture).value_or(ERROR_DEVICE_NOT_CONNECTED);
 }
 
 DWORD WINAPI XInputGetBatteryInformation(DWORD user, BYTE type, void* info)
 {
-	auto f = reinterpret_cast<DWORD(WINAPI*)(DWORD, BYTE, void*)>(Real("XInputGetBatteryInformation"));
-	return f ? f(user, type, info) : ERROR_DEVICE_NOT_CONNECTED;
+	return CallReal("XInputGetBatteryInformation", user, type, info).value_or(ERROR_DEVICE_NOT_CONNECTED);
 }
 
 DWORD WINAPI XInputGetKeystroke(DWORD user, DWORD reserved, void* keystroke)
 {
-	auto f = reinterpret_cast<DWORD(WINAPI*)(DWORD, DWORD, void*)>(Real("XInputGetKeystroke"));
-	return f ? f(user, reserved, keystroke) : ERROR_DEVICE_NOT_CONNECTED;
+	return CallReal("XInputGetKeystroke", user, reserved, keystroke).value_or(ERROR_DEVICE_NOT_CONNECTED);
 }
 
+// Ordinal 100: the state with the Guide button. Without it the plain state.
 DWORD WINAPI XInputGetStateEx(DWORD user, void* state)
 {
-	auto f = reinterpret_cast<DWORD(WINAPI*)(DWORD, void*)>(Real(MAKEINTRESOURCEA(100)));
-	return f ? f(user, state) : XInputGetState(user, state);
+	if (const std::optional<DWORD> answer = CallReal(MAKEINTRESOURCEA(100), user, state)) return *answer;
+	return XInputGetState(user, state);
 }
 
 DWORD WINAPI XInputWaitForGuideButton(DWORD user, DWORD flags, void* listen)
 {
-	auto f = reinterpret_cast<DWORD(WINAPI*)(DWORD, DWORD, void*)>(Real(MAKEINTRESOURCEA(101)));
-	return f ? f(user, flags, listen) : ERROR_DEVICE_NOT_CONNECTED;
+	return CallReal(MAKEINTRESOURCEA(101), user, flags, listen).value_or(ERROR_DEVICE_NOT_CONNECTED);
 }
 
 DWORD WINAPI XInputCancelGuideButtonWait(DWORD user)
 {
-	auto f = reinterpret_cast<DWORD(WINAPI*)(DWORD)>(Real(MAKEINTRESOURCEA(102)));
-	return f ? f(user) : ERROR_DEVICE_NOT_CONNECTED;
+	return CallReal(MAKEINTRESOURCEA(102), user).value_or(ERROR_DEVICE_NOT_CONNECTED);
 }
 
 DWORD WINAPI XInputPowerOffController(DWORD user)
 {
-	auto f = reinterpret_cast<DWORD(WINAPI*)(DWORD)>(Real(MAKEINTRESOURCEA(103)));
-	return f ? f(user) : ERROR_DEVICE_NOT_CONNECTED;
+	return CallReal(MAKEINTRESOURCEA(103), user).value_or(ERROR_DEVICE_NOT_CONNECTED);
 }
 
 } // extern "C"

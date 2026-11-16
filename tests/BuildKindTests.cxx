@@ -287,7 +287,7 @@ TEST_CASE("a battle that rolls back runs the tick's tasks on the battle's thread
 TEST_CASE("a player build's pipe answers ping and status only")
 {
 	bool ran = false;
-	sfve::mod::RegisterCommand("buildkind-test", [&ran](const std::string&) {
+	sfve::mod::AddCommand("buildkind-test", [&ran](const std::string&) {
 		ran = true;
 		return std::string("ok ran");
 	});
