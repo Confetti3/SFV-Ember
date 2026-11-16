@@ -18,13 +18,24 @@
 
 #include <functional>
 #include <string>
+#include <utility>
 
 namespace sfve::mod {
 
 using CommandHandler = std::function<std::string(const std::string& args)>;
 using StatusField = std::function<std::string()>; // returns a JSON value
 
-void RegisterCommand(const std::string& name, CommandHandler handler);
+// Adds a command to the pipe's table, in any build kind (Answer judges which
+// kind of build may run it).
+void AddCommand(const std::string& name, CommandHandler handler);
+// What the modules call to register a command: a player build answers none, so
+// there it registers nothing and, being a template, leaves the handler's code
+// (a lambda of its own) out of the binary with it.
+template <typename Handler>
+void RegisterCommand(const std::string& name, Handler&& handler)
+{
+	if constexpr (kBuildKind == BuildKind::Development) AddCommand(name, CommandHandler(std::forward<Handler>(handler)));
+}
 void RegisterStatus(const std::string& key, StatusField field);
 void StartControlPipe(int instance);
 // The pipe's answer to one request line, as this kind of build gives it.

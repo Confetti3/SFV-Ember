@@ -1,5 +1,6 @@
 #include "mod/NetGuard.hxx"
 
+#include "mod/BuildKind.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/LagSim.hxx"
 #include "mod/Log.hxx"
@@ -130,7 +131,10 @@ int WSAAPI h_sendto(SOCKET s, const char* buf, int n, int flags, const sockaddr*
 		WSASetLastError(WSAENETUNREACH);
 		return SOCKET_ERROR;
 	}
-	if (LagSimQueue(s, buf, n, flags, to, tolen)) return n;
+	// The lag simulation is a development tool (mod/LagSim.hxx).
+	if constexpr (kBuildKind == BuildKind::Development) {
+		if (LagSimQueue(s, buf, n, flags, to, tolen)) return n;
+	}
 	return o_sendto(s, buf, n, flags, to, tolen);
 }
 
@@ -466,7 +470,7 @@ void** Slot(T* p)
 
 void StartGuardedLagSim(int delayMs)
 {
-	StartLagSim(delayMs, o_sendto);
+	if constexpr (kBuildKind == BuildKind::Development) StartLagSim(delayMs, o_sendto);
 }
 
 net::NetPolicy& GuardPolicy()

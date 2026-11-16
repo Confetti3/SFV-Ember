@@ -77,12 +77,14 @@ bool s_started = false;
 std::unique_ptr<sfve::mod::BattleMode> MakeMode(const sfve::mod::ModConfig& config)
 {
 	using namespace sfve::mod;
-	switch (config.mode) {
-	case ModMode::SyncTest: return std::make_unique<SyncTestMode>(config);
-	case ModMode::Netplay: return std::make_unique<NetplayMode>(config);
-	case ModMode::Booth: return std::make_unique<BoothMode>(config);
-	default: return std::make_unique<PassThroughMode>();
+	// The modes a player never starts (the synctest and the photo booth) are
+	// in a development build only.
+	if constexpr (sfve::kBuildKind == sfve::BuildKind::Development) {
+		if (config.mode == ModMode::SyncTest) return std::make_unique<SyncTestMode>(config);
+		if (config.mode == ModMode::Booth) return std::make_unique<BoothMode>(config);
 	}
+	if (config.mode == ModMode::Netplay) return std::make_unique<NetplayMode>(config);
+	return std::make_unique<PassThroughMode>();
 }
 
 // SFV Ember's settings moved from beside the mod (SFVEmber\settings.json in
@@ -257,7 +259,9 @@ extern "C" int SfveStart(int beforeGameCode)
 	// Instance 0 is a player's game, whose mutexes keep their names.
 	const int instance = Config().instance;
 	std::string multiInstanceState = "off";
-	if (instance > 0) multiInstanceState = HookSetState(InstallMultiInstance(instance));
+	if constexpr (sfve::kBuildKind == sfve::BuildKind::Development) {
+		if (instance > 0) multiInstanceState = HookSetState(InstallMultiInstance(instance));
+	}
 	RegisterHookSetStatus("multiInstance", std::move(multiInstanceState));
 	// Without them every slot is the physical pad's, whatever -sfve_pads asked.
 	const std::optional<HookFailure> padHooksMissing = InstallXInputHooks();

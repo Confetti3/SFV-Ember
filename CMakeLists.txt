@@ -384,14 +384,16 @@ add_library(sfv_ember SHARED
     src/mod/NetGuard.cxx
     src/mod/OfflineDialogs.cxx
     src/mod/BuildCheck.cxx
-    src/mod/MultiInstance.cxx
     src/mod/ProjectileRelease.cxx
     src/mod/FramePacer.cxx
     src/mod/BattleDriver.cxx
-    src/mod/SyncTestMode.cxx
-    src/mod/NetplayMode.cxx
-    src/mod/WriteWatch.cxx
-    src/mod/LagSim.cxx)
+    src/mod/NetplayMode.cxx)
+# What only a development build runs (mod/BuildKind.hxx): a second copy's ports
+# and mutexes, the synctest mode, the lag simulation and the write watch behind
+# the pipe's commands. Nothing a player build compiles refers to them.
+if(SFVE_DEV_BUILD)
+    target_sources(sfv_ember PRIVATE src/mod/MultiInstance.cxx src/mod/SyncTestMode.cxx src/mod/LagSim.cxx src/mod/WriteWatch.cxx)
+endif()
 target_link_libraries(sfv_ember PRIVATE sfve_ember dbghelp ember_sdl_pads_x64 SDL3::SDL3-static)
 target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")
 # Ember's own pictures the shell draws beside the mod (overlay/Overlay.hxx):

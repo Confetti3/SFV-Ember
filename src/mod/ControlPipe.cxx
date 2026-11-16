@@ -159,7 +159,7 @@ std::string JsonString(const std::string& s)
 	return out + "\"";
 }
 
-void RegisterCommand(const std::string& name, CommandHandler handler)
+void AddCommand(const std::string& name, CommandHandler handler)
 {
 	std::lock_guard lock(s_mutex);
 	s_commands[name] = std::move(handler);
