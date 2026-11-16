@@ -89,6 +89,31 @@ TEST_CASE("an SFV player has no main until they choose one")
 	CHECK(sf4e::netplay::ReadMainFighter(sf4e::netplay::PlayerPreferencesJson(preferences)) == -1);
 }
 
+TEST_CASE("a main nobody chose stays none: a fresh start, an unread save and an old build's default")
+{
+	FillFullRoster();
+	// What a start that could not read the settings has, and every default copy of them.
+	CHECK(sf4e::netplay::PlayerPreferences{}.mainFighter == -1);
+	// The builds before beta.10 saved Ryu (0) as everyone's main, chosen or not, and no "mainChosen".
+	CHECK(sf4e::netplay::ReadMainFighter({{"mainFighter", 0}}) == -1);
+	// A main chosen since is marked, and any other fighter was always a choice.
+	CHECK(sf4e::netplay::ReadMainFighter({{"mainFighter", 0}, {"mainChosen", true}}) == 0);
+	CHECK(sf4e::netplay::ReadMainFighter({{"mainFighter", 42}}) == 42);
+	sf4e::netplay::PlayerPreferences chosen;
+	chosen.mainFighter = 0;
+	CHECK(sf4e::netplay::ReadMainFighter(sf4e::netplay::PlayerPreferencesJson(chosen)) == 0);
+}
+
+TEST_CASE("SFV's pictures: the packaged cutouts' shape and a face for a portrait")
+{
+	// The card's frames take these (PlayerCard.cxx): the package's cutouts are 256x384 with the figure fitted in 224x352
+	// (docs/design/beta8/pack.md), and the portrait is the head's square from the select grid (SfvFaceCrop).
+	const ember::PictureShapes& pictures = ember::ProductPictures();
+	CHECK(pictures.figureWidth == 224.f);
+	CHECK(pictures.figureHeight == 352.f);
+	CHECK(pictures.portraitIsFace);
+}
+
 TEST_CASE("a main past SF4's 44 fighters is saved and read back")
 {
 	FillFullRoster();

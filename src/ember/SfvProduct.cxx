@@ -121,6 +121,14 @@ constexpr ember::RankingClass SfvRanks[ember::RankingClassCount] = {
 	{"LI_warlord", "Warlord", nullptr},
 };
 
+// SFV's fighter pictures: the package's cutouts are made to Ember's packaged
+// shape (assets/selection, 256x384 with the figure fitted in 224x352, as
+// SF4's), and the portrait is the head's square from the game's select grid
+// (SfvFaceCrop), small: where a fighter has no cutout, a large frame shows
+// that face at no more than twice its pixels rather than blown up to the
+// frame.
+constexpr ember::PictureShapes SfvPictures = {224.f, 352.f, true};
+
 constexpr ember::ProductIdentity SfvEmber = {
 	{
 		"SFV Ember",
@@ -153,6 +161,7 @@ constexpr ember::ProductIdentity SfvEmber = {
 		// tab, so no fighter they never picked stands for them in a room or
 		// on their card, and no phantom main reaches the room.
 		true,
+		&SfvPictures,
 	},
 	L"SFVEmber",
 	// Settings and logs under %APPDATA%\SFVEmber, as SF4 Ember's are under
