@@ -61,7 +61,7 @@ EXCHANGE_LINE = re.compile(r"frame meter: P1's (hit|block): P1 ([+-]\d+), P2 ([+
 
 
 def pad(steps: str, settle_s: float) -> None:
-    lib.request(0, f"pad 0 {steps}")
+    lib.request_ok(0, f"pad 0 {steps}")
     time.sleep(settle_s)
 
 

@@ -157,9 +157,7 @@ $env:SFVE_RUN = [guid]::NewGuid().ToString('N')
 # The mod logs under %APPDATA%\SFVEmber\logs (mod/Log.cxx), whether the launcher or the proxy started it.
 $logs = Join-Path $env:APPDATA 'SFVEmber\logs'
 $logOf = @("$logs\sfv_ember.log", "$logs\sfv_ember.1.log", "$logs\sfv_ember.2.log")
-# A desync's lines; a start state's repair (its report is filed as a desync's
-# is) is not one: the match then plays from the same state.
-$desyncPattern = '^(?!.*desync report)(?!.*start state).*(desync|mismatch)'
+# $DesyncPattern (verdict.ps1) is a desync's lines: not a start state's repair, whose match then plays from the same state.
 if ($watchers -lt 0 -or $watchers -gt 1) { throw '-watchers is 0 or 1' }
 $copies = if ($watchers) { @(0, 1, 2) } else { @(0, 1) }
 # The fighters' game (from 0) each of the watcher's battles was, in order.
@@ -187,10 +185,10 @@ function WaitFor([string]$what, [int]$timeout, [scriptblock]$done) {
 function Answer([int]$i, [string]$say) {
   # Leaving the room over the WIN: the runtime ends the battle, which the
   # held frames carry as this fighter's decline (RoomBattle::DeclineToExit).
-  if ($say -eq 'leave') { Ctl $i 'leave' | Out-Null; return }
-  if (!$padAnswers) { Ctl $i "rematch $say" | Out-Null; return }
+  if ($say -eq 'leave') { CtlOk $i 'leave' | Out-Null; return }
+  if (!$padAnswers) { CtlOk $i "rematch $say" | Out-Null; return }
   $button = if ($say -eq 'yes') { 'A' } else { 'B' }
-  Ctl $i "pad 0 ${button}:120 -:250" | Out-Null
+  CtlOk $i "pad 0 ${button}:120 -:250" | Out-Null
 }
 function Count([int]$i, [string]$pattern) {
   # A copy not launched in this run (the watcher's) counts nothing.
@@ -365,7 +363,7 @@ function ScenesShots([int]$game, [int]$results0, [int]$decided0, [bool]$rolling)
       if ($now -gt $scenesSeen) { $scenesSeen = $now; $startDue = (Get-Date).AddMilliseconds(500) }
       if ($startDue -and (Get-Date) -ge $startDue) {
         $startDue = $null
-        Ctl $skipCopy 'pad 0 START:100 -:150' | Out-Null
+        CtlOk $skipCopy 'pad 0 START:100 -:150' | Out-Null
         $script:startPresses++
         "game ${game}: copy ${skipCopy} pressed Start in the scenes ($((Select-String -Path $logOf[$skipCopy] -Pattern $scenePattern | Select-Object -Last 1).Line.Substring(24)))"
       }
@@ -435,7 +433,7 @@ function PadSkip([int]$before) {
   WaitFor "copy ${skipCopy}'s decision" $gameSeconds { (Count $skipCopy 'netplay: the match is decided at frame') -gt $before }
   $frames = if ($skipAfter -ge 0) { $skipAfter } else { 90 }
   Start-Sleep -Milliseconds ([int]($frames * 1000 / 60))
-  Ctl $skipCopy 'pad 0 X:100 -:150' | Out-Null
+  CtlOk $skipCopy 'pad 0 X:100 -:150' | Out-Null
   "copy ${skipCopy} pressed X on its pad about $frames frames into the scenes"
 }
 
@@ -444,34 +442,37 @@ $seeds = @($seed0, $seed1, 303)
 $unowned = @($unowned0, $unowned1, '')
 $gateOff = @($gateOff0, $gateOff1, $false)
 $uninstalled = @($uninstalled0, $uninstalled1, $uninstalled2)
-foreach ($i in $copies) {
-  $marks = @()
-  if ($unowned[$i]) { $marks += "-sfve_unowned=$($unowned[$i])" }
-  if ($gateOff[$i]) { $marks += '-sfve_ownership=0' }
-  if ($uninstalled[$i]) { $marks += "-sfve_uninstalled=$($uninstalled[$i])" }
-  if ($moveset) {
-    if ('supers','cody','projectiles','luke','akira','targets' -notcontains $moveset) { throw "-moveset $moveset is not a set of moves (an unknown name would silently play single buttons)" }
-    $marks += "-sfve_moveset=$moveset"
-  }
-  if ($idle -ge 0) { $marks += "-sfve_idle=$idle" }
-  if ($socketLog) { $marks += '-sfve_socket_log=1' }
-  if ($rngAudit) { $marks += '-sfve_rng_audit=1' }
-  if ($startPerturb -and $i -eq 1) { $marks += "-sfve_start_perturb=$startPerturb" }
-  if ($plainSaves) { $marks += '-sfve_skip_saves=0'; $marks += '-sfve_hash_on_confirm=0' }
-  if ($verifyLoads -ge 0) { $marks += "-sfve_verify_loads=$verifyLoads" }
-  # -File hands "1,0" over as one string (and [int]"1,0" is 10), so the list is split here.
-  $fma3Each = @(if ($fma3) { "$fma3" -split "[, ]+" | Where-Object { $_ -ne "" } | ForEach-Object { [int]$_ } })
-  if ($i -lt $fma3Each.Count -and $fma3Each[$i] -ge 0) { $marks += "-sfve_fma3=$($fma3Each[$i])" }
-  if ($tasks -ge 0) { $marks += "-sfve_tasks=$tasks" }
-  if ($startEx) { $marks += '-sfve_start_ex=1' }
-  $resOf = @($res0, $res1, '')
-  $priorRes = $env:SFVE_RES
-  if ($resOf[$i]) { $env:SFVE_RES = $resOf[$i] }
-  python -I tools\sfve.py launch $i --mode netplay -- '-sfve_pads=01' '-sfve_background=1' '-sfve_room=1' "-sfve_mash=$($seeds[$i])" "-sfve_mash_from=$mashFrom" "-sfve_lag=$lag" "-sfve_hash_every=$hashEvery" "-sfve_moves=$([int][bool]$moves)" "-sfve_practice=$([int][bool]$practice)" $marks | Out-Null
-  $env:SFVE_RES = $priorRes
-}
 $failure = ''
+# The copies are started inside the try, and closed in the finally below whatever happens, so a run that
+# stops half way never leaves a copy running (sfve.py kill ends only this run's, see SFVE_RUN above).
 try {
+  foreach ($i in $copies) {
+    $marks = @()
+    if ($unowned[$i]) { $marks += "-sfve_unowned=$($unowned[$i])" }
+    if ($gateOff[$i]) { $marks += '-sfve_ownership=0' }
+    if ($uninstalled[$i]) { $marks += "-sfve_uninstalled=$($uninstalled[$i])" }
+    if ($moveset) {
+      if ('supers','cody','projectiles','luke','akira','targets' -notcontains $moveset) { throw "-moveset $moveset is not a set of moves (an unknown name would silently play single buttons)" }
+      $marks += "-sfve_moveset=$moveset"
+    }
+    if ($idle -ge 0) { $marks += "-sfve_idle=$idle" }
+    if ($socketLog) { $marks += '-sfve_socket_log=1' }
+    if ($rngAudit) { $marks += '-sfve_rng_audit=1' }
+    if ($startPerturb -and $i -eq 1) { $marks += "-sfve_start_perturb=$startPerturb" }
+    if ($plainSaves) { $marks += '-sfve_skip_saves=0'; $marks += '-sfve_hash_on_confirm=0' }
+    if ($verifyLoads -ge 0) { $marks += "-sfve_verify_loads=$verifyLoads" }
+    # -File hands "1,0" over as one string (and [int]"1,0" is 10), so the list is split here.
+    $fma3Each = @(if ($fma3) { "$fma3" -split "[, ]+" | Where-Object { $_ -ne "" } | ForEach-Object { [int]$_ } })
+    if ($i -lt $fma3Each.Count -and $fma3Each[$i] -ge 0) { $marks += "-sfve_fma3=$($fma3Each[$i])" }
+    if ($tasks -ge 0) { $marks += "-sfve_tasks=$tasks" }
+    if ($startEx) { $marks += '-sfve_start_ex=1' }
+    $resOf = @($res0, $res1, '')
+    $priorRes = $env:SFVE_RES
+    if ($resOf[$i]) { $env:SFVE_RES = $resOf[$i] }
+    $launched = python -I tools\sfve.py launch $i --mode netplay -- '-sfve_pads=01' '-sfve_background=1' '-sfve_room=1' "-sfve_mash=$($seeds[$i])" "-sfve_mash_from=$mashFrom" "-sfve_lag=$lag" "-sfve_hash_every=$hashEvery" "-sfve_moves=$([int][bool]$moves)" "-sfve_practice=$([int][bool]$practice)" $marks 2>&1
+    $env:SFVE_RES = $priorRes
+    if ($LASTEXITCODE) { throw "copy $i did not launch: $launched" }
+  }
   WaitFor 'the runtime on every copy' 120 { foreach ($i in $copies) { if ((Status $i).ember.host -ne 'running') { return $false } }; $true }
   if ($skipAfter -ge 0 -and -not $skipPad) {
     WaitFor "copy ${skipCopy}'s skip press to be scheduled" 30 { (Ctl $skipCopy "skipafter $skipAfter") -like 'ok*' }
@@ -502,20 +503,20 @@ try {
     WaitFor 'all three copies in the room' 90 { foreach ($i in $copies) { $s = Status $i; if ($s.room.room -ne 'joined' -or $s.room.members -ne 3) { return $false } }; $true }
     if (-not $watchLate) { Watch $false }
   }
-  foreach ($i in 0, 1) { Ctl $i "sit 0 $i" | Out-Null }
+  foreach ($i in 0, 1) { CtlOk $i "sit 0 $i" | Out-Null }
   WaitFor 'both copies seated' 60 { (Status 0).room.slot -eq 0 -and (Status 1).room.slot -eq 1 }
-  foreach ($i in 0, 1) { Ctl $i "delay $delay" | Out-Null }
+  foreach ($i in 0, 1) { CtlOk $i "delay $delay" | Out-Null }
   # -tiny opens the room with Tiny fighters allowed; -size0/-size1 tiny|normal
   # pick that copy's size (EMBER_LIBRARY.md section 59).
   $sizeOf = @($size0, $size1) | ForEach-Object { if ($_) { " size $_" } else { '' } }
-  Write-Host "copy 0 pick: $(Ctl 0 "pick $p1 $stage$($sizeOf[0])")"
-  Write-Host "copy 1 pick: $(Ctl 1 "pick $p2$($sizeOf[1])")"
+  Write-Host "copy 0 pick: $(CtlOk 0 "pick $p1 $stage$($sizeOf[0])")"
+  Write-Host "copy 1 pick: $(CtlOk 1 "pick $p2$($sizeOf[1])")"
   # -code0 / -code1: that copy's player's costume code (EMBER_LIBRARY.md
   # section 55), held on both copies as the battle loads.
-  if ($code0 -ge 0) { Write-Host "copy 0 code: $(Ctl 0 "code $code0")" }
-  if ($code1 -ge 0) { Write-Host "copy 1 code: $(Ctl 1 "code $code1")" }
+  if ($code0 -ge 0) { Write-Host "copy 0 code: $(CtlOk 0 "code $code0")" }
+  if ($code1 -ge 0) { Write-Host "copy 1 code: $(CtlOk 1 "code $code1")" }
   for ($n = 0; $n -lt $presses; $n++) {
-    foreach ($i in 0, 1) { Ctl $i 'pad 0 DOWN:120 -:250' | Out-Null }
+    foreach ($i in 0, 1) { CtlOk $i 'pad 0 DOWN:120 -:250' | Out-Null }
     Start-Sleep -Milliseconds 600
   }
   if ($rematches -ge 0) {
@@ -564,8 +565,8 @@ try {
           Start-Sleep -Milliseconds 50
         }
         $mashed = Get-Date
-        Ctl 1 'pad 0 B:100 -:150' | Out-Null
-        Ctl 1 'pad 0 B:100 -:150' | Out-Null
+        CtlOk 1 'pad 0 B:100 -:150' | Out-Null
+        CtlOk 1 'pad 0 B:100 -:150' | Out-Null
         $took = [int]((Get-Date) - $mashed).TotalMilliseconds
         if ($took -gt 1800) { throw "game ${game}: the mash took $took ms, past the guard; the check proves nothing" }
         "game ${game}: copy 1 mashed B twice within $took ms of its result"
@@ -756,20 +757,24 @@ try {
   if ($watchers -and -not $watchedGames.Count) { throw 'copy 2 watched no game' }
 } catch {
   $failure = $_.Exception.Message
+} finally {
+  # The copies close here, whatever happened above (-keep leaves them); the logs stay.
+  try {
+    foreach ($i in $copies) {
+      try { "copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress) } catch { "copy $i is not answering" }
+      if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern $DesyncPattern | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
+    }
+    RemoveRollingShots
+  } finally {
+    if (!$keep) { python -I tools\sfve.py kill | Out-Null }
+  }
 }
-foreach ($i in $copies) {
-  try { "copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress) } catch { "copy $i is not answering" }
-  if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern $desyncPattern | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
-}
-# The copies close here, whatever happened above; the logs stay.
-RemoveRollingShots
-if (!$keep) { python -I tools\sfve.py kill | Out-Null }
 # Each copy logs its checkpoint hashes (every 20 confirmed frames, RollbackSession::kCheckpointInterval); tools/verdict.ps1
 # compares them and holds the verdict rule: PASS needs a compared checkpoint.
 $h0 = Get-Checkpoints $logOf[0]; $h1 = Get-Checkpoints $logOf[1]
 $checkpoints = Compare-Checkpoints $h0 $h1
 "checkpoints: $($checkpoints.Compared) compared, $($checkpoints.Differing) differing"
-$desyncs = (Count 0 $desyncPattern) + (Count 1 $desyncPattern) + $checkpoints.Differing
+$desyncs = (Count 0 $DesyncPattern) + (Count 1 $DesyncPattern) + $checkpoints.Differing
 if ($watchers) {
   # The watcher's battle k is the fighters' game $watchedGames[k]: its
   # checkpoints against copy 0's of that game and frame (copy 0's equal
@@ -795,7 +800,7 @@ if ($watchers) {
       if (-not $failure) { $failure = "the watcher's scenes ended apart from the fighters' ($line)" }
     }
   }
-  $desyncs += (Count 2 $desyncPattern) + $watcherDiffering.Count
+  $desyncs += (Count 2 $DesyncPattern) + $watcherDiffering.Count
   if (-not $failure -and -not $watchedKeys.Count) { $failure = "no watcher checkpoint could be compared" }
 }
 if ($socketLog) {

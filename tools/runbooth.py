@@ -61,6 +61,7 @@ STABLE_PRESENTS = 20          # grab A again this many presents later: the same 
 LOOK_ATTEMPTS = 2             # a load whose grabs fail the checks is loaded again once
 BURST_AFTER_PRESENTS = 3      # a burst grab of a frame just held: a few presents later, the frame drawn
 BURST_POLL_S = 0.05           # the burst's waits poll the pipe this often
+CAMERA_WORDS = 10             # the floats the camera peek returns (boothcamera.Camera.from_reply)
 CAMERA_PEEK = "peek CameraUnit[0]+0x100.presentation 112 40"  # the camera: target, eye, field of view (boothcamera)
 
 PHASE_NAMES = {"1": "colour 1 of every costume", "2": "the other colours", "3": "loadout pictures"}
@@ -299,7 +300,7 @@ class Copy:
     def status(self) -> dict:
         if self.stop.is_set():
             raise Stopped()
-        reply = lib.request(self.index, "status")
+        reply = lib.request(self.index, "status", idempotent=True)
         if not reply.startswith("ok "):
             raise CaptureError(f"status: {reply}")
         return json.loads(reply[3:])
@@ -460,6 +461,9 @@ class Copy:
                     self.log.say(f"copy {self.index}: camera check unavailable ({reply}); continuing without it")
                 return []
             words = reply.split()[1:]
+            if len(words) < CAMERA_WORDS:
+                # An "ok" that carries no camera is not a stable one: two empty reads are equal.
+                raise CaptureError(f"camera peek returned {len(words)} words, not {CAMERA_WORDS}: {reply[:120]}")
             if words == previous:
                 return words
             previous = words
@@ -508,7 +512,8 @@ class Copy:
     def wait_loaded(self) -> None:
         """Until SFV reports nothing loading for LOADED_FRAMES battle frames (booth.loading, the
         game's IsAsyncLoading): a fighter drawn before its costume loaded is grey."""
-        self.wait_for(lambda s: not self.booth(s).get("loading", False) and self.booth(s).get("loadedFrames", LOADED_FRAMES) >= LOADED_FRAMES,
+        # A status without the fields is not "loaded": both must be present (the mod always sends them).
+        self.wait_for(lambda s: self.booth(s).get("loading") is False and self.booth(s).get("loadedFrames", 0) >= LOADED_FRAMES,
                       LOADED_TIMEOUT_GRAB_S, "the game to finish loading")
 
     def capture_looks(self, load: dict) -> None:
@@ -737,6 +742,17 @@ class Copy:
                     for p in ("vs", "vt") for c in (1, 2) if c <= fighter[p]]
         return [{"fighter": c, "costume": n, "colour": m} for c, n, m in (look for look in load["looks"] if look)]
 
+    def abandon(self, why: str) -> None:
+        """This copy stops with loads it never tried (it cannot boot, or cannot get back to the
+        menu): each look of them is a failure, so a build whose booth mode never starts does not
+        report 0 failures."""
+        for load in self.loads[self.attempted:]:
+            phase = "loadout" if load["kind"] == "loadout" else "looks"
+            for look in self.label(load):
+                self.failed += 1
+                self.log.failure(self.index, phase, look, f"never attempted, the copy stopped: {why}", self.args.stage)
+        self.attempted = len(self.loads)
+
     def run(self) -> None:
         try:
             time.sleep(self.index * self.args.stagger)
@@ -767,6 +783,7 @@ class Copy:
                         self.recover()
                     except CaptureError as boot_error:
                         self.log.say(f"copy {self.index} stops: {boot_error}")
+                        self.abandon(str(boot_error))
                         return
                 self.since_boot += 1
             for future in self.pending:
@@ -775,6 +792,7 @@ class Copy:
             pass
         except CaptureError as e:
             self.log.say(f"copy {self.index} stops: {e}")
+            self.abandon(str(e))
         finally:
             try:
                 kill_copy(self.index)

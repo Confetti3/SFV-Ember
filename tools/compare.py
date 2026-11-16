@@ -10,6 +10,10 @@
   checkpoint is logged; a replay logs it again, the last line wins), and
   its unmatched regions while the copies still keep it.
 
+Regions are paired as a multiset of (size, hash), never by name (a `game.N`
+name is a place in that process's region list, and the two copies number them
+differently).
+
 Prints PASS or FAIL. Exit code 0 only when something was compared and nothing
 differs; 1 when the copies differ, when nothing could be compared, or when a
 copy does not answer.
@@ -18,7 +22,6 @@ copy does not answer.
 from __future__ import annotations
 
 import json
-import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -29,20 +32,15 @@ import sfvelib as lib  # noqa: E402
 # RollbackSession::kCheckpointInterval (20 from beta.9, 60 before): the frames
 # between two checkpoints.
 CHECKPOINT_INTERVAL = 20
-_CHECKPOINT = re.compile(r"checkpoint: frame (\d+) hash ([0-9a-f]+)")
 
 
 def netplay_status(index: int) -> dict:
-    return json.loads(lib.request(index, "status")[3:])["battle"]["mode"]
+    return json.loads(lib.request(index, "status", idempotent=True)[3:])["battle"]["mode"]
 
 
-def logged_checkpoints(index: int) -> dict[int, str]:
-    found: dict[int, str] = {}
-    for line in lib.tail(index, 200000):
-        m = _CHECKPOINT.search(line)
-        if m:
-            found[int(m.group(1))] = m.group(2)
-    return found
+def logged_checkpoints(index: int) -> dict[tuple[int, int], str]:
+    """The checkpoints a copy's log holds, by (game, frame): the one reading every runner uses."""
+    return lib.parse_checkpoints(lib.log_lines(index))
 
 
 def compare_regions(a: int, b: int, frame: int) -> None:
@@ -95,14 +93,14 @@ def main(a: int = 0, b: int = 1) -> int:
 
     la, lb = logged_checkpoints(a), logged_checkpoints(b)
     common = sorted(set(la) & set(lb))
-    divergent = [f for f in common if la[f] != lb[f]]
+    divergent = [key for key in common if la[key] != lb[key]]
     if divergent:
-        print(f"first divergent checkpoint: frame {divergent[0]} "
+        print(f"first divergent checkpoint: frame {divergent[0][1]} "
               f"({len(divergent)} of {len(common)} logged checkpoints differ)")
-        compare_regions(a, b, divergent[0])
-        first_differing_frame(a, b, divergent[0])
+        compare_regions(a, b, divergent[0][1])
+        first_differing_frame(a, b, divergent[0][1])
     elif common:
-        print(f"all {len(common)} logged checkpoints match (frames {common[0]}..{common[-1]})")
+        print(f"all {len(common)} logged checkpoints match (frames {common[0][1]}..{common[-1][1]})")
 
     failures = []
     if differ or divergent:
