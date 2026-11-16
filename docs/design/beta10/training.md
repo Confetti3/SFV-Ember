@@ -18,6 +18,7 @@ section 27 of EMBER_LIBRARY.md):
 | F8 | Play a slot that is on, or stop the playback. |
 | View held then Start on standby | Starts the recording, as SF4's chord does. |
 | F5 | Hides or shows the lab's HUD (meter, strip, input displays, hitboxes). |
+| F10, from a room's Training | Back to room: the battle leaves for the main menu at the next update that may leave, as a call's count ends it, and the shell opens on the table. The controls' home page has the same row (Back to room), and the HUD's strip names F10. Off while a call's countdown runs. Outside a room's Training F10 is Ember's menu key at the main menu and nothing in a battle. |
 
 The controls' pages (the same panel SF4 Ember draws, its pages chosen by
 `Capabilities::trainingFeatures`):

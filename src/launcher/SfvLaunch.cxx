@@ -209,7 +209,9 @@ void Prepare(sf4e::launcher::PersistedSettings& settings, bool showConsole)
 	// A first start's name, unique per player as SF4 Ember's launcher gives
 	// it; a name the player has is kept. The mod plays under the saved name
 	// (EmberHost).
-	if (sfve::launcher::IsOldDefaultName(settings.displayName)) {
+	// Only a name that was read: with the saved settings unread the library keeps the default for this
+	// launch and saves nothing (EnsureUniqueDisplayName).
+	if (settings.read && sfve::launcher::IsOldDefaultName(settings.displayName)) {
 		spdlog::info("Replacing the saved name '{}', 0.1.0-beta.1's default, with a unique one", settings.displayName);
 		settings.displayName[0] = '\0';
 	}
