@@ -1,5 +1,7 @@
 # beta.9: holding a tick for a drawn frame (pose holds, 2026-11-13)
 
+> **Superseded in beta.10.** Pose holds are gone: `src/core/PoseHold.{hxx,cxx}`, the GGPO port's `pose-hold.patch` (`ggpo_hold_at`, `ggpo_can_hold_at`), `RollbackSession`'s and `LaggedReplay`'s hold chains, `GameAdapter::WantsDrawnFrame` / `NotePoseHold` and `-sfve_pose_hold` were deleted, with the socket record they served (`Cache`, `MissRing`, the rebuild at another root, the grid). Every socket read that may feed fight state is now anchored to the fighter's fight position by one policy of the call site (`socket_reads::Policy`, `src/mod/SocketReads.hxx`; `socket-anchors.md`), so no read misses and nothing waits for a drawn frame. The 2026-11-15 field desyncs showed 0 socket-read misses in the 120 frames before every failing checkpoint. What follows is the beta.9 design, kept as it was.
+
 The socket record (`src/mod/SocketReads.hxx`, header comment lines 1-55; beta.8 notes in
 `docs/design/beta8/desync.md`) serves a fight socket read on a stale pose from earlier fresh
 reads. A pose never read fresh on this copy kept the live value, which is another pose's: the

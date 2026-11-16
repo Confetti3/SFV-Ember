@@ -123,16 +123,6 @@ struct CensusObject {
 	std::uint64_t extent = 0;
 };
 
-// One stale socket read that was given the live value (mod/SocketReads.hxx's
-// Miss), as the report lists it.
-struct SocketMissFacts {
-	int frame = -1;
-	int unit = -1;
-	std::uint32_t from = 0; // the call site's rva
-	std::string socket;
-	std::string reason;     // never-seen pose, other root not certifiable, rebuilding off
-};
-
 struct Facts {
 	// This copy: its match slot (0 P1, 1 P2, 2 and up watch; -1 not known),
 	// and whether it watches.
@@ -165,21 +155,14 @@ struct Facts {
 	std::uint64_t rollbacks = 0;
 	int longestRollback = 0;
 	RollbackFacts recent;
-	// This battle's socket-read counts (SocketReadsSummary: recorded, served
-	// exact, rebuilt, missed with the reason, conflicting); empty when not read.
+	// This battle's socket-read counts (SocketReadsSummary: the reads given
+	// the fight's position, those at a call site not classified, the anchors
+	// unresolved); empty when not read.
 	std::string socketReads;
-	// This battle's pose holds (PoseHoldsSummary: the holds made, those whose
-	// replay was fresh, the failures by reason); empty when not read.
-	std::string poseHolds;
 	// This battle's pace so far (mod/Pace.hxx ReportText: the windows of 600
 	// updates, the slowest and the last in updates a second, how many were under
 	// 55, the controller removed / added events); empty when not read.
 	std::string pace;
-	// The latest misses (at most 64) from the kRecentFrames frames before the
-	// checkpoint, oldest first, copied on the game thread; `socketMissesKnown`
-	// false where the ring was not read.
-	std::vector<SocketMissFacts> socketMisses;
-	bool socketMissesKnown = false;
 	InputFacts inputs;
 	std::uint64_t layoutId = 0;
 	std::string matchBuild; // SfvCatalog's MatchBuildId
@@ -230,8 +213,6 @@ std::string DifferingText(const Facts& facts);
 // The frames a report's rollback count and its inputs cover.
 constexpr int kRecentFrames = 120;
 constexpr int kInputFrames = 180;
-// The socket-read misses a report lists (mod::socket_reads::MissRing's size).
-constexpr std::size_t kMostSocketMisses = 64;
 
 // The match key both fighters' copies share: "<room epoch>.<table>.<match
 // generation>" (16 hex digits, then decimals); empty when the room is not

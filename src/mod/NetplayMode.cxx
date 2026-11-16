@@ -588,10 +588,6 @@ NetplayMode::Prepared NetplayMode::PrepareStart(SfvAdapter& adapter)
 	c.skipUnloadableSaves = config_.skipSaves;
 	c.hashOnConfirm = config_.hashOnConfirm;
 	c.verifyLoadsEvery = config_.verifyLoadsEvery;
-	// A fight socket read that missed holds the tick for a drawn frame
-	// (core/PoseHold.hxx): a fighter's session and a lagged replay's playback;
-	// a watcher never holds.
-	c.poseHolds = ChoosePoseHold(config_);
 	// Both copies are at the battle's first frame: the battle frame's counts
 	// start from 0 on each, and the clock-seeded random generators get the
 	// same seeds, before anything is simulated.

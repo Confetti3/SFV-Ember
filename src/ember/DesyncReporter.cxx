@@ -126,21 +126,13 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	facts.recent = Trace().Recent(session.Frame(), desync::kRecentFrames);
 	facts.inputs = Trace().Inputs(mismatch.frame - desync::kInputFrames, mismatch.frame);
 	// This battle's socket-read counts (mod/SocketReads.cxx: ForgetSocketReads
-	// zeroes them as each battle starts): the fresh reads recorded, the stale
-	// ones served exact or rebuilt at their root, the misses by reason (a pose
-	// never read, a pose read at other roots only) and the conflicting records.
-	// The summary takes the counts' own lock, so it is safe from here.
+	// zeroes them as each battle starts): the reads given the fight's
+	// position, those at a call site not classified, and the anchors
+	// unresolved (the engine's value kept). The summary takes the counts' own
+	// lock, so it is safe from here.
 	facts.socketReads = mod::SocketReadsSummary();
-	// The battle's pose holds (the same lock): how many misses a hold put right.
-	facts.poseHolds = mod::PoseHoldsSummary();
 	// The battle's pace and controller events (mod/Pace.hxx; its own lock).
 	facts.pace = mod::pace::Current().Report();
-	// The misses among them from the frames before the checkpoint, copied
-	// under the same lock.
-	facts.socketMissesKnown = true;
-	for (const mod::socket_reads::Miss& miss : mod::SocketMissesBetween(mismatch.frame - desync::kRecentFrames, mismatch.frame)) {
-		facts.socketMisses.push_back({miss.frame, miss.unit, miss.from, miss.socket, mod::socket_reads::MissReasonName(miss.reason)});
-	}
 	// The named objects, copied here on the game thread: the report thread
 	// reads only this copy (RegionNames is the adapter's, not thread-safe).
 	if (const mod::SfvAdapter* game = CurrentBattle().game) {

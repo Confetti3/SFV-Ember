@@ -312,9 +312,10 @@ extern "C" int SfveStart(int beforeGameCode)
 	// A Tiny fighters room's tiny sides are drawn small (EMBER_LIBRARY.md
 	// section 59); with no tiny side the hooks change nothing.
 	InstallTinyFighters(base);
-	// The fight's reads of the fighters' models take the pose a straight play
-	// of the same state shows, on replayed frames too (docs/design/beta8/
-	// desync.md); -sfve_socket_log (development) logs every one.
+	// The fight's reads of the fighters' models that may feed fight state are
+	// given a value from the fighter's fight position in a battle a session
+	// plays (docs/design/beta9/socket-anchors.md); -sfve_socket_log
+	// (development) logs every one.
 	InstallSocketReads(base, Config().socketLog, ChooseSocketAnchor(Config()));
 	// Development: every random draw a battle update makes, placed against
 	// the rollback state (RngAudit; docs/design/beta8/determinism.md).

@@ -303,9 +303,9 @@ constexpr uint32_t kPositionSize = 0x10;
 // instance its motion from that block. The game's snapshot registers only
 // +1752/392 of the part, and rva 0x3A40D0 skips the write for record types
 // 1, 3, 4, 8, 10 and 12, so after a rollback the block keeps the abandoned
-// timeline's value and the next drawn pose (which the socket record then
-// stores as fresh) can be wrong. It is restored with every rollback state and
-// never hashed or compared with the peer (`checked` false: the presentation
+// timeline's value and the next drawn pose can be wrong. It is restored
+// with every rollback state and never hashed or compared with the peer
+// (`checked` false: the presentation
 // is not the simulation, as the round statistics' records).
 struct PartRun {
 	uint32_t partType; // the part's type id (GameFindPart)

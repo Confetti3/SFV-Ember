@@ -161,11 +161,6 @@ public:
 	void AfterLoad() override;
 	// The flow record's latched failure (FlowRollback::Failure).
 	const char* StateFailure() const override { return flow_.Failure(); }
-	// Pose holds (SocketReads, core/PoseHold.hxx): the update just run gave a
-	// fight socket read the live value (a miss), and what the session did
-	// about it: one log line per hold or refusal, and the battle's counts.
-	bool WantsDrawnFrame() const override { return wantsDrawnFrame_; }
-	void NotePoseHold(const pose_hold::Event& event) override;
 
 	std::string Describe() const; // JSON for the status report
 
@@ -257,33 +252,17 @@ private:
 	uint8_t* (*gameInstance_)() = nullptr; // sfv::kGameInstance
 	uint32_t ticksThisUpdate_ = 0;
 	bool replaying_ = false; // the update Advance runs replays a frame (SocketReads' log)
-	// What the fighters' models show: fresh (the engine drew a frame since the
-	// last update, and nothing was restored), placed (the last update's visual
-	// task placed them, and nothing was restored since), and whether the first
-	// update after a pose hold was the held frame's, fresh (SocketReads).
-	socket_reads::PoseFreshness pose_;
-	// Pose holds: the last update's reads, whether it wants a drawn frame
-	// (a miss), the reads of the update a hold is pending for (its session
-	// frame), and the hold lines logged this battle.
-	socket_reads::UpdateReads lastReads_;
-	bool wantsDrawnFrame_ = false;
-	socket_reads::UpdateReads holdReads_;
-	int holdFrame_ = -1;
-	int holdLines_ = 0;
-	static constexpr int kMostHoldLines = 400;
-	// As an update begins: a pose hold's outcome counted and logged.
-	void NoteAfterHold(socket_reads::PoseFreshness::AfterHold afterHold, int32_t inputFrame);
 	// The battle's fighter units, partners included, in its order (from Bind):
-	// what their socket reads are keyed by, and whose meshes are kept at LOD 0.
+	// where their anchored socket reads start, and whose meshes are kept at
+	// LOD 0.
 	struct FighterUnit {
 		uint8_t* chara = nullptr;
 		int32_t side = -1;
-		uint8_t* motion = nullptr; // CharaMotionPart (sfv::fighter::kMotionPartType)
 		uint8_t* action = nullptr; // CharaActionPart, for the facing
 		uint8_t* visual = nullptr; // CharaVisualPart
 	};
-	// The keys of every fighter unit as an update begins (SocketReads).
-	void KeyFighterUnits(SocketUpdate* sockets) const;
+	// Where every fighter unit stands and faces as an update begins (SocketReads).
+	void PlaceFighterUnits(SocketUpdate* sockets) const;
 	// After an update: a fighter unit's command queue left not empty
 	// (sfv::fighter::kCommandQueueBegin), outside the snapshot, is counted
 	// and the first few logged. Diagnostics only: nothing is changed.
@@ -295,8 +274,7 @@ private:
 	static constexpr int kMostQueueLines = 8;
 	FighterUnit fighterUnits_[kMostFighterUnits];
 	int fighterUnitCount_ = 0;
-	uint64_t keyedUpdates_ = 0; // this battle's updates whose fighter units were keyed, and the time that took
-	int64_t keyTicks_ = 0;
+	uint64_t placedUpdates_ = 0; // this battle's updates whose fighter units were placed (the sockets line)
 	FlowRollback flow_;
 	// The costs since the last cost line (LogCosts), in QueryPerformanceCounter
 	// ticks: updates played forward and replayed, and AfterLoad's work.

@@ -68,7 +68,6 @@ add_subdirectory("${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe" "${CMAKE_BINA
 # the synctest harness. No game, no hooks; unit tested against MockFighter.
 add_library(sfve_core STATIC
     src/core/StateRegions.cxx
-    src/core/PoseHold.cxx
     src/core/ReplayFile.cxx
     src/core/RollbackSession.cxx
     src/core/StartAgreement.cxx
@@ -90,7 +89,6 @@ add_executable(sfve_tests
     tests/SyncTestTests.cxx
     tests/RollbackSessionTests.cxx
     tests/RollbackCostTests.cxx
-    tests/PoseHoldTests.cxx
     tests/StartAgreementTests.cxx
     tests/MatchDataTests.cxx
     tests/RegionExchangeTests.cxx

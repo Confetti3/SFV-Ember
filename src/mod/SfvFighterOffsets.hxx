@@ -107,34 +107,13 @@ constexpr CodeSite kActorSetMeshTransform{"ActorSetMeshTransform", 0xE5BD90,
 // 0x37D250), the camera's handlers, and spawns placed at a bone (rva 0x4CFB70
 // through 0x32BAA0 for any script's spawn with a bone; Z33's part at the end
 // of its V-Trigger, rva 0x3BD900). The socket names come from the table rva
-// 0x351250 reads. Hooked (SocketReads): a read on a stale pose takes the
-// straight play's value for the same state.
+// 0x351250 reads. It calls MakeName (rva 0x11AC010) and SocketTransform (rva
+// 0xE58F10) and writes x * 0.01f, z * 0.01f, y * -0.01f, 1 (rva
+// 0x391A51..0x391A8E). Hooked (SocketReads): in a battle a session plays, a
+// read that may feed fight state is given a value from the fighter's fight
+// position.
 constexpr CodeSite kSocketWorldPosition{"SocketWorldPosition", 0x3919D0,
 	{0x48, 0x89, 0x5C, 0x24, 0x20, 0x57, 0x48, 0x83, 0xEC, 0x70, 0x48, 0x8B, 0x05, 0x9F, 0x08, 0x63}};
-// The two calls kSocketWorldPosition makes, which SocketReads makes again to
-// see the transforms the read came from. Called, not hooked.
-// FName* MakeName(FName* out, const wchar_t* name, int find) (__fastcall): UE's
-// FName from a name (find 1: add it if new), 8 bytes; a null name gives
-// NAME_None (0). The socket read passes find 1 (and 1 in r9, unread).
-constexpr CodeSite kMakeName{"MakeName", 0x11AC010,
-	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x48, 0x8B, 0xD9, 0x48, 0x85, 0xD2, 0x74, 0x21, 0x45, 0x8B}};
-// void SocketTransform(AActor*, const FName*, FTransform* out) (__fastcall): the
-// actor's mesh (visual::kActorMesh), when it is a skeletal mesh component
-// (mesh::kSkeletalMeshComponentFlag) with a mesh asset (+0x4E0), gives the
-// socket's world transform through its virtual +0x358 (GetSocketTransform,
-// space 0: world) into `out`, 16-byte aligned: rotation quaternion,
-// translation, scale, 16 bytes each. Otherwise `out` is not written. UE4's
-// GetSocketTransform starts from the component's own world transform and
-// changes it only for a named socket or bone, so NAME_None gives the mesh
-// component's own world transform (an assumption from the engine's source;
-// the virtual itself was not found in this database).
-constexpr CodeSite kSocketTransform{"SocketTransform", 0xE58F10,
-	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x60, 0x48, 0x8B, 0x05, 0x63, 0x93, 0xB6, 0x02, 0x48, 0x33, 0xC4}};
-// What kSocketWorldPosition does with the translation (rva 0x391A51..0x391A8E):
-// x * 0.01f, z * 0.01f, y * -0.01f into out[0..2] (mulss with the constants
-// at rva 0x2C4ED38, 0x3C23D70A, and rva 0x2C4F9AC, 0xBC23D70A), out[3] = 1.
-constexpr uint32_t kCentimetresToFightBits = 0x3C23D70A;
-constexpr uint32_t kCentimetresToFightNegatedBits = 0xBC23D70A;
 
 namespace visual {
 
@@ -272,8 +251,9 @@ constexpr uint32_t kScriptTimeScale = 0x64; // 16.16: 0 while another fighter's 
 constexpr uint32_t kHeaderTotalShort = 0x0C; // the game reads the total as int16
 constexpr uint32_t kHeaderPosture = 0x2E;   // int16: 0 standing, 1 crouching, 2 airborne, 3 lying, 4 knocked into the air
 
-// What decides a fighter unit's pose and where its model stands, for the
-// socket reads' record (SocketReads; docs/design/beta8/desync.md, "Beta.9").
+// What decides a fighter unit's pose and where its model stands, found for
+// beta.9's record of socket reads (docs/design/beta8/desync.md, "Beta.9";
+// gone in beta.10: the reads that feed fight state start from kFightPosition).
 // All of it is in the game's snapshot, so a restore brings it back with the
 // state an update starts from. What the model is given is not: the visual
 // part's layer block (+2144..+2400, two layers of 128 bytes) and the actor
