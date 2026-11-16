@@ -2,6 +2,7 @@
 
 #include "mod/FighterData.hxx"
 
+#include "mod/GameImage.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/Pace.hxx"
@@ -104,7 +105,7 @@ bool SfvAdapter::Bind()
 		WaitingToBind(!flowUnit ? "the flow unit" : !ruleUnit ? "the versus rule unit" : "the match data");
 		return false;
 	}
-	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	const uintptr_t base = GameBase();
 	OutsideState outside = {reinterpret_cast<uintptr_t>(ruleUnit), reinterpret_cast<uintptr_t>(battleData),
 		reinterpret_cast<uintptr_t>(battleFrame_), reinterpret_cast<uintptr_t>(inputUnit_), base,
 		reinterpret_cast<uintptr_t>(FindUnit(sfv::kowait::kUnitType))};
@@ -477,7 +478,7 @@ void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)
 
 int SfvAdapter::ReseedRandom(uint32_t seed)
 {
-	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	const uintptr_t base = GameBase();
 	const uint64_t vtable = base + sfv::rng::kVtable;
 	int reseeded = 0;
 	for (const StateRegion& r : layout_.Regions()) {

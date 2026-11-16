@@ -2,6 +2,7 @@
 
 #include "core/GameAdapter.hxx"
 #include "mod/GameHooks.hxx"
+#include "mod/GameImage.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -39,8 +40,7 @@ bool SetParams(uint8_t* rollbackUnit, const uint8_t* battleData, const std::pair
 	namespace practice = sfv::practice;
 	using SetParamFn = bool (*)(uint8_t* table, int param, int value);
 	if (!battleData) return Log("adapter: no %s: the battle is not bound", what), false;
-	const auto set = reinterpret_cast<SetParamFn>(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)) +
-		sfv::kSetPlayerParam.rva);
+	const auto set = GameFn<SetParamFn>(sfv::kSetPlayerParam);
 	bool sides[kPlayers] = {};
 	for (int index = 0; index < kPlayers; index++) {
 		uint8_t* chara = GameFindUnit(rollbackUnit, sfv::unit::kCharaUnitType, (uint32_t)index);

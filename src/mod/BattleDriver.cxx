@@ -1,6 +1,7 @@
 #include "mod/BattleDriver.hxx"
 
 #include "mod/ControlPipe.hxx"
+#include "mod/GameImage.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
@@ -83,7 +84,7 @@ void BattleDriver::LogInventory() const
 	for (const StateRegion& r : layout.Regions()) Log("inventory:   %-28s %p %8zu bytes", r.name.c_str(), r.ptr, r.size);
 	// Each callback calls a closure {function, ...} it was given; log the
 	// distinct functions behind them.
-	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	const uintptr_t base = GameBase();
 	std::vector<uintptr_t> seen;
 	for (const SfvAdapter::PostRestore& cb : adapter_.PostRestoreCallbacks()) {
 		const uintptr_t inner = *static_cast<const uintptr_t*>(cb.context) - base;

@@ -1,6 +1,7 @@
 #include "mod/SfvRegionNames.hxx"
 
 #include "mod/GameHooks.hxx"
+#include "mod/GameImage.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -105,11 +106,6 @@ constexpr uint32_t kTypeParent = 8;
 // "near" it.
 constexpr uintptr_t kNearWindow = 0x40000;
 
-uintptr_t ImageBase()
-{
-	return reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
-}
-
 // A part's concrete type: its vtable's first function returns it.
 uintptr_t TypeOf(uint8_t* object)
 {
@@ -168,7 +164,7 @@ void RegionNames::AddParts(const std::string& unitName, uint8_t* unit)
 		size_t(end - begin) > kMaxParts) {
 		return;
 	}
-	const uintptr_t image = ImageBase();
+	const uintptr_t image = GameBase();
 	int seen[std::size(kParts)] = {};
 	for (GameSharedPtr* p = begin; p < end; p++) {
 		GameSharedPtr part{};
