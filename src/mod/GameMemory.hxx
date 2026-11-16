@@ -5,6 +5,8 @@
 
 #include "mod/AddressRanges.hxx"
 
+#include <windows.h>
+
 #include <intrin.h>
 #include <stdint.h>
 
@@ -38,6 +40,21 @@ bool TryWrite(void* at, const T& value)
 		*static_cast<T*>(at) = value;
 		return true;
 	} __except (1 /* EXCEPTION_EXECUTE_HANDLER */) {
+		return false;
+	}
+}
+
+// Calls the game function `function` (no arguments) and stores its result at
+// `out`; false when the call itself faulted on an access (a game function that
+// reads a subsystem the game has not made yet). Other exceptions go on to the
+// crash record. The function must not need cleanup on a fault.
+template <typename T>
+bool TryCall(T (*function)(), T* out)
+{
+	__try {
+		*out = function();
+		return true;
+	} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
 		return false;
 	}
 }

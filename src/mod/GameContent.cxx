@@ -560,6 +560,22 @@ ChoiceCounts CountsOf(const FighterContent& fighter)
 // read them (FighterChoiceCounts); empty before any read.
 std::vector<std::pair<std::wstring, ChoiceCounts>> s_choiceCounts;
 
+// Whether the game says the account is logged in. Its function reads the
+// default online subsystem through the identity interface with no check that
+// either is there, and a null one (Steam's record stale, or its online service
+// not up yet) faults at StreetFighterV.exe+0x742A34. A fault reads as not
+// logged in, as offline does, and is logged once.
+bool AccountLoggedIn()
+{
+	static bool faultLogged = false;
+	bool loggedIn = false;
+	if (!TryCall(At<LoggedInFn>(sfv::kLoggedIn), &loggedIn)) {
+		if (!faultLogged) Log("content: the game's LoggedIn faulted (its online subsystem is not there); read as not logged in");
+		faultLogged = true;
+	}
+	return loggedIn;
+}
+
 // What the game lets this copy's player pick, as its menus and the battle
 // jump's check ask the battle setup asset `setup` (sfv::kOwnedFighters and
 // the rest), into `lists`; the looks' answer is then kContentOwnership's
@@ -574,7 +590,7 @@ void ReadOwnership(uint8_t* setup, ContentLists& lists)
 	source.restricted = Field<uint8_t>(setup, kSetupRestricted) != 0;
 	source.restrictionEntries = Field<int32_t>(setup, kSetupRestrictionCount);
 	source.filter = Field<void*>(setup, kSetupFilter) != nullptr;
-	source.loggedIn = At<LoggedInFn>(sfv::kLoggedIn)();
+	source.loggedIn = AccountLoggedIn();
 	const std::vector<std::string> fighters =
 		TakeCodes([&](GameArray<GameString>* out) { At<OwnedFightersFn>(sfv::kOwnedFighters)(setup, out, false, false); });
 	for (FighterContent& fighter : lists.fighters) {

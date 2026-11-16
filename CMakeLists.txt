@@ -352,6 +352,7 @@ add_executable(sfve_ember_tests
     tests/RuntimeModulesTests.cxx
     tests/LogRotationTests.cxx
     tests/BackgroundPlayTests.cxx
+    tests/GameMemoryTests.cxx
     tests/GameInputTests.cxx
     tests/SocketReadsTests.cxx
     tests/RngAuditTests.cxx
