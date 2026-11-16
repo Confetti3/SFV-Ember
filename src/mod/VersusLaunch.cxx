@@ -14,6 +14,8 @@
 #include "mod/TinyFighters.hxx"
 #include "mod/VersusPicks.hxx"
 
+#include "platform/Utf8.hxx"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -450,7 +452,7 @@ std::string ChooseVersions(MatchPicks* picks)
 	for (int player = 0; player < jump::kPlayers; player++) {
 		FighterPick& pick = picks->players[player];
 		if (pick.fighter.empty()) continue;
-		const std::string code(pick.fighter.begin(), pick.fighter.end());
+		const std::string code = sf4e::platform::WideToUtf8(pick.fighter);
 		const VersionChoice choice = ChooseLaunchVersion(code, FighterBalanceVersions(pick.fighter), pick.balanceVersion);
 		if (!choice.refusal.empty()) return "player " + std::to_string(player + 1) + "'s " + choice.refusal;
 		pick.balanceVersion = choice.version;
