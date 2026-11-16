@@ -1,13 +1,36 @@
 #pragma once
 
-// Which memory of this process holds addresses: the ranges LooksLikeAddress
-// (mod/GameMemory.hxx) takes a word to point into. A word is an address when
-// it is 4-byte aligned and lies above 1 TB (where a Windows x64 process puts
-// its heap and images with bottom-up and high-entropy ASLR on) or inside the
-// committed private memory and images this process really has (read at the
-// battle's bind). The ranges are what make a PC with those ASLR options off,
-// or Wine and Proton, whose heap sits far below 1 TB, read its pointers as
-// pointers.
+// Which words of the game's state are addresses (LooksLikeAddress,
+// mod/GameMemory.hxx): the hashes read them as zero, since two processes
+// place the same objects at different addresses. The decision must be the
+// same on two copies whose values are equal, or a word is zeroed in one
+// copy's hash and not in the other's: a desync report with equal states
+// (P2-E). So there are two rules, chosen at the battle's bind from where the
+// game's own heap lies (ChooseAddressRule), and logged ("address test:"):
+//
+// * The value rule (AddressRule::Value): a word is an address when it is
+//   4-byte aligned and lies above 1 TB, up to the end of user space. A
+//   Windows x64 process with its default ASLR puts its heap and images there,
+//   which is every PC seen so far, and this is exactly beta.9's rule: it reads
+//   only the value, so two such copies always decide alike.
+// * The low-heap rule (AddressRule::LowHeap), only for a copy whose game heap
+//   lies below 1 TB (bottom-up ASLR off, Wine and Proton): the value rule, and
+//   also a word inside one of the game allocator's arenas, read at the bind.
+//   An arena is a run of committed private memory, joined across gaps of at
+//   most kJoinGap, that holds one of the game's own heap objects (the
+//   battle's units and its rollback regions). Thread stacks (an allocation
+//   with a guard page), images and mapped views are never part of one, and
+//   no arena is joined across them.
+//
+// What remains unsafe: a low-heap copy against a normal one can still part on
+// an integer that falls inside the low copy's arenas (a count of 0x02A41F10
+// is a number to the normal copy and an address to the low one), and two
+// low-heap copies whose arenas differ can too. Private memory that is not the
+// game's heap (a TEB, another allocator's block) lying within kJoinGap of an
+// arena with nothing between is taken as arena. The start agreement does not
+// carry the rule (that would change its wire and need a players' notice for
+// the refused match), so such a pair plays, and a difference shows as a
+// desync whose logs say which rule each copy took.
 
 #include <stdint.h>
 
@@ -36,19 +59,53 @@ private:
 	std::vector<AddressRange> ranges_; // sorted, disjoint
 };
 
-// The committed private regions and images of this process (VirtualQuery),
-// joined by kJoinGap.
+// How far apart two runs of the game's heap may lie and still be one arena.
 constexpr uint64_t kJoinGap = 16ull << 20;
-AddressRanges ReadProcessRanges();
+// Where the value rule's addresses begin.
+constexpr uint64_t kHighAddresses = 1ull << 40;
 
-// What LooksLikeAddress consults; none until the first publish. Safe to call
-// from any thread: a published set is never freed.
+enum class AddressRule : uint8_t {
+	Value,   // words above 1 TB only (beta.9's rule)
+	LowHeap, // also words in the game heap's arenas (a copy whose heap lies below 1 TB)
+};
+
+// The rule the game's own heap objects call for: LowHeap only when there are
+// some and every one lies below 1 TB; a mix, or none, is the value rule.
+AddressRule RuleForGameHeap(const std::vector<uint64_t>& gameHeap);
+
+// A committed region as VirtualQuery reports it, as far as the arenas need.
+struct QueriedRegion {
+	uint64_t begin = 0;
+	uint64_t end = 0;
+	uint64_t allocationBase = 0;
+	bool privateMemory = false; // MEM_PRIVATE (not an image or a mapped view)
+	bool guard = false;         // PAGE_GUARD: its allocation is a thread's stack
+};
+
+// The game allocator's arenas among `committed` (any order): the private
+// regions of no allocation that holds a guard page, joined across gaps of at
+// most `joinGap` that no other committed region lies in, and of those runs
+// only the ones holding one of `gameHeap`.
+AddressRanges ArenasHolding(std::vector<QueriedRegion> committed, const std::vector<uint64_t>& gameHeap, uint64_t joinGap);
+
+// This process's committed regions (VirtualQuery over user space).
+std::vector<QueriedRegion> ReadCommittedRegions();
+
+// What LooksLikeAddress consults besides the value rule; none until the first
+// publish. Safe to call from any thread: a published set is never freed.
 void PublishProcessRanges(AddressRanges ranges);
 const AddressRanges* PublishedProcessRanges();
 
-// Reads this process's ranges, publishes them and logs where they lie (the
-// lowest and highest address of the committed private memory and images, the
-// exe's image and how many joined ranges), so a field log shows what the address test saw.
-void RefreshProcessRanges();
+// At the battle's bind, with the game's own heap objects (its units and its
+// rollback regions): chooses the rule (RuleForGameHeap), publishes the
+// arenas for the low-heap rule and an empty set for the value rule, and logs
+// which ("address test:"). Game thread.
+AddressRule ChooseAddressRule(const std::vector<uint64_t>& gameHeap);
+// The rule last chosen (Value before any); any thread.
+AddressRule CurrentAddressRule();
+// The rule in words, for the log and a desync report's head: "value (words
+// above 1 TB)" or "low heap (words above 1 TB, and in 3 arena(s) from
+// 0x2000000 to 0x9F00000, 120 MB)". Any thread.
+std::string AddressRuleText();
 
 } // namespace sfve::mod

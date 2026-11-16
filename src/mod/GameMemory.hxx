@@ -125,16 +125,17 @@ inline void GiveBackGameRef(const GameRef& ref)
 	if (ref.block && *reinterpret_cast<int32_t*>(ref.block) > 1) (*reinterpret_cast<int32_t*>(ref.block))--;
 }
 
-// Heap and code addresses of this process, 4-byte aligned: above 1 TB up to
-// the end of user space (where a Windows x64 process puts them with its
-// default ASLR), or inside the process's own committed private memory and
-// images (mod/AddressRanges.hxx, read at the battle's bind), which is where
-// they lie with bottom-up ASLR off or under Wine. They differ between
+// Heap and code addresses of this process, 4-byte aligned, by the rule the
+// battle's bind chose (mod/AddressRanges.hxx): above 1 TB up to the end of
+// user space (where a Windows x64 process puts them with its default ASLR:
+// the value rule, the same on every such copy), and for a copy whose game
+// heap lies below 1 TB also inside that heap's arenas. They differ between
 // processes even when the state is the same, so hashes read them as zero.
 inline bool LooksLikeAddress(uint64_t value)
 {
 	if ((value & 3) != 0) return false;
-	if (value >= (1ull << 40) && value <= 0x00007FFFFFFFFFFFull) return true;
+	if (value >= kHighAddresses && value <= 0x00007FFFFFFFFFFFull) return true;
+	// Empty under the value rule.
 	const AddressRanges* ranges = PublishedProcessRanges();
 	return ranges && ranges->Contains(value);
 }

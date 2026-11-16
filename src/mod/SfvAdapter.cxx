@@ -182,7 +182,6 @@ bool SfvAdapter::Bind()
 		return false;
 	}
 	layout_.Clear();
-	RefreshProcessRanges();
 	layout_.SetAddressTest(LooksLikeAddress);
 	uint8_t* manager = GameGetManager(rollbackUnit_);
 	if (!AddGameRegions(manager) || !regionTable_.Bind(manager)) {
@@ -192,6 +191,17 @@ bool SfvAdapter::Bind()
 		return false;
 	}
 	gameRegions_ = layout_.Regions().size();
+	{
+		// Which words the hashes read as addresses (mod/AddressRanges.hxx):
+		// where the game's own heap lies decides the rule, from its battle
+		// objects and its rollback regions (all the game allocator's), before
+		// anything is hashed.
+		std::vector<uint64_t> gameHeap = {reinterpret_cast<uint64_t>(battleFrame_), reinterpret_cast<uint64_t>(inputUnit_),
+			reinterpret_cast<uint64_t>(rollbackUnit_), reinterpret_cast<uint64_t>(flowUnit), reinterpret_cast<uint64_t>(ruleUnit),
+			reinterpret_cast<uint64_t>(battleData)};
+		for (const StateRegion& r : layout_.Regions()) gameHeap.push_back(reinterpret_cast<uint64_t>(r.ptr));
+		ChooseAddressRule(gameHeap);
+	}
 	CollectPostRestore(manager);
 	AddStateOutsideTheGameSnapshot(layout_, outside);
 	flow_.AddTo(layout_);
