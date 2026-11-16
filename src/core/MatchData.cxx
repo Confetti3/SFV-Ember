@@ -84,11 +84,9 @@ std::string Describe(const Difference& d)
 	return "game data differs";
 }
 
-std::string Notice(const Difference& d)
+std::string NoticeFighter(const Difference& d)
 {
-	const std::string fighter = d.what == Difference::What::Units ? std::string() : " (fighter " + Code(d.local) + ")";
-	return "Match ended before it began: game data differs" + fighter +
-		". Verify the game's files in Steam, or remove mods, on the PC that differs.";
+	return d.what == Difference::What::Units ? std::string() : Code(d.local);
 }
 
 std::string Text(const Facts& facts)

@@ -14,6 +14,7 @@
 #include "mod/PakList.hxx"
 #include "mod/SocketReads.hxx"
 
+#include "common/Localization.hxx"
 #include "launcher/update/PackageInstaller.hxx"
 #include "launcher/update/github_release_client.hxx"
 #include "netplay/SettingsStore.hxx"
@@ -559,8 +560,10 @@ void ReportGameDataDiffers(const StartAgreement::Report& report, const match_dat
 {
 	const std::string what = report.dataDifference ? match_data::Describe(*report.dataDifference) : std::string("game data differs");
 	mod::Log("netplay: %s; the match ends before frame 0", what.c_str());
-	sf4e::NetplayFacade::PushAlert(
-		(report.dataDifference ? match_data::Notice(*report.dataDifference) : what).c_str(), sf4e::NoticeSeverity::Error);
+	const std::string fighter = report.dataDifference ? match_data::NoticeFighter(*report.dataDifference) : std::string();
+	const std::string notice = fighter.empty() ? std::string(sf4e::loc::T("runtime.game_data_differs"))
+		: sf4e::loc::Tf("runtime.game_data_differs_fighter", fighter);
+	sf4e::NetplayFacade::PushAlert(notice.c_str(), sf4e::NoticeSeverity::Error);
 	desync::Facts facts;
 	facts.watcher = watcher;
 	if (const RoomBattle* room = CurrentBattle().room) {

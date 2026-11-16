@@ -109,8 +109,8 @@ exchange (section 6) names the words.
   - Each unit's whole version list is logged at bind: "fighter data: Z41 (P1) asked balance version 61 of this
     copy's 10, ...". That is what the opponent's copy would have had to send us; every copy now writes it in
     its own log and report.
-- **Not done:** the notice is English text pushed with `PushAlert`. Our overlay catalog may only override
-  msgids the library has, so a localized "game data differs" needs a library msgid (owed).
+- **The notice** is the library's `runtime.game_data_differs` (or `runtime.game_data_differs_fighter`, naming
+  the fighter `match_data::NoticeFighter` gives), in every language, pushed with `PushAlert`.
 
 ## 2. Game data: paks and move data
 
@@ -249,7 +249,6 @@ id, and until then `RoomBuildTests`' pick space check fails.
   the effect records' +0x08..+0x27; the own fields of flow classes 0x2C6AA18 and 0x2C6A3F8; the round's end
   wait's +0x110.
 - R6 (the rest of Rose's unique part beyond +0x61C) and D3 (handicap) were not taken up in this branch.
-- The "game data differs" notice needs a library msgid to be localized.
 
 ## Verify in the final round
 

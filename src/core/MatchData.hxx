@@ -72,8 +72,10 @@ std::optional<Difference> Compare(const Facts& local, const Facts& reference);
 // balance version 61 here, 43 at the other copy".
 std::string Describe(const Difference& d);
 
-// The players' notice: what differs, and what to do about it.
-std::string Notice(const Difference& d);
+// The fighter the players' notice names (the library's
+// runtime.game_data_differs_fighter): empty where the copies have another
+// number of fighter units, whose notice names none (runtime.game_data_differs).
+std::string NoticeFighter(const Difference& d);
 
 // The facts in one line, for the log and the report: "Z41 v61 data 1a2b...,
 // Z25 v60 data ...".
