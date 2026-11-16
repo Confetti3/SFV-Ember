@@ -278,11 +278,24 @@ def backdrop_after_game(game: int, shots: Path, before: list[int]) -> list[str]:
     return problems
 
 
+def enter(index: int, screen: str) -> None:
+    """A on a row of Home: the shell's `screen` opens. A press the shell was not yet taking (the copy has just
+    started) is made again once, only while the shell is still on Home."""
+    press(index, "A")
+    for attempt in range(2):
+        try:
+            wait_for(f"copy {index}'s {screen} screen", 4, lambda: shell(index)["screen"] == screen)
+            return
+        except lib.SfveError:
+            if attempt == 0 and shell(index)["screen"] == "home":
+                press(index, "A")
+
+
 def create_room(shots: Path | None) -> None:
     open_home(0)
     shot(shots, "1-menu", 0)
     seek(0, "online", ["UP"])
-    press(0, "A")
+    enter(0, "online")
     expect(0, "online", "create")
     press(0, "A")
     expect(0, "create")
@@ -333,7 +346,7 @@ def copy_invitation(shots: Path | None) -> None:
 def join_room() -> None:
     open_home(1)
     seek(1, "online", ["UP"])
-    press(1, "A")
+    enter(1, "online")
     seek(1, "join", ["DOWN"])
     press(1, "A")
     expect(1, "join", "paste")

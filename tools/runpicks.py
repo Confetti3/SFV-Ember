@@ -3,11 +3,11 @@
   python tools/runpicks.py --out DIR [--keep-settings]
 
 One copy (development build), its virtual pad 0 driving Ember's shell as a physical pad does. Training select's
-Fighter row opens the player's own pick screen (the board, then a fighter's look page, whose rows are Fighter, Costume,
-Colour, V-Skill, V-Trigger and Stage). The pipe only reads the status and presses the pad.
+Fighter row opens the player's own pick screen on the stored fighter's look page (rows Fighter, Costume, Colour,
+V-Skill, V-Trigger and Stage; Back is the board). The pipe only reads the status and presses the pad.
 
-1. Fighter A (the first tile along with two V-Skills, two V-Triggers and two costumes of two colours) is chosen on the
-   board: its look page opens. The Costume, Colour, V-Skill and V-Trigger rows are each stepped with Right: the stored
+1. Fighter A (the first fighter along with two V-Skills, two V-Triggers and two costumes of two colours) is on the look
+   page, which Training select's Fighter row opens. The Costume, Colour, V-Skill and V-Trigger rows are each stepped with Right: the stored
    pick must change in each.
 2. The Fighter row stepped to B: B must be in its own default look (V-Skill and V-Trigger as a fighter never chosen has
    them, a look that is not A's changed one). Stepped back to A: A's look is back, whole.
@@ -80,18 +80,19 @@ def space() -> dict:
 def suitable(fighter: dict) -> bool:
     """Two V-Skills, two V-Triggers, and two costumes that each have two colours."""
     costumes = [c for c in fighter["costumes"] if len(c["colours"]) >= 2]
-    return fighter.get("vSkills", 0) >= 2 and fighter.get("vTriggers", 0) >= 2 and len(costumes) >= 2
+    return fighter.get("v_skills", 0) >= 2 and fighter.get("v_triggers", 0) >= 2 and len(costumes) >= 2
 
 
-def to_training_board() -> None:
-    """Home, Training, Training select's Fighter row: the player's pick screen on its board."""
+def to_look_page() -> None:
+    """Home, Training, Training select's Fighter row: the player's pick screen, opened on the look page of
+    the stored fighter (its Fighter, Costume, Colour, V-Skill, V-Trigger and Stage rows)."""
     sh.open_home(0)
     sh.seek(0, "training", ["DOWN"], 12)
     sh.press(0, "A")
     sh.wait_for("Training select", 20, lambda: sh.shell(0)["shown"] and sh.shell(0)["screen"] == "training")
     sh.expect(0, "training", "training-fighter")
     sh.press(0, "A")
-    sh.expect_pick(0, "home")
+    sh.expect_pick(0, "look")
     if sh.pick_place(0)["dummy"]:
         raise lib.SfveError("Training select's Fighter row opened the dummy's pick screen")
 
@@ -114,22 +115,25 @@ def step_row(row: str, what: str, out: Path) -> Look:
     return after
 
 
-def ensure_board_look_page(fighters: dict) -> Look:
-    """From the board, along it until the focused tile is a suitable fighter, and Select on it: its look page."""
+def ensure_suitable_fighter(fighters: dict) -> Look:
+    """On the look page: the Fighter row stepped along until the fighter has two V-Skills, two V-Triggers and two
+    costumes of two colours. Then Back to the board (its focus is the fighter's tile, which A_TILE keeps) and
+    Select on that tile: the fighter's look page again."""
+    for _ in range(60):
+        here = stored()
+        if here.code in fighters and suitable(fighters[here.code]):
+            break
+        fighter_row("RIGHT")
+    else:
+        raise lib.SfveError("no fighter with two V-Skills, two V-Triggers and two costumes of two colours")
+    sh.press(0, "B")
     sh.expect_pick(0, "home")
-    for step in range(60):
-        focus = sh.pick_place(0)["focus"]
-        if focus.startswith("fighter-"):
-            sh.press(0, "A")
-            if sh.pick_place(0)["page"] == "look":
-                here = stored()
-                if here.code in fighters and suitable(fighters[here.code]):
-                    A_TILE[0] = focus
-                    return here
-                sh.press(0, "B")  # back to the board, the next tile
-                sh.expect_pick(0, "home")
-        sh.press(0, "RIGHT")
-    raise lib.SfveError("no fighter on the board with two V-Skills, two V-Triggers and two costumes of two colours")
+    A_TILE[0] = sh.pick_place(0)["focus"]
+    if not A_TILE[0].startswith("fighter-"):
+        raise lib.SfveError(f"the board's focus is {A_TILE[0]}, not the stored fighter's tile")
+    sh.press(0, "A")
+    sh.expect_pick(0, "look")
+    return stored()
 
 
 def settings_pick(wait_for_fighter: str | None = None) -> dict | None:
@@ -181,8 +185,8 @@ def main(argv: list[str]) -> int:
         try:
             tr.take_launch_lock()
             launch_copy()
-            to_training_board()
-            first = ensure_board_look_page(fighters)
+            to_look_page()
+            first = ensure_suitable_fighter(fighters)
             a_tile = A_TILE[0]
             print(f"1. fighter {first.code} chosen, look page open; its first look {first.look()}")
             shot(a.out, "1-a-default")
@@ -271,9 +275,7 @@ def main(argv: list[str]) -> int:
             print(f"   started again: the stored pick is {restored}")
             if restored.text.split(" stage")[0] != A.text.split(" stage")[0]:
                 raise lib.SfveError(f"the run did not start with A's look: {A.text!r} then {restored.text!r}")
-            to_training_board()
-            sh.press(0, "A")
-            sh.expect_pick(0, "look")
+            to_look_page()
             shot(a.out, "8-restart-a")
             second = stored()
             print(f"   the look page after the restart: {second}")
