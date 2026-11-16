@@ -19,7 +19,9 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace sfve::launcher {
 
@@ -31,6 +33,19 @@ enum class SteamRecord {
 };
 
 SteamRecord RepairSteamRecord();
+
+// A running process, as the snapshot of them lists it.
+struct ProcessEntry {
+	uint32_t pid = 0;
+	uint32_t session = 0; // its Windows session (another user's is another)
+	std::wstring exe;     // the file name, as Windows lists it
+};
+
+// The pids of the Steam clients (steam.exe; steamwebhelper.exe and
+// SteamService.exe do not count) among `processes` that run in `session`: the
+// record is this user's, and another user's Steam (fast user switching keeps
+// theirs running) is not the one the game talks to.
+std::vector<uint32_t> SteamClientsInSession(const std::vector<ProcessEntry>& processes, uint32_t session);
 
 // Steam's account id (the low 32 bits of the SteamID64) of the user
 // loginusers.vdf marks MostRecent, or of its only user; nullopt when it names

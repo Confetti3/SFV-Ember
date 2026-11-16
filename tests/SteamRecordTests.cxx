@@ -4,6 +4,8 @@
 
 #include "launcher/SteamRecord.hxx"
 
+#include <vector>
+
 using sfve::launcher::MostRecentAccount;
 
 TEST_CASE("the account Steam signed in last is the one marked MostRecent")
@@ -38,4 +40,22 @@ TEST_CASE("a single user is the account even unmarked; several unmarked name non
 	// Not a SteamID64 of an individual account: no account.
 	CHECK_FALSE(MostRecentAccount(R"("users" { "12345678901234567" { "MostRecent" "1" } })"));
 	CHECK_FALSE(MostRecentAccount(R"("users" { "7656119800000000x" { "MostRecent" "1" } })"));
+}
+
+TEST_CASE("only the Steam clients of this session count: another user's, left running by fast user switching, is not the one the game talks to")
+{
+	using sfve::launcher::ProcessEntry;
+	const std::vector<ProcessEntry> processes = {
+		{100, 1, L"explorer.exe"},
+		{200, 1, L"Steam.exe"},       // this user's, in this session
+		{300, 2, L"steam.exe"},       // another user's, in another session
+		{310, 2, L"steamwebhelper.exe"},
+		{400, 1, L"steamwebhelper.exe"},
+		{500, 1, L"SteamService.exe"},
+		{600, 0xFFFFFFFFu, L"steam.exe"}, // a process whose session could not be asked
+	};
+	CHECK(sfve::launcher::SteamClientsInSession(processes, 1) == std::vector<uint32_t>{200});
+	CHECK(sfve::launcher::SteamClientsInSession(processes, 2) == std::vector<uint32_t>{300});
+	CHECK(sfve::launcher::SteamClientsInSession(processes, 3).empty());
+	CHECK(sfve::launcher::SteamClientsInSession({}, 1).empty());
 }
