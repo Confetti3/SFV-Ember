@@ -233,6 +233,7 @@ std::string Comment(const Facts& facts, std::string_view buildId)
 	text += "Stage: " + (facts.stage.empty() ? std::string("not known") : facts.stage) + "\n";
 	text += "Game data: " + (facts.battleData.empty() ? std::string("not read") : facts.battleData) + "\n";
 	if (!facts.otherBattleData.empty()) text += "The other copy's game data: " + facts.otherBattleData + "\n";
+	if (!facts.paks.empty()) text += "Paks: " + facts.paks + "\n";
 	if (refused) {
 		text += "Before frame 0: " + facts.gameDataDiffers + "; the match did not start\n";
 	} else if (repair) {

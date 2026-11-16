@@ -86,6 +86,28 @@ constexpr int32_t kAnyVersionLast = 599;
 constexpr int32_t kMostEntries = 256;
 } // namespace versions
 
+// A fighter's moves at one balance version: the KWBattleResourceDataAsset the
+// resource lookup returns (sfv::kBattleResourceLookup), and the resources it
+// lists (IDA, build 13173604). The asset keeps two TArrays of resource
+// objects (rva 0x551480): +56 (count +64) and, for the alternate set, +72
+// (count +80); a fighter's action part binds resources 0 to 3 of one of them
+// (rva 0x2F67B0, 0x2FB6F0: 2 and 3 always, 0 and 1 unless alternate), the
+// game's KWBAC, KWBCM and KWBCH classes among them. Each resource is a
+// UKWBattleResource (56 bytes, rva 0xC04960): its one property, "Data" (rva
+// 0xC72550: an array of bytes at +40), is the file the battle reads (its
+// pointer is what the action part binds), its byte count at +48.
+namespace resources {
+constexpr uint32_t kSet = 56;
+constexpr uint32_t kSetCount = 64;
+constexpr uint32_t kAlternateSet = 72;
+constexpr uint32_t kAlternateSetCount = 80;
+constexpr uint32_t kData = 40;
+constexpr uint32_t kDataCount = 48;
+// Bounds no stock resource reaches, so a misread stops the hash.
+constexpr int32_t kMostResources = 16;
+constexpr int32_t kMostBytes = 64 * 1024 * 1024;
+} // namespace resources
+
 // DA_Spec's pick-space map (EMBER_LIBRARY.md section 41). The spec's
 // post-init (rva 0x574150) parses the CharaSpec table embedded in the exe
 // (one row per fighter, costume and colour: Name, CharaId, RefAvailableCode,

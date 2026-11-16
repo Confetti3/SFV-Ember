@@ -10,6 +10,7 @@
 #include "mod/SfvAdapter.hxx"
 #include "mod/Log.hxx"
 #include "mod/Pace.hxx"
+#include "mod/PakList.hxx"
 #include "mod/SocketReads.hxx"
 
 #include "launcher/update/PackageInstaller.hxx"
@@ -145,6 +146,7 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	facts.layoutId = session.Layout().LayoutId();
 	facts.matchBuild = MatchBuildId();
 	if (const mod::SfvAdapter* game = CurrentBattle().game) facts.battleData = match_data::Text(game->BattleFacts());
+	facts.paks = mod::PakCensusSummary();
 	if (const std::vector<uint8_t>* state = session.CheckpointState(mismatch.frame)) {
 		for (const StateRegion& r : session.Layout().Regions()) {
 			facts.stateRegions.push_back({r.name, r.size, reinterpret_cast<std::uint64_t>(r.ptr), r.checked, r.comparedWithPeers});
@@ -457,6 +459,7 @@ void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& 
 	facts.layoutId = layout.LayoutId();
 	facts.matchBuild = MatchBuildId();
 	if (const mod::SfvAdapter* game = CurrentBattle().game) facts.battleData = match_data::Text(game->BattleFacts());
+	facts.paks = mod::PakCensusSummary();
 	size_t written = 0, kept = 0, still = 0;
 	for (const StartAgreement::RegionOutcome& r : report.regions) {
 		facts.regions.push_back({r.name, r.size, r.before});
@@ -500,6 +503,7 @@ void ReportGameDataDiffers(const StartAgreement::Report& report, const match_dat
 	facts.delay = delay;
 	facts.matchBuild = MatchBuildId();
 	facts.battleData = match_data::Text(battle);
+	facts.paks = mod::PakCensusSummary();
 	facts.otherBattleData = match_data::Text(report.otherFacts);
 	facts.gameDataDiffers = what;
 	Queue(std::move(facts));

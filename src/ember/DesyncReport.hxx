@@ -191,6 +191,9 @@ struct Facts {
 	// copy's where the start agreement heard it; empty when not read.
 	std::string battleData;
 	std::string otherBattleData;
+	// The paks this copy's engine mounts, judged against Steam's own
+	// (mod/PakRules.hxx's Summary); empty when not read.
+	std::string paks;
 	// Not empty: no desync but a match that never started because the
 	// copies' game data differed (StartAgreement's DataDiffers), in words
 	// (match_data::Describe). Its own Bugsink group; `frame` is 0.

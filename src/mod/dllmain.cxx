@@ -47,6 +47,7 @@
 #include "mod/NetGuard.hxx"
 #include "mod/NetplayMode.hxx"
 #include "mod/OfflineDialogs.hxx"
+#include "mod/PakList.hxx"
 #include "mod/ProjectileRelease.hxx"
 #include "mod/SdlPads.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -287,6 +288,9 @@ extern "C" int SfveStart(int beforeGameCode)
 		return 1;
 	}
 	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	// Every pak the engine will mount, and whether each is Steam's own
+	// (PakList): logged now, and named in every report.
+	TakePakCensus();
 	// The scene manager's tick runs the game-thread queue; without it the
 	// title cannot be moved on, so the offline notice must stay.
 	const bool scene = InstallGameScene(base);

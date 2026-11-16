@@ -13,9 +13,11 @@ namespace sfve::mod {
 
 // Game thread, once the battle is bound. The version is the one this copy
 // loaded: the key's, resolved against this copy's list as the game's
-// resource lookup resolves it. A unit whose key cannot be read gives an
-// empty code and an unknown version (match_data::Compare then compares only
-// what both copies know).
+// resource lookup resolves it; the data, a hash of the move files the
+// lookup gives for the key (GameContent's FighterMoveDataHash), read once
+// here, a few milliseconds a fighter. A unit whose key cannot be read gives
+// an empty code, an unknown version and no data (match_data::Compare then
+// compares only what both copies know).
 match_data::Fighter ReadFighterData(const uint8_t* actionPart, int side);
 
 } // namespace sfve::mod

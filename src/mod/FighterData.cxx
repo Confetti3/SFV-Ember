@@ -36,15 +36,23 @@ match_data::Fighter ReadFighterData(const uint8_t* actionPart, int side)
 	match_data::Fighter fighter;
 	fighter.side = (int8_t)side;
 	const uint8_t* key = nullptr;
+	int32_t asked = 0, alternate = 0;
 	if (!actionPart || !TryRead(actionPart + f::kResourceKey, &key) || !key) return fighter;
 	fighter.code = KeyCode(key);
+	if (fighter.code.empty() || !TryRead(key + f::kKeyVersion, &asked) || !TryRead(key + f::kKeyAlternate, &alternate)) return fighter;
+	const std::wstring code(fighter.code.begin(), fighter.code.end());
 	// The key holds the version as the battle asked for it; the game's
 	// lookup resolves it against this copy's list (rva 0x5518C0), so the
 	// version loaded is that resolution (a -1 key loads the newest here).
-	int32_t asked = match_data::kUnknownVersion;
-	const auto versions = fighter.code.empty() ? std::nullopt
-											   : FighterBalanceVersions(std::wstring(fighter.code.begin(), fighter.code.end()));
-	if (versions && TryRead(key + f::kKeyVersion, &asked)) fighter.version = ResolveVersion(*versions, asked).value_or(match_data::kUnknownVersion);
+	if (const auto versions = FighterBalanceVersions(code)) {
+		fighter.version = ResolveVersion(*versions, asked).value_or(match_data::kUnknownVersion);
+	}
+	// The move data the battle bound: the same lookup, version and set the
+	// action part's resources came from (rva 0x2F67B0).
+	if (const auto hash = FighterMoveDataHash(code, asked, alternate != 0)) {
+		fighter.dataKnown = true;
+		fighter.data = *hash;
+	}
 	return fighter;
 }
 
