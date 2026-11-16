@@ -198,6 +198,8 @@ constexpr ember::ProductIdentity SfvEmber = {
 	L"sfv_ember-crash.log",
 	L"sfv_ember-crash-",
 	LocaleOverlays,
+	// Import replay takes SFV Ember's own replays (core/ReplayFile).
+	"*.sfvreplay",
 };
 
 } // namespace

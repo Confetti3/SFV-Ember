@@ -227,3 +227,6 @@ msgstr "Entraînement, Versus, Arcade et les autres modes hors ligne du jeu."
 
 msgid "selection.personal_action"
 msgstr "Code de costume"
+
+msgid "replays.import_skipped"
+msgstr "{0} fichier(s) ignoré(s). SFV Ember importe les fichiers .sfvreplay d'un disque local, jusqu'à 64 à la fois."

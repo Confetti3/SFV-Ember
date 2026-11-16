@@ -227,3 +227,6 @@ msgstr "Steam Input управляет этим контроллером, поэ
 
 msgid "selection.personal_action"
 msgstr "Код костюма"
+
+msgid "replays.import_skipped"
+msgstr "Пропущено файлов: {0}. SFV Ember импортирует файлы .sfvreplay с локального диска, до 64 за раз."

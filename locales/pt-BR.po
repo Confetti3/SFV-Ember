@@ -227,3 +227,6 @@ msgstr "Treino, Versus, Arcade e os outros modos offline do jogo."
 
 msgid "selection.personal_action"
 msgstr "Código do traje"
+
+msgid "replays.import_skipped"
+msgstr "{0} arquivo(s) ignorado(s). O SFV Ember importa arquivos .sfvreplay de uma unidade local, até 64 por vez."

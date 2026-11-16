@@ -143,9 +143,11 @@ TEST_CASE("a size rides in the wire pick's spare byte and the stored pick keeps 
 	CHECK(PickText(kept).find("size tiny") != std::string::npos);
 	// Ready sends it only where the room allows tiny fighters: this test has
 	// no room, so the wire's byte is 0 whatever is stored.
-	sf4e::NetplayFacade::RuntimeCommand command;
+	sf4e::commands::Ready command;
 	AddPickTo(command);
-	CHECK(command.character._unused == 0);
+	sf4e::wire::ConfirmedCharaConditions native{};
+	sf4e::selection::ToNative(command.pick, native);
+	CHECK(native._unused == 0);
 	CHECK(SizeToSend(1, true) == 1);
 	CHECK(SizeToSend(1, false) == 0);
 	CHECK(SizeToSend(0, true) == 0);
