@@ -28,7 +28,7 @@ struct OpenedLog {
 OpenedLog OpenFirstLog(const std::vector<LogCandidate>& candidates);
 // The candidates OpenLog tries for a process, in order: the usual log of its
 // instance (sfv_ember.log, sfv_ember.N.log) in logs, a file of its own
-// (sfv_ember-<pid>.log) beside it, then under localLogs, then in 	emp.
+// (sfv_ember-<pid>.log) beside it, then under localLogs, then in %TEMP%.
 // A folder that is empty is skipped.
 std::vector<LogCandidate> LogCandidates(int instance, unsigned long pid, const std::wstring& logs,
 	const std::wstring& localLogs, const std::wstring& temp);
@@ -43,6 +43,12 @@ constexpr int kLogRunsKept = 5;
 // of the mod or a start line, and stays. Whether it was moved; a file that is
 // absent, empty or held by a program that allows no rename stays as it is.
 bool RotateLog(const std::wstring& path, int keep, const FILETIME& runStart);
+// What OpenLog does to open the log: the usual log (the first candidate that
+// is not a process's own file) is first rotated (RotateLog), once, before
+// anything is written to it, then the first candidate that can be written is
+// opened (OpenFirstLog). `runStart` is this process's creation, so a log
+// another copy of the mod in this process has already written stays.
+OpenedLog OpenRotatedLog(const std::vector<LogCandidate>& candidates, int keep, const FILETIME& runStart);
 
 // How much one run may write to its log: a run that logs a line per frame
 // would fill the player's disk. The line that passes the limit is written,
