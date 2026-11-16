@@ -11,7 +11,18 @@
 //
 // Game thread.
 
+#include <cstdint>
+
 namespace sfve::adapter {
+
+// Whether the memory at `revision` is to be written now: only once the saved
+// picks were read (`restored`), never in a run whose read never succeeded
+// (`readFailed`: its memory never saw the file's looks, and the file keeps
+// them), and only while the file lacks something: the memory changed since the
+// last write (`revision` is not `saved`), or a late restore merged the saved
+// looks under this run's (`dirty`). The store's decision apart from the
+// settings file and the clock, for the tests.
+bool PicksNeedSaving(bool restored, bool readFailed, bool dirty, std::uint64_t revision, std::uint64_t saved);
 
 // Starts the per-frame work.
 void InstallSfvPickStore();

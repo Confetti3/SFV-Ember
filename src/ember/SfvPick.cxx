@@ -29,7 +29,7 @@ bool s_eleven = false;
 // The look last stored for each fighter and the fighter last chosen
 // (SetPick), saved between runs by SfvPickStore. The revision counts what
 // changed of it that is saved; `s_touched` is a pick stored since the start,
-// after which a restore is too late.
+// after which a restore is merged under this run's memory.
 picks::PickMemory s_memory;
 std::uint64_t s_revision = 0;
 bool s_touched = false;
@@ -277,7 +277,10 @@ sf4e::selection::Pick LookFor(const sf4e::selection::Pick& pick, int fighter, bo
 bool RestorePickMemory(const picks::PickMemory& saved)
 {
 	std::lock_guard lock(s_mutex);
-	if (s_touched) return false;
+	if (s_touched) {
+		if (s_memory.MergeUnder(saved)) s_changes++;
+		return false;
+	}
 	s_memory = saved;
 	s_changes++;
 	if (const std::optional<int> chosen = s_memory.ChosenFighter()) {

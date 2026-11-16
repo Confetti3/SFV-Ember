@@ -138,8 +138,14 @@ sf4e::selection::Pick LookFor(const sf4e::selection::Pick& pick, int fighter, bo
 
 // The saved memory (SfvPickStore reads it at the start): the stored pick
 // becomes the fighter last chosen in its saved look, and every fighter's
-// saved look is remembered. False, nothing changed, once a pick has been
-// stored since the start: the player's own choice wins.
+// saved look is remembered. Once a pick has been stored since the start (the
+// read came late) the stored pick stays the player's own choice, and the
+// saved memory is merged under this run's: a fighter this run stored a look
+// for keeps it, every other fighter gets its saved look, and the saved
+// fighter last chosen is kept only if this run chose none (PickMemory's
+// MergeUnder). Returns true when the saved memory is the run's memory as it
+// was read, false when it was merged, which leaves the file short of this
+// run's looks: the store writes once.
 bool RestorePickMemory(const picks::PickMemory& saved);
 // The memory to save, and `revision`, which rises each time what is saved of
 // it changes.

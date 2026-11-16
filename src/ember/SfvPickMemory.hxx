@@ -46,6 +46,12 @@ public:
 	// and costume code) is remembered for this run only.
 	bool RememberLook(const sf4e::selection::Pick& pick);
 
+	// The saved memory read after this run began to remember (a late
+	// restore): the saved look of every fighter this run has stored none for,
+	// and the saved fighter last chosen when this run chose none. This run's
+	// own choices win, fighter by fighter. True when something was taken.
+	bool MergeUnder(const PickMemory& saved);
+
 	// The fighter the player chose last (not one Random rolled).
 	std::optional<int> ChosenFighter() const { return chosen_; }
 	// True when it changed.

@@ -75,6 +75,21 @@ bool PickMemory::RememberLook(const sf4e::selection::Pick& pick)
 	return changed;
 }
 
+bool PickMemory::MergeUnder(const PickMemory& saved)
+{
+	bool taken = false;
+	for (size_t id = 0; id < looks_.size(); id++) {
+		if (looks_[id] || !saved.looks_[id]) continue;
+		looks_[id] = saved.looks_[id];
+		taken = true;
+	}
+	if (!chosen_ && saved.chosen_) {
+		chosen_ = saved.chosen_;
+		taken = true;
+	}
+	return taken;
+}
+
 bool PickMemory::Choose(int fighter)
 {
 	if (!Stored(fighter) || chosen_ == fighter) return false;

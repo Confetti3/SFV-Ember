@@ -11,6 +11,7 @@
 #include "ember/SfvPick.hxx"
 #include "ember/SfvPickMemory.hxx"
 #include "ember/SfvPickSpace.hxx"
+#include "ember/SfvPickStore.hxx"
 #include "ember/SfvRandomFighter.hxx"
 
 #include "common/SelectionPick.hxx"
@@ -285,6 +286,50 @@ TEST_CASE("the saved picks are restored once, before the player has picked, as t
 	CHECK_FALSE(RestorePickMemory(saved));
 	CHECK(CurrentPick().pick.fighter == kRyu);
 	ForgetPickMemoryForTest();
+}
+
+TEST_CASE("a late restore merges the saved looks under this run's: its own choices win per fighter, the rest come back")
+{
+	FillTestCatalog();
+	ForgetPickMemoryForTest();
+	PickMemory saved;
+	saved.RememberLook(LookOf(kCnl, 0, 1, kTwoOne));
+	saved.RememberLook(LookOf(kRyu, 4, 1, kTwoTwo));
+	saved.Choose(kCnl);
+	// This run stored RYU in another look before the saved picks were read.
+	PlayerPick ryu;
+	ryu.pick = LookOf(kRyu, 0, 0, kOneOne);
+	SetPick(ryu);
+	CHECK_FALSE(RestorePickMemory(ThroughFile(saved, FilledPickSpace())));
+	// RYU keeps this run's look and stays the fighter chosen; CNL's saved look is back.
+	CHECK(SameLook(*RememberedLook(kRyu), LookOf(kRyu, 0, 0, kOneOne)));
+	REQUIRE(RememberedLook(kCnl).has_value());
+	CHECK(SameLook(*RememberedLook(kCnl), LookOf(kCnl, 0, 1, kTwoOne)));
+	CHECK(CurrentPick().pick.fighter == kRyu);
+	std::uint64_t revision = 0;
+	CHECK(PickMemoryNow(revision).ChosenFighter() == kRyu);
+	ForgetPickMemoryForTest();
+	// A run that only rolled Random chose no fighter: the saved one is kept.
+	SetPickRandom(true);
+	PlayerPick rolled;
+	rolled.pick = LookOf(kBsn, 0, 0, kOneOne);
+	SetPick(rolled);
+	CHECK_FALSE(RestorePickMemory(ThroughFile(saved, FilledPickSpace())));
+	CHECK(PickMemoryNow(revision).ChosenFighter() == kCnl);
+	CHECK(SameLook(*RememberedLook(kRyu), LookOf(kRyu, 4, 1, kTwoTwo)));
+	SetPickRandom(false);
+	ForgetPickMemoryForTest();
+}
+
+TEST_CASE("the picks are written only once they were read, never after a read that gave up, and once more after a late merge")
+{
+	// restored, readFailed, dirty, revision, saved
+	CHECK_FALSE(PicksNeedSaving(false, false, false, 3, 0)); // not read yet: nothing is written
+	CHECK_FALSE(PicksNeedSaving(true, false, false, 3, 3));  // nothing changed
+	CHECK(PicksNeedSaving(true, false, false, 4, 3));        // a change
+	CHECK(PicksNeedSaving(true, false, true, 3, 3));         // a late merge: the file lacks this run's looks
+	CHECK_FALSE(PicksNeedSaving(true, true, false, 4, 0));   // the read never succeeded: never written
+	CHECK_FALSE(PicksNeedSaving(true, true, true, 4, 0));
 }
 
 TEST_CASE("only what is saved bumps the revision, and Random's rolls and Eleven's looks are not the player's choice")
