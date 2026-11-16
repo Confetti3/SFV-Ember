@@ -329,9 +329,11 @@ Shell& TheShell()
 
 // A replay's playback (EMBER_LIBRARY.md section 26): its keys, read as SF4's
 // overlay reads them (F1 pause, F2 step, F3 slower, F4 faster), and Esc to
-// stop watching; then the library's strip, shown for a while after each
-// control and as the playback starts, and while paused or slower. SFV has no
-// frame meter or input lanes over a replay.
+// stop watching; the seeks' (docs/design/beta10/replay-seek.md): the comma
+// steps back (held, it repeats), Left and Right jump five seconds, Home
+// restarts, L cycles the loop. Then the library's strip, shown for a while
+// after each control and as the playback starts, and while paused or slower,
+// with its timeline. SFV has no frame meter or input lanes over a replay.
 void DrawReplayControls(Shell& shell, const Snapshot& snapshot, bool shellShown)
 {
 	namespace rt = sf4e::replaytransport;
@@ -354,6 +356,11 @@ void DrawReplayControls(Shell& shell, const Snapshot& snapshot, bool shellShown)
 		if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) send(rt::Command::Slower);
 		if (ImGui::IsKeyPressed(ImGuiKey_F4, false)) send(rt::Command::Faster);
 		if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) SubmitPlaybackStop(playback.session);
+		for (int steps = ImGui::GetKeyPressedAmount(ImGuiKey_Comma, .3f, .1f); steps > 0; --steps) send(rt::Command::StepBack);
+		if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false)) send(rt::Command::JumpBack);
+		if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false)) send(rt::Command::JumpForward);
+		if (ImGui::IsKeyPressed(ImGuiKey_Home, false)) send(rt::Command::Restart);
+		if (ImGui::IsKeyPressed(ImGuiKey_L, false)) send(rt::Command::Loop);
 	}
 	sf4e::ui::ReplayHudView view;
 	view.shown = true;
@@ -363,7 +370,10 @@ void DrawReplayControls(Shell& shell, const Snapshot& snapshot, bool shellShown)
 	view.round = playback.round;
 	view.cursor = playback.cursor;
 	view.pad = playback.device == rt::Device::Pad;
-	view.stripAlpha = rt::StripAlpha(playback.paused, playback.divisor, shell.takenAt < 0 ? -1 : now - shell.takenAt);
+	// Paused, slower, or with a loop set, the strip stays: the loop's marks are on it.
+	view.stripAlpha = rt::StripAlpha(playback.paused || playback.seek.loop != rt::LoopPhase::Off, playback.divisor,
+		shell.takenAt < 0 ? -1 : now - shell.takenAt);
+	view.seek = playback.seek;
 	view.meterOffered = false;
 	view.stopOffered = true;
 	sf4e::ui::DrawReplayStrip(view);
@@ -651,11 +661,12 @@ void InstallEmberShell()
 	ui.beginFrame = BeginFrame;
 	ui.draw = Draw;
 	ui.takesPad = TakesPad;
-	// During a replay's playback its keys are Ember's (F1 to F4, Esc), kept
-	// from the game as SF4's window procedure keeps them (KeepsKey).
+	// During a replay's playback its keys are Ember's (F1 to F4, Esc, and the
+	// seeks': comma, Left, Right, Home, L), kept from the game as SF4's window
+	// procedure keeps them (KeepsKey).
 	ui.takesKey = [](unsigned message, unsigned key) {
 		return PlaybackRunning() && (message == WM_KEYDOWN || message == WM_KEYUP) &&
-			((key >= VK_F1 && key <= VK_F4) || key == VK_ESCAPE);
+			((key >= VK_F1 && key <= VK_F4) || key == VK_ESCAPE || sf4e::replaytransport::SeekKey(key));
 	};
 	ui.takesMessage = TakesMessage;
 	overlay::SetOverlayUi(std::move(ui));

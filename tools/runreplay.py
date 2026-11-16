@@ -1,6 +1,6 @@
 """Records a room battle on two copies, then plays each copy's replay back in SFV.
 
-  python tools/runreplay.py [--rematches N] [--lag MS] [--shots DIR] [--keep] [--replays DIR]
+  python tools/runreplay.py [--rematches N] [--lag MS] [--seeks] [--shots DIR] [--keep] [--replays DIR]
 
 EMBER_LIBRARY.md section 26. Two copies play a private room's battle with
 seeded random input (the room test commands, as runroom.ps1 does), each saving
@@ -21,6 +21,11 @@ ends, and its checkpoints must equal the battle's: those the mod compared with
 the file ("playback ended: ... 0 differing"), and, independently here, the
 playback's "checkpoint:" log lines against the same copy's lines of the
 battle. The two copies' files must hold the same frames and checkpoints.
+With --seeks copy 0's playback is also sought (docs/design/beta10/replay-seek.md): paused, it
+steps back three frames (each lands exactly one frame earlier), jumps back and forward five
+seconds, restarts once (to the earliest landing, the status's "floor"), marks an A-B loop and
+lets it loop twice, then plays to the end. The checkpoints it passes again after each seek
+must equal the recording's, and the playback must still end whole.
 -shots takes the Replays list, the row's choices, the paused and slowed
 playback with its strip, and the list again after it. Prints PASS or FAIL.
 """
@@ -231,6 +236,84 @@ def exercise_transport(shots: Path | None) -> None:
         raise lib.SfveError("half speed did not play slower than 1x")
 
 
+def landed(index: int, seeks_before: int, what: str) -> dict:
+    """Waits for one more seek to land on `index`'s playback; its status."""
+    wait_for(what, 20, lambda: replays(index)["seeks"] > seeks_before and not replays(index)["seeking"])
+    time.sleep(0.3)  # the status is the engine frame's: let it settle
+    return replays(index)
+
+
+def exercise_seeks(shots: Path | None) -> int:
+    """Steps back, jumps, restarts and loops copy 0's playback, paused so each seek lands where it
+    was asked. Returns how many seeks it made (the playback's own count must say as many)."""
+    wait_for("copy 0 deep in the fight with a state to go back to", 180,
+             lambda: replays(0)["floor"] >= 0 and replays(0)["cursor"] > 900)
+    if not replays(0)["paused"]:
+        ctl(0, "replay pause")
+        wait_for("the pause", 5, lambda: replays(0)["paused"])
+    time.sleep(0.5)
+    r = replays(0)
+    made, f0, floor, last = r["seeks"], r["frame"], r["floor"], r["last"]
+    shot(shots, "6-seek-start", 0)
+    # Three steps back: exactly one frame each, the playback paused throughout.
+    for k in range(1, 4):
+        ctl(0, "replay stepback")
+        r = landed(0, made, f"step back {k}")
+        made += 1
+        if r["frame"] != f0 - k or not r["paused"]:
+            raise lib.SfveError(f"step back {k} landed at frame {r['frame']} (paused {r['paused']}), not {f0 - k}")
+    ctl(0, "replay step")
+    time.sleep(0.5)
+    if replays(0)["frame"] != f0 - 2:
+        raise lib.SfveError(f"a step after the step backs is at frame {replays(0)['frame']}, not {f0 - 2}")
+    # Five seconds back, then forward: to where the recording has a fight frame at or before (after) the target.
+    here = replays(0)["frame"]
+    ctl(0, "replay jump -5")
+    r = landed(0, made, "the jump back")
+    made += 1
+    want = max(floor, here - 300)
+    if not (floor <= r["frame"] <= want and (r["frame"] == floor or want - r["frame"] < 400)):
+        raise lib.SfveError(f"a jump back from frame {here} landed at {r['frame']} (wanted {want}, floor {floor})")
+    back = r["frame"]
+    shot(shots, "7-seek-jumped-back", 0)
+    ctl(0, "replay jump +5")
+    r = landed(0, made, "the jump forward")
+    made += 1
+    if not (back + 300 <= r["frame"] < back + 300 + 400 or r["frame"] == last):
+        raise lib.SfveError(f"a jump forward from frame {back} landed at {r['frame']} (last {last})")
+    # Restart: the earliest landing, once.
+    ctl(0, "replay restart")
+    r = landed(0, made, "the restart")
+    made += 1
+    if r["frame"] != floor:
+        raise lib.SfveError(f"a restart landed at frame {r['frame']}, the floor is {floor}")
+    shot(shots, "8-seek-restarted", 0)
+    # An A-B loop: A here, B 240 frames on (a seek by number), then let it run twice and turn it off.
+    ctl(0, "replay loop")
+    wait_for("A marked", 5, lambda: replays(0)["loop"]["phase"] == 1)
+    ctl(0, f"replay seek {floor + 240}")
+    r = landed(0, made, "the seek to B")
+    made += 1
+    ctl(0, "replay loop")
+    wait_for("the loop on", 5, lambda: replays(0)["loop"]["phase"] == 2)
+    a, b = replays(0)["loop"]["a"], replays(0)["loop"]["b"]
+    if not (a == floor and a < b):
+        raise lib.SfveError(f"the loop's marks are {a} to {b} (the floor is {floor})")
+    shot(shots, "9-seek-loop", 0)
+    wraps_from = replays(0)["seeks"]
+    ctl(0, "replay pause")
+    wait_for("the playback to loop twice", 60, lambda: replays(0)["seeks"] >= wraps_from + 2)
+    seen = replays(0)["frame"]
+    if not (a <= seen <= b + 60):
+        raise lib.SfveError(f"looping {a} to {b}, the playback is at frame {seen}")
+    made += replays(0)["seeks"] - wraps_from
+    ctl(0, "replay loop")
+    wait_for("the loop off", 5, lambda: replays(0)["loop"]["phase"] == 0)
+    print(f"copy 0: seeks: 3 step backs from frame {f0}, jump back to {back}, forward, restart to {floor}, "
+          f"loop {a} to {b} twice; the status counts {replays(0)['seeks']} seek(s)")
+    return made
+
+
 def checkpoints_compared(index: int) -> tuple[int, int, str]:
     """The playback's checkpoint lines against the battle's, in the same log:
     (compared, differing, the mod's own summary)."""
@@ -271,6 +354,7 @@ def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--rematches", type=int, default=0)
     p.add_argument("--lag", type=int, default=30)
+    p.add_argument("--seeks", action="store_true", help="also step back, jump, restart and loop copy 0's playback")
     p.add_argument("--shots", type=Path)
     p.add_argument("--replays", type=Path, help="where the copies save their replays (a scratch folder by default)")
     p.add_argument("--keep", action="store_true", help="leave the copies running")
@@ -299,6 +383,7 @@ def main(argv: list[str]) -> int:
         watch_through_shell(a.shots)
         wait_for("copy 1's playback", 90, lambda: replays(1)["playing"] or replays(1)["last"] != "none")
         exercise_transport(a.shots)
+        seeks_made = exercise_seeks(a.shots) if a.seeks else 0
         wait_for("both playbacks to end", 400, lambda: all(replays(i)["last"] != "none" and not replays(i)["playing"] and
                                                            replays(i)["step"] == 0 for i in (0, 1)))
         wait_for("copy 0's shell back on the Replays screen", 30,
@@ -315,6 +400,11 @@ def main(argv: list[str]) -> int:
             m = re.search(r"(\d+) of (\d+) frame\(s\) played, (\d+) checkpoint\(s\) compared with the recording, (\d+) differing", summary)
             if not m or m.group(1) != m.group(2) or m.group(4) != "0" or m.group(3) == "0":
                 failure = failure or f"copy {i}'s playback: {summary or 'no summary'}"
+            if i == 0 and a.seeks:
+                # Whole by having been to the last frame, the seeks counted, and every checkpoint equal.
+                s = re.search(r"(\d+) frame\(s\) played in all, (\d+) seek\(s\)", summary)
+                if not s or int(s.group(2)) < seeks_made or int(s.group(1)) <= int(m.group(2) if m else 0):
+                    failure = failure or f"copy 0's playback did not report its seeks ({seeks_made} made): {summary or 'no summary'}"
             if r["notice"]:
                 failure = failure or f"copy {i}'s Replays screen says: {r['notice']}"
         files = [sorted(f.glob("*.sfvreplay")) for f in folders]

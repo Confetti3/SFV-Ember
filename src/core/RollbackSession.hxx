@@ -248,6 +248,14 @@ public:
 	bool Live() const { return session_ != nullptr || replaying_; }
 	// This session plays a replay (Config::replay).
 	bool Replaying() const { return replaying_; }
+	// A replay's playback goes back (core/ReplaySeeker.hxx, where it is
+	// defined): `state`, a StateLayout::SaveTo taken at the start of `frame`
+	// by this playback, is put back as a rollback's load does it (LoadFrom,
+	// then the game's post-restore callbacks), and the next Step plays
+	// `frame`. False with nothing changed for a replay that is not a plain
+	// one (a lagged or rollback-checked one) or while the game is held; false
+	// with the session failed when the game could not take the state back.
+	bool RestoreReplay(const uint8_t* state, int frame);
 	bool Running() const { return gate_.phase == sf4e::gate::PHASE_RUNNING; }
 	bool Failed() const { return failed_; }
 	const std::string& FailureReason() const { return failure_; }

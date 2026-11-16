@@ -2,16 +2,15 @@
 
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
+#include "ember/SfvPlayback.hxx"
 #include "ember/SfvReplayBuild.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
 #include "mod/ModConfig.hxx"
 #include "mod/VersusLaunch.hxx"
-#include "mod/XInputHooks.hxx"
 
 #include "common/Localization.hxx"
-#include "common/PadKind.hxx"
 #include "common/ProductIdentity.hxx"
 #include "common/ReplayProvenance.hxx"
 #include "platform/DurableFile.hxx"
@@ -29,6 +28,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <ctime>
 #include <fstream>
 #include <map>
@@ -322,35 +322,6 @@ std::optional<mod::MatchPicks> PicksOf(const replay::Header& h)
 	return picks;
 }
 
-// The playback, from Watch now to the main menu's return. Game thread, but
-// for the command queue and the published session.
-struct PlaybackState {
-	std::shared_ptr<const replay::Replay> armed;   // launched, its battle not bound yet
-	std::shared_ptr<const replay::Replay> playing; // its battle bound
-	fs::path file;
-	bool ended = false;  // the battle closed; the Replays screen comes back
-	bool failed = false; // ...short of the recording's end, or off it
-	std::string why;
-	rt::Transport transport;
-	rt::PadControls pad;
-	bool viewHeld = false; // the pad's View, as last read
-	rt::View view;
-	unsigned game = 0;
-	bool inFight = false;
-	int stretches = 0;
-	int frames = 0;
-	int compared = 0, differing = 0;
-	bool stopAsked = false;
-};
-PlaybackState s_playback;
-// s_playback.playing, for other threads (the window's keys).
-std::atomic<bool> s_running{false};
-rt::CommandQueue s_commands;
-std::atomic<uint32_t> s_session{0};
-// The stop asked from any thread, under the session it was asked in.
-std::mutex s_stopMutex;
-std::optional<uint32_t> s_stopFor;
-
 // The pipe's requests, for the game thread's next Tick.
 std::mutex s_requestsMutex;
 std::vector<sf4e::replay::Request> s_requests;
@@ -385,43 +356,23 @@ public:
 			requests.swap(s_requests);
 		}
 		for (const auto& request : requests) Start(request, atMainMenu, noRoom);
-		PlaybackState& p = s_playback;
-		if (status_.step == sf4e::replaystore::Step::Playing && p.ended && atMainMenu) {
+		if (status_.step == sf4e::replaystore::Step::Playing && playback::Ended() && atMainMenu) {
 			// Back at the main menu: Ember's menu comes back on the Replays screen.
 			status_.step = sf4e::replaystore::Step::Idle;
 			status_.returns++;
 			// Watched only when it was: a launch that failed, or a playback whose
 			// checkpoints differ, is not.
-			if (p.failed) Notice("replays.not_added", true);
-			else Mark(p.file, kWatchedList, true);
-			p = PlaybackState{};
+			if (playback::Failed()) Notice("replays.not_added", true);
+			else Mark(playback::File(), kWatchedList, true);
+			playback::Collect();
 			lister_.Want();
 		}
 		PublishStatus();
 	}
 
-	void TickPlayback(int deviceType, int deviceIndex, bool) override
-	{
-		PlaybackState& p = s_playback;
-		p.view.playback = p.playing != nullptr;
-		p.view.armed = p.view.playback;
-		p.view.session = s_session;
-		if (!p.playing || deviceType != sf4e::input::PadXInput) return;
-		// The pad's own buttons, as the game last read them before the shell
-		// hid them from it (XInputHooks): RB, RT, LB, and View to stop.
-		const mod::PadSeen seen = mod::LastPadState(deviceIndex);
-		uint32_t physical = seen.connected ? sf4e::input::xinput::Physical(seen.buttons) : 0;
-		if (seen.leftTrigger) physical |= sf4e::input::xinput::LT;
-		if (seen.rightTrigger) physical |= sf4e::input::xinput::RT;
-		rt::Command commands[4];
-		const int count = p.pad.Sample(physical, commands);
-		for (int i = 0; i < count; i++) s_commands.Submit(commands[i], rt::Device::Pad, s_session);
-		const bool view = (physical & sf4e::input::xinput::View) != 0;
-		if (view && !p.viewHeld) SubmitPlaybackStop(s_session);
-		p.viewHeld = view;
-	}
+	void TickPlayback(int deviceType, int deviceIndex, bool) override { playback::TickPad(deviceType, deviceIndex); }
 
-	const sf4e::replaytransport::View& Playback() override { return s_playback.view; }
+	const sf4e::replaytransport::View& Playback() override { return playback::View(); }
 	std::shared_ptr<const sf4e::replaylane::Lanes> PlaybackLanes() override { return nullptr; }
 
 	std::filesystem::path ArchivePath() override { return ReplayFolder(); }
@@ -461,7 +412,7 @@ private:
 	void Watch(const std::string& file, bool atMainMenu, bool noRoom)
 	{
 		// As SF4's Watch now: at the main menu, with no room, nothing else playing.
-		if (status_.step != sf4e::replaystore::Step::Idle || !atMainMenu || !noRoom || s_playback.armed || s_playback.playing) {
+		if (status_.step != sf4e::replaystore::Step::Idle || !atMainMenu || !noRoom || playback::Busy()) {
 			Notice("replays.not_ready", true);
 			return;
 		}
@@ -498,37 +449,26 @@ private:
 		Log("replays: watching %ls: %s vs %s on %s, %zu frame(s), %zu game(s), %zu checkpoint(s)", path.filename().c_str(),
 			loaded->header.players[0].code.c_str(), loaded->header.players[1].code.c_str(), loaded->header.stageCode.c_str(),
 			loaded->frames.size(), loaded->header.games.size(), loaded->checkpoints.size());
-		s_playback = PlaybackState{};
-		s_playback.armed = std::move(loaded);
-		s_playback.file = path;
+		playback::Arm(std::move(loaded), path);
 		status_.step = sf4e::replaystore::Step::Playing;
 		status_.logOpens++; // Ember's menu gets out of the way
 		Notice(nullptr, false);
 		mod::QueueLaunch(*picks, [](const std::string& launchWhy) {
 			// The game thread: no battle came. The menu comes back with why.
 			Log("replays: the replay's battle could not be launched: %s", launchWhy.c_str());
-			s_playback.armed.reset();
-			s_playback.failed = s_playback.ended = true;
-			s_playback.why = launchWhy;
+			playback::LaunchFailed(launchWhy);
 		});
 	}
 
 	void PublishStatus()
 	{
-		const PlaybackState& p = s_playback;
-		nlohmann::json j = {{"step", (int)status_.step}, {"armed", p.armed != nullptr}, {"playing", p.playing != nullptr},
-			{"session", s_session.load()}, {"paused", p.transport.Paused()}, {"divisor", p.transport.Divisor()},
-			{"round", p.view.round}, {"cursor", p.view.cursor}, {"frames", p.frames}, {"compared", p.compared},
-			{"differing", p.differing}, {"notice", status_.notice}, {"logOpens", status_.logOpens},
-			{"returns", status_.returns}, {"last", last_}};
+		nlohmann::json j = {{"step", (int)status_.step}, {"notice", status_.notice}, {"logOpens", status_.logOpens},
+			{"returns", status_.returns}, {"last", playback::LastEnd()}};
+		playback::StatusFields(j);
 		std::lock_guard lock(s_statusMutex);
 		s_statusJson = j.dump();
 	}
 
-public:
-	std::string last_ = "none"; // how the last playback ended
-
-private:
 	sf4e::replaystore::Status status_;
 	Lister lister_;
 };
@@ -630,138 +570,6 @@ fs::path SaveReplay(replay::Replay r)
 	return file;
 }
 
-std::shared_ptr<const replay::Replay> TakeArmedReplay()
-{
-	PlaybackState& p = s_playback;
-	if (!p.armed) return nullptr;
-	p.playing = std::move(p.armed);
-	s_running = true;
-	p.transport.Reset();
-	p.pad.Reset();
-	p.view = rt::View{};
-	p.view.session = ++s_session;
-	p.view.playback = p.view.armed = true;
-	s_commands.Clear();
-	return p.playing;
-}
-
-bool PlaybackFrameWanted()
-{
-	PlaybackState& p = s_playback;
-	if (!p.playing) return true;
-	for (const auto& entry : s_commands.Take(p.view.session)) {
-		p.view.device = entry.device;
-		p.view.taken++;
-		if (rt::MovesTransport(entry.command)) p.transport.Apply(entry.command);
-	}
-	{
-		std::lock_guard lock(s_stopMutex);
-		if (s_stopFor && *s_stopFor == p.view.session) p.stopAsked = true;
-		s_stopFor.reset();
-	}
-	p.view.paused = p.transport.Paused();
-	p.view.divisor = p.transport.Divisor();
-	return !p.transport.Hold();
-}
-
-bool TakePlaybackStop()
-{
-	PlaybackState& p = s_playback;
-	const bool asked = p.playing && p.stopAsked;
-	p.stopAsked = false;
-	return asked;
-}
-
-void NotePlaybackFrame(bool fight, unsigned game)
-{
-	PlaybackState& p = s_playback;
-	if (!p.playing) return;
-	p.frames++;
-	if (game != p.game) {
-		// A game in place starts its rounds over.
-		p.game = game;
-		p.stretches = 0;
-		p.inFight = false;
-		p.view.round = 0;
-		p.view.cursor = 0;
-	}
-	if (fight && !p.inFight) {
-		// A round's fight begins: its clock starts over.
-		p.view.round = p.stretches++;
-		p.view.cursor = 0;
-	}
-	if (fight) p.view.cursor++;
-	p.inFight = fight;
-}
-
-void NotePlaybackCheckpoint(int frame, std::uint64_t hash)
-{
-	PlaybackState& p = s_playback;
-	if (!p.playing) return;
-	const auto& recorded = p.playing->checkpoints;
-	const auto it = std::lower_bound(recorded.begin(), recorded.end(), frame,
-		[](const std::pair<int, uint64_t>& c, int f) { return c.first < f; });
-	if (it == recorded.end() || it->first != frame) return;
-	p.compared++;
-	if (it->second != hash) {
-		if (p.differing++ == 0) {
-			Log("replays: desync: checkpoint frame %d hash %016llx, the recording's %016llx", frame, (unsigned long long)hash,
-				(unsigned long long)it->second);
-		}
-	}
-}
-
-void NotePlaybackStart(std::uint64_t recorded, std::uint64_t played)
-{
-	PlaybackState& p = s_playback;
-	if (!p.playing || !recorded) return;
-	p.compared++;
-	if (recorded == played) {
-		Log("replays: the playback starts from the recording's start state (%016llx)", (unsigned long long)played);
-		return;
-	}
-	p.differing++;
-	Log("replays: desync: the playback starts from state %016llx, P1's recorded battle from %016llx; its frames may play "
-		"another fight", (unsigned long long)played, (unsigned long long)recorded);
-}
-
-void EndPlayback(const std::string& why)
-{
-	PlaybackState& p = s_playback;
-	if (!p.playing) return;
-	const bool whole = (size_t)p.frames == p.playing->frames.size();
-	p.failed = p.differing > 0 || (!whole && why.find("stopped") == std::string::npos);
-	char line[320];
-	snprintf(line, sizeof(line),
-		"%s; %d of %zu frame(s) played, %d checkpoint(s) compared with the recording, %d differing", why.c_str(), p.frames,
-		p.playing->frames.size(), p.compared, p.differing);
-	Log("replays: playback ended: %s", line);
-	Impl().last_ = line;
-	p.why = why;
-	p.playing.reset();
-	s_running = false;
-	p.ended = true;
-	p.view = rt::View{};
-	p.view.session = ++s_session;
-	s_commands.Clear();
-}
-
-bool PlaybackRunning()
-{
-	return s_running;
-}
-
-void SubmitPlaybackCommand(rt::Command command, rt::Device device, std::uint32_t session)
-{
-	s_commands.Submit(command, device, session);
-}
-
-void SubmitPlaybackStop(std::uint32_t session)
-{
-	std::lock_guard lock(s_stopMutex);
-	s_stopFor = session;
-}
-
 void RegisterReplayCommands()
 {
 	mod::RegisterStatus("replays", [] {
@@ -791,12 +599,22 @@ void RegisterReplayCommands()
 		const size_t space = args.find(' ');
 		const std::string verb = args.substr(0, space);
 		const std::string rest = space == std::string::npos ? std::string() : args.substr(space + 1);
-		const uint32_t session = s_session;
+		const uint32_t session = PlaybackSession();
 		if (verb == "pause") SubmitPlaybackCommand(rt::Command::TogglePause, rt::Device::Keyboard, session);
 		else if (verb == "step") SubmitPlaybackCommand(rt::Command::Step, rt::Device::Keyboard, session);
 		else if (verb == "slower") SubmitPlaybackCommand(rt::Command::Slower, rt::Device::Keyboard, session);
 		else if (verb == "faster") SubmitPlaybackCommand(rt::Command::Faster, rt::Device::Keyboard, session);
-		else if (verb == "stop") SubmitPlaybackStop(session);
+		else if (verb == "stepback") SubmitPlaybackCommand(rt::Command::StepBack, rt::Device::Keyboard, session);
+		else if (verb == "restart") SubmitPlaybackCommand(rt::Command::Restart, rt::Device::Keyboard, session);
+		else if (verb == "loop") SubmitPlaybackCommand(rt::Command::Loop, rt::Device::Keyboard, session);
+		else if (verb == "seek" || verb == "jump") {
+			// "seek <frame>": that frame of the recording; "jump <+/-seconds>": that long on from where the playback is.
+			char* end = nullptr;
+			const long value = strtol(rest.c_str(), &end, 10);
+			if (rest.empty() || *end || std::abs(value) > 1'000'000) return std::string("error usage: replay seek <frame> | jump <+/-seconds>");
+			const bool jump = verb == "jump";
+			SubmitPlaybackSeek({jump, (int)(jump ? value * 60 : value)}, session);
+		} else if (verb == "stop") SubmitPlaybackStop(session);
 		else if (verb == "watch" || verb == "keep") {
 			sf4e::replay::Request request;
 			std::string file = rest;
@@ -822,7 +640,8 @@ void RegisterReplayCommands()
 			s_requests.push_back(std::move(request));
 			return "ok queued " + file;
 		} else {
-			return std::string("error usage: replay watch <file|latest> | keep <file> 0|1 | pause | step | slower | faster | stop");
+			return std::string("error usage: replay watch <file|latest> | keep <file> 0|1 | pause | step | slower | faster | "
+				"stepback | restart | loop | seek <frame> | jump <+/-seconds> | stop");
 		}
 		return "ok session " + std::to_string(session);
 	});

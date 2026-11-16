@@ -19,7 +19,11 @@
 // (RollbackSession's Config::replay): the same decisions on the same frames,
 // the checkpoints compared with the recording's as it goes. Its controls are
 // the library's transport: pause, step, half and quarter speed, and Stop
-// watching, from the pad (RB, RT, LB, View) or the keyboard (F1 to F4, Esc).
+// watching, from the pad (RB, RT, LB, View) or the keyboard (F1 to F4, Esc),
+// and its seeks (docs/design/beta10/replay-seek.md): step back (X, the comma),
+// jump five seconds either way (D-pad Left and Right, the arrow keys), restart
+// (D-pad Down, Home) and an A-B loop (D-pad Up, L). The playback itself, its
+// transport and seeks, is SfvPlayback.cxx.
 //
 // Threads: the adapter's methods run on the game thread (the runtime's
 // tick), but for the listing's, which any thread may call; the netplay mode
@@ -27,6 +31,7 @@
 // called from any thread.
 
 #include "core/ReplayFile.hxx"
+#include "core/ReplaySeeker.hxx"
 #include "core/RollbackSession.hxx"
 
 #include "common/ReplayTransport.hxx"
@@ -65,17 +70,33 @@ std::filesystem::path SaveReplay(replay::Replay replay);
 // The battle a replay's launch loaded binds: the replay armed by Watch now,
 // once; null when none is armed.
 std::shared_ptr<const replay::Replay> TakeArmedReplay();
-// Each rendered frame of the replay's battle: whether the battle plays a
-// frame now, by the transport (playing at 1x, every frame; at 1/2 or 1/4,
-// one in two or four; paused, only a step's).
-bool PlaybackFrameWanted();
+// What the playback asks of one engine frame of its battle.
+struct PlaybackTurn {
+	// Battle frames to play: by the transport, 1 (playing at 1x; at 1/2 or 1/4
+	// one in two or four) or 0 (paused but for a step). 0 while `goal` is set.
+	unsigned frames = 1;
+	// A seek that goes back: first put back the state nearest before this
+	// frame (ReplaySeeker::Restore); -1 for none.
+	int restoreBefore = -1;
+	// A seek on its way: play on to this frame, at most
+	// sf4e::replaytransport::kMostSeekFrames updates this engine frame; -1 for none.
+	int goal = -1;
+};
+// Each engine frame of the replay's battle, before its update: the
+// transport's commands, the seeks and the loop since the last, taken against
+// what the driver says of the game (`ground`); what to do now.
+PlaybackTurn PlaybackTurnFor(const SeekGround& ground);
+// The state a turn asked to put back was (the frame the session stands at
+// now) or could not be (-1: the seek is dropped).
+void NotePlaybackRestored(int frame);
 // The player asked to stop watching (View, Esc, or the pipe): true once.
 bool TakePlaybackStop();
-// After each frame the replay's battle played: whether it read the inputs
-// (a fight frame) and the game's number in the battle, for the strip's
-// round and clock.
-void NotePlaybackFrame(bool fight, unsigned game);
-// A checkpoint the playback reached, compared with the recording's.
+// After each frame the replay's battle played, `frame` the session's number
+// for it: whether it read the inputs (a fight frame) and the game's number in
+// the battle, for the strip's round and clock.
+void NotePlaybackFrame(int frame, bool fight, unsigned game);
+// A checkpoint the playback reached, compared with the recording's by its
+// frame id: one reached again after a seek is compared again, and counts once.
 void NotePlaybackCheckpoint(int frame, std::uint64_t hash);
 // The playback's start state before its first frame, compared with the
 // state P1's copy started the recorded battle from (the header's startHash,
@@ -83,7 +104,8 @@ void NotePlaybackCheckpoint(int frame, std::uint64_t hash);
 // is logged and counted as a differing checkpoint, so the playback ends
 // failed: it plays on, as a later checkpoint's difference does.
 void NotePlaybackStart(std::uint64_t recorded, std::uint64_t played);
-// The replay's battle is gone, the main menu back: why it ended.
+// The replay's battle is gone, the main menu back: why it ended. It is whole
+// when it was to the recording's last frame, however many seeks it made.
 void EndPlayback(const std::string& why);
 // While a replay's battle plays: the shell hides the pads from the game
 // (the battle's inputs are the recording's) and takes the playback keys.
@@ -96,10 +118,21 @@ bool PlaybackRunning();
 void SubmitPlaybackCommand(sf4e::replaytransport::Command command, sf4e::replaytransport::Device device,
 	std::uint32_t session);
 void SubmitPlaybackStop(std::uint32_t session);
+// A seek by number (the pipe's): to frame `value` of the recording, or `value`
+// frames on from where the playback is (negative: back), under `session`.
+struct PlaybackSeekAsk {
+	bool relative = false;
+	int value = 0;
+};
+void SubmitPlaybackSeek(const PlaybackSeekAsk& ask, std::uint32_t session);
+// The playback session now (View::session), for the commands made under it.
+std::uint32_t PlaybackSession();
 
 // The pipe's commands: "replays" (the listing), "replay watch <file|latest>",
-// "replay keep <file> 0|1", "replay pause|step|slower|faster|stop", and the
-// "replays" status field (the playback's state and its checkpoints).
+// "replay keep <file> 0|1", "replay pause|step|slower|faster|stop", the seeks
+// "replay stepback|restart|loop", "replay seek <frame>" and "replay jump
+// <+/-seconds>", and the "replays" status field (the playback's state, its
+// place, reach, loop and seeks, and its checkpoints).
 void RegisterReplayCommands();
 
 } // namespace sfve::adapter

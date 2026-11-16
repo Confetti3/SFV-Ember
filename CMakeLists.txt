@@ -77,8 +77,10 @@ add_subdirectory("${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe" "${CMAKE_BINA
 # the synctest harness. No game, no hooks; unit tested against MockFighter.
 add_library(sfve_core STATIC
     src/core/StateRegions.cxx
+    src/core/PlaybackSnapshots.cxx
     src/core/PoseHold.cxx
     src/core/ReplayFile.cxx
+    src/core/ReplaySeeker.cxx
     src/core/RollbackSession.cxx
     src/core/StartAgreement.cxx
     src/core/SyncTest.cxx
@@ -107,6 +109,7 @@ add_executable(sfve_tests
     tests/WatcherTests.cxx
     tests/ReplayTests.cxx
     tests/ByteReaderTests.cxx
+    tests/PlaybackSeekTests.cxx
     src/mod/MatchResult.cxx)
 target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 
@@ -145,6 +148,8 @@ add_library(sfve_ember STATIC
     src/ember/SfvPictureSpec.cxx
     src/ember/SfvRandomFighter.cxx
     src/ember/SfvEleven.cxx
+    src/ember/PlaybackBook.cxx
+    src/ember/SfvPlayback.cxx
     src/ember/SfvReplays.cxx
     src/ember/SfvRoomBuild.cxx
     src/ember/SfvScreenMode.cxx
@@ -333,6 +338,7 @@ add_executable(sfve_ember_tests
     tests/HudLayoutTests.cxx
     tests/SfvReplayBuildTests.cxx
     tests/SfvReplaysTests.cxx
+    tests/PlaybackBookTests.cxx
     tests/CrashRecordTests.cxx
     tests/LocaleOverlayTests.cxx
     tests/VirtualPadsTests.cxx
