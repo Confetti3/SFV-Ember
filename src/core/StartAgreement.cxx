@@ -38,6 +38,10 @@ constexpr uint32_t kMostEntries = 16384;
 static_assert(kEntriesHeader + kEntriesPerPart * kEntrySize <= kMaxDatagram, "a region list's datagram is too big");
 static_assert(kBytesHeader + kChunkBytes + kAddressBitBytes <= kMaxDatagram, "a chunk's datagram is too big");
 static_assert(kChunkBytes % 4 == 0, "a chunk starts on an address unit");
+// The match data's most bytes (core/MatchData.hxx: a count, 24 bytes a fighter).
+constexpr size_t kMostFactsBytes = 1 + match_data::kMostFighters * 24;
+static_assert(kAskSize + kMostFactsBytes <= kMaxDatagram, "a summary's question is too big");
+static_assert(kSummarySize + kMostFactsBytes <= kMaxDatagram, "a summary is too big");
 
 class Writer {
 public:
@@ -49,6 +53,7 @@ public:
 		memcpy(out_.data() + at, &value, sizeof(T));
 	}
 	void Put(const uint8_t* data, size_t size) { out_.insert(out_.end(), data, data + size); }
+	void Put(const match_data::Facts& facts) { match_data::Encode(facts, &out_); }
 	std::vector<uint8_t> Take() { return std::move(out_); }
 
 private:
@@ -210,12 +215,14 @@ std::vector<uint8_t> Encode(const Message& m)
 		w.Put<uint16_t>(0);
 		w.Put<uint32_t>(m.a);
 		w.Put<uint32_t>(m.b);
+		if (m.asked == Asked::Summary) w.Put(m.facts);
 		break;
 	case Type::Summary:
 		w.Put<uint64_t>(m.layoutId);
 		w.Put<uint64_t>(m.hash);
 		w.Put<uint32_t>(m.entryCount);
 		w.Put<uint32_t>(0);
+		w.Put(m.facts);
 		break;
 	case Type::Entries:
 		w.Put<uint32_t>(m.part);
@@ -265,7 +272,7 @@ bool Decode(const uint8_t* data, size_t size, uint64_t token, Message* out)
 	m.type = (Type)type;
 	switch (m.type) {
 	case Type::Ask: {
-		if (size != kAskSize) return false;
+		if (size < kAskSize) return false;
 		uint8_t asked = 0;
 		r.Get(&asked);
 		r.Get(&pad8);
@@ -274,16 +281,20 @@ bool Decode(const uint8_t* data, size_t size, uint64_t token, Message* out)
 		r.Get(&m.b);
 		if (asked < (uint8_t)Asked::Summary || asked > (uint8_t)Asked::Bytes) return false;
 		m.asked = (Asked)asked;
+		// Only the question for the summary carries the asker's match data.
+		if (m.asked == Asked::Summary ? !match_data::Decode(data + kAskSize, size - kAskSize, &m.facts) : size != kAskSize) {
+			return false;
+		}
 		break;
 	}
 	case Type::Summary: {
-		if (size != kSummarySize) return false;
+		if (size < kSummarySize) return false;
 		uint32_t pad32 = 0;
 		r.Get(&m.layoutId);
 		r.Get(&m.hash);
 		r.Get(&m.entryCount);
 		r.Get(&pad32);
-		if (m.entryCount > kMostEntries) return false;
+		if (m.entryCount > kMostEntries || !match_data::Decode(data + kSummarySize, size - kSummarySize, &m.facts)) return false;
 		break;
 	}
 	case Type::Entries: {
@@ -441,6 +452,7 @@ const char* StartAgreement::ResultName(Result result)
 	case Result::Differs: return "still differs";
 	case Result::LayoutsDiffer: return "another layout";
 	case Result::TimedOut: return "no answer in time";
+	case Result::DataDiffers: return "game data differs";
 	}
 	return "?";
 }
@@ -473,6 +485,7 @@ void StartAgreement::Begin(uint64_t nowMs, size_t peers)
 		report_.peers.assign(peers, Result::Running);
 		requiredDoneMs_ = 0;
 		addressUnits_.clear();
+		loggedWatcherData_.clear();
 		CoreLog("start: this copy's start state is the reference (hash %016llx, %zu regions compared); %zu peer(s) "
 			"compare theirs with it", (unsigned long long)report_.localBefore, entries_.size(), peers);
 		return;
@@ -515,7 +528,7 @@ void StartAgreement::PumpReference(uint64_t nowMs)
 		if (m.type == Type::Ask) {
 			Answer(peer, m);
 		} else if (m.type == Type::Done && peer < report_.peers.size()) {
-			const bool known = m.result >= (uint8_t)Result::Agreed && m.result <= (uint8_t)Result::TimedOut;
+			const bool known = m.result >= (uint8_t)Result::Agreed && m.result <= (uint8_t)Result::DataDiffers;
 			const Result said = known ? (Result)m.result : Result::Differs;
 			if (report_.peers[peer] == Result::Running) {
 				CoreLog("start: peer %zu (%s) is done: %s, its hash %016llx%s", peer, peer < config_.requiredPeers ? "P2" : "a watcher",
@@ -543,6 +556,9 @@ void StartAgreement::PumpReference(uint64_t nowMs)
 	Result result = Result::Agreed;
 	if (!done(0, required)) result = Result::TimedOut;
 	else if (required) result = report_.peers[0];
+	// P2 computes with other data: whatever it said, or whether it said
+	// anything, this match must not start (its own copy refuses it too).
+	if (report_.dataDifference) result = Result::DataDiffers;
 	for (size_t i = required; i < report_.peers.size(); i++) {
 		if (report_.peers[i] == Result::Running) CoreLog("start: watcher peer %zu did not finish; it starts as it is", i);
 	}
@@ -560,6 +576,8 @@ void StartAgreement::Answer(size_t peer, const Message& m)
 		reply.layoutId = layoutId_;
 		reply.hash = report_.localBefore;
 		reply.entryCount = (uint32_t)entries_.size();
+		reply.facts = config_.facts;
+		NotePeerFacts(peer, m.facts);
 		break;
 	case Asked::Entries: {
 		const size_t from = (size_t)m.a * kEntriesPerPart;
@@ -601,6 +619,22 @@ void StartAgreement::Answer(size_t peer, const Message& m)
 	Send(peer, reply);
 }
 
+void StartAgreement::NotePeerFacts(size_t peer, const match_data::Facts& facts)
+{
+	const auto difference = match_data::Compare(config_.facts, facts);
+	if (!difference) return;
+	const bool required = peer < config_.requiredPeers;
+	// Asked again until answered: said once per peer.
+	if (required && report_.dataDifference) return;
+	if (!required && !loggedWatcherData_.insert(peer).second) return;
+	CoreLog("start: peer %zu (%s): %s; this copy: %s; theirs: %s%s", peer, required ? "P2" : "a watcher",
+		match_data::Describe(*difference).c_str(), match_data::Text(config_.facts).c_str(), match_data::Text(facts).c_str(),
+		required ? "; the match does not start" : "; that watcher refuses it");
+	if (!required) return;
+	report_.dataDifference = difference;
+	report_.otherFacts = facts;
+}
+
 // --- a follower ------------------------------------------------------------
 
 void StartAgreement::PumpFollower(uint64_t nowMs)
@@ -629,6 +663,14 @@ void StartAgreement::OnFollowerMessage(const Message& m, uint64_t nowMs)
 		if (step_ != Step::Summary) return;
 		answered(Asked::Summary, 0, 0);
 		report_.reference = m.hash;
+		report_.otherFacts = m.facts;
+		if (const auto difference = match_data::Compare(config_.facts, m.facts)) {
+			report_.dataDifference = difference;
+			CoreLog("start: %s; this copy: %s; P1: %s", match_data::Describe(*difference).c_str(),
+				match_data::Text(config_.facts).c_str(), match_data::Text(m.facts).c_str());
+			Finish(Result::DataDiffers, nowMs);
+			return;
+		}
 		if (m.layoutId != layoutId_) {
 			CoreLog("start: P1's layout %016llx is not this copy's %016llx: nothing compared", (unsigned long long)m.layoutId,
 				(unsigned long long)layoutId_);
@@ -761,6 +803,7 @@ void StartAgreement::AskDue(uint64_t nowMs)
 		m.asked = asked;
 		m.a = a;
 		m.b = b;
+		if (asked == Asked::Summary) m.facts = config_.facts;
 		Send(0, m);
 		return true;
 	};

@@ -525,8 +525,12 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 			if (started) Log("netplay: the room's match is not known; this battle is not recorded");
 			recorder_.Stop();
 		}
-		// P1's start state, which a playback compares its own with.
+		// P1's start state, which a playback compares its own with, and the
+		// balance versions every copy agreed on before frame 0.
 		recording_.startHash = startHash_;
+		for (int side = 0; side < kPlayers; side++) {
+			recording_.players[side].balanceVersion = match_data::SideVersion(adapter.BattleFacts(), side);
+		}
 	}
 	// The results menu would let each player leave the match their own way.
 	// A replay's battle holds its WIN as the room's did.
@@ -639,6 +643,7 @@ void NetplayMode::BeginStartAgreement(SfvAdapter& adapter)
 	// differently; every other region name is its owner's (RegionNames,
 	// SfvLayoutRules) and the same in every process.
 	agreement.stableName = [](const std::string& name) { return name.rfind("game.", 0) != 0; };
+	agreement.facts = adapter.BattleFacts();
 	std::vector<uint16_t> ports{c.remotePort};
 	if (!c.watching && c.localPlayer == 0) {
 		// P1: P2 first, then each watcher it streams to.
@@ -666,6 +671,16 @@ bool NetplayMode::AgreeStart(SfvAdapter& adapter)
 {
 	if (!startAgreement_->Pump(GetTickCount64())) return false;
 	const StartAgreement::Report& report = startAgreement_->GetReport();
+	if (report.result == StartAgreement::Result::DataDiffers) {
+		// Two copies that compute with other game data cannot play one match
+		// (core/MatchData.hxx): it ends here, on each copy, before frame 0.
+		adapter::ReportGameDataDiffers(report, adapter.BattleFacts(), room_.Watching(), pending_.config.inputDelay);
+		EndStartAgreement();
+		room_.FlushHeld("the copies' game data differs");
+		started_ = true;
+		Leave();
+		return false;
+	}
 	startHash_ = report.reference ? report.reference : report.localBefore;
 	// A repair is reported as a desync is (it was one, before frame 0).
 	if (!report.regions.empty() && room_.Active()) {

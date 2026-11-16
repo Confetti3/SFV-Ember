@@ -17,6 +17,7 @@
 #include "netplay/SettingsStore.hxx"
 #include "platform/ReportWorkflow.hxx"
 #include "session/sf4e__SessionClient.hxx"
+#include "sf4e/sf4e__NetplayFacade.hxx"
 #include "sf4e/sf4e__RuntimeSession.hxx"
 
 // SFV Ember's source revision (CMakeLists.txt, sfve_build_identity).
@@ -143,6 +144,7 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	}
 	facts.layoutId = session.Layout().LayoutId();
 	facts.matchBuild = MatchBuildId();
+	if (const mod::SfvAdapter* game = CurrentBattle().game) facts.battleData = match_data::Text(game->BattleFacts());
 	if (const std::vector<uint8_t>* state = session.CheckpointState(mismatch.frame)) {
 		for (const StateRegion& r : session.Layout().Regions()) {
 			facts.stateRegions.push_back({r.name, r.size, reinterpret_cast<std::uint64_t>(r.ptr), r.checked, r.comparedWithPeers});
@@ -454,6 +456,7 @@ void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& 
 	facts.delay = delay;
 	facts.layoutId = layout.LayoutId();
 	facts.matchBuild = MatchBuildId();
+	if (const mod::SfvAdapter* game = CurrentBattle().game) facts.battleData = match_data::Text(game->BattleFacts());
 	size_t written = 0, kept = 0, still = 0;
 	for (const StartAgreement::RegionOutcome& r : report.regions) {
 		facts.regions.push_back({r.name, r.size, r.before});
@@ -473,6 +476,32 @@ void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& 
 		" unpaired. Result: " + StartAgreement::ResultName(report.result) + ", now " +
 		(report.localAfter == report.reference ? "the same as P1's." : "still not P1's.");
 	mod::Log("desync report: the start state's repair, %zu region(s); written down off the game thread", facts.regions.size());
+	Queue(std::move(facts));
+}
+
+void ReportGameDataDiffers(const StartAgreement::Report& report, const match_data::Facts& battle, bool watcher, int delay)
+{
+	const std::string what = report.dataDifference ? match_data::Describe(*report.dataDifference) : std::string("game data differs");
+	mod::Log("netplay: %s; the match ends before frame 0", what.c_str());
+	sf4e::NetplayFacade::PushAlert(
+		(report.dataDifference ? match_data::Notice(*report.dataDifference) : what).c_str(), sf4e::NoticeSeverity::Error);
+	desync::Facts facts;
+	facts.watcher = watcher;
+	if (const RoomBattle* room = CurrentBattle().room) {
+		facts.slot = static_cast<int>(room->LocalSlot());
+		facts.gamesEnded = room->GamesEnded();
+	}
+	if (const auto& netplay = ember::RuntimeSession::netplay) RoomFacts(facts, netplay->client.GetRoomSnapshot());
+	PickFacts(facts);
+	facts.frame = 0;
+	facts.local = report.localBefore;
+	facts.remote = report.reference;
+	facts.confirmed = -1;
+	facts.delay = delay;
+	facts.matchBuild = MatchBuildId();
+	facts.battleData = match_data::Text(battle);
+	facts.otherBattleData = match_data::Text(report.otherFacts);
+	facts.gameDataDiffers = what;
 	Queue(std::move(facts));
 }
 

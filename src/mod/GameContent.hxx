@@ -395,6 +395,14 @@ int MarkUninstalled(ContentLists& lists, const std::vector<std::string>& codes);
 // saves or their options are not there.
 std::optional<int> CharaVoiceLanguage(std::wstring_view code);
 
+// Game thread. This copy's balance versions of the fighter `code` names,
+// oldest first, as its install's BattleResourceList holds them
+// (sfv::content::kCharaBattleResources, sfv::versions): what the game
+// resolves a fighter's version against. None while the fighter table is not
+// loaded, for a fighter it has no entry for, or one whose list is missing,
+// empty or unreadable.
+std::optional<std::vector<int32_t>> FighterBalanceVersions(std::wstring_view code);
+
 // Game thread, at the main menu. A text the game's own localization data
 // holds, by namespace and key (sfv::kCreateText, as the game builds its
 // literals), as the game shows it in its current language, UTF-8; empty

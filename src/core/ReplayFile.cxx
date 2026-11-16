@@ -82,6 +82,7 @@ json PlayerJson(const Player& p)
 		{"loadCode", p.loadCode}};
 	// Only a Tiny side writes it, so every other header is what it was.
 	if (p.size != 0) j["size"] = p.size;
+	if (p.balanceVersion >= 0) j["balanceVersion"] = p.balanceVersion;
 	return j;
 }
 
@@ -166,6 +167,8 @@ Player ReadPlayer(const json& j)
 	if (p.loadCode < -1 || p.loadCode > 0xFFFFFFFFll) p.loadCode = -1;
 	p.size = FieldOr<int>(j, "size", 0);
 	if (p.size != 0 && p.size != 1) p.size = 0;
+	p.balanceVersion = FieldOr<int>(j, "balanceVersion", -1);
+	if (p.balanceVersion < -1) p.balanceVersion = -1;
 	return p;
 }
 

@@ -95,6 +95,14 @@ std::string StartRepairTitle(bool watcher, std::string_view buildId, std::string
 	return text;
 }
 
+std::string GameDataTitle(bool watcher, std::string_view buildId, std::string_view key)
+{
+	std::string text = std::string(watcher ? "SFV game data differs for a watcher: build " : "SFV game data differs: build ") +
+		std::string(buildId.substr(0, 12));
+	if (!key.empty()) text += " match " + std::string(key);
+	return text;
+}
+
 std::string MatchKey(const Facts& facts)
 {
 	if (!facts.roomEpoch) return {};
@@ -193,9 +201,13 @@ std::string ScriptsText(const Facts& facts)
 
 std::string Comment(const Facts& facts, std::string_view buildId)
 {
-	const bool repair = !facts.startRepair.empty();
+	const bool refused = !facts.gameDataDiffers.empty();
+	const bool repair = refused || !facts.startRepair.empty();
 	const std::string key = MatchKey(facts);
-	std::string text = (repair ? StartRepairTitle(facts.watcher, buildId, key) : Title(facts.watcher, buildId, key)) + "\n";
+	std::string text = (refused ? GameDataTitle(facts.watcher, buildId, key)
+						: repair ? StartRepairTitle(facts.watcher, buildId, key)
+								 : Title(facts.watcher, buildId, key)) +
+		"\n";
 	if (facts.roomEpoch) {
 		text += "Room " + Hex16(facts.roomEpoch) + ", table " + std::to_string(facts.table) + ", match " +
 			std::to_string(facts.generation);
@@ -219,7 +231,11 @@ std::string Comment(const Facts& facts, std::string_view buildId)
 		text += "Picks not known\n";
 	}
 	text += "Stage: " + (facts.stage.empty() ? std::string("not known") : facts.stage) + "\n";
-	if (repair) {
+	text += "Game data: " + (facts.battleData.empty() ? std::string("not read") : facts.battleData) + "\n";
+	if (!facts.otherBattleData.empty()) text += "The other copy's game data: " + facts.otherBattleData + "\n";
+	if (refused) {
+		text += "Before frame 0: " + facts.gameDataDiffers + "; the match did not start\n";
+	} else if (repair) {
 		text += "Start state before frame 0: " + Hex16(facts.local) + " here, " + Hex16(facts.remote) + " at P1. " +
 			facts.startRepair + "\n";
 	} else {

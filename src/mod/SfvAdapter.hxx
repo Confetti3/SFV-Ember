@@ -16,6 +16,7 @@
 // Rollbacks replay by calling Advance again, exactly like a forward frame.
 
 #include "core/GameAdapter.hxx"
+#include "core/MatchData.hxx"
 #include "mod/BattleIdentity.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameInput.hxx"
@@ -103,6 +104,10 @@ public:
 	// True when the battle is running ticks (not paused, not between rounds
 	// with ticks stopped): the last original update recorded at least one tick.
 	uint32_t TicksInLastUpdate() const { return ticksInLastUpdate_; }
+	// What each fighter unit of the bound battle computes with
+	// (FighterData), read as it bound: what a room's copies compare before
+	// frame 0, and what a replay records.
+	const match_data::Facts& BattleFacts() const { return battleFacts_; }
 
 	// The state the battle flow last announced (part of the rollback state);
 	// each change with the match decided is logged.
@@ -276,6 +281,7 @@ private:
 	// (sfv::fighter::kCommandQueueBegin), outside the snapshot, is counted
 	// and the first few logged. Diagnostics only: nothing is changed.
 	void NoteCommandQueues();
+	match_data::Facts battleFacts_;
 	uint64_t queuesCarried_ = 0;
 	int queueLines_ = 0;
 	static constexpr int kMostQueueLines = 8;

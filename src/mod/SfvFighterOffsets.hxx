@@ -246,6 +246,25 @@ constexpr uint32_t kCommandQueueEnd = 0x3EA0;
 // rva 0x4705C0 take each tick, read later in the tick (rva 0x2FBB50,
 // 0x36AC30): the facing as the tick began, recomputed from the snapshot's
 // +0x3E90 by the tick's first fighter task.
+// What the fighter's moves were loaded from (IDA, build 13173604: the part's
+// secondary-base virtual rva 0x335420, `this` = part + 8, binds the four
+// battle resources into the script player at +0x3EC8 through rva 0x2F67B0):
+// +0x3EB8 a shared pointer to the battle resource key, {+8 the fighter's
+// code as an MSVC std::wstring (16-byte inline buffer, length at +24,
+// capacity at +32: a heap pointer once the capacity is 8 or more), +40 the
+// balance version, +44 nonzero for the alternate set}. rva 0x2F67B0 looks
+// the key up with the game's resource lookup (rva 0x5518C0: the version
+// resolved as the setting's is, sfv::versions), takes resource i (0..3) of
+// the set at +56 (count +64) or, alternate, +72 (count +80) (rva 0x551480),
+// and binds that object's data (sfv::resources). Outside the snapshot, set
+// once when the battle binds the fighter.
+constexpr uint32_t kResourceKey = 0x3EB8;
+constexpr uint32_t kKeyCode = 8;
+constexpr uint32_t kKeyCodeLength = 24;
+constexpr uint32_t kKeyCodeCapacity = 32;
+constexpr uint32_t kKeyCodeInline = 8; // wide characters the inline buffer holds
+constexpr uint32_t kKeyVersion = 40;
+constexpr uint32_t kKeyAlternate = 44;
 constexpr uint32_t kScriptHeader = 0x40;    // const int32[3]: first attack frame, last (exclusive), interrupt; -1 none
 constexpr uint32_t kScriptNumber = 0x48;    // int: the script (action) played
 constexpr uint32_t kScriptFrame = 0x4C;     // 16.16

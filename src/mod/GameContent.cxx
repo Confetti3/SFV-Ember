@@ -802,4 +802,23 @@ std::optional<int> CharaVoiceLanguage(std::wstring_view code)
 	return voice == sfv::jump::kVoiceJapanese ? voice : sfv::jump::kVoiceEnglish;
 }
 
+std::optional<std::vector<int32_t>> FighterBalanceVersions(std::wstring_view code)
+{
+	namespace v = sfv::versions;
+	const SpecTables tables = Tables();
+	uint8_t* entry = tables.charaAsset && !code.empty() ? EntryWithCode(tables.charaAsset, code) : nullptr;
+	const uint8_t* list = nullptr;
+	const uint8_t* entries = nullptr;
+	int32_t count = 0;
+	if (!entry || !TryRead(entry + sfv::content::kCharaBattleResources, &list) || !list || !TryRead(list + v::kEntries, &entries) ||
+		!TryRead(list + v::kCount, &count) || !entries || count <= 0 || count > v::kMostEntries) {
+		return std::nullopt;
+	}
+	std::vector<int32_t> versions((size_t)count);
+	for (int32_t i = 0; i < count; i++) {
+		if (!TryRead(entries + (size_t)i * v::kEntryStride + v::kEntryVersion, &versions[(size_t)i])) return std::nullopt;
+	}
+	return versions;
+}
+
 } // namespace sfve::mod

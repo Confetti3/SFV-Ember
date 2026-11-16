@@ -186,6 +186,15 @@ struct Facts {
 	// still differed. `frame` is 0, `local` this copy's hash before the repair
 	// and `remote` P1's; `regions` and the state are this copy's before it.
 	std::string startRepair;
+	// What this copy's battle computes with (core/MatchData.hxx's Text: each
+	// fighter unit's code, balance version and move data), and the other
+	// copy's where the start agreement heard it; empty when not read.
+	std::string battleData;
+	std::string otherBattleData;
+	// Not empty: no desync but a match that never started because the
+	// copies' game data differed (StartAgreement's DataDiffers), in words
+	// (match_data::Describe). Its own Bugsink group; `frame` is 0.
+	std::string gameDataDiffers;
 };
 
 // The frames a report's rollback count and its inputs cover.
@@ -307,6 +316,10 @@ std::string Title(bool watcher, std::string_view buildId, std::string_view key =
 // repaired: build <12 digits>[ match <key>]", or "SFV start state repaired
 // for a watcher: ...", its own Bugsink group.
 std::string StartRepairTitle(bool watcher, std::string_view buildId, std::string_view key = {});
+// A refused match's first line (Facts::gameDataDiffers): "SFV game data
+// differs: build <12 digits>[ match <key>]", or "... for a watcher: ...", its
+// own Bugsink group.
+std::string GameDataTitle(bool watcher, std::string_view buildId, std::string_view key = {});
 // The whole comment: the title, then the match, this copy, both picks, the
 // checkpoint and the session, at most kCommentCharacters characters.
 std::string Comment(const Facts& facts, std::string_view buildId);

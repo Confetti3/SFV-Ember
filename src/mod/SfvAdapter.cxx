@@ -1,5 +1,7 @@
 #include "mod/SfvAdapter.hxx"
 
+#include "mod/FighterData.hxx"
+
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/Pace.hxx"
@@ -118,6 +120,7 @@ void SfvAdapter::Forget()
 	queueLines_ = 0;
 	for (FighterUnit& unit : fighterUnits_) unit = {};
 	fighterUnitCount_ = 0;
+	battleFacts_ = {};
 	ForgetSocketReads();
 	keyedUpdates_ = 0;
 	keyTicks_ = 0;
@@ -220,6 +223,11 @@ bool SfvAdapter::Bind()
 		}
 	}
 	RngAuditBind(layout_, base);
+	// What each fighter unit computes with, which the copies of a room's
+	// match compare before frame 0 (core/MatchData.hxx).
+	battleFacts_ = {};
+	for (int i = 0; i < unitCount; i++) battleFacts_.fighters.push_back(ReadFighterData(units[i].action, units[i].side));
+	Log("adapter: the fighters' game data: %s", match_data::Text(battleFacts_).c_str());
 	// A value the input unit takes from the match data as a round starts
 	// (sfv::inputunit::kRoundStartValue), said to differ between machines:
 	// logged on every copy, so two copies' lines compare.
