@@ -65,20 +65,23 @@ void FollowRandomFighter(const sf4e::NetplayFacade::RuntimeSnapshot& snapshot)
 	if (!ember::ValidFighter(fighter) || (snapshot.randomRoll == s_taken.load() && !changed)) return;
 	s_taken = snapshot.randomRoll;
 	s_takenAs = as;
-	PlayerPick pick = CurrentPick();
 	if (eleven) {
 		// The game's Eleven look and a loadout drawn for this roll, whether or
 		// not the fighter is the one already stored: every game is drawn anew.
-		pick.pick = ElevenPick(fighter, ElevenSeed(ElevenSalt(), snapshot.randomRoll));
-		SetPick(pick);
+		const PlayerPick pick = UpdatePick([&](PlayerPick& stored) {
+			stored.pick = ElevenPick(fighter, ElevenSeed(ElevenSalt(), snapshot.randomRoll));
+			return true;
+		});
 		mod::Log("Fighter select: Eleven rolled %s costume %d colour %d", FighterCode(fighter).c_str(), pick.pick.costume,
 			pick.pick.color);
 		return;
 	}
-	if (pick.pick.fighter == fighter && !changed) return;
-	pick.pick = LookFor(pick.pick, fighter, true);
-	SetPick(pick);
-	mod::Log("Fighter select: Random rolled %s", FighterCode(fighter).c_str());
+	const PlayerPick pick = UpdatePick([&](PlayerPick& stored) {
+		if (stored.pick.fighter == fighter && !changed) return false;
+		stored.pick = LookFor(stored.pick, fighter, true);
+		return true;
+	});
+	if (pick.pick.fighter == fighter) mod::Log("Fighter select: Random rolled %s", FighterCode(fighter).c_str());
 }
 
 void RandomFighterPlayed()

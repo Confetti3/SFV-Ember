@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <mutex>
 #include <optional>
 
@@ -15,7 +16,9 @@ namespace sfve::adapter {
 
 namespace {
 
-std::mutex s_mutex;
+// Recursive: an UpdatePick edit may call this file's other functions
+// (LookFor, RememberedLook, SetPickRandom).
+std::recursive_mutex s_mutex;
 PlayerPick s_pick;
 std::optional<PlayerPick> s_dummy; // none until the player picks one
 // Random on the board.
@@ -114,6 +117,26 @@ PlayerPick SetPick(const PlayerPick& pick)
 	if (!s_random) changed = s_memory.Choose(s_pick.pick.fighter) || changed;
 	if (changed) s_revision++;
 	return s_pick;
+}
+
+PlayerPick UpdatePick(const std::function<bool(PlayerPick&)>& edit)
+{
+	std::lock_guard lock(s_mutex);
+	PlayerPick pick = CurrentPick();
+	if (!edit(pick)) return pick;
+	return SetPick(pick);
+}
+
+PlayerPick ChooseFighter(int fighter, const std::function<void(PlayerPick&)>& then)
+{
+	std::lock_guard lock(s_mutex);
+	// Before the store, so it is the fighter chosen and not a roll.
+	SetPickRandom(false);
+	return UpdatePick([&](PlayerPick& pick) {
+		pick.pick = LookFor(pick.pick, fighter, true);
+		if (then) then(pick);
+		return true;
+	});
 }
 
 PlayerPick CurrentDummy()
