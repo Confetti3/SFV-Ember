@@ -142,7 +142,8 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # so no run lets a copy ask for a skip by itself, and a run with no scripted
 # press (-skipAfter, -skipPad) must show every scene in full: no skip applied
 # on either copy, checked as before (CheckScenes, CheckRounds).
-# -replayDir DIR: each copy saves its replay into DIR\copy<i> (SFVE_REPLAY_DIR), for a later playback.
+# -replayDir DIR: each copy saves its replay into DIR\copy<i> (SFVE_REPLAY_DIR), for a later playback. Not with
+# -vital or -startEx: their writes are not in the recording, so its playback would play another fight.
 # -perturb "F,region,offset,add": copy 1 adds `add` to the dword at `offset` of the named region at battle frame F (the pipe's perturb), one
 # divergence mid-fight for the desync report path (docs/design/beta9); the run then ends on the desync.
 $ErrorActionPreference = 'Stop'
@@ -440,6 +441,9 @@ $unowned = @($unowned0, $unowned1, '')
 $gateOff = @($gateOff0, $gateOff1, $false)
 $uninstalled = @($uninstalled0, $uninstalled1, $uninstalled2)
 $failure = ''
+# -vital's write and -startEx's setting are the test's, outside the frames a replay holds: a playback of such a
+# recording plays another fight (first difference at the round's start), which would read as a desync.
+if ($replayDir -and ($vital -or $startEx)) { throw '-replayDir records a replay that plays back only without -vital and -startEx (test writes the recording does not hold)' }
 # The copies are started inside the try, and closed in the finally below whatever happens, so a run that
 # stops half way never leaves a copy running (sfve.py kill ends only this run's, see SFVE_RUN above).
 try {
