@@ -243,28 +243,10 @@ sfve_embed_locales("${CMAKE_CURRENT_SOURCE_DIR}/locales/loadout" "locales/loadou
     "const EmbeddedCatalog LoadoutCatalogs" ON)
 target_include_directories(sfve_ember PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/loadout")
 
-# A data file embedded as the bytes of one NUL-ended text: in <output>,
-# <name_space>::<symbol> is a `const char* const` to it, constant-initialized
-# (as the room host's pick space below). ASCII only, which JSON data is: a byte
-# above 0x7F would narrow in the array's initializer.
-function(sfve_embed_text_file source output name_space symbol)
-    if(NOT EXISTS "${source}")
-        message(FATAL_ERROR "${source} is missing")
-    endif()
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")
-    file(READ "${source}" bytes HEX)
-    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," bytes "${bytes}")
-    if(bytes MATCHES "0x[89a-f][0-9a-f],")
-        message(FATAL_ERROR "${source} holds a byte above 0x7F; the embedded copy is ASCII only")
-    endif()
-    file(CONFIGURE OUTPUT "${output}" CONTENT
-"// Generated from ${source} by CMakeLists.txt.
-namespace ${name_space} {
-static const char kBytes[] = {${bytes}0};
-extern const char* const ${symbol} = kBytes;
-}
-")
-endfunction()
+# A data file embedded as the bytes of one NUL-ended text (cmake/EmbedTextFile.cmake,
+# which scripts/build-room-host-linux.sh runs too): in <output>, <name_space>::<symbol>
+# is a `const char* const` to it, constant-initialized.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedTextFile.cmake")
 # The selection files' path rules (src/ember/SfvSelectionAssetPath.cxx) over
 # the pick space the game exported (data/pick-space.json, embedded as bytes), in
 # a library of its own so the mod, the launcher, the updater and the package
@@ -291,15 +273,18 @@ target_sources(sfve_ember PRIVATE "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedMenu
 sf4e_embed_brand_mark(sfve_product "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
 target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product sfve_selection_assets ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi version)
 
-# The mod's code the SFV catalog and adapter tests reach without the game,
-# compiled once for the three test programs that link it.
-add_library(sfve_ember_test_mod OBJECT
+# The mod's code that both sfv_ember.dll and the test programs compile: the SFV
+# catalog and adapter tests reach it without the game (the DLL's own files are
+# listed with it below).
+set(SFVE_MOD_SHARED_SOURCES
     src/mod/AddressRanges.cxx src/mod/BackgroundPlay.cxx src/mod/RuntimeModules.cxx src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/EntitlementGrant.cxx src/mod/FighterReader.cxx
     src/mod/BoothMode.cxx src/mod/GameArt.cxx src/mod/GameInput.cxx
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx src/mod/TinyFighters.cxx
     src/mod/ModConfig.cxx src/mod/PadLayer.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx
     src/mod/SfvRegionNames.cxx src/mod/RngAudit.cxx src/mod/SocketReads.cxx src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx src/mod/XInputHooks.cxx)
+# Compiled once for the three test programs that link it.
+add_library(sfve_ember_test_mod OBJECT ${SFVE_MOD_SHARED_SOURCES})
 target_link_libraries(sfve_ember_test_mod PUBLIC sfve_ember minhook::minhook)
 # The runtime under SFV's definitions, with nothing of SF4's roster, stages
 # or custom content: SFV's catalog (SfvCatalog.cxx) answers every pick check.
@@ -390,54 +375,23 @@ target_link_libraries(sfve_catalog_gate_off_tests PRIVATE sfve_ember_test_mod sf
 # The in-game mod. Loads inert: it blocks every non-loopback connection first,
 # then does nothing else unless the exe is the exact build it was made for.
 add_library(sfv_ember SHARED
+    ${SFVE_MOD_SHARED_SOURCES}
     src/mod/dllmain.cxx
     src/mod/EarlyStart.cxx
     src/mod/StartClaim.cxx
     src/mod/sfv_ember.def
-    src/mod/Log.cxx
-    src/mod/AddressRanges.cxx
-    src/mod/RuntimeModules.cxx
-    src/mod/MatchEnd.cxx
-    src/mod/MatchResult.cxx
-    src/mod/ModConfig.cxx
-    src/mod/ControlPipe.cxx
-    src/mod/CrashRecord.cxx
-    src/mod/VersusLaunch.cxx
-    src/mod/VirtualPads.cxx
-    src/mod/XInputHooks.cxx
-    src/mod/PadLayer.cxx
     src/mod/SdlPads.cxx
     src/mod/NetGuard.cxx
     src/mod/OfflineDialogs.cxx
     src/mod/BuildCheck.cxx
-    src/mod/BackgroundPlay.cxx
     src/mod/MultiInstance.cxx
-    src/mod/SfvAdapter.cxx
-    src/mod/SfvLayoutRules.cxx
-    src/mod/SfvRegionNames.cxx
     src/mod/ProjectileRelease.cxx
-    src/mod/SfvFlow.cxx
     src/mod/FramePacer.cxx
-    src/mod/GameScene.cxx
-    src/mod/GameThread.cxx
-    src/mod/GameHooks.cxx
     src/mod/BattleDriver.cxx
-    src/mod/BoothMode.cxx
     src/mod/SyncTestMode.cxx
     src/mod/NetplayMode.cxx
-    src/mod/GameInput.cxx
     src/mod/WriteWatch.cxx
-    src/mod/LagSim.cxx
-    src/mod/GameArt.cxx
-    src/mod/GameContent.cxx
-    src/mod/ContentRules.cxx
-    src/mod/EntitlementGrant.cxx
-    src/mod/GameExit.cxx
-    src/mod/FighterReader.cxx
-    src/mod/TinyFighters.cxx
-    src/mod/SocketReads.cxx
-    src/mod/RngAudit.cxx
-    src/mod/HudText.cxx)
+    src/mod/LagSim.cxx)
 target_link_libraries(sfv_ember PRIVATE sfve_ember dbghelp ember_sdl_pads_x64 SDL3::SDL3-static)
 target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")
 # Ember's own pictures the shell draws beside the mod (overlay/Overlay.hxx):
@@ -558,16 +512,7 @@ set(SFVE_PICK_SPACE "${CMAKE_CURRENT_SOURCE_DIR}/data/pick-space.json")
 if(NOT EXISTS "${SFVE_PICK_SPACE}")
     message(FATAL_ERROR "data/pick-space.json is missing: export it from the game (the pipe's catalog-export)")
 endif()
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SFVE_PICK_SPACE}")
-file(READ "${SFVE_PICK_SPACE}" _sfve_pick_space HEX)
-string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _sfve_pick_space "${_sfve_pick_space}")
-file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/generated/SfvHostPickSpace.cxx" CONTENT
-"// Generated from data/pick-space.json by CMakeLists.txt.
-namespace sfve { namespace roomhost {
-static const char kBytes[] = {${_sfve_pick_space}0};
-extern const char* const kPickSpaceJson = kBytes;
-} }
-")
+sfve_embed_text_file("${SFVE_PICK_SPACE}" "${CMAKE_BINARY_DIR}/generated/SfvHostPickSpace.cxx" "sfve::roomhost" kPickSpaceJson)
 set(SFVE_ROOM_HOST_SOURCES
     "${SFVE_EMBER_SOURCE_ROOT}/server/roomhost/main.cxx"
     "${SFVE_EMBER_SOURCE_ROOT}/server/roomhost/RoomHost.cxx"

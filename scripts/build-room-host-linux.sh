@@ -7,7 +7,7 @@
 #   build-room-host-linux.sh <Ember library root> [<output file>]
 #
 # <output file> defaults to ./sfve-room-host. Needs what build-linux.sh needs,
-# and xxhash.h (Debian and Ubuntu: libxxhash-dev, or set XXHASH_INCLUDE to a
+# cmake 3.20 or later (it embeds the pick space), and xxhash.h (Debian and Ubuntu: libxxhash-dev, or set XXHASH_INCLUDE to a
 # folder holding it; only the header is used).
 set -euo pipefail
 
@@ -26,16 +26,10 @@ fi
 
 GEN="$(mktemp -d "${TMPDIR:-/tmp}/sfve-room-host.XXXXXX")"
 trap 'rm -rf "$GEN"' EXIT
-# The pick space as bytes, as the Windows build embeds it (CMakeLists.txt).
-{
-    echo '// Generated from data/pick-space.json by scripts/build-room-host-linux.sh.'
-    echo 'namespace sfve { namespace roomhost {'
-    echo 'static const char kBytes[] = {'
-    od -An -tx1 -v "$SFV/data/pick-space.json" | sed -E 's/ ?([0-9a-f]{2})/0x\1,/g'
-    echo '0};'
-    echo 'extern const char* const kPickSpaceJson = kBytes;'
-    echo '} }'
-} > "$GEN/SfvHostPickSpace.cxx"
+# The pick space as bytes, by the helper the Windows build embeds it with
+# (cmake/EmbedTextFile.cmake: it refuses a byte above 0x7F).
+cmake -DSOURCE="$SFV/data/pick-space.json" -DOUTPUT="$GEN/SfvHostPickSpace.cxx" \
+    -DNAME_SPACE=sfve::roomhost -DSYMBOL=kPickSpaceJson -P "$SFV/cmake/EmbedTextFile.cmake"
 
 CATALOG_SOURCES="$SFV/src/roomhost/SfvHostCatalog.cxx $SFV/src/ember/SfvPickSpace.cxx $SFV/src/ember/SfvRoomBuild.cxx $GEN/SfvHostPickSpace.cxx" \
 CXXFLAGS="-I$SFV/src -I$EMBER/src -I$EMBER/server/roomhost $XXHASH_FLAGS ${CXXFLAGS:-}" \
