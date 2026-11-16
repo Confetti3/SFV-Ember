@@ -5,6 +5,7 @@
 #include "ember/SfvTraining.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameMemory.hxx"
+#include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
 #include "mod/SfvAdapter.hxx"

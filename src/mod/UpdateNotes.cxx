@@ -3,6 +3,7 @@
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
+#include "mod/SfvResultFlow.hxx"
 
 namespace sfve::mod {
 

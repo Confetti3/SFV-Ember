@@ -52,7 +52,9 @@ std::atomic<bool> s_hudShown{true};
 std::mutex s_statusMutex;
 std::string s_screen;
 
-bool Submit(training::Command command)
+// Named apart from sf4e::training::Submit (SF4's runtime), which a call with a
+// training::Command would also find by argument-dependent lookup.
+bool SubmitToLab(training::Command command)
 {
 	return SubmitTrainingLab(command);
 }
@@ -71,30 +73,30 @@ void Carry(const std::string& line, const training::View& view)
 	};
 	const auto on = [](const std::string& word) { return word == "on" || word == "1"; };
 	bool done = true;
-	if (verb == "record") ui::TrainingRecordPress(view, Submit, s_controls.Sample());
-	else if (verb == "play") ui::TrainingPlayPress(view, Submit);
-	else if (verb == "stop") done = Submit(command(training::Action::Interrupt));
+	if (verb == "record") ui::TrainingRecordPress(view, SubmitToLab, s_controls.Sample());
+	else if (verb == "play") ui::TrainingPlayPress(view, SubmitToLab);
+	else if (verb == "stop") done = SubmitToLab(command(training::Action::Interrupt));
 	else if (verb == "select") {
 		auto c = command(training::Action::Select);
 		c.slot = std::atoi(a.c_str()) - 1;
-		done = Submit(c);
+		done = SubmitToLab(c);
 	} else if (verb == "slot") {
 		auto c = command(training::Action::SlotOn);
 		c.slot = std::atoi(a.c_str()) - 1;
 		c.on = on(b);
-		done = Submit(c);
+		done = SubmitToLab(c);
 	} else if (verb == "loop") {
 		auto c = command(training::Action::Loop);
 		c.loop = on(a);
-		done = Submit(c);
+		done = SubmitToLab(c);
 	} else if (verb == "order") {
 		auto c = command(training::Action::PlayOrder);
 		c.order = a == "inorder" ? training::Order::InOrder : training::Order::Random;
-		done = Submit(c);
-	} else if (verb == "clear") done = Submit(command(training::Action::Clear));
-	else if (verb == "mirror") done = Submit(command(training::Action::Mirror));
-	else if (verb == "save") done = ui::SaveTrainingRecording(view, Submit, a);
-	else if (verb == "load") done = ui::LoadTrainingRecording(view, Submit, a);
+		done = SubmitToLab(c);
+	} else if (verb == "clear") done = SubmitToLab(command(training::Action::Clear));
+	else if (verb == "mirror") done = SubmitToLab(command(training::Action::Mirror));
+	else if (verb == "save") done = ui::SaveTrainingRecording(view, SubmitToLab, a);
+	else if (verb == "load") done = ui::LoadTrainingRecording(view, SubmitToLab, a);
 	else if (verb == "reply") {
 		// reply off|hit|block|rise|any [timing N] [chance N]
 		auto lab = ui::TrainingLabState();
@@ -110,7 +112,7 @@ void Carry(const std::string& line, const training::View& view)
 			words >> key;
 		}
 		ui::SaveTrainingLab();
-		done = ui::SendTrainingPlan(view, Submit);
+		done = ui::SendTrainingPlan(view, SubmitToLab);
 	} else if (verb == "meter") {
 		// meter <training.json's meter key> <JSON value>, as the pages set it
 		nlohmann::json meter = training::MeterOptionsJson(ui::TrainingMeterOptions());
@@ -243,7 +245,7 @@ void DrawSfvTrainingLab(bool available, bool shellShown, bool paused, bool focus
 	const ImGuiIO& io = ImGui::GetIO();
 	if (focused && !shellShown) {
 		for (const auto& pad : pads)
-			if (pad.generation == view.generation && s_controls.Current(pad)) ui::ApplyTrainingPadEvent(view, Submit, s_controls, pad, called);
+			if (pad.generation == view.generation && s_controls.Current(pad)) ui::ApplyTrainingPadEvent(view, SubmitToLab, s_controls, pad, called);
 		// F7 on a recorded slot: the session asked about overwriting it.
 		if (sf4e::input::TrainingControls::Token asked; ui::TakeOverwriteAsk(view, asked) && !called) ui::OpenTrainingRecordings(s_controls, asked);
 		if (!io.WantTextInput && !io.KeyAlt) {
@@ -251,16 +253,16 @@ void DrawSfvTrainingLab(bool available, bool shellShown, bool paused, bool focus
 			if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) s_hud = !s_hud;
 		}
 		// The dummy's plan each battle (the position keys are not SFV's).
-		ui::TrainingHotkeys(view, Submit);
+		ui::TrainingHotkeys(view, SubmitToLab);
 		if (ui::TrainingPressesAct(s_controls, called) && !io.WantTextInput && !io.KeyAlt) {
 			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_F1 + ui::TrainingRecordKey), false))
-				ui::TrainingRecordPress(view, Submit, s_controls.Sample());
-			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_F1 + ui::TrainingPlayKey), false)) ui::TrainingPlayPress(view, Submit);
+				ui::TrainingRecordPress(view, SubmitToLab, s_controls.Sample());
+			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_F1 + ui::TrainingPlayKey), false)) ui::TrainingPlayPress(view, SubmitToLab);
 		}
 	}
 	const bool open = s_controls.Open();
 	// The controls opening interrupt standby, a recording or a playback, once per opening.
-	if (open && !s_wasOpen) Submit({training::Action::Interrupt, view.generation});
+	if (open && !s_wasOpen) SubmitToLab({training::Action::Interrupt, view.generation});
 	s_wasOpen = open;
 	SetTrainingLabControlsOpen(open);
 	s_hudShown = s_hud;
@@ -269,7 +271,7 @@ void DrawSfvTrainingLab(bool available, bool shellShown, bool paused, bool focus
 	if (!shellShown && !paused && s_hud) ui::DrawTrainingHud(view, called);
 	if (open) {
 		ui::TakeForwardedMenuAction();
-		ui::DrawTrainingFlyout(view, Submit);
+		ui::DrawTrainingFlyout(view, SubmitToLab);
 		if (ui::TakeForwardedMenuAction().kind == ui::MenuAction::Close) s_controls.Close();
 	}
 	std::lock_guard lock(s_statusMutex);
