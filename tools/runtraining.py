@@ -319,6 +319,12 @@ def call(shots: Path | None) -> None:
                          status(i)["room"]["room"] == "joined" for i in (0, 1)))
 
 
+def battle_frame(index: int) -> int:
+    """The battle's session frame, or -1 while the status has no battle mode (before the session, between battles)."""
+    mode = (status(index).get("battle") or {}).get("mode")
+    return mode["frame"] if mode else -1
+
+
 def vitals(index: int) -> list[int] | None:
     """Both fighters' vital (CharaStatusPart's dword 48, the first word of its
     first snapshot run), from the bound battle's regions; None when not bound."""
@@ -369,7 +375,7 @@ def low_vital_and_hit() -> int:
     which no rollback crosses (no input is in flight); then P1 hits: the
     first hit takes P2 to 0. Returns P2's full vital."""
     # The intro and the round call take about 15 s from the session's start.
-    wait_for("the fight", 60, lambda: vitals(0) is not None and status(0)["battle"]["mode"]["frame"] > 1000)
+    wait_for("the fight", 60, lambda: vitals(0) is not None and battle_frame(0) > 1000)
     lib.focus(lib.status_pid(0))
     time.sleep(0.5)
     lib.request_ok(0, "pad 0 RIGHT:1400 -:100")
@@ -453,7 +459,7 @@ def practice(shots: Path | None, seconds: int = 90) -> None:
     # Then both copies play seeded random input from frame 3000 on (-sfve_mash,
     # as runroom.ps1's games: rollbacks on both sides): nobody is knocked
     # out, no clock ends it, every checkpoint agrees.
-    wait_for("the random play", 60, lambda: status(0)["battle"]["mode"]["frame"] > 3000)
+    wait_for("the random play", 60, lambda: battle_frame(0) > 3000)
     samples: list[list[int]] = []
     t0 = time.time()
     while time.time() - t0 < seconds:
