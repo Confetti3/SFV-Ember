@@ -161,6 +161,15 @@ public:
 	// while it loaded): not a failure. A refused one is forgotten; the next
 	// one is wanted again, and stays eligible.
 	void Abandon(int entry);
+	// The picture came but is not usable yet: a resource that never arrived
+	// in time, or a texture the game has not streamed whole (it lets go of
+	// image detail during a battle, so one loaded after a match can come back
+	// at a low size). Not a failure either: the entry stays eligible, comes
+	// round again with the shuffle, and nothing is loaded for the retry time,
+	// so a picture that never comes right cannot spin the loader. Only
+	// Loaded(entry, false), a picture the game does not have at all, is
+	// skipped for the session.
+	void Retry(int entry);
 	// The backdrop was on screen for `seconds` (clamped to kMostStep).
 	void Advance(double seconds);
 	// Fade to the next picture as soon as it has loaded, whatever the hold.

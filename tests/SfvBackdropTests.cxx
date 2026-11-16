@@ -370,6 +370,69 @@ TEST_CASE("a picture abandoned while loading is not a failure: the cycle never r
 	REQUIRE(cycle.Wanted().has_value());
 }
 
+TEST_CASE("a picture that is late or only partly loaded is retried after a pause, never skipped for good")
+{
+	const Timing quick{2, 0.2, 1.0, 0.1};
+	Cycle cycle(3, 9, quick);
+	// A timeout or a low-detail texture, over and over, many more times than there are pictures.
+	for (int i = 0; i < 30; i++) {
+		const int entry = *cycle.Wanted();
+		cycle.Started(entry);
+		cycle.Retry(entry);
+		CHECK(cycle.Alive() == 0);
+		CHECK(cycle.Failed() == 0);
+		CHECK_FALSE(cycle.Exhausted());
+		// The pause: nothing is loaded until the retry time has passed.
+		CHECK_FALSE(cycle.Wanted().has_value());
+		for (int frame = 0; frame < 3; frame++) cycle.Advance(0.25);
+		CHECK_FALSE(cycle.Wanted().has_value());
+		cycle.Advance(0.25);
+		REQUIRE(cycle.Wanted().has_value());
+		// Its answer, if it still came, is refused.
+		CHECK_FALSE(cycle.Loaded(entry, true));
+	}
+	// Every picture was tried again, and one that comes right shows.
+	std::set<int> tried;
+	for (int i = 0; i < 6; i++) {
+		const int entry = *cycle.Wanted();
+		tried.insert(entry);
+		cycle.Started(entry);
+		cycle.Retry(entry);
+		for (int frame = 0; frame < 4; frame++) cycle.Advance(0.25);
+	}
+	CHECK(tried.size() == 3);
+	const int entry = *cycle.Wanted();
+	cycle.Started(entry);
+	CHECK(cycle.Loaded(entry, true));
+	for (int frame = 0; frame < 20; frame++) cycle.Advance(0.05);
+	CHECK(cycle.Current() == entry);
+	// One picture alone comes round again too.
+	Cycle single(1, 2, quick);
+	for (int i = 0; i < 5; i++) {
+		REQUIRE(single.Wanted().has_value());
+		CHECK(*single.Wanted() == 0);
+		single.Started(0);
+		single.Retry(0);
+		CHECK_FALSE(single.Exhausted());
+		for (int frame = 0; frame < 5; frame++) single.Advance(0.25);
+	}
+	// A picture the game does not have at all is the only permanent failure.
+	Cycle missing(2, 3, quick);
+	const int gone = *missing.Wanted();
+	missing.Started(gone);
+	CHECK_FALSE(missing.Loaded(gone, false));
+	CHECK(missing.Failed() == 1);
+	// Retry after a Reset while it loaded: forgotten, not failed.
+	for (int frame = 0; frame < 8; frame++) missing.Advance(0.25);
+	REQUIRE(missing.Wanted().has_value());
+	const int other = *missing.Wanted();
+	missing.Started(other);
+	missing.Reset();
+	missing.Retry(other);
+	CHECK(missing.Alive() == 0);
+	CHECK(missing.Failed() == 1);
+}
+
 TEST_CASE("when no picture loads, nothing is ever shown and the cycle stops asking")
 {
 	Run run(4, 8, Timing{2, 0.2, 0.1, 0.1});

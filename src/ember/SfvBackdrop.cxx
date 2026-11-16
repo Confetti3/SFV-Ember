@@ -633,8 +633,11 @@ void Pump()
 				++at;
 				continue;
 			}
-			mod::Log("backdrop: %s: skipped: %s", PathOf(at->first).c_str(), pending ? "its resource never came" : why.c_str());
-			s_cycle.Abandon(at->first);
+			// Not here yet, or not whole yet (the game lets go of image detail
+			// in a battle): tried again later, never skipped for good.
+			mod::Log("backdrop: %s: not usable yet, tried again later: %s", PathOf(at->first).c_str(),
+				pending ? "its resource never came" : why.c_str());
+			s_cycle.Retry(at->first);
 			at = s_pictures.erase(at);
 		}
 		// One load at a time, only while the backdrop is on screen and the
