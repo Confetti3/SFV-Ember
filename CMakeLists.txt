@@ -118,6 +118,7 @@ add_executable(sfve_tests
     tests/ByteReaderTests.cxx
     tests/PlaybackSeekTests.cxx
     tests/NetplayPhaseTests.cxx
+    tests/BattleLoadWatchTests.cxx
     src/mod/MatchResult.cxx)
 target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 

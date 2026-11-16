@@ -1,10 +1,13 @@
 #include "mod/GameScene.hxx"
 
+#include "mod/BattleLoadWatch.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
+
+#include <windows.h>
 
 #include <stdio.h>
 
@@ -27,6 +30,7 @@ uintptr_t s_imageBase;
 std::mutex s_seenMutex;
 BattleSeen s_seen;
 std::atomic<BattleWatcher> s_watcher{nullptr};
+BattleLoadWatch s_loadWatch; // game thread only
 
 // Once a frame, before the manager ticks its state (and, when a state has
 // ended, puts the next one in its place): the queued game-thread work runs
@@ -39,7 +43,12 @@ void h_ManagerTick(uint8_t* manager, float deltaSeconds)
 	}
 	PumpGameThread();
 	o_managerTick(manager, deltaSeconds);
-	s_kind = SceneStateKind(CurrentSceneState());
+	const uintptr_t kind = SceneStateKind(CurrentSceneState());
+	s_kind = kind;
+	// A battle's load is in the log: its start, a stall that outlasts 20 s and
+	// 60 s, and its first frame (BattleLoadWatch.hxx; log only).
+	const bool inBattle = kind == sfv::scene::kVersusBattleVtable || kind == sfv::scene::kTrainingBattleVtable;
+	for (const std::string& line : s_loadWatch.Observe(inBattle, LastBattleSeen().battle, GetTickCount64())) LogLine(line.c_str());
 }
 
 } // namespace
