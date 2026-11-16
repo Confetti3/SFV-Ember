@@ -563,6 +563,18 @@ ChoiceCounts CountsOf(const FighterContent& fighter)
 // read them (FighterChoiceCounts); empty before any read.
 std::vector<std::pair<std::wstring, ChoiceCounts>> s_choiceCounts;
 
+// One of the game's ownership calls, run guarded: an access violation in it
+// (the battle setup asset or its tables not there) reads as the call giving
+// nothing, logged once for the call site `logged` belongs to.
+template <typename F>
+bool OwnershipCall(bool& logged, const char* site, F&& call)
+{
+	if (TryRun(call)) return true;
+	if (!logged) Log("content: the game's %s faulted; read as nothing owned", site);
+	logged = true;
+	return false;
+}
+
 // Whether the game says the account is logged in. Its function reads the
 // default online subsystem through the identity interface with no check that
 // either is there, and a null one (Steam's record stale, or its online service
@@ -594,18 +606,28 @@ void ReadOwnership(uint8_t* setup, ContentLists& lists)
 	source.restrictionEntries = Field<int32_t>(setup, kSetupRestrictionCount);
 	source.filter = Field<void*>(setup, kSetupFilter) != nullptr;
 	source.loggedIn = AccountLoggedIn();
-	const std::vector<std::string> fighters =
-		TakeCodes([&](GameArray<GameString>* out) { At<OwnedFightersFn>(sfv::kOwnedFighters)(setup, out, false, false); });
+	static bool fightersFault = false, costumesFault = false, coloursFault = false;
+	const std::vector<std::string> fighters = TakeCodes([&](GameArray<GameString>* out) {
+		if (!OwnershipCall(fightersFault, "OwnedFighters", [&] { At<OwnedFightersFn>(sfv::kOwnedFighters)(setup, out, false, false); })) *out = {};
+	});
 	for (FighterContent& fighter : lists.fighters) {
 		fighter.owned = Contains(fighters, fighter.code);
 		const CodeView view(fighter.code);
 		const GameString code = view.Get();
-		const std::vector<int> costumes = ReadNumbers(
-			[&](GameArray<int32_t>* out) { return At<OwnedCostumesFn>(sfv::kOwnedCostumes)(setup, &code, out); });
+		const std::vector<int> costumes = ReadNumbers([&](GameArray<int32_t>* out) {
+			bool answered = false;
+			if (!OwnershipCall(costumesFault, "OwnedCostumes", [&] { answered = At<OwnedCostumesFn>(sfv::kOwnedCostumes)(setup, &code, out); })) {
+				*out = {};
+			}
+			return answered;
+		});
 		for (CostumeContent& costume : fighter.costumes) {
 			costume.owned = Contains(costumes, costume.id);
 			const std::vector<int> colours = ReadNumbers([&](GameArray<int32_t>* out) {
-				At<OwnedColoursFn>(sfv::kOwnedColours)(setup, &code, costume.id, out);
+				if (!OwnershipCall(coloursFault, "OwnedColours", [&] { At<OwnedColoursFn>(sfv::kOwnedColours)(setup, &code, costume.id, out); })) {
+					*out = {};
+					return false;
+				}
 				return true;
 			});
 			for (ColourContent& colour : costume.colours) colour.owned = Contains(colours, colour.id);
