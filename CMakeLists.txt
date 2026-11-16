@@ -34,6 +34,15 @@ find_library(DETOURS_LIBRARY detours REQUIRED)
 
 add_compile_options(/W4 /permissive- /utf-8 /Zc:__cplusplus)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
+# The mod loads as an import of the game's exe, which finds an msvcp140.dll in
+# the game's own folder before System32's. Visual Studio 2022 17.10's std::mutex
+# is built without the runtime's help, and locks fault in an older msvcp140.dll
+# (src/mod/RuntimeModules.hxx logs which one the process has); this keeps the
+# runtime in the construction, so the mod's own mutexes work with either. The
+# packages of the vcpkg triplet are built by it: its own flags carry the
+# definition for them (see the library's overlay triplet), these cover what this
+# project compiles, the library's sources included.
+add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
 
 # A development build takes the test switches (src/mod/BuildKind.hxx): the
 # launcher's --instance and --game-option, the mod's -sfve_* test options and
@@ -280,12 +289,12 @@ sfve_embed_text_file("${CMAKE_CURRENT_SOURCE_DIR}/data/menu-art.json"
     "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedMenuArt.cxx" "sfve::backdrop" kEmbeddedMenuArtJson)
 target_sources(sfve_ember PRIVATE "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedMenuArt.cxx")
 sf4e_embed_brand_mark(sfve_product "${CMAKE_CURRENT_SOURCE_DIR}/art/brand/sfv-ember-mark.rgba")
-target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product sfve_selection_assets ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi)
+target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product sfve_selection_assets ember_runtime_x64 minhook::minhook imgui::imgui d3d11 dxgi version)
 
 # The mod's code the SFV catalog and adapter tests reach without the game,
 # compiled once for the three test programs that link it.
 add_library(sfve_ember_test_mod OBJECT
-    src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/EntitlementGrant.cxx src/mod/FighterReader.cxx
+    src/mod/AddressRanges.cxx src/mod/RuntimeModules.cxx src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/EntitlementGrant.cxx src/mod/FighterReader.cxx
     src/mod/BoothMode.cxx src/mod/GameArt.cxx src/mod/GameInput.cxx
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx src/mod/TinyFighters.cxx
@@ -339,6 +348,8 @@ add_executable(sfve_ember_tests
     tests/SfvBoxesTests.cxx
     tests/RoomBuildTests.cxx
     tests/BuildKindTests.cxx
+    tests/AddressRangesTests.cxx
+    tests/RuntimeModulesTests.cxx
     tests/GameInputTests.cxx
     tests/SocketReadsTests.cxx
     tests/RngAuditTests.cxx
@@ -380,6 +391,8 @@ add_library(sfv_ember SHARED
     src/mod/StartClaim.cxx
     src/mod/sfv_ember.def
     src/mod/Log.cxx
+    src/mod/AddressRanges.cxx
+    src/mod/RuntimeModules.cxx
     src/mod/MatchEnd.cxx
     src/mod/MatchResult.cxx
     src/mod/ModConfig.cxx

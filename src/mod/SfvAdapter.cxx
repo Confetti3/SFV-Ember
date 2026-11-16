@@ -183,6 +183,7 @@ bool SfvAdapter::Bind()
 		return false;
 	}
 	layout_.Clear();
+	RefreshProcessRanges();
 	layout_.SetAddressTest(LooksLikeAddress);
 	uint8_t* manager = GameGetManager(rollbackUnit_);
 	if (!AddGameRegions(manager)) {

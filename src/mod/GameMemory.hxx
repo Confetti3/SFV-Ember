@@ -3,6 +3,8 @@
 // Reading and writing the game's objects: typed fields, the std::shared_ptr
 // the game hands units around in, and which words are addresses.
 
+#include "mod/AddressRanges.hxx"
+
 #include <intrin.h>
 #include <stdint.h>
 
@@ -94,12 +96,18 @@ inline void GiveBackGameRef(const GameRef& ref)
 	if (ref.block && *reinterpret_cast<int32_t*>(ref.block) > 1) (*reinterpret_cast<int32_t*>(ref.block))--;
 }
 
-// Heap and code addresses of a Windows x64 process (1 TB up to the end of
-// user space), 4-byte aligned. They differ between processes even when the
-// state is the same, so hashes read them as zero.
+// Heap and code addresses of this process, 4-byte aligned: above 1 TB up to
+// the end of user space (where a Windows x64 process puts them with its
+// default ASLR), or inside the process's own committed private memory and
+// images (mod/AddressRanges.hxx, read at the battle's bind), which is where
+// they lie with bottom-up ASLR off or under Wine. They differ between
+// processes even when the state is the same, so hashes read them as zero.
 inline bool LooksLikeAddress(uint64_t value)
 {
-	return value >= (1ull << 40) && value <= 0x00007FFFFFFFFFFFull && (value & 3) == 0;
+	if ((value & 3) != 0) return false;
+	if (value >= (1ull << 40) && value <= 0x00007FFFFFFFFFFFull) return true;
+	const AddressRanges* ranges = PublishedProcessRanges();
+	return ranges && ranges->Contains(value);
 }
 
 } // namespace sfve::mod

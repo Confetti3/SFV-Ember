@@ -41,6 +41,7 @@
 #include "mod/MatchEnd.hxx"
 #include "mod/ModConfig.hxx"
 #include "mod/RngAudit.hxx"
+#include "mod/RuntimeModules.hxx"
 #include "mod/SocketReads.hxx"
 #include "mod/TinyFighters.hxx"
 #include "mod/MultiInstance.hxx"
@@ -182,6 +183,7 @@ extern "C" int SfveStart(int beforeGameCode)
 
 	LoadConfigFromCommandLine(GetCommandLineW());
 	OpenLog(Config().instance);
+	LogRuntimeModules();
 	const char* loader = StartedByEntryHook() ? "launcher" : "proxy";
 	const StartClaimResult claim = ClaimStart(loader);
 	if (!claim.won) {

@@ -17,7 +17,21 @@ namespace sfve::mod {
 
 namespace {
 
-std::mutex s_mutex;
+// A slim reader/writer lock, not std::mutex: the first lock the mod takes is
+// the log's, and with an older msvcp140.dll in the game's folder std::mutex's
+// first lock can fault before the log exists (mod/RuntimeModules.hxx). This
+// one needs no runtime (SRWLOCK_INIT is constant) and is a Lockable.
+class LogMutex {
+public:
+	void lock() { AcquireSRWLockExclusive(&lock_); }
+	bool try_lock() { return TryAcquireSRWLockExclusive(&lock_) != 0; }
+	void unlock() { ReleaseSRWLockExclusive(&lock_); }
+
+private:
+	SRWLOCK lock_ = SRWLOCK_INIT;
+};
+
+LogMutex s_mutex;
 HANDLE s_file = INVALID_HANDLE_VALUE;
 LogTarget s_target;
 // This thread holds s_mutex for a write: a fault inside that write reaches
