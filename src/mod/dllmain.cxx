@@ -371,7 +371,11 @@ extern "C" int SfveStart(int beforeGameCode)
 		});
 		return std::string("ok queued (see the log)");
 	});
-	static BattleDriver driver(MakeMode(Config()));
+	// Never destroyed: the game's hooks call it until the process ends, and a
+	// destructor would run at DLL detach, under the loader lock after every
+	// other thread was killed (closing GGPO sessions, taking the log's lock).
+	// What must end gracefully ends in the game's exit work (GameExit).
+	static BattleDriver& driver = *new BattleDriver(MakeMode(Config()));
 	driver.RegisterControl();
 	const std::optional<HookFailure> missing = InstallBattleHooks(base, driver);
 	RegisterHookSetStatus("battleHooks", HookSetState(missing));

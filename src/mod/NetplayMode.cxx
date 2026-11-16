@@ -11,6 +11,7 @@
 #include "ember/SfvTraining.hxx"
 #include "ember/SfvVerification.hxx"
 #include "mod/ControlPipe.hxx"
+#include "mod/GameExit.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/GameMemory.hxx"
@@ -52,6 +53,14 @@ const char* StepName(RollbackSession::StepResult r)
 void NetplayMode::Install()
 {
 	RegisterCommands();
+	// The mode is never destroyed (the driver lives as long as the process):
+	// its sessions close in the game's exit work, with every thread still
+	// running, after the room's leave has gone out (EmberHost's steps).
+	OnGameExit({nullptr, nullptr, [this] {
+		std::lock_guard lock(mutex_);
+		EndDrain();
+		if (session_ && session_->Live()) session_->Close();
+	}});
 	if (!config_.room) return;
 	adapter::RegisterRoomCommands();
 	adapter::RegisterReplayCommands();
