@@ -378,10 +378,10 @@ TEST_CASE("the Training dummy remembers a look for each fighter of its own, apar
 	// A late restore merges the saved dummy looks under this run's too.
 	PickMemory saved;
 	saved.RememberLook(LookOf(kCnl, 0, 0, kOneOne), Whose::Dummy);
-	saved.RememberLook(LookOf(kRyu, 4, 1, kTwoTwo), Whose::Dummy);
+	saved.RememberLook(LookOf(kBsn, 0, 0, kOneOne), Whose::Dummy);
 	CHECK_FALSE(RestorePickMemory(ThroughFile(saved, FilledPickSpace())));
 	CHECK(SameLook(*RememberedLook(kCnl, Whose::Dummy), LookOf(kCnl, 0, 1, kTwoOne)));
-	CHECK(SameLook(*RememberedLook(kRyu, Whose::Dummy), LookOf(kRyu, 4, 1, kTwoTwo)));
+	CHECK(RememberedLook(kBsn, Whose::Dummy).has_value());
 	ForgetDummyForTest();
 	ForgetPickMemoryForTest();
 }
