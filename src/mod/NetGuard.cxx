@@ -82,6 +82,7 @@ using WSAConnect_t = int(WSAAPI*)(SOCKET, const sockaddr*, int, LPWSABUF, LPWSAB
 using sendto_t = int(WSAAPI*)(SOCKET, const char*, int, int, const sockaddr*, int);
 using WSASendTo_t = int(WSAAPI*)(SOCKET, LPWSABUF, DWORD, LPDWORD, DWORD, const sockaddr*, int, LPWSAOVERLAPPED,
 	LPWSAOVERLAPPED_COMPLETION_ROUTINE);
+using WSASendMsg_t = int(WSAAPI*)(SOCKET, LPWSAMSG, DWORD, LPDWORD, LPWSAOVERLAPPED, LPWSAOVERLAPPED_COMPLETION_ROUTINE);
 using getaddrinfo_t = INT(WSAAPI*)(PCSTR, PCSTR, const ADDRINFOA*, PADDRINFOA*);
 using GetAddrInfoW_t = INT(WSAAPI*)(PCWSTR, PCWSTR, const ADDRINFOW*, PADDRINFOW*);
 using GetAddrInfoExW_t = INT(WSAAPI*)(PCWSTR, PCWSTR, DWORD, LPGUID, const ADDRINFOEXW*, PADDRINFOEXW*, timeval*,
@@ -94,6 +95,7 @@ connect_t o_connect;
 WSAConnect_t o_WSAConnect;
 sendto_t o_sendto;
 WSASendTo_t o_WSASendTo;
+WSASendMsg_t o_WSASendMsg;
 getaddrinfo_t o_getaddrinfo;
 GetAddrInfoW_t o_GetAddrInfoW;
 GetAddrInfoExW_t o_GetAddrInfoExW;
@@ -141,6 +143,23 @@ int WSAAPI h_WSASendTo(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD sent, DWORD
 		return SOCKET_ERROR;
 	}
 	return o_WSASendTo(s, bufs, count, sent, flags, to, tolen, ov, done);
+}
+
+// The policy of sendto: a message with no destination goes out on a connected
+// socket, whose connect was checked.
+bool MessageAllowed(const WSAMSG* msg, const char* api)
+{
+	if (!msg || !msg->name || s_policy.AllowsAddress(msg->name, msg->namelen)) return true;
+	Refused(api, AddressText(msg->name, msg->namelen));
+	WSASetLastError(WSAENETUNREACH);
+	return false;
+}
+
+int WSAAPI h_WSASendMsg(SOCKET s, LPWSAMSG msg, DWORD flags, LPDWORD sent, LPWSAOVERLAPPED ov,
+	LPWSAOVERLAPPED_COMPLETION_ROUTINE done)
+{
+	if (!MessageAllowed(msg, "WSASendMsg")) return SOCKET_ERROR;
+	return o_WSASendMsg(s, msg, flags, sent, ov, done);
 }
 
 INT WSAAPI h_getaddrinfo(PCSTR node, PCSTR service, const ADDRINFOA* hints, PADDRINFOA* result)
@@ -210,12 +229,37 @@ hostent* WSAAPI h_gethostbyname(const char* name)
 	return o_gethostbyname(name);
 }
 
-// ConnectEx is not exported: programs fetch it per provider through WSAIoctl.
-// Each distinct pointer handed out gets its own guarded wrapper.
+// ConnectEx and WSASendMsg's provider function are not exported: programs
+// fetch them per provider through WSAIoctl. Each distinct pointer handed out
+// gets its own guarded wrapper, one of Slots functions with a fixed address.
+template <typename Fn, int Slots>
+class ExtensionWrappers {
+public:
+	Fn real[Slots] = {};
+
+	// Puts the wrapper of `*pointer`'s slot in its place (the same slot for the
+	// same provider function); false when there are more providers than slots.
+	bool Replace(Fn* pointer, const Fn (&wrappers)[Slots])
+	{
+		std::lock_guard lock(mutex_);
+		for (int i = 0; i < Slots; i++) {
+			if (real[i] == *pointer || !real[i]) {
+				real[i] = *pointer;
+				*pointer = wrappers[i];
+				return true;
+			}
+		}
+		return false;
+	}
+
+private:
+	std::mutex mutex_;
+};
+
+constexpr int kExtensionSlots = 4;
+
 using ConnectEx_t = BOOL(PASCAL*)(SOCKET, const sockaddr*, int, PVOID, DWORD, LPDWORD, LPOVERLAPPED);
-constexpr int kConnectExSlots = 4;
-ConnectEx_t o_connectEx[kConnectExSlots];
-std::mutex s_connectExMutex;
+ExtensionWrappers<ConnectEx_t, kExtensionSlots> s_connectEx;
 
 template <int N>
 BOOL PASCAL h_ConnectEx(SOCKET s, const sockaddr* name, int len, PVOID buf, DWORD n, LPDWORD sent, LPOVERLAPPED ov)
@@ -225,35 +269,62 @@ BOOL PASCAL h_ConnectEx(SOCKET s, const sockaddr* name, int len, PVOID buf, DWOR
 		WSASetLastError(WSAENETUNREACH);
 		return FALSE;
 	}
-	return o_connectEx[N](s, name, len, buf, n, sent, ov);
+	return s_connectEx.real[N](s, name, len, buf, n, sent, ov);
 }
 
-constexpr ConnectEx_t kConnectExWrappers[kConnectExSlots] = {h_ConnectEx<0>, h_ConnectEx<1>, h_ConnectEx<2>,
+constexpr ConnectEx_t kConnectExWrappers[kExtensionSlots] = {h_ConnectEx<0>, h_ConnectEx<1>, h_ConnectEx<2>,
 	h_ConnectEx<3>};
+
+ExtensionWrappers<WSASendMsg_t, kExtensionSlots> s_sendMsg;
+
+template <int N>
+int WSAAPI h_SendMsgEx(SOCKET s, LPWSAMSG msg, DWORD flags, LPDWORD sent, LPWSAOVERLAPPED ov,
+	LPWSAOVERLAPPED_COMPLETION_ROUTINE done)
+{
+	if (!MessageAllowed(msg, "WSASendMsg (extension)")) return SOCKET_ERROR;
+	return s_sendMsg.real[N](s, msg, flags, sent, ov, done);
+}
+
+constexpr WSASendMsg_t kSendMsgWrappers[kExtensionSlots] = {h_SendMsgEx<0>, h_SendMsgEx<1>, h_SendMsgEx<2>,
+	h_SendMsgEx<3>};
+
+bool IsGuid(const void* in, const GUID& guid)
+{
+	return memcmp(in, &guid, sizeof(GUID)) == 0;
+}
+
+// Replaces the function pointer a WSAIoctl just handed out with its guarded
+// wrapper. More providers than slots: nothing is handed out, so the caller
+// falls back to the exported function, which is guarded too.
+template <typename Fn>
+int GuardExtension(ExtensionWrappers<Fn, kExtensionSlots>& slots, const Fn (&wrappers)[kExtensionSlots], void* out,
+	const char* name, int result)
+{
+	if (slots.Replace(static_cast<Fn*>(out), wrappers)) return result;
+	Log("netguard: refused a fifth %s provider", name);
+	*static_cast<Fn*>(out) = nullptr;
+	WSASetLastError(WSAEOPNOTSUPP);
+	return SOCKET_ERROR;
+}
 
 int WSAAPI h_WSAIoctl(SOCKET s, DWORD code, LPVOID in, DWORD inLen, LPVOID out, DWORD outLen, LPDWORD returned,
 	LPWSAOVERLAPPED ov, LPWSAOVERLAPPED_COMPLETION_ROUTINE done)
 {
+	static const GUID connectEx = WSAID_CONNECTEX, sendMsg = WSAID_WSASENDMSG, rio = WSAID_MULTIPLE_RIO;
+	const bool fetch = code == SIO_GET_EXTENSION_FUNCTION_POINTER && in && inLen >= sizeof(GUID) && out && outLen >= sizeof(void*);
+	// Registered I/O sends to an address of its own, through a table of
+	// functions no hook of ours sees (fetched by the ioctl for several
+	// functions at once): the caller falls back to plain sockets.
+	if (code == SIO_GET_MULTIPLE_EXTENSION_FUNCTION_POINTER && in && inLen >= sizeof(GUID) && IsGuid(in, rio)) {
+		Refused("WSAIoctl", "the registered I/O function table");
+		WSASetLastError(WSAEOPNOTSUPP);
+		return SOCKET_ERROR;
+	}
 	const int result = o_WSAIoctl(s, code, in, inLen, out, outLen, returned, ov, done);
-	static const GUID connectEx = WSAID_CONNECTEX;
-	if (result != 0 || code != SIO_GET_EXTENSION_FUNCTION_POINTER || !in || inLen < sizeof(GUID) || !out ||
-		outLen < sizeof(void*) || memcmp(in, &connectEx, sizeof(GUID)) != 0) {
-		return result;
-	}
-	ConnectEx_t real = *static_cast<ConnectEx_t*>(out);
-	std::lock_guard lock(s_connectExMutex);
-	for (int i = 0; i < kConnectExSlots; i++) {
-		if (o_connectEx[i] == real || !o_connectEx[i]) {
-			o_connectEx[i] = real;
-			*static_cast<ConnectEx_t*>(out) = kConnectExWrappers[i];
-			return result;
-		}
-	}
-	// More providers than slots: hand out nothing, so the caller uses connect.
-	Log("netguard: refused a fifth ConnectEx provider");
-	*static_cast<ConnectEx_t*>(out) = nullptr;
-	WSASetLastError(WSAEOPNOTSUPP);
-	return SOCKET_ERROR;
+	if (result != 0 || !fetch) return result;
+	if (IsGuid(in, connectEx)) return GuardExtension(s_connectEx, kConnectExWrappers, out, "ConnectEx", result);
+	if (IsGuid(in, sendMsg)) return GuardExtension(s_sendMsg, kSendMsgWrappers, out, "WSASendMsg", result);
+	return result;
 }
 
 // --- DNS client API ---------------------------------------------------------
@@ -415,6 +486,7 @@ bool InstallNetGuard()
 		{L"ws2_32.dll", "WSAConnect", (void*)h_WSAConnect, Slot(&o_WSAConnect)},
 		{L"ws2_32.dll", "sendto", (void*)h_sendto, Slot(&o_sendto)},
 		{L"ws2_32.dll", "WSASendTo", (void*)h_WSASendTo, Slot(&o_WSASendTo)},
+		{L"ws2_32.dll", "WSASendMsg", (void*)h_WSASendMsg, Slot(&o_WSASendMsg)},
 		{L"ws2_32.dll", "getaddrinfo", (void*)h_getaddrinfo, Slot(&o_getaddrinfo)},
 		{L"ws2_32.dll", "GetAddrInfoW", (void*)h_GetAddrInfoW, Slot(&o_GetAddrInfoW)},
 		{L"ws2_32.dll", "GetAddrInfoExW", (void*)h_GetAddrInfoExW, Slot(&o_GetAddrInfoExW)},
