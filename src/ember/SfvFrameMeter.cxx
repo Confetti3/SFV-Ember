@@ -142,7 +142,7 @@ void InstallSfvFrameMeter()
 	mod::WatchBattleFrames(Watch);
 }
 
-void DrawSfvFrameMeter()
+void DrawSfvFrameMeter(const training::MeterOptions& options)
 {
 	std::shared_ptr<const training::MeterView> view;
 	{
@@ -150,9 +150,6 @@ void DrawSfvFrameMeter()
 		view = s_shown;
 	}
 	if (!view) return;
-	// The Training HUD's own defaults (training::MeterOptions): angled bars,
-	// 60 frames across, the numbers and the state line, the standard size.
-	const training::MeterOptions options;
 	const float hudScale = sf4e::ui::FrameMeterHudScale(options.size);
 	const auto* viewport = ImGui::GetMainViewport();
 	sf4e::ui::DrawFrameMeterWindow(*view, hudScale, sf4e::ui::TrainingMeterWidth(hudScale),

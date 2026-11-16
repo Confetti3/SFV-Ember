@@ -2897,3 +2897,45 @@ input ring (`InputUnit+0x178`), the command history and the 632-byte Attack Data
 "holds no addresses" mark would unhide about 73% of them; the command history and action part
 need the per-owner pointer-slot table (inventory item 1 (b)). The laptop runs in
 `rollback-fixes.md` section 4 confirm both fixes.
+
+## 62. Ember 1.6.0 in SFV Ember (beta 10, 2026-11-15)
+
+The library merged SF4 Ember Stable 1.6.0 (`release` 05e39bf4d) on `b10/lib-160`. Where code lives and how the
+game is reached stayed the library's; what it does is 1.6.0's.
+
+**What the merge changed in the library's seams**
+- Commands are 1.6.0's typed `RuntimeRequest` (`netplay/RuntimeCommands.hxx`); `ShellAction` is a variant of it
+  and the overlay's own steps, the game's included (`ShowHitboxes`, `ShowMenuArtwork`, `SetScreenMode`). A Ready
+  carries a `selection::Pick` (SfvPick's `WirePick`), not the native pick.
+- A private room's Tiny fighters, Skip winner scenes and Banned stages ride `room::Charter` beside 1.6.0's
+  privacy; their action kinds follow 1.6.0's two, so beta 10 meets no older beta and needs its own room host.
+- `game::Themes` (in-game themes, `SettingsFeatures::gameThemes`), replay import and archive watching on
+  `game::Replays`, `Capabilities::archive` (Replays' Archive tab and a profile's Sets), the point digits and
+  lettering as files each game names (`SelectionArt::PointDigitFiles`, `LetterFiles`), `ProductIdentity::replayFiles`,
+  `Branding::mainStartsUnset`, `Capabilities::gameplayDeviceChoice`, `LaunchSteps`' `StartWatch` and
+  `RunInsteadOfStart`, `ShellHost::Summon`.
+- 1.6.0's cards, levels, awards and lists ask `ember::Catalog()` for the roster (`ValidFighter`, `fighterName`,
+  `RosterOrder`); per-fighter levels are sized by `ember::MaxFighters`; the Whole Cast award needs the game's
+  whole roster. The protocol bounds fighters at 64 and each bridge checks its own game's roster where it stores one.
+
+**What SFV Ember has of 1.6.0**
+- On: points (FP/BP) and tiers, profiles, the card and Edit card, the Fighters tab over SFV's 45 fighters, awards,
+  Find a player, friends (named as SFV's game, `ProductIdentity::roomGame`) and private-room privacy, News and Notifications, interface size 0.70x to 1.50x, the
+  Discord account row, the pointer hidden in a room fight, prompts that follow the device, areas, relay names and
+  the ping wording (helper), Arcade and King of the Hill tables with a waiting line, the load timeout, the
+  opponent's answer at once, the updater under an administrator, the out-of-date join message, the firewall
+  wording, the richer crash reports, Import replay of one `.sfvreplay` (picker, drop, link), and the tournament desk.
+  Points show in Ember's font: SFV's PP/BP digits are not read.
+- Off: in-game themes (`NoThemes`, no `gameThemes` rows), the HUD editor, the camera panel, the phone remote, the
+  dummy reply slots, moves list, charge rows and Data panel (all SF4's Training panel), the public Archive tab and a
+  profile's Sets, View sets and recent sets (`Capabilities::archive`), video export (`replayVideo`), the stream host
+  (SF4's launcher option). A failed start is not told from a crash: the mod gives the launcher no start-up signal.
+- A main: none until the player chooses one on the Fighters tab (`mainStartsUnset`), so no phantom main reaches the
+  room; saved as SFV's index (0 to 44); member rows show the main, seats keep showing picks (`roomFacesArePicks`).
+- The gameplay device is the game's (pad 0): no capture, no save, no Change controller.
+
+**Left for later streams (the seams are named in the report of 2026-11-15)**: replay seek, step back and loop;
+Training's recording controls; the frame meter's options (`SfvHud` supplies the default `MeterOptions` in one place).
+
+*Tests:* `sfve_main_tests` (a main past fighter 43, the first pick over none); the library's
+`RuntimeCapabilitiesTest` under the x64 build; SFV's own suites.

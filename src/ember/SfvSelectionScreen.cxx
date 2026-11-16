@@ -685,10 +685,10 @@ void DrawLoadoutCards(const std::vector<MenuEntry>& entries, MenuNavigation& nav
 
 } // namespace
 
-bool StepTableSelection(const sf4e::ui::ShellAction::SelectionStep& step, bool canEditSelection, bool canChangeUltra)
+bool StepTableSelection(const sf4e::ui::SelectionStep& step, bool canEditSelection, bool canChangeUltra)
 {
-	using Field = sf4e::ui::ShellAction::SelectionStep::Field;
-	if (step.field == Field::None || (step.field == Field::Ultra ? !canChangeUltra : !canEditSelection)) return false;
+	using Field = sf4e::ui::SelectionStep::Field;
+	if (step.field == Field::Ultra ? !canChangeUltra : !canEditSelection) return false;
 	UpdatePick([&step](PlayerPick& pick) {
 		if (step.field == Field::Ultra) {
 			int index = picks::LoadoutIndex(picks::LoadoutOf(pick.pick));

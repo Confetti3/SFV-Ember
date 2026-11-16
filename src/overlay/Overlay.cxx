@@ -198,6 +198,12 @@ bool Attach(IDXGISwapChain* swap, const DXGI_SWAP_CHAIN_DESC& desc)
 	}
 	Log("overlay: drawing on swap chain %p (window %p), %ux%u", (void*)swap, (void*)window, desc.BufferDesc.Width,
 		desc.BufferDesc.Height);
+	std::function<void(void*, bool)> windowFound;
+	{
+		std::lock_guard lock(s_uiMutex);
+		windowFound = s_ui.windowFound;
+	}
+	if (windowFound) windowFound(window, !desc.Windowed);
 	return true;
 }
 

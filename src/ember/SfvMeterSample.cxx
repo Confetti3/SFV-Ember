@@ -54,11 +54,12 @@ std::optional<unsigned> MeterStatus(StateKind kind, int posture)
 	return std::nullopt;
 }
 
-int HeaderPhase(const mod::ScriptHeader& header, float frame, bool attackedBefore)
+sf4e::bac::HitPhase HeaderPhase(const mod::ScriptHeader& header, float frame, bool attackedBefore)
 {
-	if (!HasAttack(header)) return -1;
-	if (frame < static_cast<float>(header.first)) return attackedBefore ? 2 : 0;
-	return frame < static_cast<float>(header.last) ? 1 : 3;
+	using Phase = sf4e::bac::HitPhase;
+	if (!HasAttack(header)) return Phase::Untimed;
+	if (frame < static_cast<float>(header.first)) return attackedBefore ? Phase::Between : Phase::Before;
+	return frame < static_cast<float>(header.last) ? Phase::Out : Phase::Done;
 }
 
 FighterSample MeterSample(const mod::FighterFrame& fighter, MeterMove& move)
@@ -103,13 +104,14 @@ FighterSample MeterSample(const mod::FighterFrame& fighter, MeterMove& move)
 	// landing), the next input's move does not. No attack is action 0, the stand.
 	sample.commandMove = static_cast<std::uintptr_t>(fighter.startedAction);
 	if (fighter.startedAction != move.action) move = {fighter.startedAction, false};
-	int phase = HeaderPhase(header, fighter.scriptFrame, move.attacked);
+	using Phase = sf4e::bac::HitPhase;
+	Phase phase = HeaderPhase(header, fighter.scriptFrame, move.attacked);
 	// A script with no attack of its own: its projectile coming out is the
 	// move's one active frame; before any attack it is startup, after one
 	// recovery.
-	if (phase < 0) phase = fighter.projectileOut ? 1 : move.attacked ? 3 : 0;
-	sample.hitPhase = phase;
-	move.attacked = move.attacked || phase == 1;
+	if (phase == Phase::Untimed) phase = fighter.projectileOut ? Phase::Out : move.attacked ? Phase::Done : Phase::Before;
+	sample.hits = phase;
+	move.attacked = move.attacked || phase == Phase::Out;
 	return sample;
 }
 

@@ -128,11 +128,8 @@ constexpr ember::ProductIdentity SfvEmber = {
 		L"brand/sfv-ember-menu-background.png",
 		&Band,
 		&SfvBattleHud,
-		// The room shows a fighter only where its player shared a pick. A
-		// profile's main is fighter 0 (RYU) until the player sets one, and
-		// nothing in SFV Ember asks them to, so a main would put a face nobody
-		// picked on the Members rows and the unpicked seats (EMBER_LIBRARY.md
-		// section 20).
+		// A seat and a cabinet show a fighter only where its player shared a
+		// pick: an unpicked seat shows no main (EMBER_LIBRARY.md section 20).
 		true,
 		// The opponent's Rematch or decline shows on the post-match prompt as
 		// soon as the held frames carry it (section 20).
@@ -148,6 +145,10 @@ constexpr ember::ProductIdentity SfvEmber = {
 		// the prompt opens, so a press that skips SFV's scenes cannot decline
 		// the rematch in place (EMBER_LIBRARY.md section 58).
 		2.0,
+		// A player has no main until they choose one on Profile's Fighters
+		// tab, so no fighter they never picked stands for them in a room or
+		// on their card, and no phantom main reaches the room.
+		true,
 	},
 	L"SFVEmber",
 	// Settings and logs under %APPDATA%\SFVEmber, as SF4 Ember's are under
@@ -197,6 +198,8 @@ constexpr ember::ProductIdentity SfvEmber = {
 	L"sfv_ember-crash.log",
 	L"sfv_ember-crash-",
 	LocaleOverlays,
+	// Import replay takes SFV Ember's own replays (core/ReplayFile).
+	"*.sfvreplay",
 };
 
 } // namespace

@@ -261,6 +261,6 @@ private:
 // until the prompt is answered); the colour through the costume's colours
 // this player can ready, while the pick may change (canEditSelection). False,
 // and nothing stored, for a field that cannot change now.
-bool StepTableSelection(const sf4e::ui::ShellAction::SelectionStep& step, bool canEditSelection, bool canChangeUltra);
+bool StepTableSelection(const sf4e::ui::SelectionStep& step, bool canEditSelection, bool canChangeUltra);
 
 } // namespace sfve::adapter

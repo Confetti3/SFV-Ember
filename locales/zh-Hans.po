@@ -227,3 +227,6 @@ msgstr "训练、对战、街机等游戏原有的离线模式。"
 
 msgid "selection.personal_action"
 msgstr "服装指令"
+
+msgid "replays.import_skipped"
+msgstr "已跳过 {0} 个文件。SFV Ember 可从本地磁盘导入 .sfvreplay 文件，一次最多 64 个。"

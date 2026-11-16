@@ -53,6 +53,9 @@ struct OverlayUi {
 	// The window's thread, for each key message: true keeps it from the game
 	// (ImGui has already seen it), as SF4 Ember keeps a replay's keys.
 	std::function<bool(unsigned message, unsigned key)> takesKey;
+	// Render thread, once the overlay draws on the game's window: the window,
+	// and whether the game shows it in exclusive full screen. Optional.
+	std::function<void(void* window, bool exclusiveFullScreen)> windowFound;
 };
 
 // Hooks the swap chain's Present and ResizeBuffers as one set

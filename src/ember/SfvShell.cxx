@@ -30,7 +30,9 @@
 #include "common/PadKind.hxx"
 #include "common/ReplayTransport.hxx"
 #include "common/TrainingCallInput.hxx"
+#include "platform/DroppedFiles.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
+#include "sf4e/sf4e__RuntimeEvents.hxx"
 #include "sf4e/sf4e__ShellHost.hxx"
 #include "session/RoomQueries.hxx"
 #include "ui/ControllerNavigation.hxx"
@@ -167,7 +169,7 @@ public:
 	// prompt's Ultra: SfvSelectionScreen's StepTableSelection. Like SF4's,
 	// the Ultra also changes over the WIN until the prompt is answered
 	// (canChangeUltra).
-	bool StepSelection(const sf4e::ui::ShellAction::SelectionStep& step, const RuntimeSnapshot& snapshot) override
+	bool StepSelection(const sf4e::ui::SelectionStep& step, const RuntimeSnapshot& snapshot) override
 	{
 		return StepTableSelection(step, snapshot.canEditSelection, snapshot.canChangeUltra);
 	}
@@ -185,7 +187,7 @@ public:
 		if (PickRandom()) RandomFighterPlayed();
 	}
 
-	void AddPick(facade::RuntimeCommand& command) override { AddPickTo(command); }
+	void AddPick(sf4e::commands::Ready& ready) override { AddPickTo(ready); }
 
 	// The stage is this player's to choose out of a room, or as P1 in one.
 	// Training select's Dummy row opens the dummy's own screen (no stage).
@@ -248,12 +250,12 @@ struct Shell {
 	// The frame being drawn: the runtime's latest presentation, read once.
 	std::shared_ptr<const facade::PresentationSnapshot> frame;
 	sf4e::ui::MenuPads::Taken openRequest;
-	bool started = false, wasShown = false, matchResultShown = false;
+	bool started = false, wasShown = false;
+	// A room game is fought with none of Ember's windows over it: the pointer is hidden.
+	bool hideCursor = false;
 	// At the game's main menu last frame, and entered it with Ember not yet
 	// opened for that visit.
 	bool atMenu = false, menuOpenPending = false;
-	// The runtime's last Training call the shell opened for (trainingCallSequence).
-	std::uint64_t trainingCallShown = 0;
 	// When the shell last showed or hid (ImGui's clock), for its fade.
 	double changedAt = -1;
 	// A replay's playback (EMBER_LIBRARY.md section 26): the Replays
@@ -435,23 +437,16 @@ void BeginFrame()
 		presentation.Open("the replay ended");
 		shell.host.Shell().ShowReplays();
 	}
-	// The WIN of a room game this PC fought: the post-match prompt opens over
-	// it, once per game, as SF4's overlay opens it (RoomBattle holds the WIN).
-	const bool matchResult = snapshot.menuContext == input::MenuContext::MatchResult;
-	if (matchResult && !shell.matchResultShown) presentation.Open("the match result");
-	shell.matchResultShown = matchResult;
+	// The events Ember's menu opens for by itself, as SF4's overlay opens it
+	// (ShellHost::Summon): the WIN of a room game this PC fought (RoomBattle
+	// holds it), a Discord invite, room, replay and connect links, and a
+	// Training call, which the shell turns to the player's table.
+	shell.host.Summon(snapshot, presentation.Available(), [&](const char* why) { presentation.Open(why); });
 	// Home's Training row: the game's main menu goes to Ember's Training
 	// select, as SF4's Training item leads there (SfvTraining's Request).
 	if (presentation.Available() && TakeTrainingSelectRequest()) {
 		presentation.Open("Training select");
 		shell.host.Shell().ShowTraining();
-	}
-	// Called out of Training: back at the main menu the shell opens on the
-	// player's table, as SF4's overlay opens it (the shell itself goes to the
-	// table and counts the seconds to ready).
-	if (snapshot.trainingCallSequence != shell.trainingCallShown && snapshot.atMainMenu && presentation.Available()) {
-		presentation.Open("a Training call");
-		shell.trainingCallShown = snapshot.trainingCallSequence;
 	}
 	shell.openRequest = s_menuPads.Take();
 	if (shell.openRequest.kind == sf4e::ui::MenuPads::Kind::Controls) {
@@ -461,7 +456,11 @@ void BeginFrame()
 		case input::StartAnswer::None: break;
 		}
 	}
-	sf4e::ui::SetOverlayCursorOwnership(focused && presentation.Visible());
+	// Ember owns the pointer while its menu is shown, and during a room game
+	// fought with nothing of Ember's over it, to hide it there (the game's own
+	// cursor handling would put the arrow back on every mouse move).
+	shell.hideCursor = focused && !presentation.Visible() && sf4e::netplay::Fighting(snapshot.session.match) && !snapshot.practiceMatch;
+	sf4e::ui::SetOverlayCursorOwnership((focused && presentation.Visible()) || shell.hideCursor);
 	// The shell navigates by its own rows, not ImGui's spatial navigation.
 	ImGui::GetIO().ConfigFlags &= ~(ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard);
 	shell.navigation.Update(snapshot.menuController, input::ControllerMenuAvailable(snapshot.menuContext),
@@ -520,7 +519,11 @@ overlay::OverlayUi::Shown Draw()
 	auto& presentation = shell.presentation;
 	if (ImGui::IsKeyPressed(ImGuiKey_F10, false)) presentation.Toggle("F10");
 	sf4e::ui::SetMenuInput({shell.navigation.Buttons(), ImGui::GetTime()});
-	sf4e::ui::SetMenuGlyphs(snapshot.menuController.deviceType, snapshot.menuController.menu, snapshot.promptBrand);
+	// The runtime fills the sample only while the pad can drive the menu; a
+	// frame it did not fill leaves the prompts as they were.
+	if (snapshot.menuController.deviceType >= 0)
+		sf4e::ui::SetMenuGlyphs(snapshot.menuController.deviceType, snapshot.menuController.menu, snapshot.promptBrand);
+	if (shell.hideCursor) ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 	if (presentation.Reopened()) shell.host.Shell().ShowPlay();
 	// Under the shell: the match HUD, or only its notices while the shell is open.
 	DrawSfvMatchHud(*shell.frame, presentation.Visible());
@@ -544,7 +547,7 @@ overlay::OverlayUi::Shown Draw()
 		scope.Apply(fade);
 		if (close) presentation.Close(close);
 	} else {
-		shell.host.Background(snapshot);
+		shell.host.Background(snapshot, shell.game);
 		DrawOpenHint(snapshot, presentation);
 		// The shell's ground going, over the game it uncovers.
 		if (fade < 1.f) {
@@ -612,10 +615,25 @@ bool TakesMessage(unsigned message, unsigned long long w, long long l)
 {
 	if (message == WM_ACTIVATEAPP && !w) s_goNowKey.Reset();
 	if (!EmberRuntimeRunning()) return false;
+	// Replay files dropped on the game's window go to Import replay, which
+	// takes them in once Ember's menus are in front (WindowFound).
+	if (message == WM_DROPFILES) {
+		facade::HandReplayFiles(sf4e::platform::ReadDroppedFiles(reinterpret_cast<void*>(w)));
+		return true;
+	}
 	const bool free = overlay::GameWindowFocused() && !s_menuPads.Holds() && !TrainingPaused();
 	const bool taken = s_goNowKey.Take(message, static_cast<WPARAM>(w), static_cast<LPARAM>(l), input::TrainingGoNow(), free);
 	if (taken && message == WM_KEYDOWN) mod::Log("shell: go now on the Training call (Enter)");
 	return taken;
+}
+
+// The game's window: Import replay's picker opens over it (and not over an
+// exclusive full screen), and it takes replay files dropped on it.
+void WindowFound(void* window, bool exclusiveFullScreen)
+{
+	facade::NoteGameWindow(window);
+	facade::NoteExclusiveFullScreen(exclusiveFullScreen);
+	sf4e::platform::AcceptDroppedFiles(window, true);
 }
 
 std::string StatusJson()
@@ -669,6 +687,7 @@ void InstallEmberShell()
 			((key >= VK_F1 && key <= VK_F4) || key == VK_ESCAPE || sf4e::replaytransport::SeekKey(key));
 	};
 	ui.takesMessage = TakesMessage;
+	ui.windowFound = WindowFound;
 	overlay::SetOverlayUi(std::move(ui));
 }
 

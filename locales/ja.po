@@ -227,3 +227,6 @@ msgstr "トレーニング、対戦、アーケードなど、ゲーム本体の
 
 msgid "selection.personal_action"
 msgstr "コスチュームコマンド"
+
+msgid "replays.import_skipped"
+msgstr "{0}個のファイルをスキップしました。SFV Emberはローカルドライブの .sfvreplay ファイルを一度に最大64個まで読み込めます。"

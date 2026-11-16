@@ -396,7 +396,37 @@ public:
 	void MarkSent(const std::filesystem::path&) override {}
 	void MarkSetClosed(const std::filesystem::path&) override {}
 	std::filesystem::path SetPackPath(const std::string&) override { return {}; }
-	std::size_t ImportSetPack(const std::filesystem::path&) override { return 0; }
+	// Import replay (the picker, a file dropped on the game or a replay
+	// link): one .sfvreplay whose header reads, copied into the replay folder
+	// under its own name; one already there with the same bytes counts as
+	// held. SFV Ember has no set packs.
+	std::size_t ImportReplayFile(const std::filesystem::path& file) override
+	{
+		if (file.extension() != replay::kExtension) return 0;
+		const auto bytes = ReadFile(file, replay::kMostFileBytes);
+		replay::Header header;
+		std::string why;
+		if (!bytes || !replay::DecodeHeader(bytes->data(), bytes->size(), &header, &why)) {
+			Log("replays: %ls was not imported: %s", file.filename().c_str(), bytes ? why.c_str() : "unreadable");
+			return 0;
+		}
+		const fs::path folder = ReplayFolder();
+		std::error_code error;
+		if (folder.empty() || (!fs::create_directories(folder, error) && error)) return 0;
+		const fs::path target = folder / file.filename();
+		if (const auto held = ReadFile(target, replay::kMostFileBytes)) {
+			if (*held == *bytes) return 1;
+			Log("replays: %ls was not imported: another replay has its name", file.filename().c_str());
+			return 0;
+		}
+		if (!sf4e::durable::PublishReplace(target, sf4e::durable::PartialPath(target), bytes->data(), bytes->size())) return 0;
+		lister_.Want();
+		return 1;
+	}
+	// No public archive for SFV's replays (Capabilities::archive).
+	std::filesystem::path ArchiveWatchPath(const std::string&) override { return {}; }
+	void PruneArchiveWatching(const std::filesystem::path&) override {}
+	void ClearArchiveWatching() override {}
 
 	// For the pipe: the latest listing, asking for the next.
 	std::shared_ptr<const std::vector<ArchivedReplay>> Listing()

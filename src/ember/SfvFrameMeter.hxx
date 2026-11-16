@@ -10,6 +10,8 @@
 // only reads the game: no field is written, and no game function is called
 // after the fighters are found (mod::FighterReader).
 
+#include "training/FrameMeter.hxx"
+
 namespace sfve::adapter {
 
 // Starts following battle ticks (mod::WatchBattleFrames). Once, from the
@@ -19,7 +21,8 @@ void InstallSfvFrameMeter();
 // Render thread, inside ImGui's frame: the meter as the followed Training
 // battle's last tick left it, above SFV's gauges; nothing before one. The
 // caller hides it where SfvTraining says the battle is not available, under
-// the shell and under the game's pause menu (SfvHud).
-void DrawSfvFrameMeter();
+// the shell and under the game's pause menu (SfvHud). `options` are the
+// meter's (style, frames shown, numbers, size), which the caller supplies.
+void DrawSfvFrameMeter(const sf4e::training::MeterOptions& options);
 
 } // namespace sfve::adapter

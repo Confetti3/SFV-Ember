@@ -33,9 +33,9 @@ namespace sfve::adapter {
 std::optional<unsigned> MeterStatus(mod::sfv::fighter::StateKind kind, int posture);
 
 // An attack's phase from the script's header alone (training::FighterSample's
-// hitPhase): 0 before its attack, 1 while its attack is out, 2 before a later
-// attack of the same move, 3 after; -1 when the header names no attack.
-int HeaderPhase(const mod::ScriptHeader& header, float frame, bool attackedBefore);
+// hits): Before its attack, Out while it is out, Between before a later attack
+// of the same move, Done after; Untimed when the header names no attack.
+sf4e::bac::HitPhase HeaderPhase(const mod::ScriptHeader& header, float frame, bool attackedBefore);
 
 // The move a fighter's attack belongs to (the action its last state change
 // started) and whether it has had an attack out yet.

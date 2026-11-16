@@ -15,6 +15,7 @@
 #include <vector>
 
 using sfve::adapter::HeaderPhase;
+using P = sf4e::bac::HitPhase;
 using sfve::adapter::MeterFeed;
 using sfve::adapter::MeterMove;
 using sfve::adapter::MeterSample;
@@ -291,17 +292,17 @@ TEST_CASE("the game's frames until actionable are the meter's, and its untimed i
 TEST_CASE("a script header's attack frames are its startup, active and recovery")
 {
 	const ScriptHeader standingLp{2, 4, 10, 20};
-	CHECK(HeaderPhase(standingLp, 0, false) == 0);
-	CHECK(HeaderPhase(standingLp, 1.5f, false) == 0);
-	CHECK(HeaderPhase(standingLp, 2, false) == 1);
-	CHECK(HeaderPhase(standingLp, 3, false) == 1);
-	CHECK(HeaderPhase(standingLp, 4, false) == 3);
+	CHECK(HeaderPhase(standingLp, 0, false) == P::Before);
+	CHECK(HeaderPhase(standingLp, 1.5f, false) == P::Before);
+	CHECK(HeaderPhase(standingLp, 2, false) == P::Out);
+	CHECK(HeaderPhase(standingLp, 3, false) == P::Out);
+	CHECK(HeaderPhase(standingLp, 4, false) == P::Done);
 	// Before a later script's attack the move has already attacked once.
-	CHECK(HeaderPhase(standingLp, 0, true) == 2);
+	CHECK(HeaderPhase(standingLp, 0, true) == P::Between);
 	// No attack: -1, as -1 or a last frame past the end says.
-	CHECK(HeaderPhase({-1, -1, 44, 100}, 10, false) == -1);
-	CHECK(HeaderPhase({-1, 40, -1, 696}, 10, false) == -1);
-	CHECK(HeaderPhase({2, 30, 10, 20}, 3, false) == -1);
+	CHECK(HeaderPhase({-1, -1, 44, 100}, 10, false) == P::Untimed);
+	CHECK(HeaderPhase({-1, 40, -1, 696}, 10, false) == P::Untimed);
+	CHECK(HeaderPhase({2, 30, 10, 20}, 3, false) == P::Untimed);
 }
 
 TEST_CASE("a script with no attack of its own is startup before the move's attack and recovery after")
@@ -313,22 +314,22 @@ TEST_CASE("a script with no attack of its own is startup before the move's attac
 	fireball.script = 900;
 	fireball.startedAction = 900;
 	fireball.header = {-1, -1, 44, 100};
-	CHECK(MeterSample(fireball, move).hitPhase == 0);
+	CHECK(MeterSample(fireball, move).hits == P::Before);
 	fireball.projectileOut = true;
-	CHECK(MeterSample(fireball, move).hitPhase == 1);
+	CHECK(MeterSample(fireball, move).hits == P::Out);
 	fireball.projectileOut = false;
-	CHECK(MeterSample(fireball, move).hitPhase == 3);
+	CHECK(MeterSample(fireball, move).hits == P::Done);
 	// The move's follow-up script (a Shoryuken's landing) keeps its move.
 	fireball.script = 935;
-	CHECK(MeterSample(fireball, move).hitPhase == 3);
+	CHECK(MeterSample(fireball, move).hits == P::Done);
 	CHECK(MeterSample(fireball, move).commandMove == 900);
 	// Another input's move starts over.
 	fireball.startedAction = 619;
-	CHECK(MeterSample(fireball, move).hitPhase == 0);
+	CHECK(MeterSample(fireball, move).hits == P::Before);
 	// Out of the attack the move is forgotten.
 	fireball.stateKind = StateKind::Stand;
 	const auto standing = MeterSample(fireball, move);
-	CHECK(standing.hitPhase == -1);
+	CHECK(standing.hits == P::Untimed);
 	CHECK(standing.commandMove == 0);
 	CHECK(move.action == -1);
 }
@@ -395,7 +396,7 @@ TEST_CASE("a fighter that did not read is unknown, and its move is forgotten")
 	fireball.startedAction = 900;
 	fireball.header = {-1, -1, 44, 100};
 	fireball.projectileOut = true;
-	CHECK(MeterSample(fireball, move).hitPhase == 1);
+	CHECK(MeterSample(fireball, move).hits == P::Out);
 	CHECK(move.attacked);
 	const auto unread = MeterSample(FighterFrame{}, move);
 	CHECK_FALSE(unread.valid);
