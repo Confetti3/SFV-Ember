@@ -127,12 +127,10 @@ Both match `costs: `, so `runroom.ps1` and `synctest.ps1` print them.
 
 | `RollbackSession::Config` | mod option (development builds) | default |
 |---|---|---|
-| `skipUnloadableSaves` | `-sfve_skip_saves=0` | on |
-| `hashOnConfirm` | `-sfve_hash_on_confirm=0` | on |
 | `verifyLoadsEvery` | `-sfve_verify_loads=N` | 16 (the mod), 0 (the session) |
 
-A player build reads none of them (BuildKindTests) and plays with the defaults. `runroom.ps1
--plainSaves` passes both `=0` for the before run; `-verifyLoads N` sets N.
+A player build does not read it (BuildKindTests) and plays with the defaults. `runroom.ps1
+-verifyLoads N` sets N.
 
 ## What it does not touch
 
@@ -207,7 +205,6 @@ GGPO), then:
    and the `costs:` and `session costs:` lines compared (save count and time per update, the
    skipped and "once final" counts):
    ```
-   powershell -File tools\runroom.ps1 -p1 RYU:0:1 -p2 KEN:0:2 -lag 30 -games 2 -plainSaves
    powershell -File tools\runroom.ps1 -p1 RYU:0:1 -p2 KEN:0:2 -lag 30 -games 2
    powershell -File tools\runroom.ps1 -p1 RYU:0:1 -p2 KEN:0:2 -lag 30 -delay 3 -games 2
    powershell -File tools\runroom.ps1 -p1 RYU:0:1 -p2 KEN:0:2 -lag 0 -games 2
