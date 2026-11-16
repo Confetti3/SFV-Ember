@@ -22,6 +22,10 @@ problem reports on, which would send the test's report without asking.
 Deletes the dumps it caused (Ember's and the game's own Dump*.dmp under
 %LOCALAPPDATA%\\StreetFighterV\\Saved\\Logs) unless --keep.
 
+`--where ggpo` fails a GGPO assertion on the game thread ("crash ggpo"): the
+record names kind ggpo_assertion and code 0xE0470001, the dump is written, and
+the game ends with the code the mod logs ("ending the game with code").
+
 Prints what it saw, and PASS or FAIL.
 """
 
@@ -87,7 +91,7 @@ def wait_exit(pid: int) -> int | None:
 
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="runcrash")
-    p.add_argument("--where", choices=("game", "thread"), default="game")
+    p.add_argument("--where", choices=("game", "thread", "ggpo"), default="game")
     p.add_argument("--keep", action="store_true")
     a = p.parse_args(argv)
     lib.begin_run()
@@ -134,7 +138,11 @@ def main(argv: list[str]) -> int:
     record_path = lib.LOG_DIR / CRASH_LOG
     record = record_path.read_text(errors="replace") if record_path.exists() else ""
     print(f"record: {record.strip() or '(none)'}")
-    if not record.startswith("kind=unhandled_exception code=0xC0000005"):
+    if a.where == "ggpo":
+        # A GGPO assertion (commit 872018f): its own kind and code, made up where it failed.
+        if not record.startswith("kind=ggpo_assertion code=0xE0470001"):
+            failures.append("the record does not name the GGPO assertion's code 0xE0470001")
+    elif not record.startswith("kind=unhandled_exception code=0xC0000005"):
         failures.append("the record does not name the access violation")
     elif "write of 0x0000000000000010" not in record:
         failures.append("the record does not name the faulting write")

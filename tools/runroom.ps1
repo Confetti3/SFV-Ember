@@ -1,4 +1,4 @@
-param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog, [string]$banStages = '', [switch]$rngAudit, [string]$startPerturb = '', [switch]$plainSaves, [int]$verifyLoads = -1, [switch]$pressStart, [string]$fma3 = '', [string]$vital = '', [string]$expectFinish = '', [int]$fullMin = 1000, [int]$tasks = -1, [switch]$startEx, [string]$perturb = '')
+param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', [string]$p2 = 'CNL:0:2', [string]$stage = 'S25', [int]$rounds = 1, [int]$seconds = 30, [int]$mashFrom = 300, [int]$seed0 = 101, [int]$seed1 = 202, [int]$hashEvery = 0, [int]$gameSeconds = 240, [string]$shots = '', [int]$presses = 0, [int]$rematches = -1, [int]$firstTo = 0, [switch]$padAnswers, [switch]$quickAnswer, [switch]$leaveAnswer, [string]$unowned0 = '', [string]$unowned1 = '', [switch]$gateOff0, [switch]$gateOff1, [string]$uninstalled0 = '', [string]$uninstalled1 = '', [string]$uninstalled2 = '', [int]$watchers = 0, [switch]$watchLate, [int]$watcherLeaves = 0, [string]$res0 = '', [string]$res1 = '', [switch]$moves, [switch]$practice, [int]$code0 = -1, [int]$code1 = -1, [switch]$keep, [switch]$tiny, [string]$size0 = '', [string]$size1 = '', [int]$skipAfter = -1, [int]$skipCopy = 1, [switch]$skipPad, [int]$skipMax = 700, [string]$moveset = '', [int]$idle = -1, [switch]$socketLog, [string]$banStages = '', [switch]$rngAudit, [string]$startPerturb = '', [switch]$plainSaves, [int]$verifyLoads = -1, [switch]$pressStart, [string]$fma3 = '', [string]$vital = '', [string]$expectFinish = '', [int]$fullMin = 1000, [int]$tasks = -1, [switch]$startEx, [string]$perturb = '', [string]$replayDir = '')
 # Two copies play Ember's private room (EMBER_LIBRARY.md section 12): copy 0
 # hosts it, copy 1 joins by its invitation, both pick and Ready, the match
 # launches from the main menu and both play it with seeded random input, and
@@ -146,6 +146,7 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # so no run lets a copy ask for a skip by itself, and a run with no scripted
 # press (-skipAfter, -skipPad) must show every scene in full: no skip applied
 # on either copy, checked as before (CheckScenes, CheckRounds).
+# -replayDir DIR: each copy saves its replay into DIR\copy<i> (SFVE_REPLAY_DIR), for a later playback.
 # -perturb "F,region,offset,add": copy 1 adds `add` to the dword at `offset` of the named region at battle frame F (the pipe's perturb), one
 # divergence mid-fight for the desync report path (docs/design/beta9); the run then ends on the desync.
 $ErrorActionPreference = 'Stop'
@@ -469,8 +470,10 @@ try {
     $resOf = @($res0, $res1, '')
     $priorRes = $env:SFVE_RES
     if ($resOf[$i]) { $env:SFVE_RES = $resOf[$i] }
+    if ($replayDir) { $env:SFVE_REPLAY_DIR = Join-Path $replayDir "copy$i" }
     $launched = python -I tools\sfve.py launch $i --mode netplay -- '-sfve_pads=01' '-sfve_background=1' '-sfve_room=1' "-sfve_mash=$($seeds[$i])" "-sfve_mash_from=$mashFrom" "-sfve_lag=$lag" "-sfve_hash_every=$hashEvery" "-sfve_moves=$([int][bool]$moves)" "-sfve_practice=$([int][bool]$practice)" $marks 2>&1
     $env:SFVE_RES = $priorRes
+    if ($replayDir) { $env:SFVE_REPLAY_DIR = $null }
     if ($LASTEXITCODE) { throw "copy $i did not launch: $launched" }
   }
   WaitFor 'the runtime on every copy' 120 { foreach ($i in $copies) { if ((Status $i).ember.host -ne 'running') { return $false } }; $true }
