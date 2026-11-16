@@ -150,15 +150,40 @@ SFV (`b10/training`):
   `setting` for one of Training's own settings, `leave`) and the statuses
   `traininglab` and `traininghost`.
 
-## Unproven (no game run yet)
+## In game (2026-11-16, laptop, the integration build d007ae5 / 81579ea62)
 
-- That kind 0 with pad 1 makes the dummy act on the slot the lab writes
-  (statically: the input unit's slots are by side and recorded for kind 0;
-  the fighters read the slot of their side).
-- That the reply's button meets the dummy's first free frame in SFV
-  (statically: one tick of lag, the game's own free-frame count).
-- Training setting 1 as the dummy's guard (five choices, read by the menu's
-  label function rva 0x4ABD20); the test sets it and the log shows what the
-  dummy did.
-- Wake-up variants (quick and back rise) and V-Reversals as replies.
-- The panel and HUD drawn over SFV's picture; the chord on SFV's pad layer.
+One copy, RYU against RYU, GUL, ZGF, Z25 and CNL, driven through the pipe
+(`laptop-setup/sfv-b10tr-run.py`, job sfv-b10tr-3; the two starts before it
+stopped at the test tool). The log lines are the game's.
+
+- The dummy plays from its slot: on standby the dummy's control read kind
+  0, pad 1, P1's pad played P2 (the meter logged P2's script 600, P1 none),
+  and Stop gave the control back to kind 3, pad -1, as it was at the battle's
+  start ("its control kind 3, pad -1, action 0").
+- View held then Start opened the controls and not SFV's pause; on standby it
+  started the recording. The controls and every page drew over the game; each
+  meter option changed the HUD (shots: style, frames, size, position,
+  history, after pause, scroll, bar height, colours, parts, input displays,
+  hitboxes, F5).
+- A Hadoken and a throw recorded on standby (P2's scripts 900 and 715) played
+  back with P2 on the right, and again with P2 on the left (P1 at x 3.07,
+  P2 at 1.55): scripts 900 and 715 again, so the slot was turned for its
+  facing. Looped (the cursor went round twice in 16 s); saved (12,809 bytes),
+  cleared and loaded back (265 frames).
+- Training setting 1 = 1 makes the dummy block (setting 1 is the guard).
+  Setting 2 changes the dummy's rise: 0 plays rise script 240, 1 and 3 script
+  246, 2 none the trace saw.
+- RYU's reply after block, after hit and on wake-up (normal rise): the reply's
+  move began on the dummy's first free frame each time ("dummy free 2, in its
+  move 2; move 0 after free, 0 after the button was acted on").
+- Off elsewhere: in an offline Versus battle the lab is not available and
+  writes nothing; in a private room's game (two copies, 20 s) neither copy's
+  lab is available and neither logs a lab line.
+
+## Unproven
+
+- The replies over GUL, ZGF, Z25 and CNL: the run's tool pressed Record on
+  the slot RYU's battle had kept, which asks before overwriting; the tool now
+  clears it first (`traininglab.py`), not run again.
+- A wake-up reply after a quick or back rise (setting 2's 1 and 3), and
+  V-Reversals.
