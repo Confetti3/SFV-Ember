@@ -405,6 +405,15 @@ void NetplayMode::EndDrain()
 	drain_.reset();
 }
 
+void NetplayMode::BeginDrain()
+{
+	if (!session_) return;
+	EndDrain();
+	drain_ = std::move(session_);
+	Enter(netplay::Event::Drained);
+	adapter::SetWatcherDrain(drain_.get());
+}
+
 void NetplayMode::PollBattle()
 {
 	std::lock_guard lock(mutex_);
@@ -422,11 +431,7 @@ void NetplayMode::PollBattle()
 	if (!room_.Active() || !MainMenuInFront()) return;
 	ConfirmRecording();
 	const bool replayed = room_.Replaying();
-	if (room_.Close(session_.get())) {
-		drain_ = std::move(session_);
-		Enter(netplay::Event::Drained);
-		adapter::SetWatcherDrain(drain_.get());
-	}
+	if (room_.Close(session_.get())) BeginDrain();
 	if (replayed) {
 		adapter::EndPlayback(replayEnd_.empty() ? "the battle went back to the main menu" : replayEnd_);
 		replay_.reset();

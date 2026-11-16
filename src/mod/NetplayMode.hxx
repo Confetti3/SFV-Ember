@@ -152,6 +152,10 @@ private:
 	// P1's session kept for its watchers after the battle: closed if it is
 	// not already, and freed.
 	void EndDrain();
+	// The battle's session becomes the drain kept for the watchers (the one
+	// place a drain is assigned): a drain still kept from before closes first,
+	// and with no session there is nothing to keep.
+	void BeginDrain();
 	// The first frame of each round's fight, on a fighter's copy and a watcher's
 	// alike: logs the battle frame's state word (SceneNotes) and gives the
 	// fighters the "vital" command's shares (NetplayDevCommands).
