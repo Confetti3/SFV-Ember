@@ -27,7 +27,7 @@ namespace sfve::mod {
 // unit's place among the battle's CharaUnits (partners after the two
 // fighters, sfv::unit::kMostCharaUnits) and the row (0: the unit has no such
 // part).
-constexpr size_t kMaxPartRuns = 4;
+constexpr size_t kMaxPartRuns = 12;
 constexpr size_t kMaxFighterUnits = 8; // sfv::unit::kMostCharaUnits (checked in SfvLayoutRules.cxx)
 struct OutsideState {
 	uintptr_t ruleUnit = 0;

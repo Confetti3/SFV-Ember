@@ -249,6 +249,24 @@ constexpr uint32_t kJudgeState = 248;
 // against Z40, the part's +0x448 0 played and 4 replayed, and that object's
 // 8-byte run 6 and 0x2B, one replay).
 //
+// CharaStatusPart's four effect switches (IDA, build 13173604): 72-byte
+// records from +0x340 (reset rva 0x351760, which numbers their kinds 1 to 4;
+// a move script installs one whole, rva 0x35EBF0, and sets its override, rva
+// 0x35EB40, and level, rva 0x35EB80; the record lookup rva 0x34F750). The
+// status tick (rva 0x362520, every tick) reads each record's kind (+0x28),
+// state (+0x2C), level (+0x38), the effect type it shows (+0x3C) and the
+// override (+0x40); it picks the type to show (the kind's, or the override's
+// when that is not -1), turns off the type it showed before when the pick
+// changed, writes the pick to +0x3C and turns it on in the fighter's effect
+// list (rva 0x364800, CharaMaterialPart's restored run). The game's
+// registration takes only +0x2C..+0x33 and +0x44 of each, so after a load
+// the kind, level, shown type and override kept the abandoned timeline's
+// values, and a replayed tick took its pick as already shown. +0x28 and
+// +0x34..+0x43 of each record are saved, restored and hashed (written only
+// by those fight-side functions, from script data: no pointer among them).
+// +0x00 is the effect's handle in the visual part's effect system (rva
+// 0x30E630 sets it): presentation that owns an effect, never restored.
+//
 // CharaVisualPart's animation hand-off block (+268..+360, IDA, build 13173604):
 // the battle task rva 0x33FB00 (through 0x3A40D0 and 0x3A4210) fills the
 // previous motion record (+268), the current one (20-byte records copied by
@@ -272,6 +290,14 @@ constexpr PartRun kPartRunsOutsideSnapshot[] = {
 	{fighter::kStatusPartType, 0x338, 8, "CharaStatusPart.holds"},
 	{0x3A682D0, 0x61C, 4, "CharaUniquePart@0x3A682D0.delay"},
 	{visual::kPartType, 0x10C, 92, "CharaVisualPart+0x10C.motionhandoff", false},
+	{fighter::kStatusPartType, 0x340 + 0 * 0x48 + 0x28, 4, "CharaStatusPart.effectswitch0.kind"},
+	{fighter::kStatusPartType, 0x340 + 0 * 0x48 + 0x34, 16, "CharaStatusPart.effectswitch0.shown"},
+	{fighter::kStatusPartType, 0x340 + 1 * 0x48 + 0x28, 4, "CharaStatusPart.effectswitch1.kind"},
+	{fighter::kStatusPartType, 0x340 + 1 * 0x48 + 0x34, 16, "CharaStatusPart.effectswitch1.shown"},
+	{fighter::kStatusPartType, 0x340 + 2 * 0x48 + 0x28, 4, "CharaStatusPart.effectswitch2.kind"},
+	{fighter::kStatusPartType, 0x340 + 2 * 0x48 + 0x34, 16, "CharaStatusPart.effectswitch2.shown"},
+	{fighter::kStatusPartType, 0x340 + 3 * 0x48 + 0x28, 4, "CharaStatusPart.effectswitch3.kind"},
+	{fighter::kStatusPartType, 0x340 + 3 * 0x48 + 0x34, 16, "CharaStatusPart.effectswitch3.shown"},
 };
 
 // A projectile's ProjectileVisualPart: its UE particle actor and the state

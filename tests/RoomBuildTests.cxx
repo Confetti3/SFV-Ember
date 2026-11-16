@@ -7,6 +7,7 @@
 #include "ember/SfvPickSpace.hxx"
 #include "ember/SfvRoomBuild.hxx"
 #include "mod/SfvLayoutRules.hxx"
+#include "mod/SfvOffsets.hxx"
 
 #include <stdint.h>
 
@@ -106,4 +107,34 @@ TEST_CASE("the room host's pick space was exported by a build with these rollbac
 	REQUIRE(sfve::picks::FromJson(text, space, exported, error));
 	CHECK(LayoutIdOf(exported) == sfve::mod::LayoutRulesId());
 	CHECK(exported == RoomBuildId(sfve::picks::BuildId(space), sfve::mod::LayoutRulesId()));
+}
+
+TEST_CASE("the status part's four effect switches keep their kind, level, shown type and override, hashed")
+{
+	// sfv::kPartRunsOutsideSnapshot's rows 3 to 10: records of 0x48 bytes
+	// from +0x340, +0x28 (4 bytes) and +0x34 (16 bytes) of each.
+	sfve::mod::OutsideState where{0x1000, 0x2000, 0x3000, 0x4000, 0x5000};
+	for (size_t row = 3; row < 11; row++) where.fighterParts[0][row] = 0x40000;
+	sfve::StateLayout layout;
+	sfve::mod::AddStateOutsideTheGameSnapshot(layout, where);
+	for (uint32_t record = 0; record < 4; record++) {
+		const std::string name = "CharaUnit[0].CharaStatusPart.effectswitch" + std::to_string(record);
+		const sfve::StateRegion* kind = layout.Find(name + ".kind");
+		const sfve::StateRegion* shown = layout.Find(name + ".shown");
+		REQUIRE(kind != nullptr);
+		REQUIRE(shown != nullptr);
+		CHECK(reinterpret_cast<uintptr_t>(kind->ptr) == 0x40000 + 0x340 + record * 0x48 + 0x28);
+		CHECK(kind->size == 4);
+		CHECK(reinterpret_cast<uintptr_t>(shown->ptr) == 0x40000 + 0x340 + record * 0x48 + 0x34);
+		CHECK(shown->size == 16);
+		CHECK(kind->checked);
+		CHECK(shown->checked);
+	}
+	// None of them reaches the game's own runs of a record (+0x2C..+0x33 and +0x44).
+	for (const sfve::mod::sfv::PartRun& run : sfve::mod::sfv::kPartRunsOutsideSnapshot) {
+		if (run.partType != sfve::mod::sfv::fighter::kStatusPartType || run.offset < 0x340) continue;
+		const uint32_t inRecord = (run.offset - 0x340) % 0x48;
+		CHECK((inRecord + run.size <= 0x2C || inRecord >= 0x34));
+		CHECK(inRecord + run.size <= 0x44);
+	}
 }
