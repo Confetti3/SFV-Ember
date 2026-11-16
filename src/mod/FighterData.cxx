@@ -3,6 +3,7 @@
 #include "mod/BalanceVersionRules.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/GameMemory.hxx"
+#include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
 
 namespace sfve::mod {
@@ -44,9 +45,11 @@ match_data::Fighter ReadFighterData(const uint8_t* actionPart, int side)
 	// The key holds the version as the battle asked for it; the game's
 	// lookup resolves it against this copy's list (rva 0x5518C0), so the
 	// version loaded is that resolution (a -1 key loads the newest here).
-	if (const auto versions = FighterBalanceVersions(code)) {
-		fighter.version = ResolveVersion(*versions, asked).value_or(match_data::kUnknownVersion);
-	}
+	const auto versions = FighterBalanceVersions(code);
+	if (versions) fighter.version = ResolveVersion(*versions, asked).value_or(match_data::kUnknownVersion);
+	// The whole list, so a copy whose list ends early shows it in its own log.
+	Log("fighter data: %s (P%d) asked balance version %d of this copy's %s", fighter.code.c_str(), side + 1, asked,
+		VersionListText(versions).c_str());
 	// The move data the battle bound: the same lookup, version and set the
 	// action part's resources came from (rva 0x2F67B0).
 	if (const auto hash = FighterMoveDataHash(code, asked, alternate != 0)) {

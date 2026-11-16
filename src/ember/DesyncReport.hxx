@@ -91,6 +91,17 @@ struct RollbackFacts {
 	std::uint64_t count = 0;
 	int longest = 0;
 };
+// A region whose hash differs from the other copy's at the checkpoint, as
+// the two copies' region lists pair (core/RegionExchange.hxx): the other
+// copy's hash, or `paired` false when it paired with none of the other's.
+struct DifferingRegion {
+	std::string name;
+	std::uint64_t size = 0;
+	std::uint64_t hash = 0;
+	bool paired = true;
+	std::uint64_t otherHash = 0;
+};
+
 // What a fighter plays at the checkpoint, read from the kept state
 // (ScriptsAt): the script player's script number and frame.
 struct ScriptFacts {
@@ -194,11 +205,27 @@ struct Facts {
 	// The paks this copy's engine mounts, judged against Steam's own
 	// (mod/PakRules.hxx's Summary); empty when not read.
 	std::string paks;
+	// This PC's Windows (WindowsVersion); empty when not read.
+	std::string os;
+	// The regions that differ from the other copy's, once its list arrived
+	// (`regionsCompared`); otherwise every region is listed (`regions`).
+	// `regionExchange` says how the lists' exchange went, in words.
+	bool regionsCompared = false;
+	std::vector<DifferingRegion> differing;
+	std::string regionExchange;
 	// Not empty: no desync but a match that never started because the
 	// copies' game data differed (StartAgreement's DataDiffers), in words
 	// (match_data::Describe). Its own Bugsink group; `frame` is 0.
 	std::string gameDataDiffers;
 };
+
+// "Windows 10.0 build 19045" (RtlGetVersion: the PC's own, whatever the
+// process's compatibility mode says); "Windows (version unavailable)".
+std::string WindowsVersion();
+
+// The differing regions in one line: "CharaUnit[0].CharaActionPart+0xD8
+// (15808 bytes)"; "not compared" when the other copy's list did not arrive.
+std::string DifferingText(const Facts& facts);
 
 // The frames a report's rollback count and its inputs cover.
 constexpr int kRecentFrames = 120;
@@ -326,7 +353,10 @@ std::string GameDataTitle(bool watcher, std::string_view buildId, std::string_vi
 // The whole comment: the title, then the match, this copy, both picks, the
 // checkpoint and the session, at most kCommentCharacters characters.
 std::string Comment(const Facts& facts, std::string_view buildId);
-// One line per region, "desync: checkpoint F region R, N bytes, hash H".
+// One line per region that differs from the other copy's, "desync:
+// checkpoint F region R, N bytes, hash H here, H2 at the other copy", once
+// the lists were compared; else one line per region, "desync: checkpoint F
+// region R, N bytes, hash H", after a line that says why.
 std::string RegionLines(const Facts& facts);
 // What a person reading one report needs beside the comment and the region
 // lines: the pair key, both fighters' picks and scripts, the rollbacks of the

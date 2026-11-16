@@ -6,6 +6,7 @@
 
 #include <doctest/doctest.h>
 
+#include "ember/DesyncRegions.hxx"
 #include "ember/DesyncReport.hxx"
 #include "ember/DesyncTrace.hxx"
 #include "mod/SfvRegionNames.hxx"
@@ -190,9 +191,13 @@ TEST_CASE("a desync's comment stays within the intake's 2000 characters")
 	CHECK(static_cast<unsigned char>(comment[comment.size() - 2]) == 0xC3);
 }
 
-TEST_CASE("a desync's region lines are LogCheckpointRegions' lines")
+TEST_CASE("a desync's region lines, when the lists were not compared, are every region after a line that says so")
 {
-	CHECK(RegionLines(SampleFacts()) ==
+	Facts facts = SampleFacts();
+	facts.regionExchange = "the other copy's list did not arrive within 4 s";
+	CHECK(RegionLines(facts) ==
+		"desync: checkpoint 2580: every region follows; the other copy's list was not compared (the other copy's list did not "
+		"arrive within 4 s), so most of these equal the other copy's\n"
 		"desync: checkpoint 2580 region CharaUnit[0].CharaStatusPart+0x238, 64 bytes, hash 00000000000000ab\n"
 		"desync: checkpoint 2580 region unowned, 8 bytes, hash 0000000000000001\n");
 	CHECK(RegionLines(Facts{}).empty());
@@ -502,7 +507,7 @@ TEST_CASE("each fighter's script and frame are read from the kept state, as the 
 	lost.state.pop_back();
 	CHECK(ScriptsAt(lost).empty());
 	CHECK(ScriptsAt(Facts{}).empty());
-	CHECK(Comment(Facts{}, kBuild).find("Scripts at the checkpoint") == std::string::npos);
+	CHECK(Comment(Facts{}, kBuild).find("Scripts at the checkpoint: not read\n") != std::string::npos);
 }
 
 TEST_CASE("the comment and the details carry what names a cause from one report")
@@ -973,4 +978,37 @@ TEST_CASE("the game's file for the launcher carries the details, and an older fi
 	// A details field of the wrong kind is not a file this code writes.
 	value["details"] = 7;
 	CHECK_FALSE(ParseSpool(value.dump()));
+}
+
+TEST_CASE("the differing regions are those the two copies' lists pair apart, never game.N by name")
+{
+	using sfve::start_state::Entry;
+	using sfve::start_state::RegionIdentity;
+	// This copy: a named region that differs, one that is equal, and two
+	// unowned runs whose numbers the other process gives the other way round.
+	const std::vector<std::string> names = {"CharaUnit[0].CharaActionPart+0xD8", "CharaUnit[1].CharaActionPart+0xD8", "game.12",
+		"game.13"};
+	const std::vector<Entry> mine = {{RegionIdentity(names[0], 15808, true), 0xA, 15808, 0},
+		{RegionIdentity(names[1], 15808, true), 0xB, 15808, 1}, {0, 0x48b2, 4, 2}, {0, 0xdb02, 4, 3}};
+	const std::vector<Entry> theirs = {{RegionIdentity(names[0], 15808, true), 0xF, 15808, 0},
+		{RegionIdentity(names[1], 15808, true), 0xB, 15808, 1}, {0, 0xdb02, 4, 2}, {0, 0x48b2, 4, 3}};
+	const auto differing = sfve::adapter::desync::DifferingRegions(mine, names, theirs);
+	REQUIRE(differing.size() == 1);
+	CHECK(differing[0].name == "CharaUnit[0].CharaActionPart+0xD8");
+	CHECK(differing[0].size == 15808);
+	CHECK(differing[0].hash == 0xA);
+	CHECK(differing[0].otherHash == 0xF);
+	CHECK(differing[0].paired);
+
+	sfve::adapter::desync::Facts facts;
+	facts.frame = 2440;
+	facts.regionsCompared = true;
+	facts.differing = differing;
+	CHECK(sfve::adapter::desync::RegionLines(facts) ==
+		"desync: checkpoint 2440 region CharaUnit[0].CharaActionPart+0xD8 differs, 15808 bytes, hash 000000000000000a here, "
+		"000000000000000f at the other copy\n");
+	CHECK(sfve::adapter::desync::DifferingText(facts) == "CharaUnit[0].CharaActionPart+0xD8 (15808 bytes)");
+	facts.regionsCompared = false;
+	facts.regionExchange = "a watcher does not trade lists";
+	CHECK(sfve::adapter::desync::DifferingText(facts) == "not compared (a watcher does not trade lists)");
 }

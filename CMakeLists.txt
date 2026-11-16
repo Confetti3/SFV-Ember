@@ -73,6 +73,7 @@ add_library(sfve_core STATIC
     src/core/RollbackSession.cxx
     src/core/StartAgreement.cxx
     src/core/MatchData.cxx
+    src/core/RegionExchange.cxx
     src/core/SyncTest.cxx
     src/core/NetPolicy.cxx)
 # Ember's GGPO gate, pacing, state hash and helper client come from the
@@ -92,6 +93,7 @@ add_executable(sfve_tests
     tests/PoseHoldTests.cxx
     tests/StartAgreementTests.cxx
     tests/MatchDataTests.cxx
+    tests/RegionExchangeTests.cxx
     tests/NetPolicyTests.cxx
     tests/MatchResultTests.cxx
     tests/RematchDecisionTests.cxx
@@ -108,6 +110,7 @@ target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 # the game (SfvShell, its pick and pick screen) on the mod's Direct3D 11
 # overlay.
 add_library(sfve_ember STATIC
+    src/ember/DesyncRegions.cxx
     src/ember/DesyncReport.cxx
     src/ember/DesyncReporter.cxx
     src/ember/EmberHost.cxx

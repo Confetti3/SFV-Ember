@@ -262,6 +262,11 @@ public:
 	bool Watching() const { return config_.watching; }
 	// The side this copy plays (Config::localPlayer: 0 P1, 1 P2).
 	int LocalPlayer() const { return config_.localPlayer; }
+	// The session's UDP path (Config): its local port and the peer it plays
+	// with, which a mismatch's region exchange reuses once GGPO has closed.
+	uint16_t LocalPort() const { return config_.localPort; }
+	const std::string& RemoteIp() const { return config_.remoteIp; }
+	uint16_t RemotePort() const { return config_.remotePort; }
 	// A watcher's frames received from P1 and not played yet; -1 when the
 	// session cannot tell (not a watcher's, or none).
 	int WatchedBacklog() const;

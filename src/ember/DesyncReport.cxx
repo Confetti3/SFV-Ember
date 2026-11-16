@@ -208,6 +208,20 @@ std::string Comment(const Facts& facts, std::string_view buildId)
 						: repair ? StartRepairTitle(facts.watcher, buildId, key)
 								 : Title(facts.watcher, buildId, key)) +
 		"\n";
+	if (!repair) text += "Differs: " + DifferingText(facts) + "\n";
+	if (facts.picksKnown) {
+		text += FighterLine("P1", facts.fighters[0]) + "\n" + FighterLine("P2", facts.fighters[1]) + "\n";
+	} else {
+		text += "Picks not known\n";
+	}
+	if (!repair) {
+		const std::string scripts = ScriptsText(facts);
+		text += "Scripts at the checkpoint: " + (scripts.empty() ? std::string("not read") : scripts) + "\n";
+	}
+	text += "Game data: " + (facts.battleData.empty() ? std::string("not read") : facts.battleData) + "\n";
+	if (!facts.otherBattleData.empty()) text += "The other copy's game data: " + facts.otherBattleData + "\n";
+	text += "Paks: " + (facts.paks.empty() ? std::string("not read") : facts.paks) + "\n";
+	text += "OS: " + (facts.os.empty() ? std::string("not read") : facts.os) + "\n";
 	if (facts.roomEpoch) {
 		text += "Room " + Hex16(facts.roomEpoch) + ", table " + std::to_string(facts.table) + ", match " +
 			std::to_string(facts.generation);
@@ -225,15 +239,7 @@ std::string Comment(const Facts& facts, std::string_view buildId)
 	} else {
 		text += "This copy: a fighter, side not known\n";
 	}
-	if (facts.picksKnown) {
-		text += FighterLine("P1", facts.fighters[0]) + "\n" + FighterLine("P2", facts.fighters[1]) + "\n";
-	} else {
-		text += "Picks not known\n";
-	}
 	text += "Stage: " + (facts.stage.empty() ? std::string("not known") : facts.stage) + "\n";
-	text += "Game data: " + (facts.battleData.empty() ? std::string("not read") : facts.battleData) + "\n";
-	if (!facts.otherBattleData.empty()) text += "The other copy's game data: " + facts.otherBattleData + "\n";
-	if (!facts.paks.empty()) text += "Paks: " + facts.paks + "\n";
 	if (refused) {
 		text += "Before frame 0: " + facts.gameDataDiffers + "; the match did not start\n";
 	} else if (repair) {
@@ -245,8 +251,6 @@ std::string Comment(const Facts& facts, std::string_view buildId)
 			std::to_string(facts.confirmed) + "\n";
 		text += facts.previousMatch >= 0 ? "Previous matching checkpoint: " + std::to_string(facts.previousMatch) + "\n" :
 			std::string("Previous matching checkpoint: none (the first checkpoint already differs)\n");
-		const std::string scripts = ScriptsText(facts);
-		if (!scripts.empty()) text += "Scripts at the checkpoint: " + scripts + "\n";
 	}
 	text += "Input delay " + std::to_string(facts.delay) + "; " + std::to_string(facts.rollbacks) +
 		" rollbacks, the longest " + std::to_string(facts.longestRollback) + " frames\n";
@@ -262,14 +266,58 @@ std::string Comment(const Facts& facts, std::string_view buildId)
 	}
 	text += "Layout " + Hex16(facts.layoutId) + ", " + std::to_string(facts.regions.size()) +
 		" regions at the checkpoint; match build " + facts.matchBuild + "\n";
-	text += "The regions' hashes are in sfv_ember.log; pair this report with the other player's by its match key.";
+	text += std::string(facts.regionsCompared ? "The differing regions' hashes are" : "The regions' hashes are") +
+		" in sfv_ember.log; pair this report with the other player's by its match key.";
 	return FitCharacters(std::move(text), kCommentCharacters);
+}
+
+std::string WindowsVersion()
+{
+	OSVERSIONINFOW version{};
+	version.dwOSVersionInfoSize = sizeof(version);
+	const auto rtl =
+		reinterpret_cast<LONG(WINAPI*)(OSVERSIONINFOW*)>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion"));
+	if (!rtl || rtl(&version) != 0) return "Windows (version unavailable)";
+	return "Windows " + std::to_string(version.dwMajorVersion) + "." + std::to_string(version.dwMinorVersion) + " build " +
+		std::to_string(version.dwBuildNumber);
+}
+
+std::string DifferingText(const Facts& facts)
+{
+	if (!facts.regionsCompared) return "not compared" + (facts.regionExchange.empty() ? std::string() : " (" + facts.regionExchange + ")");
+	if (facts.differing.empty()) return "none (the overall hashes differ in no region the lists pair)";
+	std::string text;
+	for (const DifferingRegion& r : facts.differing) {
+		text += (text.empty() ? "" : ", ") + r.name + " (" + std::to_string(r.size) + " bytes" + (r.paired ? ")" : ", unpaired)");
+	}
+	return text;
 }
 
 std::string RegionLines(const Facts& facts)
 {
 	std::string text;
 	char line[96];
+	if (facts.regionsCompared) {
+		for (const DifferingRegion& r : facts.differing) {
+			char hashes[96];
+			if (r.paired) {
+				snprintf(hashes, sizeof(hashes), ", %llu bytes, hash %016llx here, %016llx at the other copy\n",
+					static_cast<unsigned long long>(r.size), static_cast<unsigned long long>(r.hash),
+					static_cast<unsigned long long>(r.otherHash));
+			} else {
+				snprintf(hashes, sizeof(hashes), ", %llu bytes, hash %016llx here, pairs with none of the other copy's\n",
+					static_cast<unsigned long long>(r.size), static_cast<unsigned long long>(r.hash));
+			}
+			text += "desync: checkpoint " + std::to_string(facts.frame) + " region " + r.name + " differs" + hashes;
+		}
+		return text;
+	}
+	// A desync's whole list says why (a start repair's and a refusal's lists
+	// are the regions that differed).
+	if (!facts.regions.empty() && facts.startRepair.empty() && facts.gameDataDiffers.empty()) {
+		text += "desync: checkpoint " + std::to_string(facts.frame) + ": every region follows; the other copy's list was " +
+			DifferingText(facts) + ", so most of these equal the other copy's\n";
+	}
 	for (const RegionFacts& region : facts.regions) {
 		snprintf(line, sizeof(line), ", %llu bytes, hash %016llx\n", static_cast<unsigned long long>(region.size),
 			static_cast<unsigned long long>(region.hash));
