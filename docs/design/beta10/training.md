@@ -180,10 +180,23 @@ stopped at the test tool). The log lines are the game's.
   writes nothing; in a private room's game (two copies, 20 s) neither copy's
   lab is available and neither logs a lab line.
 
+Overnight run, 2026-11-16 (`D:\sfv-re\b10-night\s5`, `chk`):
+
+- Replies after block, after hit and on wake-up with RYU, GUL, ZGF, Z25 and
+  CNL as the dummy: each began on the dummy's first free frame (move == freed).
+- Setting 2 is the dummy's recovery: 0 the normal rise (script 240), 1 the
+  quick rise (246, up in place: P2 ended at x 2.87 as with 240), 2 the back
+  rise (244, rolled about one unit further: x 3.84); 3 and 4 gave 244 on this
+  night and 246 the night before, so they choose at random. The back rise is
+  state kind 28, which the mod did not know: the meter drew it as unknown and
+  the wake-up reply dropped its plan ("stretch is not one the plan replies
+  to"). Kind 28 is now `BackRise`, getting up as kind 27 is (`MeterStatus`,
+  `lab::ScriptedFrames`); after the fix the wake-up reply began on the first
+  free frame after each of the three rises.
+- The mirrored playback (P2 on the left) passed.
+
 ## Unproven
 
-- The replies over GUL, ZGF, Z25 and CNL: the run's tool pressed Record on
-  the slot RYU's battle had kept, which asks before overwriting; the tool now
-  clears it first (`traininglab.py`), not run again.
-- A wake-up reply after a quick or back rise (setting 2's 1 and 3), and
-  V-Reversals.
+- V-Reversals as a reply: a reply starts on the dummy's first free frame,
+  after blockstun, where a V-Reversal is no longer input; a recording cannot
+  express it.
