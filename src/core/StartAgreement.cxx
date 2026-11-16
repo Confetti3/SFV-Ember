@@ -1,5 +1,6 @@
 #include "core/StartAgreement.hxx"
 
+#include "core/ByteReader.hxx"
 #include "core/CoreLog.hxx"
 
 #include <winsock2.h>
@@ -53,32 +54,6 @@ public:
 
 private:
 	std::vector<uint8_t> out_;
-};
-
-class Reader {
-public:
-	Reader(const uint8_t* data, size_t size) : data_(data), size_(size) {}
-	template <class T>
-	bool Get(T* out)
-	{
-		if (size_ - at_ < sizeof(T)) return false;
-		memcpy(out, data_ + at_, sizeof(T));
-		at_ += sizeof(T);
-		return true;
-	}
-	bool Get(std::vector<uint8_t>* out, size_t size)
-	{
-		if (size_ - at_ < size) return false;
-		out->assign(data_ + at_, data_ + at_ + size);
-		at_ += size;
-		return true;
-	}
-	size_t Left() const { return size_ - at_; }
-
-private:
-	const uint8_t* data_;
-	size_t size_;
-	size_t at_ = 0;
 };
 
 bool Bit(const std::vector<uint64_t>& bits, size_t i)
@@ -254,7 +229,7 @@ std::vector<uint8_t> Encode(const Message& m)
 bool Decode(const uint8_t* data, size_t size, uint64_t token, Message* out)
 {
 	if (!data || size < kHeader || size > kMaxDatagram) return false;
-	Reader r(data, size);
+	ByteReader r(data, size);
 	uint16_t magic = 0, version = 0, pad16 = 0;
 	uint8_t type = 0, pad8 = 0;
 	uint64_t theirs = 0;

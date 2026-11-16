@@ -97,6 +97,7 @@ add_executable(sfve_tests
     tests/IntroSkipTests.cxx
     tests/WatcherTests.cxx
     tests/ReplayTests.cxx
+    tests/ByteReaderTests.cxx
     src/mod/MatchResult.cxx)
 target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 
