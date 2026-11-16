@@ -1,6 +1,6 @@
 """SFV Ember's Training through Ember's shell (EMBER_LIBRARY.md section 27).
 
-  python tools/runtraining.py [--shots DIR] [--part solo|call|practice|control|all] [--keep]
+  python tools/runtraining.py [--shots DIR] [--part solo|call|practice|control|lab|all] [--keep]
 
 Menus are driven by each copy's virtual pad 0 (-sfve_pads=01), the path a
 physical pad takes; the pipe reads the status, presses the pad and, for the
@@ -30,7 +30,12 @@ practice: two copies in a Practice room. Copy 0's window in front, P1 walks
   (as runroom.ps1 compares them). End practice over the fight (Start, A,
   Right, A) takes both back to the room with no result.
 control: the same last point and hits in a normal room's match: P2 is
-  knocked out (the result's finish is a KO's).
+  knocked out (the result's finish is a KO's); Ember's Training lab is off
+  in both copies' room battle.
+lab: Ember's Training lab (tools/traininglab.py says each step): its pages
+  and meter options, recording and playback on both sides, the loop, a
+  recording file, and the dummy's reply after block, after hit and on
+  wake-up over five dummies; then off in an offline Versus battle.
 
 Prints PASS or FAIL; closes the copies it started unless --keep. Takes
 D:\\sfv-re\\sfv-launch.lock while SFV runs (and waits for it while another
@@ -50,6 +55,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import runshell as shell_steps  # noqa: E402
 import sfvelib as lib  # noqa: E402
+import traininglab  # noqa: E402
 
 LAUNCH_LOCK = Path(r"D:\sfv-re\sfv-launch.lock")
 LOCK_STALE_S = 45 * 60
@@ -402,6 +408,9 @@ def control(shots: Path | None) -> None:
     results = [lib.count_log(i, "netplay: match result") for i in (0, 1)]
     shell_steps.ready_both(1)
     low_vital_and_hit()
+    # A room's battle is a session's: Ember's Training lab is off in it.
+    for i in (0, 1):
+        traininglab.stays_off_in_room(i)
     t0 = time.time()
     wait_for("the match's result", 150, lambda: all(lib.count_log(i, "netplay: match result") > results[i] for i in (0, 1)))
     frames = result_frames()
@@ -485,10 +494,16 @@ def practice(shots: Path | None, seconds: int = 90) -> None:
         raise lib.SfveError(f"checkpoints: {compared} compared, {differing} differing")
 
 
+def lab(shots: Path | None) -> None:
+    # Pads only: the lab's steps press P1's pad themselves.
+    launch([0], mash=False)
+    traininglab.lab_part(shots)
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--shots", type=Path)
-    p.add_argument("--part", default="all", choices=["solo", "call", "practice", "control", "all"])
+    p.add_argument("--part", default="all", choices=["solo", "call", "practice", "control", "lab", "all"])
     p.add_argument("--keep", action="store_true")
     a = p.parse_args(argv)
     lib.begin_run()
@@ -502,7 +517,7 @@ def main(argv: list[str]) -> int:
         lib.kill_all()
         if lib.VIA != "launcher":
             lib.deploy()
-        for part, run in (("solo", solo), ("call", call), ("practice", practice), ("control", control)):
+        for part, run in (("solo", solo), ("call", call), ("practice", practice), ("control", control), ("lab", lab)):
             if a.part not in (part, "all"):
                 continue
             lib.kill_all()
