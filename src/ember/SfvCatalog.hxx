@@ -115,6 +115,10 @@ picks::PickSpace PickSpaceOf(const mod::ContentLists& lists);
 // (picks::ToJson); empty before FillCatalog. The pipe's `catalog-export`
 // writes it (EMBER_LIBRARY.md section 24).
 std::string PickSpaceJson();
+// The filled catalog's pick space (empty before FillCatalog), for what is
+// read back against it (the saved pick memory, SfvPickStore). Game thread
+// before the runtime starts, any thread after SealCatalog.
+const picks::PickSpace& FilledPickSpace();
 
 // The game's code of a fighter or a stage ("RYU", "S01"); empty for an id
 // outside the lists (Random's kRandomStage among them).

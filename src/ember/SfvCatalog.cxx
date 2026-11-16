@@ -414,6 +414,11 @@ std::string ContentFingerprint(const mod::ContentLists& lists)
 	return picks::Fingerprint(PickSpaceOf(lists));
 }
 
+const picks::PickSpace& FilledPickSpace()
+{
+	return s_space;
+}
+
 std::string PickSpaceJson()
 {
 	if (s_catalog.fighterCount == 0) return std::string();

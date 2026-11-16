@@ -11,6 +11,7 @@
 #include "ember/SfvHud.hxx"
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPick.hxx"
+#include "ember/SfvPickStore.hxx"
 #include "ember/SfvRandomFighter.hxx"
 #include "ember/SfvReplays.hxx"
 #include "ember/SfvScreenMode.hxx"
@@ -634,6 +635,7 @@ void InstallEmberShell()
 	InstallSfvArt();
 	InstallSfvBackdrop();
 	InstallSfvHud();
+	InstallSfvPickStore();
 	// Random on the board (SfvRandomFighter): each frame the runtime hears
 	// whether the pick is Random, and a roll it made becomes the stored pick.
 	mod::RunEachGameFrame([] {

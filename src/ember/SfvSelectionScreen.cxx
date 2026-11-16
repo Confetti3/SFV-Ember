@@ -775,7 +775,7 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 	return rows;
 }
 
-bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions)
+bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions, bool remembered)
 {
 	if (const std::optional<picks::LoadoutPart> part = PartOfRow(action.id)) return ApplyPart(action, *part, pick.pick);
 	const ember::GameCatalog& catalog = ember::Catalog();
@@ -816,6 +816,7 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const
 		else if (action.id == kCostumeCode && pickable(LoadCodeIds())) picks::SetLoadCode(pick.pick, *option);
 		else if (action.id == kSize && pickable(SizeIds())) pick.pick.size = *option;
 	}
+	if (pick.pick.fighter != before.pick.fighter) pick.pick = LookFor(before.pick, pick.pick.fighter, remembered);
 	return pick.pick.fighter != before.pick.fighter || pick.pick.costume != before.pick.costume ||
 		pick.pick.color != before.pick.color || pick.stage != before.stage ||
 		pick.pick.personalAction != before.pick.personalAction || pick.pick.size != before.pick.size;
@@ -1158,7 +1159,7 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 			if (menu_.navigation.Choosing()) choice = OpenChoice{menu_.navigation.DialogId(), menu_.navigation.ChoiceIndex()};
 			const ImVec2 at = ImGui::GetCursorScreenPos(), room = ImGui::GetContentRegionAvail();
 			const v2::Box card =
-				DrawPickPreviewIn(PreviewOf(pick, focus, choice, rows, stageOptions), {at, ImVec2(at.x + room.x, at.y + room.y)});
+				DrawPickPreviewIn(PreviewOf(pick, focus, choice, rows, stageOptions, !dummy_), {at, ImVec2(at.x + room.x, at.y + room.y)});
 			if (!withStage || !(card.W() > 0 && card.H() > 0) || menu_.navigation.Choosing()) return;
 			ImGui::SetCursorScreenPos(card.min);
 			if (ImGui::InvisibleButton("##stage-card", ImVec2(card.W(), card.H()))) stageCardClicked_ = true;
@@ -1378,7 +1379,7 @@ void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& scr
 	} else if (screen == kLook && editable && (action.kind == MenuAction::Adjust || action.kind == MenuAction::Chosen)) {
 		// The value rows step and choose in place; the stage only where it is
 		// this player's.
-		if ((action.id != kStage || stageMine) && Apply(action, pick, stageOptions)) store = true;
+		if ((action.id != kStage || stageMine) && Apply(action, pick, stageOptions, !dummy_)) store = true;
 	}
 	// The look page's stage card, clicked.
 	if (stageCardClicked_ && screen == kLook && nav.Screen() == kLook) {
@@ -1398,7 +1399,7 @@ PreviewFocus SfvSelectionScreen::FocusOf(const std::string& rowId)
 	return PreviewFocus::Look;
 }
 
-PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId)
+PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId, bool remembered)
 {
 	PlayerPick shown = pick;
 	const std::optional<int> option = OptionOf(optionId);
@@ -1411,11 +1412,10 @@ PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::stri
 			picks::SetLoadout(look, loadout);
 		}
 	} else if (rowId == kFighter && ember::ValidFighter(*option)) {
-		// The fighter as choosing it would store the pick (SfvCatalog's
-		// FitLookWithin): in a look this player can ready, or for one they
-		// cannot play, as the spec fits it.
-		look.fighter = *option;
-		FitLookWithin(look);
+		// The fighter as choosing it would store the pick (LookFor): in its own
+		// look this player can ready, or for one they cannot play, as the spec
+		// fits it.
+		if (*option != look.fighter) look = LookFor(look, *option, remembered);
 	} else if (rowId == kCostume && Contains(CostumeIds(look.fighter, false), *option)) {
 		// A costume this player can ready as choosing it would store it; one
 		// they cannot is shown as it is, in the colour the spec fits to it.
@@ -1433,7 +1433,7 @@ PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::stri
 }
 
 PickPreview SfvSelectionScreen::PreviewOf(const PlayerPick& pick, const std::string& focus, const std::optional<OpenChoice>& choice,
-	const std::vector<MenuEntry>& rows, const std::vector<StageOption>& stageOptions)
+	const std::vector<MenuEntry>& rows, const std::vector<StageOption>& stageOptions, bool remembered)
 {
 	PickPreview preview;
 	// With a choice open, its row and its focused option, the index checked
@@ -1450,7 +1450,7 @@ PickPreview SfvSelectionScreen::PreviewOf(const PlayerPick& pick, const std::str
 			if (!option.enabled && FocusOf(rowId) == PreviewFocus::Look) preview.note = option.detail;
 		}
 	}
-	preview.pick = Previewed(pick, rowId, optionId);
+	preview.pick = Previewed(pick, rowId, optionId, remembered);
 	preview.focus = FocusOf(rowId);
 	if (const std::optional<picks::LoadoutPart> part = PartOfRow(rowId)) preview.part = *part;
 	bool stageBanned = false;
