@@ -18,16 +18,28 @@ T& Field(uint8_t* object, uint32_t offset)
 	return *reinterpret_cast<T*>(object + offset);
 }
 
+// The faults the guarded reads and writes below take, for an __except
+// filter (GetExceptionCode()): an access to memory that is not there, or not
+// readable or writable as asked, and a page the system could not bring in.
+// Any other exception (a guard page, a breakpoint, a divide by zero, a C++
+// throw) is not the guess about the memory being wrong, and goes on to the
+// crash record.
+inline int MemoryFaultFilter(unsigned long code)
+{
+	return code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_IN_PAGE_ERROR ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH;
+}
+
 // Reads a T at `at` if the memory is readable, for walking game structures
 // whose layout comes from analysis rather than from the game handing them
-// over (a wrong guess logs instead of crashing both test copies).
+// over (a wrong guess logs instead of crashing both test copies). Only a
+// memory fault is taken (MemoryFaultFilter).
 template <typename T>
 bool TryRead(const void* at, T* out)
 {
 	__try {
 		*out = *static_cast<const T*>(at);
 		return true;
-	} __except (1 /* EXCEPTION_EXECUTE_HANDLER */) {
+	} __except (MemoryFaultFilter(GetExceptionCode())) {
 		return false;
 	}
 }
@@ -39,7 +51,7 @@ bool TryWrite(void* at, const T& value)
 	__try {
 		*static_cast<T*>(at) = value;
 		return true;
-	} __except (1 /* EXCEPTION_EXECUTE_HANDLER */) {
+	} __except (MemoryFaultFilter(GetExceptionCode())) {
 		return false;
 	}
 }

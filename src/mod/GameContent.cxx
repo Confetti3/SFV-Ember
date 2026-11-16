@@ -824,13 +824,14 @@ std::optional<int> CharaVoiceLanguage(std::wstring_view code)
 namespace {
 
 // Adds `size` bytes at `data` to the hash, or false when they cannot all be
-// read (no C++ object here: the guard is structured exception handling).
+// read (no C++ object here: the guard is structured exception handling, which
+// takes only a memory fault: MemoryFaultFilter).
 bool TryHashBytes(XXH3_state_t* state, const void* data, size_t size)
 {
 	__try {
 		XXH3_64bits_update(state, data, size);
 		return true;
-	} __except (1 /* EXCEPTION_EXECUTE_HANDLER */) {
+	} __except (MemoryFaultFilter(GetExceptionCode())) {
 		return false;
 	}
 }
