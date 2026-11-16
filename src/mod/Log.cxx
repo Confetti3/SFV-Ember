@@ -32,6 +32,7 @@ private:
 };
 
 LogMutex s_mutex;
+RunLogCap s_cap(kRunLogLimit);
 HANDLE s_file = INVALID_HANDLE_VALUE;
 LogTarget s_target;
 // This thread holds s_mutex for a write: a fault inside that write reaches
@@ -120,6 +121,20 @@ std::vector<LogCandidate> LogCandidates(int instance, unsigned long pid, const s
 	};
 }
 
+bool RotateLog(const std::wstring& path, int keep, const FILETIME& runStart)
+{
+	WIN32_FILE_ATTRIBUTE_DATA info;
+	if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &info)) return false;
+	if (!info.nFileSizeHigh && !info.nFileSizeLow) return false;
+	if (CompareFileTime(&info.ftLastWriteTime, &runStart) >= 0) return false;
+	const size_t dot = path.find_last_of(L'.');
+	const std::wstring stem = path.substr(0, dot), extension = dot == std::wstring::npos ? std::wstring() : path.substr(dot);
+	const auto old = [&](int n) { return stem + L".old" + std::to_wstring(n) + extension; };
+	DeleteFileW(old(keep).c_str());
+	for (int n = keep - 1; n >= 1; n--) MoveFileExW(old(n).c_str(), old(n + 1).c_str(), MOVEFILE_REPLACE_EXISTING);
+	return MoveFileExW(path.c_str(), old(1).c_str(), MOVEFILE_REPLACE_EXISTING) != 0;
+}
+
 void OpenLog(int instance)
 {
 	OpenedLog opened;
@@ -165,11 +180,23 @@ int FormatLine(char (&text)[1200], const char* line)
 	return n <= 0 ? 0 : n < (int)sizeof(text) ? n : (int)sizeof(text) - 1;
 }
 
-void WriteLine(const char* text, int length)
+void WriteRaw(const char* text, int length)
 {
-	if (s_file == INVALID_HANDLE_VALUE) return;
 	DWORD written = 0;
 	WriteFile(s_file, text, (DWORD)length, &written, nullptr);
+}
+
+// `force`: a crash handler's line, written whatever this run has logged.
+void WriteLine(const char* text, int length, bool force)
+{
+	if (s_file == INVALID_HANDLE_VALUE) return;
+	const RunLogCap::Take take = force ? RunLogCap::Take::Write : s_cap.Admit((uint64_t)length);
+	if (take == RunLogCap::Take::Drop) return;
+	WriteRaw(text, length);
+	if (take != RunLogCap::Take::WriteThenNotice) return;
+	char notice[1200];
+	const int n = FormatLine(notice, "log: this run's log reached its size limit; the lines after this one are dropped");
+	if (n) WriteRaw(notice, n);
 }
 
 } // namespace
@@ -181,7 +208,7 @@ void LogLine(const char* line)
 	if (!n) return;
 	std::lock_guard lock(s_mutex);
 	t_writing = true;
-	WriteLine(text, n);
+	WriteLine(text, n, false);
 	t_writing = false;
 }
 
@@ -192,7 +219,7 @@ void TryLogLine(const char* line)
 	const int n = FormatLine(text, line);
 	if (!n) return;
 	std::unique_lock lock(s_mutex, std::try_to_lock);
-	if (lock.owns_lock()) WriteLine(text, n);
+	if (lock.owns_lock()) WriteLine(text, n, true);
 }
 
 void Log(const char* fmt, ...)

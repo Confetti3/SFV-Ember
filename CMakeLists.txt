@@ -350,6 +350,7 @@ add_executable(sfve_ember_tests
     tests/BuildKindTests.cxx
     tests/AddressRangesTests.cxx
     tests/RuntimeModulesTests.cxx
+    tests/LogRotationTests.cxx
     tests/GameInputTests.cxx
     tests/SocketReadsTests.cxx
     tests/RngAuditTests.cxx
