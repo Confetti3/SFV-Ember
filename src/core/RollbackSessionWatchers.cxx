@@ -156,11 +156,9 @@ void RollbackSession::KeepForWatchers()
 	config_.onFrame = nullptr;
 	config_.onCheckpoint = nullptr;
 	config_.onSaveSkipped = nullptr;
-	config_.verifyLoads = false;
 	config_.verifyLoadsEvery = 0;
-	// The stand-in's state is nothing, so every save holds all of it: no load
-	// GGPO makes from here can reach a save without its copy.
-	config_.skipUnloadableSaves = false;
+	// The stand-in's state is nothing, so every save holds all of it (Save
+	// copies every one from here, keptForWatchers_).
 	for (Slot& s : pool_) {
 		s.copied = s.used;
 		s.pending = false;

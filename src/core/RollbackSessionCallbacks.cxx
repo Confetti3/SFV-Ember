@@ -89,8 +89,10 @@ RollbackSession::Slot* RollbackSession::Save(int frame)
 	// last confirmed one; or when a fighter disconnects, at that fighter's
 	// last frame received, never before the last confirmed one. So once the
 	// inputs of frame F + 1 are confirmed, no load reaches F's save
-	// (docs/design/beta8/perf.md), and its copy is skipped.
-	slot->copied = !config_.skipUnloadableSaves || frame == keepSave_ || confirmed_ < frame + 1;
+	// (docs/design/beta8/perf.md), and its copy is skipped. Kept for the
+	// watchers, the stand-in's state is nothing, so every save holds all of
+	// it: no load GGPO makes from there can reach a save without its copy.
+	slot->copied = keptForWatchers_ || frame == keepSave_ || confirmed_ < frame + 1;
 	if (slot->copied) {
 		LARGE_INTEGER started, copied;
 		QueryPerformanceCounter(&started);
@@ -106,7 +108,7 @@ RollbackSession::Slot* RollbackSession::Save(int frame)
 		// A save with no copy is final (its inputs are confirmed past it), and
 		// the live state is its state: hashed now, from memory.
 		if (!slot->copied) RecordHash(frame, nullptr, 0);
-		else if (!config_.hashOnConfirm || Final(frame)) RecordHash(frame, slot->bytes.data(), slot->copyTicks);
+		else if (Final(frame)) RecordHash(frame, slot->bytes.data(), slot->copyTicks);
 		else slot->pending = true;
 	}
 	frame_ = frame;
@@ -152,7 +154,7 @@ bool RollbackSession::Load(unsigned char* buffer)
 	// The save's bytes are as Save wrote them (nothing writes a slot in use),
 	// so their hash now is the save's hash.
 	loads_++;
-	if (config_.verifyLoads || (config_.verifyLoadsEvery > 0 && loads_ % (uint64_t)config_.verifyLoadsEvery == 0)) {
+	if (config_.verifyLoadsEvery > 0 && loads_ % (uint64_t)config_.verifyLoadsEvery == 0) {
 		stats_.loadsVerified++;
 		if (layout.HashLive() != layout.HashSaved(slot->bytes.data())) {
 			stats_.loadMismatches++;

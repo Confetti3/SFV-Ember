@@ -142,10 +142,8 @@ NetplayMode::Prepared NetplayMode::PrepareStart(SfvAdapter& adapter)
 		c.hashEveryFrames = config_.hashEvery;
 		c.keepAllHashes = true;
 	}
-	// Cheaper rollbacks (docs/design/beta8/perf.md); a replay's playback
-	// makes no GGPO saves, so they change nothing there.
-	c.skipUnloadableSaves = config_.skipSaves;
-	c.hashOnConfirm = config_.hashOnConfirm;
+	// A sample of the restores re-hashed against their saves; a replay's
+	// playback makes no GGPO saves, so it changes nothing there.
 	c.verifyLoadsEvery = config_.verifyLoadsEvery;
 	// Both copies are at the battle's first frame: the battle frame's counts
 	// start from 0 on each, and the clock-seeded random generators get the

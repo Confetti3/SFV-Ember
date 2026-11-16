@@ -21,7 +21,7 @@ constexpr size_t kCheckpointsKept = 900;
 bool RollbackSession::HashedFrame(int frame) const
 {
 	if (keptForWatchers_) return false; // no game's state to hash
-	return frame % kCheckpointInterval == 0 || config_.verifyLoads || frame % config_.hashEveryFrames == 0;
+	return frame % kCheckpointInterval == 0 || frame % config_.hashEveryFrames == 0;
 }
 
 void RollbackSession::HashConfirmed()
@@ -36,7 +36,6 @@ void RollbackSession::HashConfirmed()
 		ggpo_get_last_confirmed_frame(session_, &confirmed) == GGPO_OK) {
 		if (confirmed > confirmed_) confirmed_ = confirmed;
 	}
-	if (!config_.hashOnConfirm) return;
 	// Oldest first: the checkpoints kept (CheckpointState) are the latest ones.
 	for (;;) {
 		Slot* next = nullptr;

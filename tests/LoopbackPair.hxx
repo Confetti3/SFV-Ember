@@ -56,7 +56,9 @@ struct LoopbackPair {
 		cb.localPort = (uint16_t)(base + 1);
 		cb.remotePort = base;
 		ca.inputDelay = cb.inputDelay = delay;
-		ca.verifyLoads = cb.verifyLoads = true;
+		// Every frame hashed, every restore re-hashed against its save.
+		ca.hashEveryFrames = cb.hashEveryFrames = 1;
+		ca.verifyLoadsEvery = cb.verifyLoadsEvery = 1;
 		ca.keepAllHashes = cb.keepAllHashes = keepAllHashes;
 		ca.disconnectTimeoutMs = cb.disconnectTimeoutMs = 1000;
 		if (configure) configure(ca, cb);

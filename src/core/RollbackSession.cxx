@@ -220,11 +220,9 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 		config.localPlayer + 1, config.localPort, config.remoteIp.c_str(), config.remotePort, config.inputDelay,
 		watching.size(), game_->Layout().TotalSize(), game_->Layout().Regions().size());
 	char verified[48] = "never";
-	if (config.verifyLoads) snprintf(verified, sizeof(verified), "every one");
+	if (config.verifyLoadsEvery == 1) snprintf(verified, sizeof(verified), "every one");
 	else if (config.verifyLoadsEvery > 0) snprintf(verified, sizeof(verified), "one in %d", config.verifyLoadsEvery);
-	CoreLog("session: a save no load can reach %s; frames hashed %s; restores re-hashed: %s",
-		config.skipUnloadableSaves ? "keeps no copy" : "is copied all the same",
-		config.hashOnConfirm ? "once final" : "on every save", verified);
+	CoreLog("session: a save no load can reach keeps no copy; frames hashed once final; restores re-hashed: %s", verified);
 	return true;
 }
 
