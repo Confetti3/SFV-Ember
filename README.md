@@ -60,6 +60,16 @@ which `scripts/package.ps1` packages. Design notes are in
 [docs/design/EMBER_LIBRARY.md](docs/design/EMBER_LIBRARY.md) and
 [docs/design/SFV_PORT.md](docs/design/SFV_PORT.md).
 
+## Thanks
+
+Some fixes in SFV Ember were found by reading the published source and notes of
+[Polarity](https://github.com/polarityproject/polarity-client), the other SFV rollback mod, by
+polarityproject. They pointed us at the game's login check, which runs with no guard
+against an online service that is not there; the XInput proxy being re-entered by hooking tools;
+game state a save left out (a fighter's effect switches, the round-end state); each fighter's own
+balance version; and listing the mod paks. We re-checked each one in our own copy of the game and
+wrote our own fix. Thank you.
+
 ## Licence
 
 MIT (`LICENSE`). Ember's own licence and the third-party notices ship in each
