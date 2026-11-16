@@ -24,6 +24,7 @@
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvRegionNames.hxx"
 #include "mod/SocketReads.hxx"
+#include "mod/TickCounts.hxx"
 
 #include <stdint.h>
 
@@ -174,6 +175,12 @@ public:
 	// starts reseed the fighters' generators from) to `seed`. The game takes
 	// both from the clock. Returns how many generators were reseeded.
 	int ReseedRandom(uint32_t seed);
+	// The battle frame's own counts (sfv::battleframe kUpdates,
+	// kTickedUpdates, kClock), 0 on every copy at frame 0: they count the
+	// updates each process ran before its battle bound, one or two more on
+	// one copy, and the slow-motion gate reads the update count. Restored
+	// with the state from then on, so the copies keep them equal.
+	void ZeroBattleFrameCounts();
 	// The match's start time (sfv::battledata::kStartTime), which lies outside
 	// the rollback state: a match data reset takes it from the clock again.
 	uint32_t StartTime() const;
@@ -282,6 +289,7 @@ private:
 	// and the first few logged. Diagnostics only: nothing is changed.
 	void NoteCommandQueues();
 	match_data::Facts battleFacts_;
+	TickCounts tickCounts_; // the bound battle's ticks per update
 	uint64_t queuesCarried_ = 0;
 	int queueLines_ = 0;
 	static constexpr int kMostQueueLines = 8;

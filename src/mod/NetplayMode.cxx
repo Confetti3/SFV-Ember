@@ -592,8 +592,10 @@ NetplayMode::Prepared NetplayMode::PrepareStart(SfvAdapter& adapter)
 	// (core/PoseHold.hxx): a fighter's session and a lagged replay's playback;
 	// a watcher never holds.
 	c.poseHolds = ChoosePoseHold(config_);
-	// Both copies are at the battle's first frame: give the clock-seeded
-	// random generators the same seeds before anything is simulated.
+	// Both copies are at the battle's first frame: the battle frame's counts
+	// start from 0 on each, and the clock-seeded random generators get the
+	// same seeds, before anything is simulated.
+	adapter.ZeroBattleFrameCounts();
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
 	// What the battle's ticks before the session recorded for each player,
 	// which the session's first frames read back: nothing pressed for a

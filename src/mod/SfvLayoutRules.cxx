@@ -83,8 +83,9 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 	layout.Add("global.rng", At(where.base, sfv::rng::kGlobal + sfv::rng::kState), 4);
 	namespace bf = sfv::battleframe;
 	namespace iu = sfv::inputunit;
-	const size_t frame = layout.Add("battleframe", At(where.battleFrame, bf::kState), bf::kStateSize);
-	for (uint32_t own : {bf::kUpdates, bf::kTickedUpdates, bf::kClock}) layout.IgnoreForPeers(frame, own - bf::kState);
+	// Its counts are 0 on every copy at frame 0 (SfvAdapter::
+	// ZeroBattleFrameCounts) and compared like the rest.
+	layout.Add("battleframe", At(where.battleFrame, bf::kState), bf::kStateSize);
 	const size_t counters = layout.Add("inputunit.counters", At(where.inputUnit, iu::kCounters), iu::kCountersSize);
 	layout.IgnoreForPeers(counters, iu::kSyncClock - iu::kCounters);
 	layout.Add("ruleunit.judge", At(where.ruleUnit, sfv::ruleunit::kJudgeState), 4);

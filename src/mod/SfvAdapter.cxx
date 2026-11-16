@@ -116,6 +116,8 @@ void SfvAdapter::Forget()
 	paceAtStart_ = {};
 	if (queuesCarried_) Log("actions: the battle ends: %llu time(s) a fighter unit's command queue was not empty between updates",
 		(unsigned long long)queuesCarried_);
+	if (const std::string ticks = tickCounts_.Summary(); !ticks.empty()) Log("ticks: the battle ends: %s", ticks.c_str());
+	tickCounts_.Forget();
 	queuesCarried_ = 0;
 	queueLines_ = 0;
 	for (FighterUnit& unit : fighterUnits_) unit = {};
@@ -668,6 +670,10 @@ void SfvAdapter::RunUpdate()
 			(unsigned long long)keyedUpdates_, us, fighterUnitCount_, SocketReadsSummary().c_str(),
 			PoseHoldsSummary().c_str());
 	}
+	if (bound_) {
+		const int32_t frame = inputUnit_ ? Field<int32_t>(inputUnit_, sfv::inputunit::kInputFrame) : -1;
+		if (const std::string line = tickCounts_.Note(frame, ticksThisUpdate_, replaying_); !line.empty()) Log("%s", line.c_str());
+	}
 	ticksInLastUpdate_ = ticksThisUpdate_;
 	flow_.Capture(); // the record mirrors the game whenever it is saved or hashed
 }
@@ -693,6 +699,19 @@ void SfvAdapter::PresetHeldAtLoad(const std::array<PackedInput, kPlayers>& codes
 	taken = 1;
 	Log("adapter: costume codes held at load P1 %08x, P2 %08x (the game's snapshot %s: %08x, %08x)", codes[0], codes[1],
 		wasTaken ? "was taken" : "was not taken yet", before[0], before[1]);
+}
+
+void SfvAdapter::ZeroBattleFrameCounts()
+{
+	namespace bf = sfv::battleframe;
+	if (!battleFrame_) return;
+	uint32_t& updates = Field<uint32_t>(battleFrame_, bf::kUpdates);
+	uint32_t& ticked = Field<uint32_t>(battleFrame_, bf::kTickedUpdates);
+	float& clock = Field<float>(battleFrame_, bf::kClock);
+	Log("adapter: the battle frame counted %u updates, %u that ticked, clock %.4f before frame 0; 0 on every copy", updates, ticked,
+		(double)clock);
+	updates = ticked = 0;
+	clock = 0.0f;
 }
 
 void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)

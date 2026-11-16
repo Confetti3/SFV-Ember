@@ -118,9 +118,13 @@ constexpr uint32_t kTickCount = 0x1B8;  // zeroed by each update (rva 0x4DC2D0),
 // Counts since the battle frame was reset (rva 0x4D8830): updates (+0x198),
 // updates that ran ticks (+0x19C) and the clock those advance by +0x1B0
 // (+0x1B4, float). They include the updates a process runs before its layout
-// binds, one or two more in one copy than the other. Only the slow-motion
-// schedule reads +0x198 (rva 0x4DC6A0, 0x4D2850), and slow motion (+0x1A0) is
-// only ever zeroed or copied in this build (rva 0x4D8830, 0x4E9230).
+// binds, one or two more in one copy than the other, so a session sets them
+// to 0 on every copy at frame 0 (SfvAdapter::ZeroBattleFrameCounts) and the
+// peers compare them. Readers (IDA, rva 0x4C8000..0x4EA000): the slow-motion
+// gate reads +0x198 (rva 0x4D2850, 0x4DC6A0: an update ticks when slow
+// motion, +0x1A0, is 0 or +0x198 is a multiple of it plus one), slow motion is
+// only zeroed or copied in this build (rva 0x4D8830, 0x4E5AC0, 0x4E9230); the
+// clock is read by rva 0x4DB680 and 0x4DD4C0; +0x19C is only counted.
 constexpr uint32_t kUpdates = 0x198;
 constexpr uint32_t kTickedUpdates = 0x19C;
 constexpr uint32_t kClock = 0x1B4;
