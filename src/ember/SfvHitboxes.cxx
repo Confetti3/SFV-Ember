@@ -1,18 +1,12 @@
 #include "ember/SfvHitboxes.hxx"
 
 #include "ember/SfvBoxes.hxx"
-#include "ember/SfvSettingsFile.hxx"
 #include "mod/FighterReader.hxx"
 #include "mod/Log.hxx"
 
-#include "netplay/SettingsStore.hxx"
-#include "training/PracticeSettings.hxx"
 #include "ui/HitboxOverlay.hxx"
 
-#include <nlohmann/json.hpp>
-
 #include <atomic>
-#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -23,37 +17,10 @@ namespace {
 
 namespace training = sf4e::training;
 
-// SF4's lab keeps its choices in training.json beside its settings
-// (TrainingPanel's PracticeFile); SFV Ember keeps the viewer's there too, in
-// its own settings folder, as the meter options' "hitboxes".
-constexpr const wchar_t* kPracticeFile = L"training.json";
-
-std::filesystem::path Folder()
-{
-	return std::filesystem::path(sf4e::netplay::SettingsStore::DefaultDirectory());
-}
-
-// The choice and the file it is kept in: read once, written by the row.
-std::mutex s_choiceMutex;
-bool s_loaded = false;
+// The player's choice as the lab's owner of training.json keeps it
+// (ui::TrainingMeterOptions().hitboxes), handed over by SfvTrainingHost each
+// frame with the HUD shown.
 std::atomic<bool> s_shown{false};
-
-training::MeterOptions MeterOf(const nlohmann::json& practice)
-{
-	const auto meter = practice.find("meter");
-	return training::ReadMeterOptions(meter != practice.end() ? *meter : nlohmann::json::object());
-}
-
-void LoadLocked()
-{
-	if (s_loaded) return;
-	s_loaded = true;
-	std::string problem;
-	const nlohmann::json practice = ReadSettingsFile(Folder(), kPracticeFile, problem);
-	if (!problem.empty()) mod::Log("hitboxes: %s; the next save writes a new one", problem.c_str());
-	s_shown = MeterOf(practice).hitboxes;
-	mod::Log("hitboxes: %s (training.json)", s_shown ? "on" : "off");
-}
 
 // What the render thread draws: the boxes as the last tick left them, or
 // nothing outside a followed Training battle.
@@ -149,34 +116,14 @@ void DrawSfvHitboxes()
 	if (view) sf4e::ui::DrawHitboxOverlay(*view, sf4e::ui::HitboxOverlayParts{});
 }
 
-bool SfvHitboxesShown()
+void SetSfvHitboxesShown(bool shown)
 {
-	{
-		std::lock_guard lock(s_choiceMutex);
-		LoadLocked();
-	}
-	return s_shown;
+	if (s_shown.exchange(shown) != shown) mod::Log("hitboxes: %s", shown ? "on" : "off");
 }
 
-bool ShowSfvHitboxes(bool shown)
+bool SfvHitboxesShown()
 {
-	std::lock_guard lock(s_choiceMutex);
-	LoadLocked();
-	// The file's other choices stay as they are; the meter's options are
-	// written back whole, as SF4's lab writes them (MeterOptionsJson).
-	std::string error;
-	const auto change = [shown](nlohmann::json& practice) {
-		training::MeterOptions options = MeterOf(practice);
-		options.hitboxes = shown;
-		practice["meter"] = training::MeterOptionsJson(options);
-	};
-	if (!UpdateSettingsFile(Folder(), kPracticeFile, change, error)) {
-		mod::Log("hitboxes: the choice could not be saved (%s); it stays %s", error.c_str(), s_shown ? "on" : "off");
-		return false;
-	}
-	s_shown = shown;
-	mod::Log("hitboxes: %s, saved", shown ? "on" : "off");
-	return true;
+	return s_shown;
 }
 
 } // namespace sfve::adapter

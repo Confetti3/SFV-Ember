@@ -144,6 +144,7 @@ add_library(sfve_ember STATIC
     src/ember/SfvLoadoutNotes.cxx
     src/ember/SfvLoadoutText.cxx
     src/ember/SfvMeterSample.cxx
+    src/ember/SfvLabInput.cxx
     src/ember/SfvPick.cxx
     src/ember/SfvPickMemory.cxx
     src/ember/SfvPickPreview.cxx
@@ -164,6 +165,8 @@ add_library(sfve_ember STATIC
     src/ember/SfvShell.cxx
     src/ember/SfvSwatchStrip.cxx
     src/ember/SfvTraining.cxx
+    src/ember/SfvTrainingHost.cxx
+    src/ember/SfvTrainingLab.cxx
     src/ember/SfvVerification.cxx
     src/overlay/BorderlessWindow.cxx
     src/overlay/FrameGrab.cxx
@@ -351,6 +354,7 @@ add_executable(sfve_ember_tests
     tests/HookTransactionTests.cxx
     tests/SfvFlowTests.cxx
     tests/SfvFrameMeterTests.cxx
+    tests/SfvTrainingLabTests.cxx
     tests/SfvBoxesTests.cxx
     tests/RoomBuildTests.cxx
     tests/BuildKindTests.cxx

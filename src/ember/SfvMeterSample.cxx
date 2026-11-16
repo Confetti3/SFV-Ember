@@ -1,5 +1,7 @@
 #include "ember/SfvMeterSample.hxx"
 
+#include "training/RecordingTypes.hxx"
+
 namespace sfve::adapter {
 
 namespace {
@@ -115,10 +117,14 @@ FighterSample MeterSample(const mod::FighterFrame& fighter, MeterMove& move)
 	return sample;
 }
 
-void MeterFeed::Feed(training::FrameMeter& meter, const std::array<mod::FighterFrame, 2>& fighters, uint32_t ticks)
+std::array<FighterSample, 2> MeterFeed::Feed(training::FrameMeter& meter, const std::array<mod::FighterFrame, 2>& fighters,
+	uint32_t ticks, const std::array<unsigned, 2>& inputs)
 {
 	tick_ += static_cast<int>(ticks);
-	meter.Observe(tick_, {MeterSample(fighters[0], moves_[0]), MeterSample(fighters[1], moves_[1])});
+	std::array<FighterSample, 2> samples{MeterSample(fighters[0], moves_[0]), MeterSample(fighters[1], moves_[1])};
+	for (int side = 0; side < 2; side++) samples[side].input = inputs[side] & training::FightButtons;
+	meter.Observe(tick_, samples);
+	return samples;
 }
 
 } // namespace sfve::adapter

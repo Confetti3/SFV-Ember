@@ -484,6 +484,16 @@ Capabilities SfvCapabilities()
 	// Ember's hitbox viewer over SFV's Training, switched from Training select
 	// (SfvHitboxes, docs/design/beta8/hitboxes.md).
 	caps.hitboxes = true;
+	// Ember's Training lab over SFV's Training (SfvTrainingLab,
+	// docs/design/beta10/training.md): recording, playback, the reply from
+	// recordings, the meter's options and the hitbox switch, which every
+	// game's lab has, and the input history and the classic meter's input
+	// lanes from the inputs the battle records. Not SF4's dummy settings or
+	// position save (SFV's pause menu has its own), typed replies and the
+	// moves list (USF4's command tables), Combo check, the phone remote, the
+	// Data panel, the hitboxes' parts or the pad's own lab buttons.
+	caps.trainingFeatures.inputHistory = true;
+	caps.trainingFeatures.classicInputs = true;
 	caps.settingsFeatures.shortcutHint = true;
 	return caps;
 }

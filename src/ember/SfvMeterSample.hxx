@@ -55,7 +55,10 @@ sf4e::training::FighterSample MeterSample(const mod::FighterFrame& fighter, Mete
 // the ticks between were not read.
 class MeterFeed {
 public:
-	void Feed(sf4e::training::FrameMeter& meter, const std::array<mod::FighterFrame, 2>& fighters, uint32_t ticks);
+	// inputs: each side's input this update in the lab's words (SfvLabInput),
+	// the samples' FighterSample::input. Returns the samples it fed.
+	std::array<sf4e::training::FighterSample, 2> Feed(sf4e::training::FrameMeter& meter,
+		const std::array<mod::FighterFrame, 2>& fighters, uint32_t ticks, const std::array<unsigned, 2>& inputs = {});
 
 private:
 	std::array<MeterMove, 2> moves_{};

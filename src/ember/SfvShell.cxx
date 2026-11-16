@@ -7,7 +7,6 @@
 #include "ember/SfvBackdropRules.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvEleven.hxx"
-#include "ember/SfvHitboxes.hxx"
 #include "ember/SfvHud.hxx"
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPick.hxx"
@@ -17,6 +16,7 @@
 #include "ember/SfvScreenMode.hxx"
 #include "ember/SfvSelectionScreen.hxx"
 #include "ember/SfvTraining.hxx"
+#include "ember/SfvTrainingHost.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
@@ -135,9 +135,9 @@ public:
 		const PlayerPick dummy = CurrentDummy();
 		view.dummySummary = Summary(dummy);
 		if (!PickAvailable(dummy, snapshot)) view.dummyError = loc::T("runtime.selection_unavailable");
-		// Training select's Hitboxes row shows the viewer's saved choice
-		// (SfvHitboxes; docs/design/beta8/hitboxes.md).
-		view.hitboxesShown = SfvHitboxesShown();
+		// Training select's Hitboxes row shows the lab's Hitboxes switch
+		// (SfvTrainingHost; docs/design/beta10/training.md).
+		view.hitboxesShown = TrainingHitboxesChosen();
 		// Look's Background artwork row: the game's own pictures behind the
 		// shell's pages (SfvBackdrop; docs/design/beta8/backdrop.md).
 		view.offersMenuArtwork = true;
@@ -148,8 +148,8 @@ public:
 		view.screenMode = static_cast<int>(SfvScreenMode());
 	}
 
-	// Training select's Hitboxes row: the viewer's choice, saved.
-	bool ShowHitboxes(bool shown) override { return ShowSfvHitboxes(shown); }
+	// Training select's Hitboxes row: the lab's switch, saved.
+	bool ShowHitboxes(bool shown) override { return ChooseTrainingHitboxes(shown); }
 
 	// Look's Background artwork row: the backdrop on or off, saved.
 	bool ShowMenuArtwork(bool shown) override { return ShowSfvBackdrop(shown); }
@@ -460,11 +460,12 @@ void BeginFrame()
 	// fought with nothing of Ember's over it, to hide it there (the game's own
 	// cursor handling would put the arrow back on every mouse move).
 	shell.hideCursor = focused && !presentation.Visible() && sf4e::netplay::Fighting(snapshot.session.match) && !snapshot.practiceMatch;
-	sf4e::ui::SetOverlayCursorOwnership((focused && presentation.Visible()) || shell.hideCursor);
+	sf4e::ui::SetOverlayCursorOwnership((focused && (presentation.Visible() || TrainingControlsOpen())) || shell.hideCursor);
 	// The shell navigates by its own rows, not ImGui's spatial navigation.
 	ImGui::GetIO().ConfigFlags &= ~(ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard);
+	// The pad drives Training's lab controls as it drives the shell.
 	shell.navigation.Update(snapshot.menuController, input::ControllerMenuAvailable(snapshot.menuContext),
-		presentation.Visible(), snapshot.inputCapture == input::Capture::Idle);
+		presentation.Visible() || TrainingControlsOpen(), snapshot.inputCapture == input::Capture::Idle);
 }
 
 void PublishStatus(Shell& shell)
@@ -604,6 +605,10 @@ bool TakesPad(unsigned long slot, unsigned short buttons)
 			mod::Log("shell: go now on the Training call (the pad's View)");
 			return true;
 		}
+		// Training's lab: its controls hold the pad, and the chord's Start is theirs.
+		if (snapshot->menuContext == input::MenuContext::OfflineTraining &&
+			TrainingTakesPad(buttons, overlay::GameWindowFocused()))
+			return true;
 	}
 	return s_menuPads.Holds() || NativeMenuLocked(*snapshot);
 }
@@ -614,6 +619,7 @@ bool TakesPad(unsigned long slot, unsigned short buttons)
 bool TakesMessage(unsigned message, unsigned long long w, long long l)
 {
 	if (message == WM_ACTIVATEAPP && !w) s_goNowKey.Reset();
+	if (message == WM_ACTIVATEAPP) TrainingFocus(w != 0);
 	if (!EmberRuntimeRunning()) return false;
 	// Replay files dropped on the game's window go to Import replay, which
 	// takes them in once Ember's menus are in front (WindowFound).
@@ -664,6 +670,7 @@ void InstallEmberShell()
 	InstallSfvArt();
 	InstallSfvBackdrop();
 	InstallSfvHud();
+	InstallSfvTrainingHost();
 	InstallSfvPickStore();
 	// Random on the board (SfvRandomFighter): each frame the runtime hears
 	// whether the pick is Random, and a roll it made becomes the stored pick.

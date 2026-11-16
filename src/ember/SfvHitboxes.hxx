@@ -7,9 +7,10 @@
 // overlay (ui/HitboxOverlay.hxx) as SF4 Ember's Training lab draws SF4's.
 // It only reads the game, and reads nothing while it is off.
 //
-// The switch is Training select's Hitboxes row (Capabilities::hitboxes),
-// kept as SF4's lab keeps its own: the "hitboxes" of training.json's "meter"
-// (training/PracticeSettings.hxx), in SFV Ember's settings folder.
+// The switch is the lab's Hitboxes page and Training select's Hitboxes row
+// (Capabilities::hitboxes), both the library's one owner of training.json
+// (ui::TrainingMeterOptions, SetTrainingMeterOptions): its "meter"'s
+// "hitboxes", in SFV Ember's settings folder.
 
 namespace sfve::mod {
 class FighterReader;
@@ -31,11 +32,9 @@ void ForgetSfvHitboxes();
 // under the game's pause menu (SfvHud).
 void DrawSfvHitboxes();
 
-// The player's choice, read from training.json the first time it is asked.
-// Any thread.
+// Whether the boxes are read and drawn: the lab's Hitboxes switch with its
+// HUD shown, as SfvTrainingHost hands it over each frame. Any thread.
+void SetSfvHitboxesShown(bool shown);
 bool SfvHitboxesShown();
-// Training select's row: shows or hides the boxes and saves the choice.
-// False, the choice unchanged, when it could not be saved.
-bool ShowSfvHitboxes(bool shown);
 
 } // namespace sfve::adapter

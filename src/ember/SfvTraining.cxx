@@ -3,6 +3,7 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
 #include "ember/SfvPick.hxx"
+#include "ember/SfvTrainingLab.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
@@ -157,6 +158,8 @@ ember::game::Training& SfvTrainingService()
 void InstallSfvTraining()
 {
 	mod::RunEachGameFrame(Follow);
+	// Ember's lab over the battle Follow follows (SfvTrainingLab), after it each frame.
+	InstallSfvTrainingLab();
 	// Status "training": the Training battle followed and the call's countdown.
 	mod::RegisterStatus("training", [] {
 		TrainingView view;

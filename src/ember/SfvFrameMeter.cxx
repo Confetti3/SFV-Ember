@@ -3,6 +3,7 @@
 #include "ember/SfvHitboxes.hxx"
 #include "ember/SfvMeterSample.hxx"
 #include "ember/SfvTraining.hxx"
+#include "ember/SfvTrainingLab.hxx"
 #include "mod/FighterReader.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/Log.hxx"
@@ -17,6 +18,7 @@
 #include <windows.h>
 
 #include <array>
+#include <atomic>
 #include <memory>
 #include <mutex>
 
@@ -54,16 +56,9 @@ struct Followed {
 };
 std::unique_ptr<Followed> s_followed;
 
-// What the render thread draws: the meter as the last tick left it, or
-// nothing outside a followed Training battle.
-std::mutex s_mutex;
-std::shared_ptr<const training::MeterView> s_shown;
-
-void Show(std::shared_ptr<const training::MeterView> view)
-{
-	std::lock_guard lock(s_mutex);
-	s_shown = std::move(view);
-}
+// The meter's options the game thread applies (SetSfvMeterHistory).
+std::atomic<int> s_history{static_cast<int>(training::MeterHistory)};
+std::atomic<bool> s_continuous{false};
 
 void MeterLog::Note(const training::MeterView& view, const std::array<mod::FighterFrame, 2>& fighters)
 {
@@ -102,14 +97,15 @@ std::unique_ptr<Followed> Follow(mod::SfvAdapter& adapter)
 	return followed;
 }
 
-// After every battle frame update (mod::WatchBattleFrames).
+// After every battle frame update (mod::WatchBattleFrames): the one
+// follower of the Training battle, which reads its fighters once and fans
+// each update out to the meter, the hitbox viewer and the lab.
 void Watch(mod::SfvAdapter& adapter)
 {
-	const TrainingView training = ReadTrainingView();
-	if (!training.available || training.generation != adapter.Battle()) {
+	const TrainingView battle = ReadTrainingView();
+	if (!battle.available || battle.generation != adapter.Battle()) {
 		if (s_followed) {
 			s_followed.reset();
-			Show(nullptr);
 			ForgetSfvHitboxes();
 		}
 		return;
@@ -120,19 +116,23 @@ void Watch(mod::SfvAdapter& adapter)
 	}
 	Followed& followed = *s_followed;
 	const uint32_t ticks = adapter.TicksInLastUpdate();
-	// Paused: no tick, nothing to measure.
-	if (!followed.reader.Bound() || ticks == 0) return;
-	std::array<mod::FighterFrame, 2> fighters;
-	if (!followed.reader.Read(fighters) && !followed.readFailed) {
-		followed.readFailed = true;
-		mod::Log("frame meter: a fighter's state did not read; the meter shows the frame as unknown");
+	followed.meter.SetHistory(static_cast<std::size_t>(s_history.load()));
+	followed.meter.SetContinuous(s_continuous.load());
+	std::array<mod::FighterFrame, 2> fighters{};
+	std::array<training::FighterSample, 2> samples{};
+	// Paused: no tick, nothing to measure; the lab still takes its commands.
+	if (followed.reader.Bound() && ticks > 0) {
+		if (!followed.reader.Read(fighters) && !followed.readFailed) {
+			followed.readFailed = true;
+			mod::Log("frame meter: a fighter's state did not read; the meter shows the frame as unknown");
+		}
+		// Each side's input as the battle recorded it, for the classic meter's lanes.
+		samples = followed.feed.Feed(followed.meter, fighters, ticks, TrainingLabInputs());
+		followed.log.Note(followed.meter.View(), fighters);
+		// The hitbox viewer reads the same battle's boxes after the same tick.
+		ReadSfvHitboxes(followed.reader);
 	}
-	followed.feed.Feed(followed.meter, fighters, ticks);
-	followed.log.Note(followed.meter.View(), fighters);
-	Show(std::make_shared<const training::MeterView>(followed.meter.View()));
-	// The hitbox viewer reads the same battle's boxes after the same tick
-	// (one watcher: mod::WatchBattleFrames).
-	ReadSfvHitboxes(followed.reader);
+	TrainingLabAfterUpdate(adapter, samples, fighters, ticks, followed.meter.View());
 }
 
 } // namespace
@@ -142,18 +142,10 @@ void InstallSfvFrameMeter()
 	mod::WatchBattleFrames(Watch);
 }
 
-void DrawSfvFrameMeter(const training::MeterOptions& options)
+void SetSfvMeterHistory(int frames, bool continuous)
 {
-	std::shared_ptr<const training::MeterView> view;
-	{
-		std::lock_guard lock(s_mutex);
-		view = s_shown;
-	}
-	if (!view) return;
-	const float hudScale = sf4e::ui::FrameMeterHudScale(options.size);
-	const auto* viewport = ImGui::GetMainViewport();
-	sf4e::ui::DrawFrameMeterWindow(*view, hudScale, sf4e::ui::TrainingMeterWidth(hudScale),
-		viewport->Pos.y + viewport->Size.y * sf4e::ui::TrainingHudBottom, options);
+	s_history = frames;
+	s_continuous = continuous;
 }
 
 } // namespace sfve::adapter

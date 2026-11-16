@@ -1,9 +1,8 @@
 #include "ember/SfvHud.hxx"
 
 #include "ember/EmberHost.hxx"
-#include "ember/SfvFrameMeter.hxx"
-#include "ember/SfvHitboxes.hxx"
 #include "ember/SfvTraining.hxx"
+#include "ember/SfvTrainingHost.hxx"
 #include "mod/HudText.hxx"
 #include "mod/Log.hxx"
 
@@ -179,27 +178,21 @@ void DrawSfvTraining(const facade::PresentationSnapshot& frame, bool shellShown,
 	if (!frame.runtime) return;
 	const auto& snapshot = *frame.runtime;
 	const TrainingView training = ReadTrainingView();
-	if (!training.available) return;
 	const bool paused = TrainingPaused();
-	const bool inRoom = snapshot.session.room == sf4e::netplay::RoomState::Joined;
 	// As SF4 Ember's overlay decides it (sf4e__Overlay.cxx): this battle is
 	// called only while the room's call stands for it and its countdown runs.
 	const auto& call = snapshot.trainingCall;
-	const bool called = training.leavingIn > 0 && call.Live() && call.generation == training.generation &&
+	const bool called = training.available && training.leavingIn > 0 && call.Live() && call.generation == training.generation &&
 		training.leavingCall == call.serial;
+	// Ember's lab over the battle (SfvTrainingHost): its keys, its controls
+	// and its HUD (the boxes, the frame meter as the player set it), which
+	// close outside the battle.
+	DrawSfvTrainingLab(training.available, shellShown, paused, focused, called);
+	if (!training.available) return;
+	const bool inRoom = snapshot.session.room == sf4e::netplay::RoomState::Joined;
 	if (!shellShown && !paused && inRoom && !called) {
 		DrawRoomLine(sf4e::ui::DescribeTrainingRoom(snapshot.Room(), unread));
 	}
-	// The fighters' boxes (docs/design/beta8/hitboxes.md) behind every
-	// window, Ember's menu included, as SF4 Ember's lab draws them; never
-	// over the game's pause menu.
-	if (!paused) DrawSfvHitboxes();
-	// Ember's frame meter (section 39), as SF4 Ember's Training HUD draws it,
-	// under neither the shell nor the game's pause menu.
-	// The meter's options are the library's defaults (angled bars, 60 frames,
-	// the numbers and the state line, standard size) until SFV's Training
-	// offers them: this is the one place they are supplied.
-	if (!shellShown && !paused) DrawSfvFrameMeter(sf4e::training::MeterOptions{});
 	if (!called) return;
 	sf4e::ui::ChallengerCall challenger;
 	if (inRoom) challenger = sf4e::ui::DescribeChallenger(snapshot.Room(), call);
