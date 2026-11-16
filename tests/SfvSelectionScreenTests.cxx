@@ -316,6 +316,7 @@ TEST_CASE("with a choice open the pane previews its focused option, ready or not
 TEST_CASE("a fighter or costume previewed is what choosing it stores")
 {
 	FillTestCatalog();
+	ForgetPickMemoryForTest();
 	const std::vector<StageOption> stages = StageOptions(MissingStages());
 	const auto same = [](const sf4e::selection::Pick& a, const sf4e::selection::Pick& b) {
 		return a.fighter == b.fighter && a.costume == b.costume && a.color == b.color && picks::LoadoutOf(a) == picks::LoadoutOf(b);
@@ -337,12 +338,26 @@ TEST_CASE("a fighter or costume previewed is what choosing it stores")
 			CHECK(same(shown.pick, SetPick(chosen).pick));
 		}
 	}
-	// CNL keeps colour 02, which its first costume has and this player can
-	// ready, where its first look would be colour 01.
+	// CNL is in the look it was last stored in (colour 02, V-Skill II), not in
+	// the one RYU wears.
+	ForgetPickMemoryForTest();
+	PlayerPick cnlStored = PlayerPickOf(kCnl, kTwoOne);
+	cnlStored.pick.color = 1;
+	SetPick(cnlStored);
 	const PlayerPick cnl = SfvSelectionScreen::Previewed(from, "fighter", "#1");
 	CHECK(cnl.pick.costume == 0);
 	CHECK(cnl.pick.color == 1);
 	CHECK(picks::LoadoutOf(cnl.pick) == kTwoOne);
+	// A fighter never stored is in its default look, whatever RYU wears.
+	const PlayerPick bison = SfvSelectionScreen::Previewed(from, "fighter", "#4");
+	CHECK(bison.pick.costume == 0);
+	CHECK(bison.pick.color == 0);
+	CHECK(picks::LoadoutOf(bison.pick) == kOneOne);
+	// The Training dummy keeps no memory: CNL in RYU's colour 02 and V-Skill II.
+	const PlayerPick dummy = SfvSelectionScreen::Previewed(from, "fighter", "#4", false);
+	CHECK(dummy.pick.color == 1);
+	CHECK(picks::LoadoutOf(dummy.pick) == kTwoTwo);
+	ForgetPickMemoryForTest();
 }
 
 TEST_CASE("the pane says why an option cannot be chosen, and that a stage shown is one the opponent lacks, with its row focused or its choice open")

@@ -3,6 +3,7 @@
 #include "ember/PlayerName.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
+#include "ember/SfvPickStore.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/GameExit.hxx"
@@ -115,6 +116,7 @@ void StopAtExit()
 	s_state = HostState::Stopped;
 	facade::ShutdownNetplay(true);
 	facade::StopHelper();
+	FlushSfvPickStore();
 	StopPreferences();
 	mod::Log("ember: %s, stopped the helper and saved the settings for the game's exit",
 		left ? "left the room" : "the room was not left in time");

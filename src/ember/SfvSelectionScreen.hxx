@@ -100,8 +100,10 @@ public:
 	static std::vector<sf4e::ui::MenuEntry> Rows(const PlayerPick& pick, bool editable, bool withStage, bool stageEditable,
 		const std::vector<StageOption>& stageOptions, bool withSize = false);
 	// The pick with the row's change made; false when the action changes
-	// nothing. A stage is one of `stageOptions`' PlayableIds.
-	static bool Apply(const sf4e::ui::MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions);
+	// nothing. A stage is one of `stageOptions`' PlayableIds. A new fighter is
+	// in its own look (LookFor, `remembered` as it takes it).
+	static bool Apply(const sf4e::ui::MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions,
+		bool remembered = true);
 	// What the pane shows for the row `rowId`.
 	static PreviewFocus FocusOf(const std::string& rowId);
 	// The pick as the pane shows it while the option `optionId` of the row's
@@ -110,7 +112,8 @@ public:
 	// or a stage. A fighter or costume this player cannot ready is shown as it
 	// is, fitted to the spec alone, and so is a colour or a stage they cannot
 	// choose. The pick itself for no option, or one that is not the row's.
-	static PlayerPick Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId);
+	static PlayerPick Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId,
+		bool remembered = true);
 
 	// A choice open on the screen: its row, and the place of its focused
 	// option in the row's choices.
@@ -125,7 +128,7 @@ public:
 	// opponent lacks (`stageOptions`' OpponentLacks), with the stage row
 	// focused or its choice open.
 	static PickPreview PreviewOf(const PlayerPick& pick, const std::string& focus, const std::optional<OpenChoice>& choice,
-		const std::vector<sf4e::ui::MenuEntry>& rows, const std::vector<StageOption>& stageOptions);
+		const std::vector<sf4e::ui::MenuEntry>& rows, const std::vector<StageOption>& stageOptions, bool remembered = true);
 
 	// The pages' ids.
 	static constexpr const char* kBoard = "home";

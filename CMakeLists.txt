@@ -128,7 +128,9 @@ add_library(sfve_ember STATIC
     src/ember/SfvLoadoutText.cxx
     src/ember/SfvMeterSample.cxx
     src/ember/SfvPick.cxx
+    src/ember/SfvPickMemory.cxx
     src/ember/SfvPickPreview.cxx
+    src/ember/SfvPickStore.cxx
     src/ember/SfvPictureSpec.cxx
     src/ember/SfvRandomFighter.cxx
     src/ember/SfvEleven.cxx
@@ -299,6 +301,7 @@ add_executable(sfve_ember_tests
     tests/EmberAdapterTests.cxx
     tests/SfvCatalogTests.cxx
     tests/SfvPickRulesTests.cxx
+    tests/SfvPickMemoryTests.cxx
     tests/SfvLoadoutTests.cxx
     tests/SfvVoiceTests.cxx
     tests/SfvLoadCodeTests.cxx
