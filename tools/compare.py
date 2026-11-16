@@ -10,6 +10,10 @@
   checkpoint is logged; a replay logs it again, the last line wins), and
   its unmatched regions while the copies still keep it.
 
+Regions are paired as a multiset of (size, hash), never by name (a `game.N`
+name is a place in that process's region list, and the two copies number them
+differently).
+
 Prints PASS or FAIL. Exit code 0 only when something was compared and nothing
 differs; 1 when the copies differ, when nothing could be compared, or when a
 copy does not answer.
