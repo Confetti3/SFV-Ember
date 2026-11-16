@@ -53,6 +53,7 @@
 // other handler a crash reaches, is the host's crash record's (the mod's
 // mod/CrashRecord.hxx, the tests' GgpoAssertions.cxx).
 
+#include "core/Checkpoints.hxx"
 #include "core/DetachedGame.hxx"
 #include "core/GameAdapter.hxx"
 #include "core/ReplayFrames.hxx"
@@ -81,15 +82,12 @@ class LaggedReplay;
 
 class RollbackSession {
 public:
-	// Every kCheckpointInterval frames the session also keeps one hash per
-	// region, so peers that disagree can find where. The latest five minutes
-	// are kept. (20 from beta.9, 60 before: a checkpoint every third of a
-	// second of play instead of every second, and a replay's recorded
-	// checkpoints, which are multiples of the interval it was recorded at, stay
-	// valid at any divisor of it: ReplayFile accepts every multiple of 20.)
-	// Frame and region hashes here are the peers' (HashScope::Peers): two
-	// processes playing the same match agree on them.
-	static constexpr int kCheckpointInterval = 20;
+	// Every kCheckpointInterval frames (core/Checkpoints.hxx) the session also
+	// keeps one hash per region, so peers that disagree can find where. The
+	// latest five minutes are kept. Frame and region hashes here are the
+	// peers' (HashScope::Peers): two processes playing the same match agree
+	// on them.
+	static constexpr int kCheckpointInterval = sfve::kCheckpointInterval;
 	// How many checkpoints' whole states are kept (CheckpointState): 120
 	// frames of them, a state's size each, for the desync report's state file.
 	static constexpr int kCheckpointStatesKept = 6;
