@@ -62,7 +62,7 @@ void ForgetPickMemoryForTest();
 // carries it, with this copy's player's voice for its fighter (SfvCatalog's
 // OwnVoice, picks::SetVoice). The stored pick carries none. Its size (Tiny)
 // goes only while the room's Tiny fighters allowed rule is on (SizeToSend).
-void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command);
+void AddPickTo(sf4e::commands::Ready& ready);
 
 // The model size a pick sends (EMBER_LIBRARY.md section 59): Tiny only where
 // the room allows tiny fighters, else normal, whatever the stored pick says. A
@@ -73,7 +73,8 @@ int SizeToSend(int storedSize, bool roomAllowsTiny);
 // voice for its fighter, the costume code with its marker, and the size only
 // where the room allows tiny fighters (SizeToSend). The Random fighter's
 // runtime is handed the remembered looks so (SfvRandomFighter).
-void ToWire(sf4e::selection::Pick pick, bool roomAllowsTiny, sf4e::wire::ConfirmedCharaConditions& out);
+sf4e::selection::Pick WirePick(sf4e::selection::Pick pick, bool roomAllowsTiny);
+void ToWire(const sf4e::selection::Pick& pick, bool roomAllowsTiny, sf4e::wire::ConfirmedCharaConditions& out);
 
 // Random on the fighter board (SfvRandomFighter): the player's pick is a
 // fighter rolled for each game, and the stored pick is the rolled fighter in

@@ -40,6 +40,14 @@ Pick WithVoice(Pick pick, int voice)
 
 } // namespace
 
+// What a Ready sends: its pick as the runtime puts it on the wire (NativePick), read back.
+static sf4e::selection::Pick Sent(const sf4e::commands::Ready& ready)
+{
+	sf4e::wire::ConfirmedCharaConditions native{};
+	sf4e::selection::ToNative(ready.pick, native);
+	return sf4e::selection::FromNative(native);
+}
+
 TEST_CASE("a pick carries a voice in its win quote slot, and a pick that carries none reads as none")
 {
 	// The pick's numbers are the game's own (EKWVoiceLanguage).
@@ -68,9 +76,9 @@ TEST_CASE("a pick carries a voice in its win quote slot, and a pick that carries
 		CHECK_FALSE(picks::VoiceIn(pick));
 	}
 	// It travels as the wire's byte, and back.
-	sf4e::NetplayFacade::RuntimeCommand command;
-	sf4e::selection::ToNative(WithVoice(PickOf(1), picks::kVoiceJapanese), command.character);
-	CHECK(picks::VoiceIn(sf4e::selection::FromNative(command.character)) == picks::kVoiceJapanese);
+	sf4e::wire::ConfirmedCharaConditions native{};
+	sf4e::selection::ToNative(WithVoice(PickOf(1), picks::kVoiceJapanese), native);
+	CHECK(picks::VoiceIn(sf4e::selection::FromNative(native)) == picks::kVoiceJapanese);
 }
 
 TEST_CASE("the voice is no part of a pick's fitting or validity")
@@ -185,9 +193,9 @@ TEST_CASE("Ready carries this copy's player's voice for the pick's fighter, from
 
 	const PlayerPick before = CurrentPick();
 	SetPick({PickOf(1), before.stage});
-	sf4e::NetplayFacade::RuntimeCommand command;
+	sf4e::commands::Ready command;
 	AddPickTo(command);
-	const Pick sent = sf4e::selection::FromNative(command.character);
+	const Pick sent = Sent(command);
 	CHECK(sent.fighter == 1);
 	CHECK(picks::VoiceIn(sent) == picks::kVoiceJapanese);
 	// The stored pick itself carries none: only what Ready sends does.
@@ -196,6 +204,6 @@ TEST_CASE("Ready carries this copy's player's voice for the pick's fighter, from
 	// A change in the game's options reaches the next Ready.
 	RefreshOwnVoices([](const std::string&) -> std::optional<int> { return picks::kVoiceEnglish; });
 	AddPickTo(command);
-	CHECK(picks::VoiceIn(sf4e::selection::FromNative(command.character)) == picks::kVoiceEnglish);
+	CHECK(picks::VoiceIn(Sent(command)) == picks::kVoiceEnglish);
 	SetPick(before);
 }

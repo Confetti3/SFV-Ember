@@ -147,7 +147,7 @@ void ForgetPickMemoryForTest()
 	s_touched = false;
 }
 
-void ToWire(sf4e::selection::Pick pick, bool roomAllowsTiny, sf4e::wire::ConfirmedCharaConditions& out)
+sf4e::selection::Pick WirePick(sf4e::selection::Pick pick, bool roomAllowsTiny)
 {
 	// The player's own voice for the fighter goes with the pick, so the
 	// opponent's copy plays it too (picks::VoiceIn, SfvCatalog's LaunchPicks).
@@ -158,15 +158,20 @@ void ToWire(sf4e::selection::Pick pick, bool roomAllowsTiny, sf4e::wire::Confirm
 	// The size only where the room allows tiny fighters (a Training or Home
 	// pick is never sent, and a room without the rule sees 0).
 	pick.size = SizeToSend(pick.size, roomAllowsTiny);
-	sf4e::selection::ToNative(pick, out);
+	return pick;
 }
 
-void AddPickTo(sf4e::NetplayFacade::RuntimeCommand& command)
+void ToWire(const sf4e::selection::Pick& pick, bool roomAllowsTiny, sf4e::wire::ConfirmedCharaConditions& out)
+{
+	sf4e::selection::ToNative(WirePick(pick, roomAllowsTiny), out);
+}
+
+void AddPickTo(sf4e::commands::Ready& ready)
 {
 	const PlayerPick pick = CurrentPick();
 	const auto runtime = sf4e::NetplayFacade::GetRuntimeSnapshotShared();
-	ToWire(pick.pick, runtime && runtime->Room().tinyFighters, command.character);
-	command.stage = pick.stage;
+	ready.pick = WirePick(pick.pick, runtime && runtime->Room().tinyFighters);
+	ready.stage = pick.stage;
 }
 
 bool PickRandom()

@@ -46,7 +46,7 @@ std::optional<sf4e::netplay::TableSetup> s_createdRules;
 std::atomic<std::uint64_t> s_ticket{std::uint64_t(1) << 48};
 std::atomic<std::uint64_t> s_request{std::uint64_t(1) << 48};
 
-std::string Submit(facade::RuntimeCommand command)
+std::string Submit(sf4e::RuntimeRequest command)
 {
 	if (!EmberRuntimeRunning()) return "error Ember's runtime is not running (see the status's \"ember\")";
 	if (!facade::SubmitRuntimeCommand(std::move(command))) return "error the runtime took no command (queue full)";
@@ -65,7 +65,7 @@ std::string Ask(IdentityRequest request)
 	}
 	const std::uint64_t ticket = ++s_ticket;
 	request.ticket = ticket;
-	facade::RuntimeCommand command;
+	sf4e::commands::Identity command;
 	command.identity = std::move(request);
 	const std::string answer = Submit(std::move(command));
 	return answer.rfind("ok", 0) == 0 ? "ok " + std::to_string(ticket) : answer;
@@ -136,8 +136,7 @@ std::string Public(const std::string& args)
 	const std::string bridge = BridgeId();
 	if (bridge.empty()) return kTrustFirst;
 	const auto [verb, rest] = Verb(args);
-	facade::RuntimeCommand command;
-	command.command.generation = facade::GetRuntimeSnapshotShared()->session.generation;
+	sf4e::commands::Tournament command;
 	Command& request = command.tournament;
 	request.bridgeId = bridge;
 	request.request = ++s_request;
@@ -168,10 +167,9 @@ std::string Public(const std::string& args)
 		const auto snapshot = facade::GetRuntimeSnapshotShared();
 		const auto& rooms = snapshot->publicRooms;
 		if (!rooms.failure.empty() || rooms.admission.invitation.empty()) return "error no admission to join with";
-		facade::RuntimeCommand join;
-		join.command.kind = sf4e::netplay::CommandKind::JoinInvite;
-		join.command.generation = snapshot->session.generation;
-		join.command.invitation = rooms.admission.invitation;
+		sf4e::commands::JoinRoom join;
+		join.generation = snapshot->session.generation;
+		join.invitation = rooms.admission.invitation;
 		join.publicTicket = rooms.admission.ticket;
 		{
 			std::lock_guard<std::mutex> lock(s_mutex);
@@ -192,8 +190,7 @@ std::string Ranking(const std::string& args)
 	const std::string bridge = BridgeId();
 	if (bridge.empty()) return kTrustFirst;
 	const auto [verb, rest] = Verb(args);
-	facade::RuntimeCommand command;
-	command.command.generation = facade::GetRuntimeSnapshotShared()->session.generation;
+	sf4e::commands::Tournament command;
 	Command& request = command.tournament;
 	request.bridgeId = bridge;
 	if (verb == "standing" && rest.empty()) request.op = Command::Op::RankingStanding;
@@ -251,7 +248,7 @@ std::string Match(const std::string& args)
 	const std::string bridge = BridgeId();
 	if (bridge.empty()) return kTrustFirst;
 	const auto [verb, rest] = Verb(args);
-	facade::RuntimeCommand command;
+	sf4e::commands::Tournament command;
 	Command& request = command.tournament;
 	if (verb == "refresh" && rest.empty()) {
 		request.op = Command::Op::Refresh;

@@ -203,7 +203,10 @@ void DrawSfvTraining(const facade::PresentationSnapshot& frame, bool shellShown,
 	if (!paused) DrawSfvHitboxes();
 	// Ember's frame meter (section 39), as SF4 Ember's Training HUD draws it,
 	// under neither the shell nor the game's pause menu.
-	if (!shellShown && !paused) DrawSfvFrameMeter();
+	// The meter's options are the library's defaults (angled bars, 60 frames,
+	// the numbers and the state line, standard size) until SFV's Training
+	// offers them: this is the one place they are supplied.
+	if (!shellShown && !paused) DrawSfvFrameMeter(sf4e::training::MeterOptions{});
 	if (!called) return;
 	sf4e::ui::ChallengerCall challenger;
 	if (inRoom) challenger = sf4e::ui::DescribeChallenger(snapshot.Room(), call);

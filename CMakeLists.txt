@@ -374,6 +374,10 @@ target_link_libraries(sfve_catalog_lifecycle_tests PRIVATE sfve_ember_test_mod s
 # The catalog filled with Ember's ownership gate off (-sfve_ownership=0), which a filled catalog keeps: a program of its own.
 add_executable(sfve_catalog_gate_off_tests tests/main.cxx tests/CatalogGateOffTests.cxx)
 target_link_libraries(sfve_catalog_gate_off_tests PRIVATE sfve_ember_test_mod sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
+# A main past SF4's 44 fighters needs SFV's roster at its size, which the
+# catalog then keeps: a program of its own.
+add_executable(sfve_main_tests tests/main.cxx tests/SfvMainTests.cxx)
+target_link_libraries(sfve_main_tests PRIVATE sfve_ember_test_mod sfve_ember sfve_testbed minhook::minhook doctest::doctest dbghelp)
 
 # The in-game mod. Loads inert: it blocks every non-loopback connection first,
 # then does nothing else unless the exe is the exact build it was made for.
@@ -583,6 +587,7 @@ add_test(NAME ember_runtime COMMAND ember_runtime_x64_test)
 add_test(NAME sfve_ember_tests COMMAND sfve_ember_tests)
 add_test(NAME sfve_catalog_lifecycle_tests COMMAND sfve_catalog_lifecycle_tests)
 add_test(NAME sfve_catalog_gate_off_tests COMMAND sfve_catalog_gate_off_tests)
+add_test(NAME sfve_main_tests COMMAND sfve_main_tests)
 # SFV's room host catalog over the exported pick space.
 add_test(NAME sfve_room_host_tests COMMAND sfve_room_host_tests)
 # The packaging script's render store checks (scripts/RenderStore.ps1), on small stores.

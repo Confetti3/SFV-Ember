@@ -401,7 +401,9 @@ class SfvPreferences final : public Preferences {
 public:
 	Device SavedGameplayDevice() override { return {sf4e::input::PadXInput, kGameplaySlot, std::nullopt}; }
 	std::optional<sf4e::gamepads::Identity> SavedDeviceIdentity() override { return std::nullopt; }
-	bool SaveGameplayDevice(int, int, const std::optional<sf4e::gamepads::Identity>&) override { return true; }
+	// SFV's battle plays pad 0 (Capabilities::gameplayDeviceChoice is off), so
+	// the runtime never asks to save another.
+	bool SaveGameplayDevice(int, int, const std::optional<sf4e::gamepads::Identity>&) override { return false; }
 	bool Save(const sf4e::netplay::PlayerPreferences& preferences) override { return Queue(preferences) != 0; }
 	std::uint64_t Queue(const sf4e::netplay::PlayerPreferences& preferences) override
 	{
@@ -485,8 +487,9 @@ Capabilities SfvCapabilities()
 	caps.settingsFeatures.shortcutHint = true;
 	return caps;
 }
+NoThemes s_themes;
 const Adapter s_game = {SfvCapabilities(), s_state, s_battleSide, s_input, s_preferences, s_services,
-	SfvTrainingService(), SfvReplays()};
+	SfvTrainingService(), SfvReplays(), s_themes};
 
 } // namespace
 

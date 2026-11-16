@@ -99,10 +99,7 @@ sf4e::netplay::RoomState RoomNow()
 void BeginLeaveAtExit()
 {
 	if (RoomNow() == sf4e::netplay::RoomState::Idle) return;
-	facade::RuntimeCommand leave;
-	leave.command.kind = sf4e::netplay::CommandKind::LeaveRoom;
-	leave.command.generation = facade::GetRuntimeSnapshotShared()->session.generation;
-	const bool submitted = facade::SubmitRuntimeCommand(std::move(leave));
+	const bool submitted = facade::SubmitRuntimeCommand(sf4e::commands::LeaveRoom{facade::GetRuntimeSnapshotShared()->session.generation});
 	mod::Log("ember: leaving the room for the game's exit%s", submitted ? "" : " (the runtime took no command)");
 }
 

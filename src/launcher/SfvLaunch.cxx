@@ -237,7 +237,12 @@ void BeforeStart(const std::wstring&)
 	SetEnvironmentVariableA("SteamGameId", Product().steam.appId);
 }
 
-HANDLE StartGame(const StartRequest& request, StartFailure& failure)
+// SFV Ember's launcher has no option that runs in place of a start.
+std::optional<int> RunInsteadOfStart() { return std::nullopt; }
+
+// The mod gives the launcher no start-up signal, so `watch` stays as it is
+// and no exit is told apart as a failed start (LaunchSteps.hxx's StartWatch).
+HANDLE StartGame(const StartRequest& request, StartFailure& failure, StartWatch&)
 {
 	namespace sfv = sfve::mod::sfv;
 	const std::optional<uint32_t> stamp = sfve::launcher::ExecutableTimestamp(request.executable);

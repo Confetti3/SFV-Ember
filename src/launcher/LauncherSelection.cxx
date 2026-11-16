@@ -40,6 +40,8 @@ SelectionImage SelectionArt::Ultra(int, int) { return Missing(); }
 SelectionImage SelectionArt::UltraIcon(int) { return Missing(); }
 SelectionImage SelectionArt::Stage(int) { return Missing(); }
 SelectionImage SelectionArt::RankingEmblem(const std::string&) { return Missing(); }
+SelectionArt::GameSheet SelectionArt::PointDigitFiles() const { return {}; }
+SelectionArt::GameSheet SelectionArt::LetterFiles() const { return {}; }
 
 // GameMenu's Ultra mark asks the game for its badge; the launcher draws no
 // pick, so it has none.

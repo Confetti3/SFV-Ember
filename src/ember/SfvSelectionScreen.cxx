@@ -684,9 +684,9 @@ void DrawLoadoutCards(const std::vector<MenuEntry>& entries, MenuNavigation& nav
 
 } // namespace
 
-bool StepTableSelection(const sf4e::ui::ShellAction::SelectionStep& step, bool canEditSelection, bool canChangeUltra)
+bool StepTableSelection(const sf4e::ui::SelectionStep& step, bool canEditSelection, bool canChangeUltra)
 {
-	using Field = sf4e::ui::ShellAction::SelectionStep::Field;
+	using Field = sf4e::ui::SelectionStep::Field;
 	PlayerPick pick = CurrentPick();
 	switch (step.field) {
 	case Field::Ultra: {
@@ -700,8 +700,6 @@ bool StepTableSelection(const sf4e::ui::ShellAction::SelectionStep& step, bool c
 		if (!canEditSelection) return false;
 		sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), step.delta);
 		break;
-	case Field::None:
-		return false;
 	}
 	SetPick(pick);
 	return true;

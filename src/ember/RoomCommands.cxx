@@ -29,19 +29,16 @@ namespace sfve::adapter {
 namespace {
 
 namespace facade = sf4e::NetplayFacade;
-using sf4e::netplay::CommandKind;
+namespace commands = sf4e::commands;
 
-// A command for the runtime, tagged with the session the latest snapshot
-// shows, as the shell tags a press with the screen it was drawn from.
-facade::RuntimeCommand CommandFor(CommandKind kind)
+// The session the latest snapshot shows, which a command is tagged with, as
+// the shell tags a press with the screen it was drawn from.
+sf4e::netplay::Generation Current()
 {
-	facade::RuntimeCommand command;
-	command.command.kind = kind;
-	command.command.generation = facade::GetRuntimeSnapshotShared()->session.generation;
-	return command;
+	return facade::GetRuntimeSnapshotShared()->session.generation;
 }
 
-std::string Submit(facade::RuntimeCommand command)
+std::string Submit(sf4e::RuntimeRequest command)
 {
 	if (!EmberRuntimeRunning()) return "error Ember's runtime is not running (see the status's \"ember\")";
 	if (!facade::SubmitRuntimeCommand(std::move(command))) return "error the runtime took no command (queue full)";
@@ -97,7 +94,8 @@ std::string Host(const std::string& args)
 	if (!banned) return "error a banned stage is not a stage code of this game";
 	if (rematch < 0 || rematch > 1 || tiny < 0 || tiny > 1) return usage;
 	if (!sf4e::room::ValidSetFormat(firstTo)) return "error the set is first to 1-10 games, or 0 for unlimited";
-	facade::RuntimeCommand command = CommandFor(CommandKind::HostRoom);
+	commands::HostRoom command;
+	command.generation = Current();
 	command.preferences = facade::GetRuntimeSnapshotShared()->preferences;
 	if (const auto refused = SetRounds(command.preferences, rounds, seconds)) return *refused;
 	// A game goes on in place over its WIN only with Instant rematch on
@@ -106,10 +104,10 @@ std::string Host(const std::string& args)
 	command.preferences.tableRules.format = static_cast<sf4e::room::SetFormat>(firstTo);
 	// Tiny fighters allowed (EMBER_LIBRARY.md section 59): a private room's rule,
 	// as Create's row sets it.
-	command.tinyFighters = tiny != 0;
+	command.charter.tinyFighters = tiny != 0;
 	// Banned stages (docs/design/beta8/stageban.md): the room opens with them, as a host's
 	// Room settings would set them; a test names them.
-	command.bannedStages = *banned;
+	command.charter.bannedStages = *banned;
 	if (!command.preferences.Valid()) return "error the room's settings are not valid";
 	return Submit(std::move(command));
 }
@@ -125,19 +123,20 @@ std::string SaveRules(const std::string& args)
 	int rounds = 0, seconds = 0;
 	std::istringstream in(args);
 	if (!(in >> rounds >> seconds) || !(in >> std::ws).eof()) return "error usage: rules <rounds> <seconds>";
-	facade::RuntimeCommand command = CommandFor(CommandKind::SavePreferences);
+	commands::SavePreferences command;
+	command.generation = Current();
 	command.preferences = facade::GetRuntimeSnapshotShared()->preferences;
 	if (const auto refused = SetRounds(command.preferences, rounds, seconds)) return *refused;
 	if (!command.preferences.Valid()) return "error the settings are not valid";
-	command.displayName = command.preferences.displayName;
 	return Submit(std::move(command));
 }
 
 std::string Join(const std::string& invitation)
 {
 	if (invitation.empty() || invitation.find(' ') != std::string::npos) return "error usage: join <invitation>";
-	facade::RuntimeCommand command = CommandFor(CommandKind::JoinInvite);
-	command.command.invitation = invitation;
+	commands::JoinRoom command;
+	command.generation = Current();
+	command.invitation = invitation;
 	return Submit(std::move(command));
 }
 
@@ -152,7 +151,8 @@ std::string Sit(const std::string& args)
 	const sf4e::room::Snapshot& room = snapshot->Room();
 	if (!room.roomEpoch || !room.localMember) return "error not in a room";
 	if (table < 0 || table >= (int)room.tables.size() || seat < -1 || seat > 1) return "error no such table or seat";
-	facade::RuntimeCommand command = CommandFor(CommandKind::RoomAction);
+	commands::RoomAction command;
+	command.generation = Current();
 	sf4e::room::Action& action = command.roomAction;
 	action.kind = sf4e::room::ActionKind::Queue;
 	action.table = (std::uint8_t)table;
@@ -176,7 +176,8 @@ std::string WatchTable(const std::string& args)
 	const sf4e::room::Snapshot& room = snapshot->Room();
 	if (!room.roomEpoch || !room.localMember) return "error not in a room";
 	if (table < 0 || table >= (int)room.tables.size()) return "error no such table";
-	facade::RuntimeCommand command = CommandFor(CommandKind::RoomAction);
+	commands::RoomAction command;
+	command.generation = Current();
 	sf4e::room::Action& action = command.roomAction;
 	action.kind = sf4e::room::ActionKind::Watch;
 	action.table = (std::uint8_t)table;
@@ -195,7 +196,8 @@ std::string StopWatching()
 {
 	const auto snapshot = facade::GetRuntimeSnapshotShared();
 	if (!snapshot->watchedGame.Active()) return "error no game is being watched";
-	facade::RuntimeCommand command = CommandFor(CommandKind::RoomAction);
+	commands::LeaveWatchedGame command;
+	command.generation = Current();
 	command.leaveWatchedGame = snapshot->watchedGame;
 	return Submit(std::move(command));
 }
@@ -300,7 +302,8 @@ std::string Code(const std::string& args)
 
 std::string Ready()
 {
-	facade::RuntimeCommand command = CommandFor(CommandKind::Ready);
+	commands::Ready command;
+	command.generation = Current();
 	AddPickTo(command);
 	return Submit(std::move(command));
 }
@@ -314,7 +317,9 @@ std::string Rematch(const std::string& args)
 		return DeclineRematch() ? "ok declined" : "error no WIN is waiting for an answer";
 	}
 	if (args != "yes") return "error usage: rematch yes|no";
-	facade::RuntimeCommand command = CommandFor(CommandKind::Rematch);
+	commands::Ready command;
+	command.generation = Current();
+	command.rematch = true;
 	AddPickTo(command);
 	return Submit(std::move(command));
 }
@@ -324,7 +329,8 @@ std::string Delay(const std::string& args)
 	char* end = nullptr;
 	const long frames = std::strtol(args.c_str(), &end, 10);
 	if (args.empty() || *end) return "error usage: delay <frames>";
-	facade::RuntimeCommand command = CommandFor(CommandKind::ApplyDelay);
+	commands::ApplyDelay command;
+	command.generation = Current();
 	command.selectedDelay = (int)frames;
 	return Submit(std::move(command));
 }
@@ -402,7 +408,7 @@ void RegisterRoomCommands()
 	mod::RegisterCommand("rematch", Rematch);
 	mod::RegisterCommand("delay", Delay);
 	mod::RegisterCommand("rules", SaveRules);
-	mod::RegisterCommand("leave", [](const std::string&) { return Submit(CommandFor(CommandKind::LeaveRoom)); });
+	mod::RegisterCommand("leave", [](const std::string&) { return Submit(commands::LeaveRoom{Current()}); });
 	mod::RegisterStatus("room", Status);
 	RegisterPublicCommands();
 }

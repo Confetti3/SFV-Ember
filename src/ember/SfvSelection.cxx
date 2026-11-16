@@ -168,6 +168,10 @@ SelectionImage SelectionArt::UltraIcon(int) { return Missing(); }
 SelectionImage SelectionArt::Stage(int stage) { return sfve::adapter::StageImage(stage); }
 // SFV's league icons, for the ranks SfvProduct names (section 28).
 SelectionImage SelectionArt::RankingEmblem(const std::string& entry) { return sfve::adapter::LeagueImage(entry); }
+// SFV's PP and BP are drawn in its own UI's font, which Ember does not read:
+// points are set in Ember's font (SelectionArt::PointDigits, GameLetters).
+SelectionArt::GameSheet SelectionArt::PointDigitFiles() const { return {}; }
+SelectionArt::GameSheet SelectionArt::LetterFiles() const { return {}; }
 
 } // namespace sf4e::ui
 

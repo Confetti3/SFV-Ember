@@ -100,6 +100,14 @@ void Start(Battle& b)
 
 } // namespace
 
+// What a Ready sends: its pick as the runtime puts it on the wire (NativePick), read back.
+static sf4e::selection::Pick Sent(const sf4e::commands::Ready& ready)
+{
+	sf4e::wire::ConfirmedCharaConditions native{};
+	sf4e::selection::ToNative(ready.pick, native);
+	return sf4e::selection::FromNative(native);
+}
+
 TEST_CASE("a pick carries a costume code in its personal action slot, with the marker that says the copy knows codes")
 {
 	// The codes' buttons are the game's input bits.
@@ -129,9 +137,9 @@ TEST_CASE("a pick carries a costume code in its personal action slot, with the m
 		CHECK_FALSE(picks::LoadCodeIn(pick));
 	}
 	// It travels as the wire's byte, and back.
-	sf4e::NetplayFacade::RuntimeCommand command;
-	sf4e::selection::ToNative(WithCode(PickOf(1), 1), command.character);
-	CHECK(picks::LoadCodeIn(sf4e::selection::FromNative(command.character)) == 1);
+	sf4e::wire::ConfirmedCharaConditions native{};
+	sf4e::selection::ToNative(WithCode(PickOf(1), 1), native);
+	CHECK(picks::LoadCodeIn(sf4e::selection::FromNative(native)) == 1);
 }
 
 TEST_CASE("the costume code is no part of a pick's fitting or validity")
@@ -171,14 +179,14 @@ TEST_CASE("Ready carries the player's costume code, and the marker for none")
 	FillTestCatalog();
 	const PlayerPick before = CurrentPick();
 	SetPick({PickOf(1), before.stage});
-	sf4e::NetplayFacade::RuntimeCommand command;
+	sf4e::commands::Ready command;
 	AddPickTo(command);
-	CHECK(picks::LoadCodeIn(sf4e::selection::FromNative(command.character)) == 0);
+	CHECK(picks::LoadCodeIn(Sent(command)) == 0);
 	SetPick({WithCode(PickOf(1), 1), before.stage});
 	// The stored pick keeps the choice; fitting it leaves it.
 	CHECK(picks::LoadCodeIn(CurrentPick().pick) == 1);
 	AddPickTo(command);
-	CHECK(picks::LoadCodeIn(sf4e::selection::FromNative(command.character)) == 1);
+	CHECK(picks::LoadCodeIn(Sent(command)) == 1);
 	SetPick(before);
 }
 

@@ -90,9 +90,9 @@ MenuAction Choose(const char* row, const char* option)
 	return action;
 }
 
-sf4e::ui::ShellAction::SelectionStep Step(sf4e::ui::ShellAction::SelectionStep::Field field, int delta)
+sf4e::ui::SelectionStep Step(sf4e::ui::SelectionStep::Field field, int delta)
 {
-	sf4e::ui::ShellAction::SelectionStep step;
+	sf4e::ui::SelectionStep step;
 	step.field = field;
 	step.delta = delta;
 	return step;
@@ -196,7 +196,7 @@ TEST_CASE("the pick screen changes a part only to a choice the fighter has, and 
 TEST_CASE("the table page's and post-match prompt's Ultra steps only the fighter's own loadouts, while the runtime allows it")
 {
 	FillTestCatalog();
-	using Field = sf4e::ui::ShellAction::SelectionStep::Field;
+	using Field = sf4e::ui::SelectionStep::Field;
 	SetPick(PlayerPickOf(kCnl, kOneOne));
 	REQUIRE(CurrentPick().pick.fighter == kCnl);
 	REQUIRE(LoadoutIndices(kCnl) == std::vector<int>{0, 2});
@@ -219,7 +219,6 @@ TEST_CASE("the table page's and post-match prompt's Ultra steps only the fighter
 	// At the table, the colour steps through the costume's own.
 	CHECK(StepTableSelection(Step(Field::Color, 1), true, false));
 	CHECK(CurrentPick().pick.color == 1);
-	CHECK_FALSE(StepTableSelection(Step(Field::None, 1), true, true));
 	// RYU has all four, in Ultra number order.
 	SetPick(PlayerPickOf(kRyu, kOneOne));
 	for (const picks::Loadout expected : {kOneTwo, kTwoOne, kTwoTwo}) {
