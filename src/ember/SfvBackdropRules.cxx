@@ -177,6 +177,11 @@ float ScrimAt(const Scrim& scrim, float x, float y)
 	return top + (bottom - top) * y;
 }
 
+bool Allowed(const Surface& surface)
+{
+	return surface.shellShown && surface.mainMenu && !surface.fighting && !surface.watching && !surface.replaying;
+}
+
 UvRect CoverFit(int width, int height, float targetWidth, float targetHeight, float anchorX, float anchorY)
 {
 	UvRect uv;
@@ -268,6 +273,26 @@ bool Cycle::Loaded(int entry, bool ok)
 	retryAt_ = clock_ + timing_.retry;
 	Refill();
 	return false;
+}
+
+void Cycle::Abandon(int entry)
+{
+	if (entry < 0) return;
+	if (entry == stale_) stale_ = -1;
+	else if (entry == next_.entry && next_.loading) next_.loading = false;
+}
+
+void Cycle::Retry(int entry)
+{
+	if (entry < 0) return;
+	if (entry == stale_) {
+		stale_ = -1;
+		return;
+	}
+	if (entry != next_.entry || !next_.loading) return;
+	next_ = {};
+	retryAt_ = clock_ + timing_.retry;
+	Refill();
 }
 
 void Cycle::StartFade()

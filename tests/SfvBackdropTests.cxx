@@ -335,6 +335,104 @@ TEST_CASE("a picture that does not load is skipped for the session, after a paus
 	CHECK(*cycle.Wanted() != first);
 }
 
+TEST_CASE("a picture abandoned while loading is not a failure: the cycle never runs out and the entry loads later")
+{
+	const Timing quick{2, 0.2, 0.1, 0.1};
+	Cycle cycle(3, 5, quick);
+	// Leaving the menu with a load in flight, many more times than there are pictures.
+	for (int i = 0; i < 20; i++) {
+		const int entry = *cycle.Wanted();
+		cycle.Started(entry);
+		CHECK(cycle.Alive() == 1);
+		cycle.Abandon(entry);
+		CHECK(cycle.Alive() == 0);
+		CHECK(cycle.Failed() == 0);
+		CHECK_FALSE(cycle.Exhausted());
+		// Its answer, if it still came, is refused; and the same entry is wanted again.
+		CHECK_FALSE(cycle.Loaded(entry, true));
+		for (int frame = 0; frame < 12; frame++) cycle.Advance(0.05);
+		REQUIRE(cycle.Wanted().has_value());
+		CHECK(*cycle.Wanted() == entry);
+	}
+	// The abandoned entry loads and shows.
+	const int entry = *cycle.Wanted();
+	cycle.Started(entry);
+	CHECK(cycle.Loaded(entry, true));
+	for (int frame = 0; frame < 20; frame++) cycle.Advance(0.05);
+	CHECK(cycle.Current() == entry);
+	// One refused by a Reset while loading is forgotten, not failed.
+	const int next = *cycle.Wanted();
+	cycle.Started(next);
+	cycle.Reset();
+	cycle.Abandon(next);
+	CHECK(cycle.Alive() == 0);
+	CHECK(cycle.Failed() == 0);
+	REQUIRE(cycle.Wanted().has_value());
+}
+
+TEST_CASE("a picture that is late or only partly loaded is retried after a pause, never skipped for good")
+{
+	const Timing quick{2, 0.2, 1.0, 0.1};
+	Cycle cycle(3, 9, quick);
+	// A timeout or a low-detail texture, over and over, many more times than there are pictures.
+	for (int i = 0; i < 30; i++) {
+		const int entry = *cycle.Wanted();
+		cycle.Started(entry);
+		cycle.Retry(entry);
+		CHECK(cycle.Alive() == 0);
+		CHECK(cycle.Failed() == 0);
+		CHECK_FALSE(cycle.Exhausted());
+		// The pause: nothing is loaded until the retry time has passed.
+		CHECK_FALSE(cycle.Wanted().has_value());
+		for (int frame = 0; frame < 3; frame++) cycle.Advance(0.25);
+		CHECK_FALSE(cycle.Wanted().has_value());
+		cycle.Advance(0.25);
+		REQUIRE(cycle.Wanted().has_value());
+		// Its answer, if it still came, is refused.
+		CHECK_FALSE(cycle.Loaded(entry, true));
+	}
+	// Every picture was tried again, and one that comes right shows.
+	std::set<int> tried;
+	for (int i = 0; i < 6; i++) {
+		const int entry = *cycle.Wanted();
+		tried.insert(entry);
+		cycle.Started(entry);
+		cycle.Retry(entry);
+		for (int frame = 0; frame < 4; frame++) cycle.Advance(0.25);
+	}
+	CHECK(tried.size() == 3);
+	const int entry = *cycle.Wanted();
+	cycle.Started(entry);
+	CHECK(cycle.Loaded(entry, true));
+	for (int frame = 0; frame < 20; frame++) cycle.Advance(0.05);
+	CHECK(cycle.Current() == entry);
+	// One picture alone comes round again too.
+	Cycle single(1, 2, quick);
+	for (int i = 0; i < 5; i++) {
+		REQUIRE(single.Wanted().has_value());
+		CHECK(*single.Wanted() == 0);
+		single.Started(0);
+		single.Retry(0);
+		CHECK_FALSE(single.Exhausted());
+		for (int frame = 0; frame < 5; frame++) single.Advance(0.25);
+	}
+	// A picture the game does not have at all is the only permanent failure.
+	Cycle missing(2, 3, quick);
+	const int gone = *missing.Wanted();
+	missing.Started(gone);
+	CHECK_FALSE(missing.Loaded(gone, false));
+	CHECK(missing.Failed() == 1);
+	// Retry after a Reset while it loaded: forgotten, not failed.
+	for (int frame = 0; frame < 8; frame++) missing.Advance(0.25);
+	REQUIRE(missing.Wanted().has_value());
+	const int other = *missing.Wanted();
+	missing.Started(other);
+	missing.Reset();
+	missing.Retry(other);
+	CHECK(missing.Alive() == 0);
+	CHECK(missing.Failed() == 1);
+}
+
 TEST_CASE("when no picture loads, nothing is ever shown and the cycle stops asking")
 {
 	Run run(4, 8, Timing{2, 0.2, 0.1, 0.1});
@@ -656,6 +754,70 @@ TEST_CASE("in a battle nothing loads, nothing grows, and the pictures go once it
 	CHECK(cycle.Shown().Empty());
 	// Back at the menu: the next picture loads and fades in.
 	for (int i = 0; i < 60 * 5; i++) step(true);
+	CHECK(cycle.Current() >= 0);
+	CHECK(watch.DrawnLastFrame());
+}
+
+TEST_CASE("the backdrop is allowed at the main menu with no game being played, watched or replayed")
+{
+	const Surface menu{true, true, false, false, false};
+	CHECK(Allowed(menu));
+	Surface closed = menu;
+	closed.shellShown = false;
+	CHECK_FALSE(Allowed(closed));
+	Surface elsewhere = menu;
+	elsewhere.mainMenu = false; // a battle, a loading screen, the WIN
+	CHECK_FALSE(Allowed(elsewhere));
+	Surface fighting = menu;
+	fighting.fighting = true;
+	CHECK_FALSE(Allowed(fighting));
+	Surface watching = menu;
+	watching.watching = true;
+	CHECK_FALSE(Allowed(watching));
+	Surface replaying = menu;
+	replaying.replaying = true;
+	CHECK_FALSE(Allowed(replaying));
+}
+
+TEST_CASE("a room whose game is over shows the backdrop again: pictures released in the battle load once it is back")
+{
+	// The field log (beta.9): a room's match state stays PostMatch after a
+	// game until the next one starts; the shell was shown over the menu all
+	// that time and the backdrop stayed black. The shell's frame says what the
+	// room's state is as `fighting` only for a game being prepared or played.
+	Cycle cycle(8, 5, Timing{4, 0.5, 0.5, 0.5});
+	DrawWatch watch;
+	std::set<int> alive;
+	double now = 0;
+	std::uint64_t frame = 0;
+	int loads = 0;
+	const auto step = [&](const Surface& surface) {
+		watch.Presented(++frame, now += kFrame);
+		if ((cycle.Current() >= 0 || cycle.NextReady()) && watch.IdleFor(kIdleReleaseSeconds, now)) cycle.Reset();
+		for (int entry : cycle.TakeReleases()) CHECK(alive.erase(entry) == 1);
+		if (!Allowed(surface)) return;
+		if (watch.AskedWithin(kAskedSeconds, now)) {
+			if (const std::optional<int> wanted = cycle.Wanted()) {
+				cycle.Started(*wanted);
+				loads++;
+				if (cycle.Loaded(*wanted, true)) alive.insert(*wanted);
+			}
+		}
+		watch.Asked();
+		cycle.Advance(kFrame);
+		for (int entry : cycle.TakeReleases()) CHECK(alive.erase(entry) == 1);
+		if (!cycle.Shown().Empty()) watch.Drawn();
+	};
+	const Surface menu{true, true, false, false, false};
+	const Surface battle{false, false, true, false, false};
+	for (int i = 0; i < 60 * 10; i++) step(menu);
+	REQUIRE(cycle.Current() >= 0);
+	for (int i = 0; i < 60 * 30; i++) step(battle);
+	CHECK(cycle.Alive() == 0);
+	const int loadsBefore = loads;
+	// The game over: the menu again, whatever the room still remembers.
+	for (int i = 0; i < 60 * 5; i++) step(menu);
+	CHECK(loads > loadsBefore);
 	CHECK(cycle.Current() >= 0);
 	CHECK(watch.DrawnLastFrame());
 }

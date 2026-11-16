@@ -128,13 +128,17 @@ add_library(sfve_ember STATIC
     src/ember/SfvLoadoutText.cxx
     src/ember/SfvMeterSample.cxx
     src/ember/SfvPick.cxx
+    src/ember/SfvPickMemory.cxx
     src/ember/SfvPickPreview.cxx
+    src/ember/SfvPickStore.cxx
     src/ember/SfvPictureSpec.cxx
     src/ember/SfvRandomFighter.cxx
     src/ember/SfvEleven.cxx
     src/ember/SfvReplays.cxx
     src/ember/SfvRoomBuild.cxx
     src/ember/SfvScreenMode.cxx
+    src/ember/SfvSettingsFile.cxx
+    src/ember/SfvTextures.cxx
     src/ember/SfvSelectGrid.cxx
     src/ember/SfvSelection.cxx
     src/ember/SfvSelectionScreen.cxx
@@ -299,6 +303,7 @@ add_executable(sfve_ember_tests
     tests/EmberAdapterTests.cxx
     tests/SfvCatalogTests.cxx
     tests/SfvPickRulesTests.cxx
+    tests/SfvPickMemoryTests.cxx
     tests/SfvLoadoutTests.cxx
     tests/SfvVoiceTests.cxx
     tests/SfvLoadCodeTests.cxx
@@ -318,6 +323,7 @@ add_executable(sfve_ember_tests
     tests/SfvPictureSpecTests.cxx
     tests/SfvBackdropTests.cxx
     tests/ScreenModeTests.cxx
+    tests/SfvSettingsFileTests.cxx
     tests/SwatchStripTests.cxx
     tests/SfvVerificationTests.cxx
     tests/DesyncReportTests.cxx
@@ -455,6 +461,7 @@ add_executable(Launcher WIN32
     src/launcher/ReportsDefault.cxx
     src/ember/DesyncReport.cxx
     src/ember/SfvScreenMode.cxx
+    src/ember/SfvSettingsFile.cxx
     src/launcher/ExecutableBuild.cxx
     src/launcher/SteamRecord.cxx
     src/launcher/LauncherSelection.cxx

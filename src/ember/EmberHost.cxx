@@ -3,6 +3,7 @@
 #include "ember/PlayerName.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
+#include "ember/SfvPickStore.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/GameExit.hxx"
@@ -12,6 +13,7 @@
 
 #include "common/GameCatalog.hxx"
 #include "common/ProductIdentity.hxx"
+#include "platform/Utf8.hxx"
 #include "platform/HelperProcess.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 
@@ -50,7 +52,7 @@ void ReadOwnVoices()
 	static std::string said;
 	std::string japanese;
 	RefreshOwnVoices([&japanese](const std::string& code) {
-		const std::optional<int> voice = mod::CharaVoiceLanguage(std::wstring(code.begin(), code.end()));
+		const std::optional<int> voice = mod::CharaVoiceLanguage(sf4e::platform::Utf8ToWide(code.c_str()));
 		if (voice && *voice == picks::kVoiceJapanese) japanese += (japanese.empty() ? "" : " ") + code;
 		return voice;
 	});
@@ -115,6 +117,7 @@ void StopAtExit()
 	s_state = HostState::Stopped;
 	facade::ShutdownNetplay(true);
 	facade::StopHelper();
+	FlushSfvPickStore();
 	StopPreferences();
 	mod::Log("ember: %s, stopped the helper and saved the settings for the game's exit",
 		left ? "left the room" : "the room was not left in time");

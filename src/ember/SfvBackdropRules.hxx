@@ -61,6 +61,22 @@ struct ListedPath {
 };
 std::vector<ListedPath> AllPaths(const ArtSet& set);
 
+// --- Where the backdrop may be drawn ---
+
+// What the shell is over in a frame. The backdrop is for the game's main menu
+// and nothing that plays: a game being prepared or played, a watched game and
+// a replay are not it. A room whose last game is over (netplay's PostMatch,
+// which stays until the next game starts) is the main menu again, and so is
+// one whose game failed.
+struct Surface {
+	bool shellShown = false;
+	bool mainMenu = false;
+	bool fighting = false;  // a game is being prepared or played
+	bool watching = false;  // a watched game is on
+	bool replaying = false; // a replay plays back
+};
+bool Allowed(const Surface& surface);
+
 // --- The page's scrim ---
 
 // The kind of page the backdrop is behind: a narrow column of rows with the
@@ -141,6 +157,19 @@ public:
 	// of the session). True when the cycle keeps the picture; false when it
 	// does not want it any more (Reset since), and the loader lets it go.
 	bool Loaded(int entry, bool ok);
+	// The loader let `entry` go before it arrived (the main menu was left
+	// while it loaded): not a failure. A refused one is forgotten; the next
+	// one is wanted again, and stays eligible.
+	void Abandon(int entry);
+	// The picture came but is not usable yet: a resource that never arrived
+	// in time, or a texture the game has not streamed whole (it lets go of
+	// image detail during a battle, so one loaded after a match can come back
+	// at a low size). Not a failure either: the entry stays eligible, comes
+	// round again with the shuffle, and nothing is loaded for the retry time,
+	// so a picture that never comes right cannot spin the loader. Only
+	// Loaded(entry, false), a picture the game does not have at all, is
+	// skipped for the session.
+	void Retry(int entry);
 	// The backdrop was on screen for `seconds` (clamped to kMostStep).
 	void Advance(double seconds);
 	// Fade to the next picture as soon as it has loaded, whatever the hold.

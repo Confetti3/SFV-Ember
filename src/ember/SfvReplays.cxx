@@ -390,8 +390,10 @@ public:
 			// Back at the main menu: Ember's menu comes back on the Replays screen.
 			status_.step = sf4e::replaystore::Step::Idle;
 			status_.returns++;
+			// Watched only when it was: a launch that failed, or a playback whose
+			// checkpoints differ, is not.
 			if (p.failed) Notice("replays.not_added", true);
-			Mark(p.file, kWatchedList, true);
+			else Mark(p.file, kWatchedList, true);
 			p = PlaybackState{};
 			lister_.Want();
 		}

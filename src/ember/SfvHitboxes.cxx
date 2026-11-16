@@ -1,10 +1,10 @@
 #include "ember/SfvHitboxes.hxx"
 
 #include "ember/SfvBoxes.hxx"
+#include "ember/SfvSettingsFile.hxx"
 #include "mod/FighterReader.hxx"
 #include "mod/Log.hxx"
 
-#include "netplay/JsonFileStore.hxx"
 #include "netplay/SettingsStore.hxx"
 #include "training/PracticeSettings.hxx"
 #include "ui/HitboxOverlay.hxx"
@@ -22,7 +22,6 @@ namespace sfve::adapter {
 namespace {
 
 namespace training = sf4e::training;
-namespace json_file = sf4e::netplay::json_file;
 
 // SF4's lab keeps its choices in training.json beside its settings
 // (TrainingPanel's PracticeFile); SFV Ember keeps the viewer's there too, in
@@ -39,24 +38,6 @@ std::mutex s_choiceMutex;
 bool s_loaded = false;
 std::atomic<bool> s_shown{false};
 
-// training.json as it is now: its object, or an empty one when there is none
-// or it does not read as one (logged; the next save writes a fresh one).
-nlohmann::json ReadPractice()
-{
-	std::string bytes, error;
-	bool missing = false;
-	nlohmann::json practice;
-	if (!json_file::ReadBytes(Folder() / kPracticeFile, bytes, missing, error) || missing) {
-		if (!missing) mod::Log("hitboxes: training.json does not read (%s)", error.c_str());
-		return nlohmann::json::object();
-	}
-	if (!json_file::Parse(bytes, practice, error) || !practice.is_object()) {
-		mod::Log("hitboxes: training.json is no settings object (%s); the next save writes a new one", error.c_str());
-		return nlohmann::json::object();
-	}
-	return practice;
-}
-
 training::MeterOptions MeterOf(const nlohmann::json& practice)
 {
 	const auto meter = practice.find("meter");
@@ -67,7 +48,10 @@ void LoadLocked()
 {
 	if (s_loaded) return;
 	s_loaded = true;
-	s_shown = MeterOf(ReadPractice()).hitboxes;
+	std::string problem;
+	const nlohmann::json practice = ReadSettingsFile(Folder(), kPracticeFile, problem);
+	if (!problem.empty()) mod::Log("hitboxes: %s; the next save writes a new one", problem.c_str());
+	s_shown = MeterOf(practice).hitboxes;
 	mod::Log("hitboxes: %s (training.json)", s_shown ? "on" : "off");
 }
 
@@ -180,12 +164,13 @@ bool ShowSfvHitboxes(bool shown)
 	LoadLocked();
 	// The file's other choices stay as they are; the meter's options are
 	// written back whole, as SF4's lab writes them (MeterOptionsJson).
-	nlohmann::json practice = ReadPractice();
-	training::MeterOptions options = MeterOf(practice);
-	options.hitboxes = shown;
-	practice["meter"] = training::MeterOptionsJson(options);
 	std::string error;
-	if (!json_file::Publish(Folder(), kPracticeFile, practice, error)) {
+	const auto change = [shown](nlohmann::json& practice) {
+		training::MeterOptions options = MeterOf(practice);
+		options.hitboxes = shown;
+		practice["meter"] = training::MeterOptionsJson(options);
+	};
+	if (!UpdateSettingsFile(Folder(), kPracticeFile, change, error)) {
 		mod::Log("hitboxes: the choice could not be saved (%s); it stays %s", error.c_str(), s_shown ? "on" : "off");
 		return false;
 	}

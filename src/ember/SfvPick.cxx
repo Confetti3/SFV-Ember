@@ -1,12 +1,14 @@
 #include "ember/SfvPick.hxx"
 
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvPickMemory.hxx"
 #include "mod/Log.hxx"
 
 #include "common/GameCatalog.hxx"
 
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <mutex>
 #include <optional>
 
@@ -14,20 +16,31 @@ namespace sfve::adapter {
 
 namespace {
 
-std::mutex s_mutex;
+// Recursive: an UpdatePick edit may call this file's other functions
+// (LookFor, RememberedLook, SetPickRandom).
+std::recursive_mutex s_mutex;
 PlayerPick s_pick;
 std::optional<PlayerPick> s_dummy; // none until the player picks one
-// Random on the board, and the look last stored for each fighter (SetPick).
+// Random on the board.
 bool s_random = false;
 // Eleven, which is Random's rolled fighter in the Eleven look (s_random is
 // then on as well).
 bool s_eleven = false;
-std::array<std::optional<sf4e::selection::Pick>, ember::MaxFighters> s_looks;
-
-bool InRoster(int fighter)
-{
-	return fighter >= 0 && fighter < ember::MaxFighters;
-}
+// The look last stored for each fighter and the fighter last chosen
+// (SetPick), saved between runs by SfvPickStore. The revision counts what
+// changed of it that is saved; `s_touched` is a pick stored since the start,
+// after which a restore is too late.
+picks::PickMemory s_memory;
+std::uint64_t s_revision = 0;
+bool s_touched = false;
+// What the stored picks were fitted to: the catalog, which is filled once and
+// never changes after (FillCatalog). A pick stored before it was usable is
+// fitted at the first read after, and not again.
+bool s_fittedToCatalog = false;
+// Rises with each change to what the stored pick, Random and Eleven say (the
+// pick's own copy, the remembered looks, the two flags), for what is made
+// from them and kept (SfvRandomFighter's note to the runtime).
+std::uint64_t s_changes = 0;
 
 // The pick under the catalog's rules and fitted to what this copy's player
 // can ready (FitOwnPick), and its stage fitted to the stage row's choices
@@ -39,6 +52,45 @@ PlayerPick Fitted(PlayerPick pick)
 	FitOwnPick(pick.pick);
 	pick.stage = FittedStage(pick.stage, PlayableIds(StageOptions({})));
 	return pick;
+}
+
+// The look the fighter is in when it is chosen, as this player can wear it:
+// its remembered look; or, for a fighter not stored yet, or one whose
+// remembered look this player cannot wear (a costume or colour they do not
+// own or this copy has not installed, a loadout the fighter lacks), the
+// fighter's default look (picks::UnchosenLook, fitted to what they own) in
+// the model size `current` has. With no catalog the look as it was.
+sf4e::selection::Pick WornLook(const std::optional<sf4e::selection::Pick>& remembered, int fighter,
+	const sf4e::selection::Pick& current)
+{
+	if (!ember::ValidFighter(fighter)) {
+		sf4e::selection::Pick look = remembered.value_or(current);
+		look.fighter = fighter;
+		return look;
+	}
+	if (remembered) {
+		sf4e::selection::Pick look = *remembered;
+		look.fighter = fighter;
+		FitLookWithin(look);
+		if (picks::SameFitting(look, *remembered)) return look;
+	}
+	sf4e::selection::Pick look = picks::UnchosenLook(fighter);
+	look.size = current.size;
+	FitLookWithin(look);
+	return look;
+}
+
+// Under the lock: the stored picks fitted, once the catalog can fit them.
+void FitStoredLocked()
+{
+	if (s_fittedToCatalog || !ember::Usable(ember::Catalog())) return;
+	s_fittedToCatalog = true;
+	s_pick = Fitted(s_pick);
+	if (s_dummy) {
+		s_dummy = Fitted(*s_dummy);
+		s_dummy->stage = 0;
+	}
+	s_changes++;
 }
 
 // Why the asked costume is not the stored one, for the log: what the
@@ -71,7 +123,15 @@ void LogRefitted(const char* which, const PlayerPick& asked, const PlayerPick& s
 PlayerPick CurrentPick()
 {
 	std::lock_guard lock(s_mutex);
-	return Fitted(s_pick);
+	FitStoredLocked();
+	return s_pick;
+}
+
+std::uint64_t PickChanges()
+{
+	std::lock_guard lock(s_mutex);
+	FitStoredLocked();
+	return s_changes;
 }
 
 PlayerPick SetPick(const PlayerPick& pick)
@@ -79,15 +139,41 @@ PlayerPick SetPick(const PlayerPick& pick)
 	std::lock_guard lock(s_mutex);
 	s_pick = Fitted(pick);
 	LogRefitted("asked for", pick, s_pick);
-	// Eleven's looks belong to Eleven, not to the fighters it rolled.
-	if (InRoster(s_pick.pick.fighter) && !s_eleven) s_looks[(size_t)s_pick.pick.fighter] = s_pick.pick;
+	s_touched = true;
+	s_changes++;
+	// Eleven's looks belong to Eleven, not to the fighters it rolled, and a
+	// fighter Random rolled is not one the player chose.
+	bool changed = !s_eleven && s_memory.RememberLook(s_pick.pick);
+	if (!s_random) changed = s_memory.Choose(s_pick.pick.fighter) || changed;
+	if (changed) s_revision++;
 	return s_pick;
+}
+
+PlayerPick UpdatePick(const std::function<bool(PlayerPick&)>& edit)
+{
+	std::lock_guard lock(s_mutex);
+	PlayerPick pick = CurrentPick();
+	if (!edit(pick)) return pick;
+	return SetPick(pick);
+}
+
+PlayerPick ChooseFighter(int fighter, const std::function<void(PlayerPick&)>& then)
+{
+	std::lock_guard lock(s_mutex);
+	// Before the store, so it is the fighter chosen and not a roll.
+	SetPickRandom(false);
+	return UpdatePick([&](PlayerPick& pick) {
+		pick.pick = LookFor(pick.pick, fighter, true);
+		if (then) then(pick);
+		return true;
+	});
 }
 
 PlayerPick CurrentDummy()
 {
 	std::lock_guard lock(s_mutex);
-	PlayerPick dummy = Fitted(s_dummy.value_or(s_pick));
+	FitStoredLocked();
+	PlayerPick dummy = s_dummy.value_or(s_pick);
 	dummy.stage = 0;
 	return dummy;
 }
@@ -105,6 +191,15 @@ void ForgetDummyForTest()
 {
 	std::lock_guard lock(s_mutex);
 	s_dummy.reset();
+}
+
+void ForgetPickMemoryForTest()
+{
+	std::lock_guard lock(s_mutex);
+	s_memory = {};
+	s_revision = 0;
+	s_touched = false;
+	s_changes++;
 }
 
 void ToWire(sf4e::selection::Pick pick, bool roomAllowsTiny, sf4e::wire::ConfirmedCharaConditions& out)
@@ -141,6 +236,7 @@ void SetPickRandom(bool random)
 	if (s_random != random || s_eleven) mod::Log("pick: Random %s", random ? "on" : "off");
 	s_random = random;
 	s_eleven = false;
+	s_changes++;
 }
 
 bool PickEleven()
@@ -155,21 +251,42 @@ void SetPickEleven(bool eleven)
 	if (s_eleven != eleven) mod::Log("pick: Eleven %s", eleven ? "on" : "off");
 	s_eleven = eleven;
 	s_random = eleven;
+	s_changes++;
 }
 
 std::optional<sf4e::selection::Pick> RememberedLook(int fighter)
 {
 	std::lock_guard lock(s_mutex);
-	return InRoster(fighter) ? s_looks[(size_t)fighter] : std::nullopt;
+	return s_memory.LookOf(fighter);
 }
 
 sf4e::selection::Pick LookFor(const sf4e::selection::Pick& pick, int fighter, bool remembered)
 {
-	std::optional<sf4e::selection::Pick> look = remembered ? RememberedLook(fighter) : std::nullopt;
-	if (!look) look = pick;
-	look->fighter = fighter;
-	if (ember::ValidFighter(fighter)) FitLookWithin(*look);
-	return *look;
+	if (remembered) return WornLook(RememberedLook(fighter), fighter, pick);
+	sf4e::selection::Pick look = pick;
+	look.fighter = fighter;
+	if (ember::ValidFighter(fighter)) FitLookWithin(look);
+	return look;
+}
+
+bool RestorePickMemory(const picks::PickMemory& saved)
+{
+	std::lock_guard lock(s_mutex);
+	if (s_touched) return false;
+	s_memory = saved;
+	s_changes++;
+	if (const std::optional<int> chosen = s_memory.ChosenFighter()) {
+		s_pick.pick = WornLook(s_memory.LookOf(*chosen), *chosen, s_pick.pick);
+		s_pick = Fitted(s_pick);
+	}
+	return true;
+}
+
+picks::PickMemory PickMemoryNow(std::uint64_t& revision)
+{
+	std::lock_guard lock(s_mutex);
+	revision = s_revision;
+	return s_memory;
 }
 
 int SizeToSend(int storedSize, bool roomAllowsTiny)

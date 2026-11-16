@@ -4,12 +4,14 @@
 #include "ember/RoomBattle.hxx"
 #include "ember/SfvArt.hxx"
 #include "ember/SfvBackdrop.hxx"
+#include "ember/SfvBackdropRules.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvEleven.hxx"
 #include "ember/SfvHitboxes.hxx"
 #include "ember/SfvHud.hxx"
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPick.hxx"
+#include "ember/SfvPickStore.hxx"
 #include "ember/SfvRandomFighter.hxx"
 #include "ember/SfvReplays.hxx"
 #include "ember/SfvScreenMode.hxx"
@@ -20,6 +22,7 @@
 #include "mod/Log.hxx"
 #include "overlay/Overlay.hxx"
 
+#include "platform/Utf8.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "common/MenuInputCapture.hxx"
@@ -176,7 +179,7 @@ public:
 	{
 		const PlayerPick player = CurrentPick();
 		const std::string stage = OfflineStageCode(player.stage);
-		LaunchTraining(FighterPickOf(player.pick), FighterPickOf(CurrentDummy().pick), std::wstring(stage.begin(), stage.end()),
+		LaunchTraining(FighterPickOf(player.pick), FighterPickOf(CurrentDummy().pick), sf4e::platform::Utf8ToWide(stage.c_str()),
 			"Training select's Start", "home.training_unavailable");
 		// Training plays the fighter in hand: a Random pick rolls again.
 		if (PickRandom()) RandomFighterPlayed();
@@ -515,12 +518,13 @@ overlay::OverlayUi::Shown Draw()
 	DrawSfvTraining(*shell.frame, presentation.Visible(), shell.host.Shell().UnreadChat(), overlay::GameWindowFocused());
 	DrawReplayControls(shell, snapshot, presentation.Visible());
 	// The artwork behind the shell's pages only while it is shown over the
-	// game's main menu, with no match, watched match or replay: never over a
-	// battle, a loading screen or the WIN (SfvBackdrop).
-	const bool backdrop = presentation.Visible() && snapshot.menuContext == input::MenuContext::MainMenu &&
-		snapshot.session.match == sf4e::netplay::MatchState::None && !snapshot.watchedGame.Active() &&
-		!snapshot.replays.playback.playback;
-	BackdropFrame(backdrop, shell.host.Shell().Navigation().Screen());
+	// game's main menu, with no game being played, watched or replayed: never
+	// over a battle, a loading screen or the WIN (SfvBackdrop). A room whose
+	// last game is over is back at the menu (PostMatch lasts until the next
+	// game), so it counts.
+	const bool artwork = sfve::backdrop::Allowed({presentation.Visible(), snapshot.menuContext == input::MenuContext::MainMenu,
+		sf4e::netplay::Fighting(snapshot.session.match), snapshot.watchedGame.Active(), snapshot.replays.playback.playback});
+	BackdropFrame(artwork, shell.host.Shell().Navigation().Screen());
 	const double now = ImGui::GetTime();
 	if (presentation.Visible() != shell.wasShown) shell.changedAt = now;
 	const float fade = FadeProgress(now - shell.changedAt);
@@ -632,6 +636,7 @@ void InstallEmberShell()
 	InstallSfvArt();
 	InstallSfvBackdrop();
 	InstallSfvHud();
+	InstallSfvPickStore();
 	// Random on the board (SfvRandomFighter): each frame the runtime hears
 	// whether the pick is Random, and a roll it made becomes the stored pick.
 	mod::RunEachGameFrame([] {

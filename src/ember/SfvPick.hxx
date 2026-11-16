@@ -21,10 +21,13 @@
 // picks, it is the first fighter they can play in their first costume and
 // colour, on the first stage they are offered. Any thread.
 
+#include "ember/SfvPickMemory.hxx"
+
 #include "common/MatchWireTypes.hxx"
 #include "common/SelectionPick.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -36,21 +39,45 @@ struct PlayerPick {
 	int stage = 0;
 };
 
+// A copy of the stored pick, which is fitted when it is stored (and, for one
+// stored before the catalog was filled, at the first read after): no read
+// fits it again.
 PlayerPick CurrentPick();
+// Rises with each change to the stored pick, the remembered looks and the
+// Random and Eleven flags; any thread. For what is made from them and kept.
+std::uint64_t PickChanges();
 // Stores the pick, fitted; returns what was stored.
 PlayerPick SetPick(const PlayerPick& pick);
+// Changes the stored pick as one step: `edit` gets a copy of it under the
+// pick's lock and returns whether to store it (SetPick, fitted); nothing
+// can be stored between the read and the write. For every change made from
+// the pick as it is (the pipe's commands, a step of the table's Ultra, a
+// roll), where CurrentPick then SetPick would lose another thread's edit.
+// `edit` may call this file's other functions. Returns the pick stored, or
+// as it was when `edit` kept it.
+PlayerPick UpdatePick(const std::function<bool(PlayerPick&)>& edit);
+// Choosing `fighter` as the board does, in one step: Random and Eleven off
+// (the fighter is the player's choice, not a roll), the pick in the
+// fighter's own look (LookFor, remembered), then `then`'s changes to the
+// pick (the pipe's stage and size), stored. The board's card, the look
+// page's Fighter row and the pipe's `pick` all choose a fighter by this.
+PlayerPick ChooseFighter(int fighter, const std::function<void(PlayerPick&)>& then = {});
 
 // Training's other side (Training select's Dummy row, EMBER_LIBRARY.md
 // section 27): a pick of its own, fitted the same way, as SF4 Ember keeps its
 // Training dummy apart from the player's pick. Its stage is unused (Training
 // loads on the player's). Until the player picks a dummy it is their own
-// fighter, costume and colour. Neither is saved between runs: the player's
-// pick is not saved either.
+// fighter, costume and colour. Neither is saved between runs; the player's
+// pick is, as the fighter last chosen and each fighter's look
+// (RestorePickMemory, PickMemoryNow).
 PlayerPick CurrentDummy();
 PlayerPick SetDummy(const PlayerPick& dummy);
 // For the tests, which share one process: no dummy picked, so the dummy is
 // the player's pick again until SetDummy.
 void ForgetDummyForTest();
+// For the tests as well: no look remembered, no fighter chosen, no pick
+// stored since the start.
+void ForgetPickMemoryForTest();
 
 // The pick in a room command (Ready, the room's pick updates), as the wire
 // carries it, with this copy's player's voice for its fighter (SfvCatalog's
@@ -73,7 +100,8 @@ void ToWire(sf4e::selection::Pick pick, bool roomAllowsTiny, sf4e::wire::Confirm
 // fighter rolled for each game, and the stored pick is the rolled fighter in
 // the look last used on them. Off until the board's Random card is chosen;
 // choosing a fighter turns it off. Not saved between runs, as the pick is
-// not. The dummy has no Random. Any thread.
+// not (the fighter last chosen is saved, never one Random rolled). The dummy
+// has no Random. Any thread.
 bool PickRandom();
 // Choosing Random again, or any fighter, takes Eleven off.
 void SetPickRandom(bool random);
@@ -88,19 +116,33 @@ void SetPickRandom(bool random);
 bool PickEleven();
 void SetPickEleven(bool eleven);
 
-// The look last stored for each fighter this run (SetPick remembers the
-// stored pick under its fighter: costume, colour, loadout, costume code and
-// size), as SF4 Ember keeps one per fighter; none for a fighter not stored
-// since the start. The dummy's picks are not remembered (SF4 Ember's dummy
-// keeps to its own pick too). Any thread.
+// The look last stored for each fighter (SetPick remembers the stored pick
+// under its fighter: costume, colour, loadout, costume code and size), as SF4
+// Ember keeps one per fighter, and as the player's saved ones come back at
+// the start (RestorePickMemory); none for a fighter never stored. The dummy's
+// picks are not remembered (SF4 Ember's dummy keeps to its own pick too).
+// Any thread.
 std::optional<sf4e::selection::Pick> RememberedLook(int fighter);
 
 // The pick that choosing `fighter` on the board stores, from `pick`: with
-// `remembered`, the fighter's remembered look where there is one; otherwise,
-// or with none, `pick` with that fighter. Fitted as the pick screen fits a
-// fighter (SfvCatalog's FitLookWithin): in a look this player can ready, or
-// for a fighter they cannot play, as the spec fits it.
+// `remembered`, the fighter's own look: the one stored last, or for a
+// fighter not stored yet, or one whose remembered look this player cannot
+// wear, the fighter's default look (the first costume they can wear, in its
+// first colour, V-Skill I and V-Trigger I), whatever look `pick` is in;
+// `pick`'s model size goes with it. Without `remembered` (the Training
+// dummy), `pick` with that fighter. Fitted as the pick screen fits a fighter
+// (SfvCatalog's FitLookWithin): in a look this player can ready, or for a
+// fighter they cannot play, as the spec fits it.
 sf4e::selection::Pick LookFor(const sf4e::selection::Pick& pick, int fighter, bool remembered);
+
+// The saved memory (SfvPickStore reads it at the start): the stored pick
+// becomes the fighter last chosen in its saved look, and every fighter's
+// saved look is remembered. False, nothing changed, once a pick has been
+// stored since the start: the player's own choice wins.
+bool RestorePickMemory(const picks::PickMemory& saved);
+// The memory to save, and `revision`, which rises each time what is saved of
+// it changes.
+picks::PickMemory PickMemoryNow(std::uint64_t& revision);
 
 // "RYU costume 0 colour 1 vskill II vtrigger I stage S25", by the game's
 // codes, for the status and the logs ("stage random" for Random).

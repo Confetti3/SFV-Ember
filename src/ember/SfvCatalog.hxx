@@ -115,6 +115,10 @@ picks::PickSpace PickSpaceOf(const mod::ContentLists& lists);
 // (picks::ToJson); empty before FillCatalog. The pipe's `catalog-export`
 // writes it (EMBER_LIBRARY.md section 24).
 std::string PickSpaceJson();
+// The filled catalog's pick space (empty before FillCatalog), for what is
+// read back against it (the saved pick memory, SfvPickStore). Game thread
+// before the runtime starts, any thread after SealCatalog.
+const picks::PickSpace& FilledPickSpace();
 
 // The game's code of a fighter or a stage ("RYU", "S01"); empty for an id
 // outside the lists (Random's kRandomStage among them).
@@ -277,6 +281,9 @@ mod::FighterPick FighterPickOf(const sf4e::selection::Pick& pick);
 // Ready carries it for the pick's fighter (SfvPick's AddPickTo).
 void RefreshOwnVoices(const std::function<std::optional<int>(const std::string& code)>& voiceOf);
 int OwnVoice(std::int64_t fighter);
+// Rises each time a read gave other voices than the last, for what is made
+// from them and kept (SfvRandomFighter's note to the runtime).
+std::uint64_t OwnVoicesRevision();
 
 // The other way, from a code as a launch names it (L"RYU", VersusLaunch's
 // FighterPick): its id, empty for one not listed.

@@ -33,6 +33,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -316,6 +318,7 @@ TEST_CASE("with a choice open the pane previews its focused option, ready or not
 TEST_CASE("a fighter or costume previewed is what choosing it stores")
 {
 	FillTestCatalog();
+	ForgetPickMemoryForTest();
 	const std::vector<StageOption> stages = StageOptions(MissingStages());
 	const auto same = [](const sf4e::selection::Pick& a, const sf4e::selection::Pick& b) {
 		return a.fighter == b.fighter && a.costume == b.costume && a.color == b.color && picks::LoadoutOf(a) == picks::LoadoutOf(b);
@@ -337,12 +340,26 @@ TEST_CASE("a fighter or costume previewed is what choosing it stores")
 			CHECK(same(shown.pick, SetPick(chosen).pick));
 		}
 	}
-	// CNL keeps colour 02, which its first costume has and this player can
-	// ready, where its first look would be colour 01.
+	// CNL is in the look it was last stored in (colour 02, V-Skill II), not in
+	// the one RYU wears.
+	ForgetPickMemoryForTest();
+	PlayerPick cnlStored = PlayerPickOf(kCnl, kTwoOne);
+	cnlStored.pick.color = 1;
+	SetPick(cnlStored);
 	const PlayerPick cnl = SfvSelectionScreen::Previewed(from, "fighter", "#1");
 	CHECK(cnl.pick.costume == 0);
 	CHECK(cnl.pick.color == 1);
 	CHECK(picks::LoadoutOf(cnl.pick) == kTwoOne);
+	// A fighter never stored is in its default look, whatever RYU wears.
+	const PlayerPick bison = SfvSelectionScreen::Previewed(from, "fighter", "#4");
+	CHECK(bison.pick.costume == 0);
+	CHECK(bison.pick.color == 0);
+	CHECK(picks::LoadoutOf(bison.pick) == kOneOne);
+	// The Training dummy keeps no memory: CNL in RYU's colour 02 and V-Skill II.
+	const PlayerPick dummy = SfvSelectionScreen::Previewed(from, "fighter", "#4", false);
+	CHECK(dummy.pick.color == 1);
+	CHECK(picks::LoadoutOf(dummy.pick) == kTwoTwo);
+	ForgetPickMemoryForTest();
 }
 
 TEST_CASE("the pane says why an option cannot be chosen, and that a stage shown is one the opponent lacks, with its row focused or its choice open")
@@ -926,4 +943,124 @@ TEST_CASE("the costume cards and the costume row never offer the costume the gam
 	CHECK_FALSE(SfvSelectionScreen::Apply(Choose("costume", "#15"), pick, StageOptions(MissingStages())));
 	CHECK(SfvSelectionScreen::Previewed(ryu, "costume", "#15").pick.costume == 0);
 	CHECK(SfvSelectionScreen::BoardPick(PlayerPickOf(kCnl, kOneOne), "fighter-0", false).pick.costume != 15);
+}
+
+TEST_CASE("choosing a fighter is the same by the board, the look page's Fighter row, a Random roll and the pipe: the fighter in its own look")
+{
+	FillTestCatalog();
+	ForgetPickMemoryForTest();
+	ForgetDummyForTest();
+	SetPickRandom(false);
+	const std::vector<StageOption> stages = StageOptions(MissingStages());
+	// RYU last stored in Nostalgia, colour 02, both II; the pick is CNL in colour 02.
+	PlayerPick ryu = PlayerPickOf(kRyu, kTwoTwo);
+	ryu.pick.costume = 4;
+	ryu.pick.color = 1;
+	ryu = SetPick(ryu);
+	PlayerPick cnl = PlayerPickOf(kCnl, kTwoOne);
+	cnl.pick.color = 1;
+	cnl = SetPick(cnl);
+	// The look page's Fighter row, stepped back to RYU or chosen: RYU as last stored.
+	PlayerPick shown = cnl;
+	REQUIRE(SfvSelectionScreen::Apply(Adjust("fighter", -1), shown, stages));
+	CHECK(SameLook(shown.pick, ryu.pick));
+	shown = cnl;
+	REQUIRE(SfvSelectionScreen::Apply(Choose("fighter", "#0"), shown, stages));
+	CHECK(SameLook(shown.pick, ryu.pick));
+	// BSN, never stored: its default look, not CNL's colour 02 or V-Skill II.
+	shown = cnl;
+	REQUIRE(SfvSelectionScreen::Apply(Choose("fighter", "#4"), shown, stages));
+	CHECK(shown.pick.fighter == kBsn);
+	CHECK(shown.pick.costume == 0);
+	CHECK(shown.pick.color == 0);
+	CHECK(picks::LoadoutOf(shown.pick) == kOneOne);
+	// The dummy's page keeps no memory: it carries its look to the new fighter.
+	shown = cnl;
+	REQUIRE(SfvSelectionScreen::Apply(Choose("fighter", "#0"), shown, stages, false));
+	CHECK(shown.pick.color == 1);
+	CHECK(picks::LoadoutOf(shown.pick) == kTwoOne);
+	// Every way to choose a fighter gives the look the page shows, from CNL.
+	std::uint64_t roll = 0xD0000001;
+	const auto viaBoard = [&](int fighter) { return SfvSelectionScreen::BoardPick(cnl, "fighter-" + std::to_string(fighter), true).pick; };
+	const auto viaChoose = [&](int fighter) { return ChooseFighter(fighter).pick; }; // the page's row and the board's card
+	const auto viaPipe = [&](int fighter) {
+		return ChooseFighter(fighter, [](PlayerPick& edited) { edited.stage = 2; }).pick; // `pick CODE S02`
+	};
+	const auto viaRandom = [&](int fighter) {
+		SetPickRandom(true);
+		sf4e::NetplayFacade::RuntimeSnapshot snapshot{};
+		snapshot.randomFighter = fighter;
+		snapshot.randomRoll = ++roll;
+		FollowRandomFighter(snapshot);
+		const sf4e::selection::Pick rolled = CurrentPick().pick;
+		SetPickRandom(false);
+		return rolled;
+	};
+	for (const int fighter : {kRyu, kBsn}) {
+		CAPTURE(fighter);
+		const sf4e::selection::Pick expected = fighter == kRyu ? ryu.pick : PickOf(kBsn);
+		for (const auto& via : {std::function<sf4e::selection::Pick(int)>(viaBoard), viaChoose, viaPipe, viaRandom}) {
+			SetPick(cnl);
+			CHECK(SameLook(via(fighter), expected));
+		}
+	}
+	ForgetPickMemoryForTest();
+	ForgetDummyForTest();
+}
+
+TEST_CASE("choosing a fighter by the look page or the pipe turns Random and Eleven off, as the board does")
+{
+	FillTestCatalog();
+	ForgetPickMemoryForTest();
+	PlayerPick ryu = PlayerPickOf(kRyu, kTwoTwo);
+	ryu.pick.color = 1;
+	SetPick(ryu);
+	SetPick(PlayerPickOf(kCnl, kOneOne)); // the fighter chosen last: CNL
+	for (const bool eleven : {false, true}) {
+		CAPTURE(eleven);
+		// Random rolled BSN.
+		if (eleven) SetPickEleven(true);
+		else SetPickRandom(true);
+		SetPick(PlayerPickOf(kBsn, kOneOne));
+		REQUIRE(PickRandom());
+		const PlayerPick chosen = ChooseFighter(kRyu);
+		CHECK_FALSE(PickRandom());
+		CHECK_FALSE(PickEleven());
+		CHECK(SameLook(chosen.pick, ryu.pick));
+		// It is the fighter the player chose, so it is the one saved.
+		std::uint64_t revision = 0;
+		CHECK(PickMemoryNow(revision).ChosenFighter() == kRyu);
+		SetPick(PlayerPickOf(kCnl, kOneOne));
+		CHECK(PickMemoryNow(revision).ChosenFighter() == kCnl);
+	}
+	// Not an edit it makes of a fighter already chosen: Random stays off and the look stays.
+	CHECK(SameLook(ChooseFighter(kRyu).pick, ryu.pick));
+	CHECK_FALSE(PickRandom());
+	ForgetPickMemoryForTest();
+}
+
+TEST_CASE("an edit of the stored pick is one step: it reads the pick as it is, may keep it, and may call the pick's own functions")
+{
+	FillTestCatalog();
+	ForgetPickMemoryForTest();
+	SetPickRandom(false);
+	PlayerPick ryu = PlayerPickOf(kRyu, kTwoTwo);
+	ryu.pick.color = 1;
+	SetPick(ryu);
+	// Kept: nothing stored, nothing changes.
+	std::uint64_t before = 0, after = 0;
+	PickMemoryNow(before);
+	CHECK(SameLook(UpdatePick([](PlayerPick&) { return false; }).pick, ryu.pick));
+	PickMemoryNow(after);
+	CHECK(after == before);
+	// Stored: the edit sees the stored pick, and may read the memory and the looks.
+	const PlayerPick edited = UpdatePick([&](PlayerPick& pick) {
+		CHECK(SameLook(pick.pick, ryu.pick));
+		CHECK(RememberedLook(kRyu).has_value());
+		pick.pick = LookFor(pick.pick, kBsn, true);
+		return true;
+	});
+	CHECK(edited.pick.fighter == kBsn);
+	CHECK(SameLook(CurrentPick().pick, edited.pick));
+	ForgetPickMemoryForTest();
 }

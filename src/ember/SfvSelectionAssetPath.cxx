@@ -1,5 +1,6 @@
 #include "ember/SfvSelectionAssetPath.hxx"
 
+#include "platform/Utf8.hxx"
 #include <algorithm>
 
 namespace sfve::assets {
@@ -11,7 +12,7 @@ namespace {
 
 std::wstring Wide(std::string_view text)
 {
-	return std::wstring(text.begin(), text.end());
+	return sf4e::platform::Utf8ToWide(std::string(text).c_str());
 }
 
 // A decimal number as the builders write one: digits only, no sign, no

@@ -10,6 +10,7 @@
 #include "ember/SfvSelection.hxx"
 #include "mod/Log.hxx"
 
+#include "platform/Utf8.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "ui/AppearanceGrid.hxx"
@@ -687,23 +688,17 @@ void DrawLoadoutCards(const std::vector<MenuEntry>& entries, MenuNavigation& nav
 bool StepTableSelection(const sf4e::ui::ShellAction::SelectionStep& step, bool canEditSelection, bool canChangeUltra)
 {
 	using Field = sf4e::ui::ShellAction::SelectionStep::Field;
-	PlayerPick pick = CurrentPick();
-	switch (step.field) {
-	case Field::Ultra: {
-		if (!canChangeUltra) return false;
-		int index = picks::LoadoutIndex(picks::LoadoutOf(pick.pick));
-		sf4e::ui::Step(index, LoadoutIndices(pick.pick.fighter), step.delta);
-		picks::SetLoadout(pick.pick, *picks::LoadoutAt(index));
-		break;
-	}
-	case Field::Color:
-		if (!canEditSelection) return false;
-		sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), step.delta);
-		break;
-	case Field::None:
-		return false;
-	}
-	SetPick(pick);
+	if (step.field == Field::None || (step.field == Field::Ultra ? !canChangeUltra : !canEditSelection)) return false;
+	UpdatePick([&step](PlayerPick& pick) {
+		if (step.field == Field::Ultra) {
+			int index = picks::LoadoutIndex(picks::LoadoutOf(pick.pick));
+			sf4e::ui::Step(index, LoadoutIndices(pick.pick.fighter), step.delta);
+			picks::SetLoadout(pick.pick, *picks::LoadoutAt(index));
+		} else {
+			sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), step.delta);
+		}
+		return true;
+	});
 	return true;
 }
 
@@ -775,7 +770,7 @@ std::vector<MenuEntry> SfvSelectionScreen::Rows(const PlayerPick& pick, bool edi
 	return rows;
 }
 
-bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions)
+bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions, bool remembered)
 {
 	if (const std::optional<picks::LoadoutPart> part = PartOfRow(action.id)) return ApplyPart(action, *part, pick.pick);
 	const ember::GameCatalog& catalog = ember::Catalog();
@@ -816,6 +811,7 @@ bool SfvSelectionScreen::Apply(const MenuAction& action, PlayerPick& pick, const
 		else if (action.id == kCostumeCode && pickable(LoadCodeIds())) picks::SetLoadCode(pick.pick, *option);
 		else if (action.id == kSize && pickable(SizeIds())) pick.pick.size = *option;
 	}
+	if (pick.pick.fighter != before.pick.fighter) pick.pick = LookFor(before.pick, pick.pick.fighter, remembered);
 	return pick.pick.fighter != before.pick.fighter || pick.pick.costume != before.pick.costume ||
 		pick.pick.color != before.pick.color || pick.stage != before.stage ||
 		pick.pick.personalAction != before.pick.personalAction || pick.pick.size != before.pick.size;
@@ -894,7 +890,7 @@ void SfvSelectionScreen::LinkRandom(std::vector<MenuEntry>& rows, const grid::Se
 	const auto card = [&table](grid::Cell cell) {
 		const std::optional<std::string> code = grid::CodeAt(table, cell);
 		if (!code || *code == grid::kRandomCellCode) return std::string();
-		const std::optional<int> id = FighterId(std::wstring(code->begin(), code->end()));
+		const std::optional<int> id = FighterId(sf4e::platform::Utf8ToWide(code->c_str()));
 		return id ? CardId(kFighterCard, *id) : std::string();
 	};
 	const auto link = [&rows](const std::string& id, std::string MenuEntry::*side) {
@@ -1158,7 +1154,7 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 			if (menu_.navigation.Choosing()) choice = OpenChoice{menu_.navigation.DialogId(), menu_.navigation.ChoiceIndex()};
 			const ImVec2 at = ImGui::GetCursorScreenPos(), room = ImGui::GetContentRegionAvail();
 			const v2::Box card =
-				DrawPickPreviewIn(PreviewOf(pick, focus, choice, rows, stageOptions), {at, ImVec2(at.x + room.x, at.y + room.y)});
+				DrawPickPreviewIn(PreviewOf(pick, focus, choice, rows, stageOptions, !dummy_), {at, ImVec2(at.x + room.x, at.y + room.y)});
 			if (!withStage || !(card.W() > 0 && card.H() > 0) || menu_.navigation.Choosing()) return;
 			ImGui::SetCursorScreenPos(card.min);
 			if (ImGui::InvisibleButton("##stage-card", ImVec2(card.W(), card.H()))) stageCardClicked_ = true;
@@ -1311,9 +1307,14 @@ void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& scr
 			} else if (const std::optional<int> fighter = sf4e::ui::RowKey<int>(action.id, kFighterCard)) {
 				const bool choosable = editable && !fighterKept && ember::ValidFighter(*fighter) && !FighterLocked(*fighter);
 				if (choosable) {
-					pick.pick = LookFor(pick.pick, *fighter, !dummy_);
-					store = true;
-					if (!dummy_) SetPickRandom(false);
+					// The player's fighter is chosen as every path chooses it
+					// (ChooseFighter); the dummy has no memory, and no Random.
+					if (dummy_) {
+						pick.pick = LookFor(pick.pick, *fighter, false);
+						store = true;
+					} else {
+						ChooseFighter(*fighter);
+					}
 					if (closesOnChoice_ && startPage_.empty()) close();
 					else look();
 				} else if (*fighter == pick.pick.fighter) look();
@@ -1378,7 +1379,12 @@ void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& scr
 	} else if (screen == kLook && editable && (action.kind == MenuAction::Adjust || action.kind == MenuAction::Chosen)) {
 		// The value rows step and choose in place; the stage only where it is
 		// this player's.
-		if ((action.id != kStage || stageMine) && Apply(action, pick, stageOptions)) store = true;
+		if ((action.id != kStage || stageMine) && Apply(action, pick, stageOptions, !dummy_)) {
+			// A fighter stepped or chosen here is chosen as on the board:
+			// Random and Eleven off, the fighter in its own look.
+			if (action.id == kFighter && !dummy_) ChooseFighter(pick.pick.fighter);
+			else store = true;
+		}
 	}
 	// The look page's stage card, clicked.
 	if (stageCardClicked_ && screen == kLook && nav.Screen() == kLook) {
@@ -1398,7 +1404,7 @@ PreviewFocus SfvSelectionScreen::FocusOf(const std::string& rowId)
 	return PreviewFocus::Look;
 }
 
-PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId)
+PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId, bool remembered)
 {
 	PlayerPick shown = pick;
 	const std::optional<int> option = OptionOf(optionId);
@@ -1411,11 +1417,10 @@ PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::stri
 			picks::SetLoadout(look, loadout);
 		}
 	} else if (rowId == kFighter && ember::ValidFighter(*option)) {
-		// The fighter as choosing it would store the pick (SfvCatalog's
-		// FitLookWithin): in a look this player can ready, or for one they
-		// cannot play, as the spec fits it.
-		look.fighter = *option;
-		FitLookWithin(look);
+		// The fighter as choosing it would store the pick (LookFor): in its own
+		// look this player can ready, or for one they cannot play, as the spec
+		// fits it.
+		if (*option != look.fighter) look = LookFor(look, *option, remembered);
 	} else if (rowId == kCostume && Contains(CostumeIds(look.fighter, false), *option)) {
 		// A costume this player can ready as choosing it would store it; one
 		// they cannot is shown as it is, in the colour the spec fits to it.
@@ -1433,7 +1438,7 @@ PlayerPick SfvSelectionScreen::Previewed(const PlayerPick& pick, const std::stri
 }
 
 PickPreview SfvSelectionScreen::PreviewOf(const PlayerPick& pick, const std::string& focus, const std::optional<OpenChoice>& choice,
-	const std::vector<MenuEntry>& rows, const std::vector<StageOption>& stageOptions)
+	const std::vector<MenuEntry>& rows, const std::vector<StageOption>& stageOptions, bool remembered)
 {
 	PickPreview preview;
 	// With a choice open, its row and its focused option, the index checked
@@ -1450,7 +1455,7 @@ PickPreview SfvSelectionScreen::PreviewOf(const PlayerPick& pick, const std::str
 			if (!option.enabled && FocusOf(rowId) == PreviewFocus::Look) preview.note = option.detail;
 		}
 	}
-	preview.pick = Previewed(pick, rowId, optionId);
+	preview.pick = Previewed(pick, rowId, optionId, remembered);
 	preview.focus = FocusOf(rowId);
 	if (const std::optional<picks::LoadoutPart> part = PartOfRow(rowId)) preview.part = *part;
 	bool stageBanned = false;

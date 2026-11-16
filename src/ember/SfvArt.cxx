@@ -5,6 +5,7 @@
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPictureSpec.hxx"
 #include "ember/SfvRankNames.hxx"
+#include "ember/SfvTextures.hxx"
 #include "mod/GameArt.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/GameScene.hxx"
@@ -36,9 +37,6 @@ namespace {
 // Loads are synchronous on the game thread: a few a frame keep the menu
 // moving while a screen full of faces comes in.
 constexpr int kLoadsPerFrame = 2;
-// The render thread makes a loaded texture's resource within a frame or two;
-// one still without it after this long is given up on.
-constexpr int kResourceFrames = 120;
 
 using pictures::Framing;
 using pictures::PixelRect;
@@ -60,35 +58,11 @@ std::deque<pictures::Spec> s_queue;
 std::map<std::pair<int, int>, CostumePalette> s_swatches; // by fighter and costume
 std::deque<std::pair<int, int>> s_swatchQueue;
 
-// The game's textures are typeless where it views them as sRGB; Ember draws
-// their stored values as they are, as the game's own menus show them.
-DXGI_FORMAT ViewFormat(unsigned format)
-{
-	switch (format) {
-	case DXGI_FORMAT_B8G8R8A8_TYPELESS: return DXGI_FORMAT_B8G8R8A8_UNORM;
-	case DXGI_FORMAT_R8G8B8A8_TYPELESS: return DXGI_FORMAT_R8G8B8A8_UNORM;
-	case DXGI_FORMAT_BC1_TYPELESS: return DXGI_FORMAT_BC1_UNORM;
-	case DXGI_FORMAT_BC2_TYPELESS: return DXGI_FORMAT_BC2_UNORM;
-	case DXGI_FORMAT_BC3_TYPELESS: return DXGI_FORMAT_BC3_UNORM;
-	case DXGI_FORMAT_BC4_TYPELESS: return DXGI_FORMAT_BC4_UNORM;
-	case DXGI_FORMAT_BC5_TYPELESS: return DXGI_FORMAT_BC5_UNORM;
-	case DXGI_FORMAT_BC7_TYPELESS: return DXGI_FORMAT_BC7_UNORM;
-	default: return (DXGI_FORMAT)format;
-	}
-}
-
 // Render thread, under the lock: the view of a ready texture, made on the
 // texture's own device (the game's), whose reference it holds.
 void MakeView(const std::wstring& path, Picture& picture)
 {
-	ID3D11Device* device = nullptr;
-	picture.texture.texture->GetDevice(&device);
-	D3D11_SHADER_RESOURCE_VIEW_DESC desc{};
-	desc.Format = ViewFormat(picture.texture.format);
-	desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-	desc.Texture2D.MipLevels = 1;
-	const HRESULT made = device ? device->CreateShaderResourceView(picture.texture.texture, &desc, &picture.view) : E_FAIL;
-	if (device) device->Release();
+	const HRESULT made = textures::MakeView(picture.texture, &picture.view);
 	if (FAILED(made)) {
 		mod::Log("art: %ls: no view of format %u (0x%08lX)", path.c_str(), picture.texture.format, (unsigned long)made);
 		picture.state = Picture::State::Missing;
@@ -98,7 +72,7 @@ void MakeView(const std::wstring& path, Picture& picture)
 // Formats whose pixels are four bytes with alpha in the fourth.
 bool AlphaInFourthByte(unsigned format)
 {
-	switch (ViewFormat(format)) {
+	switch (textures::ViewFormat(format)) {
 	case DXGI_FORMAT_B8G8R8A8_UNORM:
 	case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
 	case DXGI_FORMAT_R8G8B8A8_UNORM:
@@ -209,9 +183,20 @@ sf4e::ui::SelectionImage Image(const pictures::Spec& spec)
 	return image;
 }
 
-bool AtMainMenu()
+// Game thread, away from the main menu: a texture loaded just before the game
+// left it is not taken later (the game may collect its object on the way to a
+// battle): it is let go, and queued to load again when the menu is back, as
+// the backdrop lets its own go (SfvBackdrop's DropLoading).
+void DropWaiting()
 {
-	return mod::SceneStateKind(mod::CurrentSceneState()) == mod::sfv::scene::kMainMenuVtable;
+	std::lock_guard lock(s_mutex);
+	for (auto& [spec, picture] : s_pictures) {
+		if (picture.state != Picture::State::WaitingForResource) continue;
+		picture.object = nullptr;
+		picture.frames = 0;
+		picture.state = Picture::State::Queued;
+		s_queue.push_back(spec);
+	}
 }
 
 // Game thread: the textures loaded before waiting for their resources, then
@@ -229,7 +214,7 @@ void PumpPictures()
 				picture.texture = *texture;
 				picture.state = Picture::State::Ready;
 				mod::Log("art: %ls: %dx%d, format %u", spec.path.c_str(), texture->width, texture->height, texture->format);
-			} else if (!pending || ++picture.frames >= kResourceFrames) {
+			} else if (!pending || ++picture.frames >= textures::kResourceFrames) {
 				mod::Log("art: %ls: not drawn: %s", spec.path.c_str(), pending ? "its resource never came" : why.c_str());
 				picture.state = Picture::State::Missing;
 			}
@@ -383,7 +368,10 @@ void InstallSfvArt()
 {
 	mod::RunEachGameFrame([] {
 		// Loading is synchronous: never while a battle runs.
-		if (!AtMainMenu()) return true;
+		if (!textures::AtMainMenu()) {
+			DropWaiting();
+			return true;
+		}
 		ReadLeagueNames();
 		ReadLoadoutWords();
 		PumpPictures();

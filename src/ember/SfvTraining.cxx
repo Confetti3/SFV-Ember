@@ -11,6 +11,7 @@
 #include "mod/SfvOffsets.hxx"
 
 #include "common/Localization.hxx"
+#include "platform/Utf8.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 #include "sf4e/sf4e__RuntimeEvents.hxx"
 #include "training/TrainingSession.hxx"
@@ -43,11 +44,6 @@ std::atomic<bool> s_selectRequested{false};
 std::uint64_t s_battle = 0;
 bool s_leaving = false; // told to leave for the main menu
 sf4e::training::LeaveCountdown s_countdown;
-
-std::wstring Wide(const std::string& code)
-{
-	return std::wstring(code.begin(), code.end());
-}
 
 void Publish(const TrainingView& view, bool paused)
 {
@@ -125,7 +121,7 @@ public:
 			return;
 		}
 		const PlayerPick player = CurrentPick();
-		LaunchTraining(FighterPickOf(player.pick), FighterPickOf(CurrentDummy().pick), Wide(OfflineStageCode(player.stage)),
+		LaunchTraining(FighterPickOf(player.pick), FighterPickOf(CurrentDummy().pick), sf4e::platform::Utf8ToWide(OfflineStageCode(player.stage).c_str()),
 			"a room's Wait in Training", "room.training.unavailable");
 	}
 	bool ControlsAvailable() override { return ReadTrainingView().available; }
