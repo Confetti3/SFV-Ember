@@ -81,6 +81,10 @@ add_library(sfve_core STATIC
     src/core/ReplayFile.cxx
     src/core/ReplaySeeker.cxx
     src/core/RollbackSession.cxx
+    src/core/RollbackSessionCallbacks.cxx
+    src/core/RollbackSessionHashes.cxx
+    src/core/RollbackSessionReplay.cxx
+    src/core/RollbackSessionWatchers.cxx
     src/core/StartAgreement.cxx
     src/core/MatchData.cxx
     src/core/RegionExchange.cxx

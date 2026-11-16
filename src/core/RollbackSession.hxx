@@ -44,6 +44,22 @@
 // The session sets nothing process-wide: GGPO's assertion handler, like every
 // other handler a crash reaches, is the host's crash record's (the mod's
 // mod/CrashRecord.hxx, the tests' GgpoAssertions.cxx).
+//
+// Where the class lives, by role (one class, five files under core/):
+// * RollbackSession.cxx: the session's life (Start, Close, a failure, the
+//   abort latch) and the fighters' steps (Step, StepHeld, Poll), with the
+//   link's readings (rift, countdown, recent rollbacks).
+// * RollbackSessionCallbacks.cxx: GGPO's callbacks and what they reach: the
+//   save pool (Save, Load, Free), a rollback's frames and GGPO's events.
+// * RollbackSessionHashes.cxx: the frames' hashes once final, the
+//   checkpoints (their region hashes and kept states) and what the session
+//   answers of them (HashAt, SavedState, CheckpointState, ...).
+// * RollbackSessionWatchers.cxx: a watching copy's frames (StepWatched, a
+//   replay's included), P1's watchers and the session kept for them.
+// * RollbackSessionReplay.cxx: a replay's frames, a lagged replay's
+//   checkpoints and the replay check's log; RestoreReplay is ReplaySeeker.cxx's.
+// RollbackSessionScopes.hxx holds the two scoped helpers the files that make
+// GGPO calls share (ActiveScope, ConfirmedOnReturn).
 
 #include "core/Checkpoints.hxx"
 #include "core/DetachedGame.hxx"
@@ -346,7 +362,11 @@ private:
 		int frame = -1;
 		uint64_t hash = 0;
 	};
-	class ActiveScope;
+	class ActiveScope; // RollbackSessionScopes.hxx
+	// The session making a GGPO call, for the static callbacks (ActiveScope).
+	static RollbackSession* s_active;
+	// Frame hashes kept for HashAt (the latest this many frames).
+	static constexpr int kHistory = 256;
 
 	static bool __cdecl OnBeginGame(const char*);
 	static bool __cdecl OnSave(unsigned char** buffer, int* len, int* checksum, int frame);
@@ -381,7 +401,7 @@ private:
 	void HashConfirmed();
 	void HashPending(Slot& slot);
 	// Runs HashConfirmed as the session call it is made in returns, whatever
-	// way it returns.
+	// way it returns (RollbackSessionScopes.hxx).
 	class ConfirmedOnReturn;
 	bool Load(unsigned char* buffer);
 	void Free(void* buffer);
