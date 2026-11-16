@@ -47,15 +47,19 @@ sys.path.insert(0, str(Path(__file__).parent))
 import sfvelib as lib  # noqa: E402
 
 PRESS_S = 0.6
-CHECKPOINT = re.compile(r"checkpoint: frame (\d+) hash ([0-9a-f]+)")
 
 
 def status(index: int) -> dict:
-    return json.loads(lib.request(index, "status")[3:])
+    return json.loads(lib.request(index, "status", idempotent=True)[3:])
 
 
 def ctl(index: int, line: str) -> str:
     return lib.request(index, line)
+
+
+def ctl_ok(index: int, line: str) -> str:
+    """A command that must be taken (a press, a sit, a pick, a transport toggle): a refusal raises."""
+    return lib.request_ok(index, line)
 
 
 def shell(index: int) -> dict:
@@ -63,7 +67,7 @@ def shell(index: int) -> dict:
 
 
 def press(index: int, button: str) -> dict:
-    lib.request(index, f"pad 0 {button}:120 -:250")
+    ctl_ok(index, f"pad 0 {button}:120 -:250")
     time.sleep(PRESS_S)
     return shell(index)
 
@@ -120,12 +124,12 @@ def play_battle(rematches: int) -> None:
     wait_for("both copies in the room", 90,
              lambda: all(status(i)["room"]["room"] == "joined" and status(i)["room"]["members"] == 2 for i in (0, 1)))
     for i in (0, 1):
-        ctl(i, f"sit 0 {i}")
+        ctl_ok(i, f"sit 0 {i}")
     wait_for("both copies seated", 60, lambda: status(0)["room"]["slot"] == 0 and status(1)["room"]["slot"] == 1)
     for i in (0, 1):
-        ctl(i, "delay 2")
-    ctl(0, "pick RYU:0:1 S25")
-    ctl(1, "pick CNL:0:2")
+        ctl_ok(i, "delay 2")
+    ctl_ok(0, "pick RYU:0:1 S25")
+    ctl_ok(1, "pick CNL:0:2")
     starts = [lib.count_log(i, "netplay: room match as P") for i in (0, 1)]
 
     def started() -> bool:
@@ -190,7 +194,7 @@ def exercise_transport(shots: Path | None) -> None:
     """Pause, step three frames, half speed and back, on copy 0's playback;
     first a pause before the fight (the intro: no fight frame played yet)."""
     wait_for("copy 0's playback 1 s in", 60, lambda: replays(0)["frames"] > 60)
-    ctl(0, "replay pause")
+    ctl_ok(0, "replay pause")
     wait_for("the pause in the intro", 5, lambda: replays(0)["paused"])
     intro = replays(0)
     time.sleep(1.0)
@@ -198,12 +202,12 @@ def exercise_transport(shots: Path | None) -> None:
         raise lib.SfveError("paused in the intro, the playback went on")
     if intro["cursor"] != 0:
         raise lib.SfveError(f"the pause meant for the intro came {intro['cursor']} frames into the fight")
-    ctl(0, "replay pause")
+    ctl_ok(0, "replay pause")
     wait_for("the playback again after the intro's pause", 5, lambda: not replays(0)["paused"])
     print(f"copy 0: paused in the intro at frame {intro['frames']}, before any fight frame")
     wait_for("copy 0's playback 20 s in", 120, lambda: replays(0)["frames"] > 1200)
     session = replays(0)["session"]
-    ctl(0, "replay pause")
+    ctl_ok(0, "replay pause")
     wait_for("the pause", 5, lambda: replays(0)["paused"])
     before = replays(0)["frames"]
     time.sleep(1.5)
@@ -212,20 +216,20 @@ def exercise_transport(shots: Path | None) -> None:
         raise lib.SfveError(f"paused, the playback went on ({before} to {still} frames)")
     shot(shots, "3-playback-paused", 0)
     for _ in range(3):
-        ctl(0, "replay step")
+        ctl_ok(0, "replay step")
         time.sleep(0.3)
     stepped = replays(0)["frames"]
     if stepped != still + 3:
         raise lib.SfveError(f"three steps played {stepped - still} frames")
-    ctl(0, "replay pause")
+    ctl_ok(0, "replay pause")
     wait_for("the playback again", 5, lambda: not replays(0)["paused"])
-    ctl(0, "replay slower")
+    ctl_ok(0, "replay slower")
     wait_for("half speed", 5, lambda: replays(0)["divisor"] == 2)
     a = replays(0)["frames"]
     time.sleep(2)
     b = replays(0)["frames"]
     shot(shots, "4-playback-half", 0)
-    ctl(0, "replay faster")
+    ctl_ok(0, "replay faster")
     wait_for("full speed", 5, lambda: replays(0)["divisor"] == 1)
     c = replays(0)["frames"]
     time.sleep(2)
@@ -257,7 +261,7 @@ def exercise_seeks(shots: Path | None) -> int:
     shot(shots, "6-seek-start", 0)
     # Three steps back: exactly one frame each, the playback paused throughout.
     for k in range(1, 4):
-        ctl(0, "replay stepback")
+        ctl_ok(0, "replay stepback")
         r = landed(0, made, f"step back {k}")
         made += 1
         if r["frame"] != f0 - k or not r["paused"]:
@@ -268,7 +272,7 @@ def exercise_seeks(shots: Path | None) -> int:
         raise lib.SfveError(f"a step after the step backs is at frame {replays(0)['frame']}, not {f0 - 2}")
     # Five seconds back, then forward: to where the recording has a fight frame at or before (after) the target.
     here = replays(0)["frame"]
-    ctl(0, "replay jump -5")
+    ctl_ok(0, "replay jump -5")
     r = landed(0, made, "the jump back")
     made += 1
     want = max(floor, here - 300)
@@ -276,25 +280,25 @@ def exercise_seeks(shots: Path | None) -> int:
         raise lib.SfveError(f"a jump back from frame {here} landed at {r['frame']} (wanted {want}, floor {floor})")
     back = r["frame"]
     shot(shots, "7-seek-jumped-back", 0)
-    ctl(0, "replay jump +5")
+    ctl_ok(0, "replay jump +5")
     r = landed(0, made, "the jump forward")
     made += 1
     if not (back + 300 <= r["frame"] < back + 300 + 400 or r["frame"] == last):
         raise lib.SfveError(f"a jump forward from frame {back} landed at {r['frame']} (last {last})")
     # Restart: the earliest landing, once.
-    ctl(0, "replay restart")
+    ctl_ok(0, "replay restart")
     r = landed(0, made, "the restart")
     made += 1
     if r["frame"] != floor:
         raise lib.SfveError(f"a restart landed at frame {r['frame']}, the floor is {floor}")
     shot(shots, "8-seek-restarted", 0)
     # An A-B loop: A here, B 240 frames on (a seek by number), then let it run twice and turn it off.
-    ctl(0, "replay loop")
+    ctl_ok(0, "replay loop")
     wait_for("A marked", 5, lambda: replays(0)["loop"]["phase"] == 1)
-    ctl(0, f"replay seek {floor + 240}")
+    ctl_ok(0, f"replay seek {floor + 240}")
     r = landed(0, made, "the seek to B")
     made += 1
-    ctl(0, "replay loop")
+    ctl_ok(0, "replay loop")
     wait_for("the loop on", 5, lambda: replays(0)["loop"]["phase"] == 2)
     a, b = replays(0)["loop"]["a"], replays(0)["loop"]["b"]
     if not (a == floor and a < b):
@@ -307,7 +311,7 @@ def exercise_seeks(shots: Path | None) -> int:
     if not (a <= seen <= b + 60):
         raise lib.SfveError(f"looping {a} to {b}, the playback is at frame {seen}")
     made += replays(0)["seeks"] - wraps_from
-    ctl(0, "replay loop")
+    ctl_ok(0, "replay loop")
     wait_for("the loop off", 5, lambda: replays(0)["loop"]["phase"] == 0)
     print(f"copy 0: seeks: 3 step backs from frame {f0}, jump back to {back}, forward, restart to {floor}, "
           f"loop {a} to {b} twice; the status counts {replays(0)['seeks']} seek(s)")
@@ -320,12 +324,11 @@ def checkpoints_compared(index: int) -> tuple[int, int, str]:
     lines = log_lines(index)
     watching = max(n for n, l in enumerate(lines) if "replays: watching" in l)
     battle_start = max(n for n, l in enumerate(lines[:watching]) if "netplay: room match as P" in l)
-    battle = {int(m.group(1)): m.group(2) for l in lines[battle_start:watching] if (m := CHECKPOINT.search(l))}
-    played = {int(m.group(1)): m.group(2) for l in lines[watching:] if (m := CHECKPOINT.search(l))}
-    common = [f for f in played if f in battle]
-    differing = [f for f in common if played[f] != battle[f]]
+    battle = lib.parse_checkpoints(lines[battle_start:watching])
+    played = lib.parse_checkpoints(lines[watching:])
+    compared, differing = lib.compare_checkpoints(battle, played)
     summary = [l for l in lines[watching:] if "replays: playback ended" in l]
-    return len(common), len(differing), summary[-1][24:] if summary else ""
+    return compared, differing, summary[-1][24:] if summary else ""
 
 
 def read_replay(path: Path) -> tuple[dict, list, list]:
@@ -360,21 +363,28 @@ def main(argv: list[str]) -> int:
     p.add_argument("--keep", action="store_true", help="leave the copies running")
     a = p.parse_args(argv)
     lib.begin_run()
+    with lib.run_scope(keep=a.keep):
+        return run(a)
+
+
+def run(a) -> int:
     if a.shots:
         a.shots.mkdir(parents=True, exist_ok=True)
     root = a.replays or Path(tempfile.mkdtemp(prefix="sfve-replays-"))
     folders = [root / f"copy{i}" for i in (0, 1)]
     lib.kill_all()
-    for i, seed in ((0, 101), (1, 202)):
-        os.environ["SFVE_REPLAY_DIR"] = str(folders[i])
-        lib.launch(i, "netplay", ["-sfve_pads=01", "-sfve_background=1", "-sfve_room=1", f"-sfve_mash={seed}",
-                                  "-sfve_mash_from=300", f"-sfve_lag={a.lag}"])
-    os.environ.pop("SFVE_REPLAY_DIR", None)
     failure = ""
     try:
+        for i, seed in ((0, 101), (1, 202)):
+            os.environ["SFVE_REPLAY_DIR"] = str(folders[i])
+            try:
+                lib.launch(i, "netplay", ["-sfve_pads=01", "-sfve_background=1", "-sfve_room=1", f"-sfve_mash={seed}",
+                                          "-sfve_mash_from=300", f"-sfve_lag={a.lag}"])
+            finally:
+                os.environ.pop("SFVE_REPLAY_DIR", None)
         play_battle(a.rematches)
         for i in (0, 1):
-            ctl(i, "leave")
+            ctl_ok(i, "leave")
         wait_for("both copies out of the room", 60, lambda: all(status(i)["room"]["room"] != "joined" for i in (0, 1)))
         time.sleep(2)
         reply = ctl(1, "replay watch latest")
@@ -424,10 +434,9 @@ def main(argv: list[str]) -> int:
             print(f"copy {i}: replays {json.dumps(replays(i))}")
         except lib.SfveError:
             print(f"copy {i} is not answering")
-        if lib.log_path(i).exists():
-            for line in log_lines(i):
-                if "desync" in line or "mismatch" in line:
-                    print(f"copy {i}: {line[24:]}")
+        for line in lib.desync_lines(log_lines(i) if lib.log_path(i).exists() else []):
+            print(f"copy {i}: {line[24:]}")
+            failure = failure or f"copy {i}'s log has a desync line: {line[24:].strip()}"
     if not a.keep:
         lib.kill_all()
         if not a.replays:
