@@ -16,12 +16,12 @@ try:
 except ImportError:  # pragma: no cover - environment problem, said clearly
     sys.exit("the booth tools need Pillow and numpy: python -m pip install -r tools/booth-requirements.txt (in a venv)")
 
-from .checks import check_pair
+from .checks import write_reference_once
 from .mask import make_masters
 from .pack import build_pack
 from .space import (LOADOUT_PACK_SIZE, MASTER_MARGIN, MASTER_SIZE, PACK_MARGIN, PACK_SIZE, BoothError,
                     is_selection_asset_path, loadout_master_path, master_path)
-from .validate import validate_pack
+from .validate import image_problem, validate_pack
 
 
 def _synthetic_space() -> dict:
@@ -163,6 +163,28 @@ def selftest() -> int:
         errors, _ = validate_pack(pack, space)
         check(any("first colour" in e for e in errors), "a missing first colour without an exception is refused")
         manifest = build_pack(store, space, "0123abc", True, 300, "TRN", 1)
+        # The pictures are opened: a file that is not the picture it claims to be is caught.
+        cut_ok = pack / "assets/selection/AAA/costume-0/color-0-cutout.png"
+        vs_ok = pack / "assets/selection/AAA/vs1.png"
+        check(image_problem(cut_ok, "cutout") is None and image_problem(vs_ok, "loadout") is None, "the packed pictures pass the image check")
+        check(image_problem(cut_ok, "loadout") is not None, "a cutout is not a loadout picture (size and mode)")
+        cut_bytes = cut_ok.read_bytes()
+        (work / "cut-cut.png").write_bytes(cut_bytes[: len(cut_bytes) // 2])
+        (work / "cut-text.png").write_bytes(b"not a picture")
+        Image.new("RGBA", PACK_SIZE).save(work / "cut-rgba.png")
+        check(image_problem(work / "cut-cut.png", "cutout") is not None, "a truncated PNG is caught")
+        check(image_problem(work / "cut-text.png", "cutout") is not None, "a file that is no picture is caught")
+        check("mode" in (image_problem(work / "cut-rgba.png", "cutout") or ""), "a cutout that is not a palette picture is caught")
+        # The reference plate is written once, whole, however many copies get there together.
+        from concurrent.futures import ThreadPoolExecutor
+        plate = np.full((8, 8, 3), 7, np.float32)
+        ref = work / "reference" / "plate.png"
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            wrote = list(pool.map(lambda i: write_reference_once(ref, plate + i), range(8)))
+        check(sum(wrote) == 1 and ref.is_file(), "of eight copies finishing together exactly one writes the reference plate")
+        check(not list(ref.parent.glob("*.tmp*")), "no temporary plate is left beside the reference")
+        with Image.open(ref) as shown:
+            check(shown.size == (8, 8), "the reference plate reads back whole")
         # Tampering is caught.
         victim = pack / "assets/selection/AAA/costume-0/color-0-cutout.png"
         original = victim.read_bytes()

@@ -13,7 +13,30 @@ except ImportError:  # pragma: no cover - environment problem, said clearly
     sys.exit("the booth tools need Pillow and numpy: python -m pip install -r tools/booth-requirements.txt (in a venv)")
 
 from .pack import sha256_file
-from .space import CUTOUT_RE, LOADOUT_RE, MANIFEST_PACKAGE_PATH, PART_NAMES, is_selection_asset_path
+from .space import (CUTOUT_RE, LOADOUT_PACK_SIZE, LOADOUT_RE, MANIFEST_PACKAGE_PATH, PACK_SIZE, PART_NAMES,
+                    is_selection_asset_path)
+
+
+def image_problem(file: Path, kind: str) -> str | None:
+    """Why `file` is not the picture pack.md describes, or None: a PNG that decodes, a cutout 256x384
+    palette with transparency, a loadout picture 256x144 RGB. The sha256 and size in the manifest say
+    the file is the one that was packed, not that it is an image."""
+    try:
+        with Image.open(file) as im:
+            fmt, size, mode, transparent = im.format, im.size, im.mode, "transparency" in im.info
+            im.verify()
+    except (OSError, ValueError, SyntaxError) as e:  # Pillow: truncated, not an image, a bad chunk
+        return f"not a readable picture ({e})"
+    want_size, want_mode = (PACK_SIZE, "P") if kind == "cutout" else (LOADOUT_PACK_SIZE, "RGB")
+    if fmt != "PNG":
+        return f"is {fmt}, not PNG"
+    if size != want_size:
+        return f"is {size[0]}x{size[1]}, not {want_size[0]}x{want_size[1]}"
+    if mode != want_mode:
+        return f"is mode {mode}, not {want_mode}"
+    if kind == "cutout" and not transparent:
+        return "has no transparency"
+    return None
 
 
 def validate_pack(pack: Path, space: dict) -> tuple[list[str], list[str]]:
@@ -83,6 +106,9 @@ def validate_pack(pack: Path, space: dict) -> tuple[list[str], list[str]]:
         if not isinstance(f.get("sha256"), str) or not re.fullmatch(r"[0-9a-fA-F]{64}", f["sha256"]) \
                 or f["sha256"].lower() != sha256_file(file):
             errors.append(f"{where}: sha256 does not match the file")
+        problem = image_problem(file, "loadout" if LOADOUT_RE.fullmatch(backslash) else "cutout")
+        if problem:
+            errors.append(f"{where}: {problem}")
         if not isinstance(f.get("frame"), (int, float)) or isinstance(f.get("frame"), bool):
             errors.append(f"{where}: frame is not a number")
         if not isinstance(f.get("stage"), str):

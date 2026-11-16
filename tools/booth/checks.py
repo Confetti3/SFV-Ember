@@ -68,6 +68,21 @@ def untextured(rgb: np.ndarray, mask: np.ndarray) -> bool:
     return tint >= UNTEXTURED_TINT and warm_share(rgb, mask) <= UNTEXTURED_WARM
 
 
+def write_reference_once(reference: Path, plate: np.ndarray) -> bool:
+    """Writes `plate` (a shrunk picture) as the stage's reference plate unless one exists; True when
+    this call wrote it. Under a lock, so two copies that finish their first pair of a stage together
+    cannot both write: the second compares with the first's plate. The file appears whole or not at
+    all (written beside it, then moved over it), so a copy reading it never sees half a PNG."""
+    with _REFERENCE_LOCK:
+        if reference.is_file():
+            return False
+        reference.parent.mkdir(parents=True, exist_ok=True)
+        temp = reference.with_name(f"{reference.stem}.{os.getpid()}.tmp{reference.suffix}")
+        Image.fromarray(np.clip(plate, 0, 255).astype(np.uint8)).save(temp, format="PNG")
+        os.replace(temp, reference)
+        return True
+
+
 def check_pair(a_path: Path | str, b_path: Path | str, reference: Path | None,
                again: Path | str | None = None) -> tuple[dict, str | None]:
     """Grab A (fighters) against grab B (the plate) of one held frame, before masters are made.
@@ -116,16 +131,15 @@ def check_pair(a_path: Path | str, b_path: Path | str, reference: Path | None,
         if checks["stable"] > STABLE_MAX:
             return checks, f"the held frame kept changing ({checks['stable']:.1%} of the frame between two grabs)"
     if reference is not None:
-        if reference.is_file():
-            ref = np.asarray(Image.open(reference).convert("RGB")).astype(np.float32)
+        if write_reference_once(reference, b):
+            checks["plate"] = 0.0
+        else:
+            with Image.open(reference) as plate:
+                ref = np.asarray(plate.convert("RGB")).astype(np.float32)
             checks["plate"] = round(float(differs(b, ref).mean()) if ref.shape == b.shape else 1.0, 4)
             if checks["plate"] > PLATE_MAX:
                 return checks, (f"the plate differs from the stage's reference on {checks['plate']:.0%} of the frame "
                                 "(another screen over the battle)")
-        else:
-            reference.parent.mkdir(parents=True, exist_ok=True)
-            Image.fromarray(np.clip(b, 0, 255).astype(np.uint8)).save(reference)
-            checks["plate"] = 0.0
     return checks, None
 
 
