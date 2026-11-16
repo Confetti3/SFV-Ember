@@ -35,7 +35,8 @@ public:
 	// A new playback: nothing is held.
 	void Reset();
 	// The frame the session is about to play is a fight frame whose state is
-	// due: take it. Every frame, before its update.
+	// due: take it, unless the game no longer is what the layout describes
+	// (RollbackSession::GameStateFailure). Every frame, before its update.
 	void Before(const RollbackSession& session, const ReplayFrames& frames);
 	// `diagnostics`: the playback is a lagged or rollback-checked one (a test's
 	// -sfve_replay_lag, -sfve_replay_check), which never seeks.

@@ -253,8 +253,15 @@ public:
 	// then the game's post-restore callbacks), and the next Step plays
 	// `frame`. False with nothing changed for a replay that is not a plain
 	// one (a lagged or rollback-checked one) or while the game is held; false
-	// with the session failed when the game could not take the state back.
+	// with the session failed when the game could not take the state back,
+	// or when the game no longer is what the layout describes (checked before
+	// a byte is written, as a rollback's load does).
 	bool RestoreReplay(const uint8_t* state, int frame);
+	// The game's own word that its state can no longer be kept faithful
+	// (GameAdapter::StateFailure; the stand-in's once kept for watchers);
+	// null while it can. Whoever reads the layout's memory outside the
+	// session's own calls (ReplaySeeker's snapshots) asks first.
+	const char* GameStateFailure() const { return game_->StateFailure(); }
 	bool Running() const { return gate_.phase == sf4e::gate::PHASE_RUNNING; }
 	bool Failed() const { return failed_; }
 	const std::string& FailureReason() const { return failure_; }
