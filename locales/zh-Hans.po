@@ -230,3 +230,9 @@ msgstr "服装指令"
 
 msgid "replays.import_skipped"
 msgstr "已跳过 {0} 个文件。SFV Ember 可从本地磁盘导入 .sfvreplay 文件，一次最多 64 个。"
+
+msgid "friends.account_service"
+msgstr "好友保存在 Ember 的账号服务上，与 SF4 Ember 共用：两个游戏中是同一批好友。请在那里关联 Discord 后使用。"
+
+msgid "connect.friends_service_detail"
+msgstr "Ember 账号服务上的 Discord：你的好友列表，与 SF4 Ember 共用。"

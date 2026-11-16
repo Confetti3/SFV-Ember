@@ -190,6 +190,11 @@ target_include_directories(sfve_ember PRIVATE "${SFVE_BUILD_IDENTITY_DIR}")
 include("${SFVE_EMBER_SOURCE_ROOT}/cmake/sf4e_embed.cmake")
 add_library(sfve_product STATIC src/ember/SfvProduct.cxx)
 target_include_directories(sfve_product PRIVATE "${SFVE_EMBER_SOURCE_ROOT}/src")
+# The account service friends live on (ProductIdentity::accountService): SF4
+# Ember's production bridge, as the library's x64 build hands it over
+# (EMBER_ACCOUNT_SERVICE there; -DEMBER_ACCOUNT_SERVICE=<origin> points a test
+# build at a staging or local bridge, and an empty one keeps friends on SFV's).
+target_compile_definitions(sfve_product PRIVATE "SF4E_ACCOUNT_SERVICE=\"${EMBER_ACCOUNT_ORIGIN}\"")
 # SFV Ember's own words over the shared catalogs (locales/<tag>.po), one
 # catalog for every language the library declares in its locales.json: a
 # language without one stops the configure. Each is embedded as a raw string

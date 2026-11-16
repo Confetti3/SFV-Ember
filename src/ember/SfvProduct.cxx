@@ -19,6 +19,10 @@
 
 #include <atomic>
 
+#ifndef SF4E_ACCOUNT_SERVICE
+#error "SF4E_ACCOUNT_SERVICE comes from the Ember library's x64 build (cmake/ember-x64-probe)"
+#endif
+
 namespace {
 
 // SFV Ember's own words where the shared catalog names SF4 Ember on the
@@ -200,6 +204,13 @@ constexpr ember::ProductIdentity SfvEmber = {
 	LocaleOverlays,
 	// Import replay takes SFV Ember's own replays (core/ReplayFile).
 	"*.sfvreplay",
+	// Friends live on SF4 Ember's production bridge, the account service both
+	// games share, so a player has one friend list in both (EMBER_LIBRARY.md
+	// "Friends across games"); rooms, ranking, points and the player's own
+	// card stay on SFV's bridge. The library's x64 build sets it
+	// (cmake/ember-x64-probe EMBER_ACCOUNT_SERVICE, empty when it names SFV's
+	// own bridge again).
+	SF4E_ACCOUNT_SERVICE,
 };
 
 } // namespace

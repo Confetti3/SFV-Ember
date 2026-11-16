@@ -230,3 +230,9 @@ msgstr "Código do traje"
 
 msgid "replays.import_skipped"
 msgstr "{0} arquivo(s) ignorado(s). O SFV Ember importa arquivos .sfvreplay de uma unidade local, até 64 por vez."
+
+msgid "friends.account_service"
+msgstr "Os amigos ficam no serviço de contas do Ember, compartilhado com o SF4 Ember: os mesmos amigos nos dois jogos. Conecte o Discord lá para usá-los."
+
+msgid "connect.friends_service_detail"
+msgstr "Discord no serviço de contas do Ember: sua lista de amigos, compartilhada com o SF4 Ember."

@@ -124,9 +124,14 @@ TEST_CASE("SFV Ember's words are in every language the library declares")
 			CHECK_FALSE(text.empty());
 			CHECK(Placeholders(text) == Placeholders(source));
 			CHECK(std::count(text.begin(), text.end(), '\n') == std::count(source.begin(), source.end(), '\n'));
-			// sf4e is named once, as Ember's origin; SF4's own names never.
+			// sf4e is named once, as Ember's origin; SF4's own names never, but
+			// SF4 Ember by name where friends say they are shared with it (the
+			// account service both games keep friends on, EMBER_LIBRARY.md
+			// "Friends across games").
 			std::string scrubbed = text;
 			if (id == "about.ember_detail") scrubbed = std::regex_replace(scrubbed, std::regex("sf4e"), "");
+			if (id == "friends.account_service" || id == "connect.friends_service_detail")
+				scrubbed = std::regex_replace(scrubbed, std::regex("SF4 Ember"), "");
 			for (const char* sf4 : {"SF4", "sf4e", "SSFIV", "USF4", "Ultra Street Fighter IV", "Battle Log", "Sidecar"}) {
 				CHECK(scrubbed.find(sf4) == std::string::npos);
 			}

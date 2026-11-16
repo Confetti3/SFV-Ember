@@ -230,3 +230,9 @@ msgstr "코스튬 커맨드"
 
 msgid "replays.import_skipped"
 msgstr "파일 {0}개를 건너뛰었습니다. SFV Ember는 로컬 드라이브의 .sfvreplay 파일을 한 번에 최대 64개까지 가져옵니다."
+
+msgid "friends.account_service"
+msgstr "친구는 SF4 Ember와 함께 쓰는 Ember 계정 서비스에 저장되므로 두 게임에서 같은 친구가 함께합니다. 사용하려면 그곳에서 Discord를 연결하세요."
+
+msgid "connect.friends_service_detail"
+msgstr "Ember 계정 서비스의 Discord: SF4 Ember와 함께 쓰는 친구 목록."

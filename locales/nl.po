@@ -230,3 +230,9 @@ msgstr "Kostuumcode"
 
 msgid "replays.import_skipped"
 msgstr "{0} bestand(en) overgeslagen. SFV Ember importeert .sfvreplay-bestanden van een lokale schijf, maximaal 64 tegelijk."
+
+msgid "friends.account_service"
+msgstr "Vrienden staan bij de accountdienst van Ember, gedeeld met SF4 Ember: dezelfde vrienden in beide spellen. Koppel daar Discord om ze te gebruiken."
+
+msgid "connect.friends_service_detail"
+msgstr "Discord bij de accountdienst van Ember: je vriendenlijst, gedeeld met SF4 Ember."

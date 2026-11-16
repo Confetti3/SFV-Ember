@@ -230,3 +230,9 @@ msgstr "コスチュームコマンド"
 
 msgid "replays.import_skipped"
 msgstr "{0}個のファイルをスキップしました。SFV Emberはローカルドライブの .sfvreplay ファイルを一度に最大64個まで読み込めます。"
+
+msgid "friends.account_service"
+msgstr "フレンドはEmberのアカウントサービスに保存され、SF4 Emberと共有されます。両方のゲームで同じフレンドです。使うには、そこでDiscordを連携してください。"
+
+msgid "connect.friends_service_detail"
+msgstr "EmberのアカウントサービスでのDiscord連携：フレンドリスト。SF4 Emberと共有されます。"

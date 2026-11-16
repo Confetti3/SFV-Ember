@@ -2943,3 +2943,35 @@ frame meter's options (`SfvHud` supplies the default `MeterOptions` in one place
 
 *Tests:* `sfve_main_tests` (a main past fighter 43, the first pick over none); the library's
 `RuntimeCapabilitiesTest` under the x64 build; SFV's own suites.
+
+## 63. Friends across games (beta 10, 2026-11-16)
+
+The maintainer: "the ids use discord so it should work between games". SFV Ember keeps its friends on SF4 Ember's
+production bridge, the **account service** (`ProductIdentity::accountService`, `https://bridge.embernetplay.link`,
+set by the library's x64 build's `EMBER_ACCOUNT_SERVICE`), and everything one game owns on SFV's bridge: one friend
+list, one block list, one Appear offline and one friend code for both games. SF4 Ember 1.6.0 and SF4's bridge are
+unchanged (the bridge kit's `CROSS_GAME.md`, option (a), `FRIENDS=sf4`). docs/design/beta10/friends.md is the long
+form: what players get, the sign-in step by step, what is left out and the `--friends` plan for the local stack.
+
+**The library's seams**
+- `netplay/AccountRoutes.hxx`: the one table of which bridge each kind of request goes to (`ServiceOf(Ask)`):
+  friends, friend and request and code cards, and code search to the account service; room tickets, member cards,
+  name search, the own card and points to the game's. The runtime resolves it (`RuntimeBridges`); the interface
+  names the account bridge once trusted (`commands::AccountService`). A product without one apart (SF4 Ember)
+  resolves every kind to its one bridge, unchanged.
+- A card token opens only where it was sealed: `profiles::Key::from`, and a search's `from`. Friends' cards are
+  looked up on the account service in a look-up of their own (`runtime->friendCards`), merged for the view.
+- The friends sync sends no main to a bridge apart from the game's (`friends::ListingFor`): SF4's bridge refuses
+  index 44 and reads any other as a USF4 fighter.
+- Sign-in: Ember's own service and the account service each keep a session and a Discord link. The account service
+  is trusted in the background once Ember's own is (`IdentityPanel::TrustAccountService`); Connect Discord's one
+  press connects whichever still needs it, in order (`NextToConnect`), two consent pages, one flow; the Connect
+  screen and the Discord rows say which is connected.
+- A friend's public room of this game is not joined from the list (`Refusal::RoomElsewhere`): the account service
+  lists only its own game's rooms. An invite leads in, its ticket from SFV's bridge.
+- **The friend code on a card** (`card_friend_code`, migration 068): the client shows its code on its card on SFV's
+  bridge while its friends are on and it does not appear offline, so a room member's Add friend goes to the account
+  service by code. Inert on a usf4 bridge or one with friends on; the helper sends the code only where it is listed.
+
+*Tests:* the library's `AccountRoutes` and `LevelsAnswers`; the helper's session and card-save tests; the bridge's
+`card_friend_code`; `LocaleOverlayTests` (the two overlay entries that name SF4 Ember).

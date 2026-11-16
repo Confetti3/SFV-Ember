@@ -230,3 +230,9 @@ msgstr "Kód kostýmu"
 
 msgid "replays.import_skipped"
 msgstr "Přeskočeno souborů: {0}. SFV Ember importuje soubory .sfvreplay z místního disku, nejvýše 64 najednou."
+
+msgid "friends.account_service"
+msgstr "Přátelé jsou uloženi ve službě účtů Ember, kterou sdílí i SF4 Ember: stejní přátelé v obou hrách. Připojte tam Discord, abyste je mohli používat."
+
+msgid "connect.friends_service_detail"
+msgstr "Discord ve službě účtů Ember: váš seznam přátel, společný se SF4 Ember."
