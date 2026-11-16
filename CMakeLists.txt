@@ -424,7 +424,8 @@ add_library(sfv_ember SHARED
     src/mod/ProjectileRelease.cxx
     src/mod/FramePacer.cxx
     src/mod/BattleDriver.cxx
-    src/mod/NetplayMode.cxx)
+    src/mod/NetplayMode.cxx
+    src/mod/NetplayModeStart.cxx src/mod/MatchRecording.cxx src/mod/SceneNotes.cxx src/mod/NetplayDevCommands.cxx)
 # What only a development build runs (mod/BuildKind.hxx): a second copy's ports
 # and mutexes, the synctest mode, the lag simulation and the write watch behind
 # the pipe's commands. Nothing a player build compiles refers to them.
