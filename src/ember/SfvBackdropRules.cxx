@@ -246,7 +246,7 @@ void Cycle::Refill()
 std::optional<int> Cycle::Wanted() const
 {
 	if (next_.entry < 0 || next_.loading || next_.ready || fading_ || stale_ >= 0) return std::nullopt;
-	if (clock_ < settleUntil_ || clock_ < retryAt_) return std::nullopt;
+	if (clock_ < settleUntil_ || !retry_.Ready(clock_)) return std::nullopt;
 	return next_.entry;
 }
 
@@ -270,7 +270,7 @@ bool Cycle::Loaded(int entry, bool ok)
 	failed_[(size_t)entry] = true;
 	failedCount_++;
 	next_ = {};
-	retryAt_ = clock_ + timing_.retry;
+	retry_.Failed(clock_, RetryRule{timing_.retry});
 	Refill();
 	return false;
 }
@@ -291,7 +291,7 @@ void Cycle::Retry(int entry)
 	}
 	if (entry != next_.entry || !next_.loading) return;
 	next_ = {};
-	retryAt_ = clock_ + timing_.retry;
+	retry_.Failed(clock_, RetryRule{timing_.retry});
 	Refill();
 }
 
@@ -326,7 +326,7 @@ void Cycle::Step()
 {
 	stepWanted_ = true;
 	settleUntil_ = clock_;
-	retryAt_ = clock_;
+	retry_.Reset(clock_);
 }
 
 void Cycle::Reset()

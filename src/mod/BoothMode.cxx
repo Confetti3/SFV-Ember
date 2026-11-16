@@ -1,6 +1,7 @@
 #include "mod/BoothMode.hxx"
 
 #include "mod/ControlPipe.hxx"
+#include "mod/GameImage.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/HudText.hxx"
@@ -347,7 +348,7 @@ void BoothMode::Install()
 	// grab at Present (the overlay draws nothing here: no interface is set in
 	// this mode, overlay/Overlay.cxx's Draw), and the depth targets' counts.
 	SetFighterScaleAllowed(true);
-	InstallHudHide(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)));
+	InstallHudHide(GameBase());
 	overlay::SetPresentTap([](void* swapChain) { overlay::grab::OnPresent(swapChain); });
 	overlay::grab::InstallDepthProbe();
 	RegisterCommand("booth", [this](const std::string& args) { return Command(args); });
@@ -385,8 +386,7 @@ void BoothMode::Frame(SfvAdapter& adapter)
 	FrameInputs inputs;
 	bool runOn = false;
 	// SFV's own loading check, on the game thread, each frame of the battle.
-	static const auto isAsyncLoading =
-		reinterpret_cast<bool (*)()>(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)) + sfv::kIsAsyncLoading.rva);
+	static const auto isAsyncLoading = GameFn<bool (*)()>(sfv::kIsAsyncLoading);
 	const bool loading = isAsyncLoading();
 	{
 		std::lock_guard lock(mutex_);

@@ -3,8 +3,8 @@
 // the restores is re-hashed. Two peers over a lossy, laggy loopback link
 // (LossyLink) play as a game does, a frame every few milliseconds, so some
 // inputs come in time and some do not: no load may ever reach a save that
-// kept no copy, and every hash and checkpoint must be what the session made
-// without the savings, and what an offline run makes.
+// kept no copy, and every hash and checkpoint must be what an offline run
+// makes.
 
 #include <doctest/doctest.h>
 
@@ -182,22 +182,14 @@ TEST_CASE("a save no load can reach keeps no copy, and no load ever reaches one"
 	CHECK(sb.loadMismatches == 0);
 }
 
-TEST_CASE("hashes and checkpoints are the same with and without the cheaper rollbacks")
+TEST_CASE("with the rollbacks' savings, hashes and checkpoints are an offline run's")
 {
-	// The same scripted match twice over the same lossy link: once with the
-	// savings (the default) and once without. Every frame is hashed
-	// (LoopbackPair's verifyLoads), so every frame both sessions confirmed
-	// compares, with each other and with an offline run.
+	// A scripted match over a lossy link. Every frame is hashed
+	// (LoopbackPair), so every frame both sessions confirmed compares, with
+	// each other and with an offline run.
 	constexpr int kFrames = 900;
 	LossyPair on(21, {});
 	REQUIRE(RunPaced(*on.pair, kFrames));
-	LossyPair off(21, [](RollbackSession::Config& a, RollbackSession::Config& b) {
-		a.skipUnloadableSaves = b.skipUnloadableSaves = false;
-		a.hashOnConfirm = b.hashOnConfirm = false;
-	});
-	REQUIRE(RunPaced(*off.pair, kFrames));
-	CHECK(off.pair->a.GetStats().savesSkipped + off.pair->b.GetStats().savesSkipped == 0);
-	CHECK(off.pair->a.GetStats().hashesOnConfirm + off.pair->b.GetStats().hashesOnConfirm == 0);
 	// The savings were made: frames hashed once final, and saves a rollback
 	// replaced before they were final, whose hash was never made.
 	const RollbackSession::Stats& sa = on.pair->a.GetStats();
@@ -206,45 +198,36 @@ TEST_CASE("hashes and checkpoints are the same with and without the cheaper roll
 	CHECK(sa.hashesOnConfirm + sb.hashesOnConfirm > 0);
 	CHECK(sa.rollbacks + sb.rollbacks > 0);
 
-	const int confirmed = std::min(Confirmed(*on.pair), Confirmed(*off.pair));
+	const int confirmed = Confirmed(*on.pair);
 	REQUIRE(confirmed >= kFrames - 60);
 	const std::vector<uint64_t> reference = DelayedReference(confirmed);
 	int compared = 0;
 	for (int f = 0; f <= confirmed; f++) {
-		uint64_t h[4] = {};
-		const bool all = on.pair->a.HashAt(f, &h[0]) && on.pair->b.HashAt(f, &h[1]) && off.pair->a.HashAt(f, &h[2]) &&
-			off.pair->b.HashAt(f, &h[3]);
+		uint64_t h[2] = {};
+		const bool all = on.pair->a.HashAt(f, &h[0]) && on.pair->b.HashAt(f, &h[1]);
 		if (!all) continue; // fell out of a session's last 256
 		INFO("frame " << f);
 		CHECK(h[0] == reference[f]);
 		CHECK(h[1] == reference[f]);
-		CHECK(h[2] == reference[f]);
-		CHECK(h[3] == reference[f]);
 		compared++;
 	}
 	CHECK(compared >= 200);
 
-	// Every checkpoint: the same regions on all four sessions, and with the
-	// savings each reported once, final, with the value the session without
-	// them reported last.
+	// Every checkpoint: the same regions on both sessions, each reported
+	// once, final, with the offline run's value.
 	int checkpoints = 0;
 	for (int f = RollbackSession::kCheckpointInterval; f <= confirmed; f += RollbackSession::kCheckpointInterval) {
 		INFO("checkpoint " << f);
-		std::vector<RegionHash> r[4];
+		std::vector<RegionHash> r[2];
 		REQUIRE(on.pair->a.RegionHashesAt(f, &r[0]));
 		REQUIRE(on.pair->b.RegionHashesAt(f, &r[1]));
-		REQUIRE(off.pair->a.RegionHashesAt(f, &r[2]));
-		REQUIRE(off.pair->b.RegionHashesAt(f, &r[3]));
-		CHECK(r[0] == r[2]);
-		CHECK(r[1] == r[3]);
 		CHECK(r[0] == r[1]);
 		REQUIRE(on.reportsA.count(f));
 		REQUIRE(on.reportsB.count(f));
-		REQUIRE(off.reportsA.count(f));
 		CHECK(on.reportsA[f].size() == 1);
 		CHECK(on.reportsB[f].size() == 1);
-		CHECK(on.reportsA[f].back() == off.reportsA[f].back());
 		CHECK(on.reportsA[f].back() == reference[f]);
+		CHECK(on.reportsB[f].back() == reference[f]);
 		checkpoints++;
 	}
 	CHECK(checkpoints >= 10);
@@ -255,7 +238,7 @@ TEST_CASE("with a match's settings a sample of the restores is re-hashed, and ch
 	// As a match plays: only checkpoints hashed, one restore in four
 	// re-hashed against its save.
 	LossyPair lossy(31, [](RollbackSession::Config& a, RollbackSession::Config& b) {
-		a.verifyLoads = b.verifyLoads = false;
+		a.hashEveryFrames = b.hashEveryFrames = RollbackSession::kCheckpointInterval;
 		a.verifyLoadsEvery = b.verifyLoadsEvery = 4;
 	});
 	LoopbackPair& pair = *lossy.pair;

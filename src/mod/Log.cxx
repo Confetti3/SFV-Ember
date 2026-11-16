@@ -135,6 +135,28 @@ bool RotateLog(const std::wstring& path, int keep, const FILETIME& runStart)
 	return MoveFileExW(path.c_str(), old(1).c_str(), MOVEFILE_REPLACE_EXISTING) != 0;
 }
 
+OpenedLog OpenRotatedLog(const std::vector<LogCandidate>& candidates, int keep, const FILETIME& runStart)
+{
+	for (const LogCandidate& candidate : candidates) {
+		if (candidate.own || candidate.path.empty()) continue;
+		RotateLog(candidate.path, keep, runStart);
+		break;
+	}
+	return OpenFirstLog(candidates);
+}
+
+namespace {
+
+// When this process was created: a log written since is this run's.
+FILETIME ProcessStart()
+{
+	FILETIME created{}, exited{}, kernel{}, user{};
+	if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) GetSystemTimeAsFileTime(&created);
+	return created;
+}
+
+} // namespace
+
 void OpenLog(int instance)
 {
 	OpenedLog opened;
@@ -147,9 +169,11 @@ void OpenLog(int instance)
 		const std::wstring local = KnownFolder(FOLDERID_LocalAppData);
 		wchar_t temp[MAX_PATH + 1] = {};
 		const DWORD tempLength = GetTempPathW(MAX_PATH + 1, temp);
-		opened = OpenFirstLog(LogCandidates(instance, GetCurrentProcessId(), LogFolder(),
+		// The log of an earlier run is set aside first (kLogRunsKept of them are
+		// kept), so each run starts a log of its own.
+		opened = OpenRotatedLog(LogCandidates(instance, GetCurrentProcessId(), LogFolder(),
 			local.empty() ? std::wstring() : local + L"\\SFVEmber\\logs",
-			tempLength && tempLength <= MAX_PATH ? std::wstring(temp) : std::wstring()));
+			tempLength && tempLength <= MAX_PATH ? std::wstring(temp) : std::wstring()), kLogRunsKept, ProcessStart());
 		s_file = opened.file;
 		s_target = {opened.path, opened.failedPath, opened.error};
 	}

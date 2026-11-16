@@ -1,5 +1,6 @@
 #include "mod/GameArt.hxx"
 
+#include "mod/GameImage.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -16,12 +17,6 @@ using LoadFn = uint8_t* (*)(uint8_t* objectClass, uint8_t* outer, const wchar_t*
 	uint32_t flags, void* sandbox, bool reconcile);
 using GameDataFn = uint8_t* (*)();
 using SwatchFn = bool (*)(uint8_t* charaAsset, const GameString* code, int32_t costume, int32_t colour, uint32_t* out);
-
-template <typename Fn>
-Fn At(const CodeSite& site)
-{
-	return reinterpret_cast<Fn>(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)) + site.rva);
-}
 
 // The vtable every ID3D11Texture2D of this process shares: d3d11.dll's own
 // class, whichever device made the texture. A pointer read from the game's
@@ -63,9 +58,17 @@ uint8_t* PointerAt(const uint8_t* object, uint32_t offset)
 
 uint8_t* LoadTexture(const std::wstring& path)
 {
-	uint8_t* textureClass = At<ClassFn>(sfv::kTexture2DClass)(L"/Script/Engine");
+	static bool faultLogged = false;
+	uint8_t* textureClass = GameFn<ClassFn>(sfv::kTexture2DClass)(L"/Script/Engine");
 	if (!textureClass) return nullptr;
-	return At<LoadFn>(sfv::kStaticLoadObject)(textureClass, nullptr, path.c_str(), nullptr, 0, nullptr, true);
+	// A fault in the game's loader reads as the game having no such picture.
+	uint8_t* loaded = nullptr;
+	if (!TryRun([&] { loaded = GameFn<LoadFn>(sfv::kStaticLoadObject)(textureClass, nullptr, path.c_str(), nullptr, 0, nullptr, true); })) {
+		if (!faultLogged) Log("art: the game's StaticLoadObject faulted; read as no picture");
+		faultLogged = true;
+		return nullptr;
+	}
+	return loaded;
 }
 
 std::optional<GameTexture> TakeGameTexture(uint8_t* texture, bool* pending, std::string* failure)
@@ -99,19 +102,26 @@ std::optional<GameTexture> TakeGameTexture(uint8_t* texture, bool* pending, std:
 
 std::optional<std::pair<uint32_t, uint32_t>> ColourSwatch(const std::string& fighterCode, int costume, int colour)
 {
-	uint8_t* singleton = At<GameDataFn>(sfv::kGameData)();
+	uint8_t* singleton = GameFn<GameDataFn>(sfv::kGameData)();
 	uint8_t* charaAsset = singleton ? Field<uint8_t*>(singleton, sfv::content::kCharaAsset) : nullptr;
 	if (!charaAsset) return std::nullopt;
 	const std::wstring wide(fighterCode.begin(), fighterCode.end());
 	const GameString code{wide.c_str(), (int32_t)wide.size() + 1, (int32_t)wide.size() + 1};
 	uint32_t colours[2] = {};
-	if (!At<SwatchFn>(sfv::kColourSwatch)(charaAsset, &code, costume, colour, colours)) return std::nullopt;
+	static bool faultLogged = false;
+	bool found = false;
+	if (!TryRun([&] { found = GameFn<SwatchFn>(sfv::kColourSwatch)(charaAsset, &code, costume, colour, colours); })) {
+		if (!faultLogged) Log("art: the game's colour swatch call faulted; read as no swatch");
+		faultLogged = true;
+		return std::nullopt;
+	}
+	if (!found) return std::nullopt;
 	return std::make_pair(colours[0], colours[1]);
 }
 
 bool GameIsLoading()
 {
-	return At<bool (*)()>(sfv::kIsAsyncLoading)();
+	return GameFn<bool (*)()>(sfv::kIsAsyncLoading)();
 }
 
 } // namespace sfve::mod

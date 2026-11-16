@@ -3,11 +3,14 @@
   python tools/runpicks.py --out DIR [--keep-settings]
 
 One copy (development build), its virtual pad 0 driving Ember's shell as a physical pad does. Training select's
-Fighter row opens the player's own pick screen on the stored fighter's look page (rows Fighter, Costume, Colour,
-V-Skill, V-Trigger and Stage; Back is the board). The pipe only reads the status and presses the pad.
+Fighter row opens the player's own pick screen on the board, focused on the stored fighter's tile (as every Training
+row but Stage does: SelectionStart::Board); Select on that tile opens the fighter's look page (rows Fighter, Costume,
+Colour, V-Skill, V-Trigger and Stage; Back is the board). The pipe only reads the status and presses the pad. When a
+step fails, the pick screen's page and focus after each press so far is printed (the trail), so an extra or missing
+press shows.
 
 1. Fighter A (the first fighter along with two V-Skills, two V-Triggers and two costumes of two colours) is on the look
-   page, which Training select's Fighter row opens. The Costume, Colour, V-Skill and V-Trigger rows are each stepped with Right: the stored
+   page, which Select on its tile of the board opens (the board is what Training select's Fighter row opens). The Costume, Colour, V-Skill and V-Trigger rows are each stepped with Right: the stored
    pick must change in each.
 2. The Fighter row stepped to B: B must be in its own default look (V-Skill and V-Trigger as a fighter never chosen has
    them, a look that is not A's changed one). Stepped back to A: A's look is back, whole.
@@ -39,6 +42,7 @@ import runtraining as tr  # noqa: E402
 import sfvelib as lib  # noqa: E402
 
 A_TILE = [""]  # the board focus of fighter A's tile, once found
+TRAIL: list[str] = []  # each press and the pick screen's page and focus after it, for a failure's report
 PICK = re.compile(r"^(\S+) costume (\d+) colour (\d+) vskill (\S+) vtrigger (\S+)")
 SETTINGS = lib.LOG_DIR.parent / "settings.json"
 SAVE_WAIT_S = 15.0
@@ -58,6 +62,29 @@ class Look:
 
     def __repr__(self) -> str:
         return f"{self.code} {self.look()}"
+
+
+_press = sh.press
+
+
+def _pressed(index: int, button: str) -> dict:
+    """runshell's press, noting where the screen is afterwards."""
+    result = _press(index, button)
+    place = result.get("pick") or {}
+    TRAIL.append(f"{button}: screen {result.get('screen')}, pick screen {place.get('page')}/{place.get('focus')}")
+    return result
+
+
+sh.press = _pressed  # runshell's own seek helpers call press by its module name, so they are noted too
+
+
+def print_trail(limit: int = 40) -> None:
+    """The pick screen's page and focus after each press, the last `limit` of them."""
+    if not TRAIL:
+        return
+    print(f"the presses so far ({len(TRAIL)}; the last {min(limit, len(TRAIL))}), each with the screen after it:")
+    for line in TRAIL[-limit:]:
+        print(f"  {line}")
 
 
 def stored(index: int = 0) -> Look:
@@ -84,17 +111,23 @@ def suitable(fighter: dict) -> bool:
 
 
 def to_look_page() -> None:
-    """Home, Training, Training select's Fighter row: the player's pick screen, opened on the look page of
-    the stored fighter (its Fighter, Costume, Colour, V-Skill, V-Trigger and Stage rows)."""
+    """Home, Training, Training select's Fighter row: the player's pick screen, opened on the board with the
+    stored fighter's tile focused (Training's rows open the board, Stage's the stage page); Select on that tile
+    opens the stored fighter's look page (its Fighter, Costume, Colour, V-Skill, V-Trigger and Stage rows)."""
     sh.open_home(0)
     sh.seek(0, "training", ["DOWN"], 12)
     sh.press(0, "A")
     sh.wait_for("Training select", 20, lambda: sh.shell(0)["shown"] and sh.shell(0)["screen"] == "training")
     sh.expect(0, "training", "training-fighter")
     sh.press(0, "A")
-    sh.expect_pick(0, "look")
-    if sh.pick_place(0)["dummy"]:
+    sh.expect_pick(0, "home")
+    place = sh.pick_place(0)
+    if place["dummy"]:
         raise lib.SfveError("Training select's Fighter row opened the dummy's pick screen")
+    if not place["focus"].startswith("fighter-"):
+        raise lib.SfveError(f"the board opened on {place['focus']}, not the stored fighter's tile")
+    sh.press(0, "A")  # Select on the stored fighter's tile: its look page
+    sh.expect_pick(0, "look")
 
 
 def fighter_row(step: str) -> Look:
@@ -293,6 +326,7 @@ def main(argv: list[str]) -> int:
             print("   B's default stays, A's look is back")
         except (lib.SfveError, KeyError, TypeError) as e:
             failure = str(e) or type(e).__name__
+            print_trail()
             try:
                 shot(a.out, "failure")
             except (lib.SfveError, OSError):

@@ -1,6 +1,7 @@
 #include "mod/GameContent.hxx"
 
 #include "mod/EntitlementGrant.hxx"
+#include "mod/GameImage.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -59,15 +60,9 @@ constexpr uint32_t kSetupRestricted = 96;
 constexpr uint32_t kSetupRestrictionCount = 128;
 constexpr uint32_t kSetupFilter = 280;
 
-template <typename Fn>
-Fn At(const CodeSite& site)
-{
-	return reinterpret_cast<Fn>(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)) + site.rva);
-}
-
 void FreeBlock(const void* block)
 {
-	if (block) At<FreeFn>(sfv::kGameFree)(const_cast<void*>(block));
+	if (block) GameFn<FreeFn>(sfv::kGameFree)(const_cast<void*>(block));
 }
 
 std::string Narrow(const GameString& s)
@@ -135,7 +130,7 @@ std::string StageName(uint8_t* stageAsset, const std::string& code)
 	const CodeView view(code);
 	const GameString game = view.Get();
 	GameString name{};
-	At<StageNameFn>(sfv::kStageName)(stageAsset, &name, &game);
+	GameFn<StageNameFn>(sfv::kStageName)(stageAsset, &name, &game);
 	return TakeUtf8(name);
 }
 
@@ -217,7 +212,7 @@ std::string FighterName(uint8_t* entry)
 {
 	uint8_t* personal = Field<uint8_t*>(entry, sfv::content::kCharaPersonal);
 	if (!personal) return {};
-	const GameString* name = At<TextToStringFn>(sfv::kTextToString)(personal + sfv::content::kPersonalName);
+	const GameString* name = GameFn<TextToStringFn>(sfv::kTextToString)(personal + sfv::content::kPersonalName);
 	return name ? Utf8(*name) : std::string();
 }
 
@@ -246,10 +241,10 @@ struct SpecTables {
 
 SpecTables Tables()
 {
-	uint8_t* singleton = At<GameDataFn>(sfv::kGameData)();
+	uint8_t* singleton = GameFn<GameDataFn>(sfv::kGameData)();
 	if (!singleton) return {};
 	return {singleton, Field<uint8_t*>(singleton, sfv::content::kCharaAsset),
-		Field<uint8_t*>(singleton, sfv::content::kStageAsset), At<SpecDataFn>(sfv::kSpecData)(singleton)};
+		Field<uint8_t*>(singleton, sfv::content::kStageAsset), GameFn<SpecDataFn>(sfv::kSpecData)(singleton)};
 }
 
 // The value of the element keyed `key` in one of the spec's sets of the pick
@@ -261,7 +256,7 @@ uint8_t* LinkedValue(const sfv::SpecSet& kind, uint8_t* parent, int32_t key)
 {
 	uint8_t* set = parent + kind.set;
 	int32_t index = -1;
-	At<FindFn>(kind.find)(set, &index, key);
+	GameFn<FindFn>(kind.find)(set, &index, key);
 	uint8_t* elements = Field<uint8_t*>(set, sfv::spec::kSetElements);
 	if (index < 0 || !elements) return nullptr;
 	uint8_t* value = elements + (size_t)kind.stride * (size_t)index + sfv::spec::kValue;
@@ -423,11 +418,11 @@ void ReadInstallsAndNames(uint8_t* charaAsset, std::vector<FighterContent>& figh
 	for (FighterContent& fighter : fighters) {
 		const CodeView view(fighter.code);
 		const GameString code = view.Get();
-		fighter.installed = At<FighterInstalledFn>(sfv::kFighterInstalled)(charaAsset, &code);
+		fighter.installed = GameFn<FighterInstalledFn>(sfv::kFighterInstalled)(charaAsset, &code);
 		for (CostumeContent& costume : fighter.costumes) {
-			costume.installed = At<CostumePackageFn>(sfv::kCostumePackage)(charaAsset, &code, costume.id);
+			costume.installed = GameFn<CostumePackageFn>(sfv::kCostumePackage)(charaAsset, &code, costume.id);
 			GameString name{};
-			At<CostumeNameFn>(sfv::kCostumeName)(nullptr, &name, &code, costume.id);
+			GameFn<CostumeNameFn>(sfv::kCostumeName)(nullptr, &name, &code, costume.id);
 			costume.name = TakeUtf8(name);
 		}
 	}
@@ -480,9 +475,9 @@ std::vector<StageContent> ReadStages(const SpecTables& tables, const AccountGran
 // game has no such object (the class or the asset is missing).
 uint8_t* LoadAsset(const CodeSite& getter, const wchar_t* path)
 {
-	uint8_t* assetClass = At<ClassFn>(getter)(L"/Script/KiwiGame");
+	uint8_t* assetClass = GameFn<ClassFn>(getter)(L"/Script/KiwiGame");
 	if (!assetClass) return nullptr;
-	return At<LoadObjectFn>(sfv::kStaticLoadObject)(assetClass, nullptr, path, nullptr, 0, nullptr, true);
+	return GameFn<LoadObjectFn>(sfv::kStaticLoadObject)(assetClass, nullptr, path, nullptr, 0, nullptr, true);
 }
 
 uint8_t* BattleSetup()
@@ -517,7 +512,7 @@ std::optional<std::vector<std::string>> ChoiceNames(uint8_t* asset, const char* 
 			return;
 		}
 		texts.ForEach([&](uint8_t* text) {
-			const GameString* name = At<TextToStringFn>(sfv::kTextToString)(text);
+			const GameString* name = GameFn<TextToStringFn>(sfv::kTextToString)(text);
 			names.push_back(name ? Utf8(*name) : std::string());
 		});
 	});
@@ -563,6 +558,18 @@ ChoiceCounts CountsOf(const FighterContent& fighter)
 // read them (FighterChoiceCounts); empty before any read.
 std::vector<std::pair<std::wstring, ChoiceCounts>> s_choiceCounts;
 
+// One of the game's ownership calls, run guarded: an access violation in it
+// (the battle setup asset or its tables not there) reads as the call giving
+// nothing, logged once for the call site `logged` belongs to.
+template <typename F>
+bool OwnershipCall(bool& logged, const char* site, F&& call)
+{
+	if (TryRun(call)) return true;
+	if (!logged) Log("content: the game's %s faulted; read as nothing owned", site);
+	logged = true;
+	return false;
+}
+
 // Whether the game says the account is logged in. Its function reads the
 // default online subsystem through the identity interface with no check that
 // either is there, and a null one (Steam's record stale, or its online service
@@ -572,7 +579,7 @@ bool AccountLoggedIn()
 {
 	static bool faultLogged = false;
 	bool loggedIn = false;
-	if (!TryCall(At<LoggedInFn>(sfv::kLoggedIn), &loggedIn)) {
+	if (!TryCall(GameFn<LoggedInFn>(sfv::kLoggedIn), &loggedIn)) {
 		if (!faultLogged) Log("content: the game's LoggedIn faulted (its online subsystem is not there); read as not logged in");
 		faultLogged = true;
 	}
@@ -594,18 +601,28 @@ void ReadOwnership(uint8_t* setup, ContentLists& lists)
 	source.restrictionEntries = Field<int32_t>(setup, kSetupRestrictionCount);
 	source.filter = Field<void*>(setup, kSetupFilter) != nullptr;
 	source.loggedIn = AccountLoggedIn();
-	const std::vector<std::string> fighters =
-		TakeCodes([&](GameArray<GameString>* out) { At<OwnedFightersFn>(sfv::kOwnedFighters)(setup, out, false, false); });
+	static bool fightersFault = false, costumesFault = false, coloursFault = false;
+	const std::vector<std::string> fighters = TakeCodes([&](GameArray<GameString>* out) {
+		if (!OwnershipCall(fightersFault, "OwnedFighters", [&] { GameFn<OwnedFightersFn>(sfv::kOwnedFighters)(setup, out, false, false); })) *out = {};
+	});
 	for (FighterContent& fighter : lists.fighters) {
 		fighter.owned = Contains(fighters, fighter.code);
 		const CodeView view(fighter.code);
 		const GameString code = view.Get();
-		const std::vector<int> costumes = ReadNumbers(
-			[&](GameArray<int32_t>* out) { return At<OwnedCostumesFn>(sfv::kOwnedCostumes)(setup, &code, out); });
+		const std::vector<int> costumes = ReadNumbers([&](GameArray<int32_t>* out) {
+			bool answered = false;
+			if (!OwnershipCall(costumesFault, "OwnedCostumes", [&] { answered = GameFn<OwnedCostumesFn>(sfv::kOwnedCostumes)(setup, &code, out); })) {
+				*out = {};
+			}
+			return answered;
+		});
 		for (CostumeContent& costume : fighter.costumes) {
 			costume.owned = Contains(costumes, costume.id);
 			const std::vector<int> colours = ReadNumbers([&](GameArray<int32_t>* out) {
-				At<OwnedColoursFn>(sfv::kOwnedColours)(setup, &code, costume.id, out);
+				if (!OwnershipCall(coloursFault, "OwnedColours", [&] { GameFn<OwnedColoursFn>(sfv::kOwnedColours)(setup, &code, costume.id, out); })) {
+					*out = {};
+					return false;
+				}
 				return true;
 			});
 			for (ColourContent& colour : costume.colours) colour.owned = Contains(colours, colour.id);
@@ -649,12 +666,12 @@ LookLoad LookLoadState(std::wstring_view code, int costume, int colour)
 	if (!entry || !NamesSetup(entry)) return LookLoad::NotBattleFighter;
 	const CodeView view(code);
 	const GameString game = view.Get();
-	if (!At<FighterInstalledFn>(sfv::kFighterInstalled)(tables.charaAsset, &game)) return LookLoad::FighterNotInstalled;
+	if (!GameFn<FighterInstalledFn>(sfv::kFighterInstalled)(tables.charaAsset, &game)) return LookLoad::FighterNotInstalled;
 	uint8_t* fighter = LinkedValue(sfv::kSpecFighterSet, tables.spec, Field<int32_t>(entry, sfv::content::kCharaUniqueId));
 	uint8_t* costumeValue = fighter ? LinkedValue(sfv::kSpecCostumeSet, fighter, costume < 0 ? 0 : costume) : nullptr;
 	if (costume >= 0) {
 		if (!costumeValue) return LookLoad::CostumeNotInSpec;
-		if (!At<CostumePackageFn>(sfv::kCostumePackage)(tables.charaAsset, &game, costume)) return LookLoad::CostumeNotInstalled;
+		if (!GameFn<CostumePackageFn>(sfv::kCostumePackage)(tables.charaAsset, &game, costume)) return LookLoad::CostumeNotInstalled;
 	}
 	if (colour >= 0 && !(costumeValue && LinkedValue(sfv::kSpecColourSet, costumeValue, colour))) return LookLoad::ColourNotInSpec;
 	return LookLoad::Loadable;
@@ -694,7 +711,7 @@ ContentLists ReadContentLists()
 	// is read, so a frame of waiting costs these checks alone.
 	const SpecTables tables = Tables();
 	if (!tables.Loaded()) return Waiting("the game's content tables are not loaded yet");
-	if (!At<SpecReadyFn>(sfv::kSpecReady)(tables.spec)) return Waiting("the spec's map is not built and refreshed yet");
+	if (!GameFn<SpecReadyFn>(sfv::kSpecReady)(tables.spec)) return Waiting("the spec's map is not built and refreshed yet");
 	// Without the battle setup asset there is no answer to what this copy's
 	// player may pick: no lists at all, rather than lists that say nothing is
 	// owned or everything is.
@@ -739,7 +756,7 @@ ContentLists ReadContentLists()
 std::optional<GrantCounts> CountGrants()
 {
 	const SpecTables tables = Tables();
-	if (!tables.Loaded() || !At<SpecReadyFn>(sfv::kSpecReady)(tables.spec)) return std::nullopt;
+	if (!tables.Loaded() || !GameFn<SpecReadyFn>(sfv::kSpecReady)(tables.spec)) return std::nullopt;
 	const AccountGrants account = AccountGrantsNow();
 	GrantCounts counts;
 	FighterUniverse universe = ReadFighters(tables, account);
@@ -796,8 +813,8 @@ std::string LocalizedText(const wchar_t* textNamespace, const wchar_t* key)
 	// asks for are asked once.
 	auto* text = new uint8_t[64]{};
 	using CreateTextFn = void* (*)(void* out, const wchar_t* source, const wchar_t* textNamespace, const wchar_t* key);
-	At<CreateTextFn>(sfv::kCreateText)(text, key, textNamespace, key);
-	const GameString* shown = At<TextToStringFn>(sfv::kTextToString)(text);
+	GameFn<CreateTextFn>(sfv::kCreateText)(text, key, textNamespace, key);
+	const GameString* shown = GameFn<TextToStringFn>(sfv::kTextToString)(text);
 	const std::string out = shown ? Utf8(*shown) : std::string();
 	// Without the key in the data the text is its source, the key itself.
 	std::string asKey;
@@ -809,13 +826,13 @@ std::optional<int> CharaVoiceLanguage(std::wstring_view code)
 {
 	using SystemSaveFn = uint8_t* (*)(uint8_t* gameInstance);
 	using CharaVoiceFn = uint8_t (*)(uint8_t* options, const GameString* code);
-	uint8_t* instance = At<GameDataFn>(sfv::kGameData)();
-	uint8_t* save = instance ? At<SystemSaveFn>(sfv::kSystemSave)(instance) : nullptr;
+	uint8_t* instance = GameFn<GameDataFn>(sfv::kGameData)();
+	uint8_t* save = instance ? GameFn<SystemSaveFn>(sfv::kSystemSave)(instance) : nullptr;
 	uint8_t* options = save ? Field<uint8_t*>(save, sfv::saves::kOptions) : nullptr;
 	if (!options || code.empty()) return std::nullopt;
 	const CodeView view(code);
 	const GameString game = view.Get();
-	const int voice = At<CharaVoiceFn>(sfv::kCharaVoiceLanguage)(options, &game);
+	const int voice = GameFn<CharaVoiceFn>(sfv::kCharaVoiceLanguage)(options, &game);
 	// The battle takes only these two (sfv::jump::kCharVoice); another
 	// number is the lookup's own default, English.
 	return voice == sfv::jump::kVoiceJapanese ? voice : sfv::jump::kVoiceEnglish;
@@ -824,13 +841,14 @@ std::optional<int> CharaVoiceLanguage(std::wstring_view code)
 namespace {
 
 // Adds `size` bytes at `data` to the hash, or false when they cannot all be
-// read (no C++ object here: the guard is structured exception handling).
+// read (no C++ object here: the guard is structured exception handling, which
+// takes only a memory fault: MemoryFaultFilter).
 bool TryHashBytes(XXH3_state_t* state, const void* data, size_t size)
 {
 	__try {
 		XXH3_64bits_update(state, data, size);
 		return true;
-	} __except (1 /* EXCEPTION_EXECUTE_HANDLER */) {
+	} __except (MemoryFaultFilter(GetExceptionCode())) {
 		return false;
 	}
 }
@@ -844,7 +862,7 @@ std::optional<uint64_t> FighterMoveDataHash(std::wstring_view code, int32_t vers
 	if (!tables.charaAsset || code.empty()) return std::nullopt;
 	const CodeView view(code);
 	const GameString name = view.Get();
-	const uint8_t* asset = At<ResourceLookupFn>(sfv::kBattleResourceLookup)(tables.charaAsset, &name, version);
+	const uint8_t* asset = GameFn<ResourceLookupFn>(sfv::kBattleResourceLookup)(tables.charaAsset, &name, version);
 	const uint8_t* const* set = nullptr;
 	int32_t count = 0;
 	if (!asset || !TryRead(asset + (alternate ? r::kAlternateSet : r::kSet), &set) ||

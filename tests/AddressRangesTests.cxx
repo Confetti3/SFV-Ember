@@ -7,7 +7,9 @@
 
 using sfve::mod::AddressRange;
 using sfve::mod::AddressRanges;
+using sfve::mod::AddressRule;
 using sfve::mod::LooksLikeAddress;
+using sfve::mod::QueriedRegion;
 
 TEST_CASE("joined ranges: sorted, overlaps and near neighbours made one, far ones kept apart")
 {
@@ -27,14 +29,12 @@ TEST_CASE("joined ranges: sorted, overlaps and near neighbours made one, far one
 	CHECK_FALSE(AddressRanges().Contains(0x1000000));
 }
 
-TEST_CASE("a heap far below 1 TB reads as addresses once its ranges are published, and as numbers before")
+TEST_CASE("published arenas make a low heap's words addresses, on top of the value rule")
 {
-	// A PC with bottom-up ASLR off, or Wine: the heap at 32 MB, the exe at 4 GB.
+	// A PC with bottom-up ASLR off, or Wine: the heap at 32 MB.
 	const uint64_t heap = 0x02A41F10ull;
-	CHECK_FALSE(LooksLikeAddress(heap));
-	sfve::mod::PublishProcessRanges(AddressRanges::Joined({{0x2000000, 0x4000000}, {0x140000000ull, 0x145000000ull}}, 0));
+	sfve::mod::PublishProcessRanges(AddressRanges::Joined({{0x2000000, 0x4000000}}, 0));
 	CHECK(LooksLikeAddress(heap));
-	CHECK(LooksLikeAddress(0x140ABCDE0ull));
 	CHECK_FALSE(LooksLikeAddress(heap + 1)); // not 4-byte aligned
 	CHECK_FALSE(LooksLikeAddress(0x1F4));    // a small number
 	CHECK_FALSE(LooksLikeAddress(0x4000000)); // past the range's end
@@ -44,13 +44,90 @@ TEST_CASE("a heap far below 1 TB reads as addresses once its ranges are publishe
 	CHECK_FALSE(LooksLikeAddress(heap));
 }
 
-TEST_CASE("the process's own ranges hold its heap, its stack and its code")
+TEST_CASE("the rule follows the game's heap: low only when every object of it lies below 1 TB")
 {
-	const AddressRanges ranges = sfve::mod::ReadProcessRanges();
+	using sfve::mod::RuleForGameHeap;
+	CHECK(RuleForGameHeap({}) == AddressRule::Value);
+	CHECK(RuleForGameHeap({0x00000204F5F98000ull, 0x00000204F6000000ull}) == AddressRule::Value);
+	CHECK(RuleForGameHeap({0x02A41F10ull, 0x03000000ull}) == AddressRule::LowHeap);
+	CHECK(RuleForGameHeap({0x02A41F10ull, 0x00000204F5F98000ull}) == AddressRule::Value); // a mix
+}
+
+TEST_CASE("two copies whose heap lies above 1 TB decide every word by its value alone")
+{
+	// Whatever this process's own memory holds, a normal copy publishes no
+	// ranges: an integer is an address only above 1 TB, on every such copy.
+	const auto local = std::make_unique<int[]>(16);
+	CHECK(sfve::mod::ChooseAddressRule({0x00000204F5F98000ull, 0x00000204F6000000ull}) == AddressRule::Value);
+	CHECK(sfve::mod::CurrentAddressRule() == AddressRule::Value);
+	CHECK(sfve::mod::AddressRuleText().rfind("value", 0) == 0);
+	REQUIRE(sfve::mod::PublishedProcessRanges());
+	CHECK(sfve::mod::PublishedProcessRanges()->Ranges().empty());
+	const uint64_t own = reinterpret_cast<uint64_t>(local.get());
+	CHECK(LooksLikeAddress(own) == (own >= sfve::mod::kHighAddresses));
+	CHECK_FALSE(LooksLikeAddress(0x02A41F10ull));
+	CHECK(LooksLikeAddress(0x00000204F5F982A0ull));
+}
+
+TEST_CASE("the arenas are the private runs that hold the game's heap, never a stack, an image or a run of nothing of it")
+{
+	const uint64_t mb = 1ull << 20;
+	std::vector<QueriedRegion> committed = {
+		// The game's heap: two private regions 7 MB apart, one run.
+		{0x20 * mb, 0x21 * mb, 0x20 * mb, true, false},
+		{0x28 * mb, 0x29 * mb, 0x28 * mb, true, false},
+		// A thread's stack: its guard page and its committed pages, one allocation.
+		{0x2C * mb, 0x2C * mb + 0x1000, 0x2B * mb, true, true},
+		{0x2C * mb + 0x1000, 0x2D * mb, 0x2B * mb, true, false},
+		// Private memory just past the stack: a run of its own, holding none of the game's heap.
+		{0x2E * mb, 0x2F * mb, 0x2E * mb, true, false},
+		// The exe's image, not private.
+		{0x40 * mb, 0x48 * mb, 0x40 * mb, false, false},
+		{0x49 * mb, 0x4A * mb, 0x49 * mb, true, false}, // private beside the image: its own run
+		// Another arena of the game's, far off.
+		{0x90 * mb, 0x98 * mb, 0x90 * mb, true, false},
+	};
+	const std::vector<uint64_t> gameHeap = {0x20 * mb + 0x40, 0x93 * mb};
+	const AddressRanges arenas = sfve::mod::ArenasHolding(committed, gameHeap, sfve::mod::kJoinGap);
+	REQUIRE(arenas.Ranges().size() == 2);
+	CHECK(arenas.Ranges()[0].begin == 0x20 * mb);
+	CHECK(arenas.Ranges()[0].end == 0x29 * mb);
+	CHECK(arenas.Ranges()[1].begin == 0x90 * mb);
+	CHECK(arenas.Contains(0x24 * mb)); // a gap the heap may grow into
+	CHECK_FALSE(arenas.Contains(0x2C * mb + 0x2000)); // the stack
+	CHECK_FALSE(arenas.Contains(0x2E * mb + 0x100));  // memory the game's objects are not in
+	CHECK_FALSE(arenas.Contains(0x41 * mb));          // the image
+	CHECK_FALSE(arenas.Contains(0x49 * mb + 0x100));
+	CHECK(sfve::mod::ArenasHolding(committed, {}, sfve::mod::kJoinGap).Ranges().empty());
+}
+
+TEST_CASE("this process's arenas hold its heap and neither its stack nor its code")
+{
 	const auto heap = std::make_unique<int[]>(16);
 	int local = 0;
-	CHECK(ranges.Contains(reinterpret_cast<uint64_t>(heap.get())));
-	CHECK(ranges.Contains(reinterpret_cast<uint64_t>(&local)));
-	CHECK(ranges.Contains(reinterpret_cast<uint64_t>(&sfve::mod::ReadProcessRanges)));
-	CHECK_FALSE(ranges.Contains(0x1000)); // the null page's neighbourhood
+	const AddressRanges arenas =
+		sfve::mod::ArenasHolding(sfve::mod::ReadCommittedRegions(), {reinterpret_cast<uint64_t>(heap.get())}, sfve::mod::kJoinGap);
+	CHECK(arenas.Contains(reinterpret_cast<uint64_t>(heap.get())));
+	CHECK_FALSE(arenas.Contains(reinterpret_cast<uint64_t>(&local)));
+	CHECK_FALSE(arenas.Contains(reinterpret_cast<uint64_t>(&sfve::mod::ReadCommittedRegions)));
+}
+
+TEST_CASE("a copy whose heap lies low publishes its arenas and says so, and the next battle's normal heap drops them")
+{
+	const auto heap = std::make_unique<int[]>(16);
+	const uint64_t own = reinterpret_cast<uint64_t>(heap.get());
+	if (own >= sfve::mod::kHighAddresses) {
+		// This process's heap is above 1 TB: a low heap is played with an
+		// object below it, which no arena holds.
+		CHECK(sfve::mod::ChooseAddressRule({0x02A41F10ull}) == AddressRule::LowHeap);
+		CHECK(sfve::mod::AddressRuleText() == "low heap (words above 1 TB; no arena found)");
+	} else {
+		CHECK(sfve::mod::ChooseAddressRule({own}) == AddressRule::LowHeap);
+		CHECK(LooksLikeAddress(own));
+		CHECK(sfve::mod::AddressRuleText().rfind("low heap (words above 1 TB, and in ", 0) == 0);
+	}
+	CHECK(sfve::mod::CurrentAddressRule() == AddressRule::LowHeap);
+	CHECK(sfve::mod::ChooseAddressRule({0x00000204F5F98000ull}) == AddressRule::Value);
+	CHECK(sfve::mod::PublishedProcessRanges()->Ranges().empty());
+	CHECK(sfve::mod::CurrentAddressRule() == AddressRule::Value);
 }

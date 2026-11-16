@@ -20,6 +20,7 @@ find_package(minhook CONFIG REQUIRED)
 find_package(xxHash CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(CLI11 CONFIG REQUIRED)
 # The launcher deflates a desync's state file for its report (src/launcher/DesyncCourier.cxx).
@@ -81,6 +82,10 @@ add_library(sfve_core STATIC
     src/core/ReplayFile.cxx
     src/core/ReplaySeeker.cxx
     src/core/RollbackSession.cxx
+    src/core/RollbackSessionCallbacks.cxx
+    src/core/RollbackSessionHashes.cxx
+    src/core/RollbackSessionReplay.cxx
+    src/core/RollbackSessionWatchers.cxx
     src/core/StartAgreement.cxx
     src/core/MatchData.cxx
     src/core/RegionExchange.cxx
@@ -112,6 +117,7 @@ add_executable(sfve_tests
     tests/ReplayTests.cxx
     tests/ByteReaderTests.cxx
     tests/PlaybackSeekTests.cxx
+    tests/NetplayPhaseTests.cxx
     src/mod/MatchResult.cxx)
 target_link_libraries(sfve_tests PRIVATE sfve_testbed doctest::doctest)
 
@@ -161,6 +167,10 @@ add_library(sfve_ember STATIC
     src/ember/SfvTextures.cxx
     src/ember/SfvSelectGrid.cxx
     src/ember/SfvSelection.cxx
+    src/ember/SfvPickBoard.cxx
+    src/ember/SfvPickCards.cxx
+    src/ember/SfvPickLook.cxx
+    src/ember/SfvPickPages.cxx
     src/ember/SfvSelectionScreen.cxx
     src/ember/SfvShell.cxx
     src/ember/SfvSwatchStrip.cxx
@@ -306,7 +316,9 @@ set(SFVE_MOD_SHARED_SOURCES
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx src/mod/TinyFighters.cxx
     src/mod/ModConfig.cxx src/mod/PadLayer.cxx src/mod/RegionTable.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx
-    src/mod/SfvRegionNames.cxx src/mod/RngAudit.cxx src/mod/SocketReads.cxx src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx src/mod/XInputHooks.cxx)
+    src/mod/SfvRegionNames.cxx src/mod/RngAudit.cxx src/mod/SocketReads.cxx src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx src/mod/XInputHooks.cxx
+    src/mod/GameRegions.cxx src/mod/PracticeGauges.cxx src/mod/ScenesSkip.cxx src/mod/UpdateCosts.cxx src/mod/UpdateNotes.cxx
+    src/mod/VersusPicks.cxx)
 # Compiled once for the three test programs that link it.
 add_library(sfve_ember_test_mod OBJECT ${SFVE_MOD_SHARED_SOURCES})
 target_link_libraries(sfve_ember_test_mod PUBLIC sfve_ember minhook::minhook)
@@ -323,6 +335,7 @@ add_executable(sfve_ember_tests
     tests/SfvVoiceTests.cxx
     tests/SfvLoadCodeTests.cxx
     tests/SfvSelectionScreenTests.cxx
+    tests/SfvPickPagesTests.cxx
     tests/SfvElevenTests.cxx
     tests/GameContentTests.cxx
     tests/EntitlementGrantTests.cxx
@@ -424,7 +437,8 @@ add_library(sfv_ember SHARED
     src/mod/ProjectileRelease.cxx
     src/mod/FramePacer.cxx
     src/mod/BattleDriver.cxx
-    src/mod/NetplayMode.cxx)
+    src/mod/NetplayMode.cxx
+    src/mod/NetplayModeStart.cxx src/mod/MatchRecording.cxx src/mod/SceneNotes.cxx src/mod/NetplayDevCommands.cxx)
 # What only a development build runs (mod/BuildKind.hxx): a second copy's ports
 # and mutexes, the synctest mode, the lag simulation and the write watch behind
 # the pipe's commands. Nothing a player build compiles refers to them.
@@ -564,7 +578,8 @@ add_library(sfve_room_host_catalog STATIC
     src/ember/SfvRoomBuild.cxx
     "${CMAKE_BINARY_DIR}/generated/SfvHostPickSpace.cxx")
 target_include_directories(sfve_room_host_catalog PUBLIC src "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/server/roomhost")
-target_link_libraries(sfve_room_host_catalog PUBLIC ember_neutral_x64 xxHash::xxhash nlohmann_json::nlohmann_json bcrypt ws2_32)
+# spdlog::spdlog, not its headers alone: the catalog and the library it links compile the logger one way.
+target_link_libraries(sfve_room_host_catalog PUBLIC ember_neutral_x64 spdlog::spdlog xxHash::xxhash nlohmann_json::nlohmann_json bcrypt ws2_32)
 add_executable(sfve-room-host ${SFVE_ROOM_HOST_SOURCES})
 target_link_libraries(sfve-room-host PRIVATE sfve_room_host_catalog)
 

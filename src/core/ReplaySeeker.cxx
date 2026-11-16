@@ -30,6 +30,9 @@ void ReplaySeeker::Before(const RollbackSession& session, const ReplayFrames& fr
 		CoreLog("seek: the game from frame %d (fight frames %d to %d) starts its snapshots", span.from, span.first, span.last);
 	}
 	if (!snapshots_.Due(frame)) return;
+	// Nor from a game the layout no longer describes (GameAdapter::StateFailure):
+	// its regions may be gone. The session fails on its next step.
+	if (session.GameStateFailure()) return;
 	snapshots_.Take(session.Layout(), frame);
 	taken_++;
 }
@@ -61,6 +64,9 @@ int ReplaySeeker::Restore(RollbackSession& session, int before)
 bool RollbackSession::RestoreReplay(const uint8_t* state, int frame)
 {
 	if (!replaying_ || lagged_ || replayCheck_ || holding_ || failed_ || !state || frame < 0) return false;
+	// Nor into a game the layout no longer describes (GameAdapter::
+	// StateFailure): the session fails before a byte is written, as Load does.
+	if (FailedByGame()) return false;
 	game_->Layout().LoadFrom(state);
 	game_->AfterLoad();
 	// The restore did not reach all of the game: the session ends (Fail).

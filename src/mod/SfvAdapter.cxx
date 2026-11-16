@@ -2,9 +2,11 @@
 
 #include "mod/FighterData.hxx"
 
+#include "mod/GameImage.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/Log.hxx"
 #include "mod/Pace.hxx"
+#include "mod/PracticeGauges.hxx"
 #include "mod/ProjectileRelease.hxx"
 #include "mod/RngAudit.hxx"
 #include "mod/SfvLayoutRules.hxx"
@@ -28,28 +30,8 @@ namespace sfve::mod {
 
 namespace {
 
-struct RegionEntry {
-	uint8_t* ptr;
-	uint64_t size;
-};
-
-constexpr uint64_t kMaxRegionSize = 64ull << 20;
-
-constexpr size_t kMaxRegions = 4096;
-
 // How often the socket reads' counts are logged.
 constexpr uint64_t kSocketSummaryUpdates = 1800;
-
-// How often the costs of the session's work are logged: every this many
-// updates played forward (rollbacks' replays not counted).
-constexpr uint64_t kCostAdvances = 600;
-
-int64_t Ticks()
-{
-	LARGE_INTEGER t;
-	QueryPerformanceCounter(&t);
-	return t.QuadPart;
-}
 
 // The CharaUnit index a region's name starts with ("CharaUnit[1].CharaActionPart+0xD8"
 // is 1), or -1.
@@ -69,7 +51,7 @@ int CharaIndexOf(const std::string& name)
 void SfvAdapter::SeeBattleFrame(uint8_t* battleFrame, BattleFrameFn original)
 {
 	original_ = original;
-	paceClock_.Frame(Ticks()); // the frame before has ended
+	updateCosts_.FrameEnded(); // the frame before has ended
 	if (!identity_.See(battleFrame)) return;
 	const bool sameAddress = battleFrame == battleFrame_;
 	Forget();
@@ -98,39 +80,18 @@ void SfvAdapter::Forget()
 	// The socket reads' counts are the battle's own (SocketReads): logged as
 	// it ends, then forgotten.
 	if (fighterUnitCount_ > 0) Log("sockets: the battle ends: %s", SocketReadsSummary().c_str());
-	{
-		// The pace of the battle that ends and the controller events in it
-		// (mod/Pace.hxx); the next battle's record begins.
-		pace::Summary summary;
-		std::vector<pace::PadEvent> events;
-		size_t totalEvents = 0;
-		pace::Current().End(&summary, &events, &totalEvents);
-		if (summary.windows) Log("%s", pace::SummaryText(summary).c_str());
-		if (summary.windows || totalEvents) Log("pace: %s", pace::PadEventsText(events, totalEvents).c_str());
-		pace::Current().Begin();
-	}
-	paceClock_ = {};
-	paceBegun_ = false;
-	clockAtStart_ = {};
-	paceAtStart_ = {};
-	if (queuesCarried_) Log("actions: the battle ends: %llu time(s) a fighter unit's command queue was not empty between updates",
-		(unsigned long long)queuesCarried_);
+	updateCosts_.EndBattle();
+	notes_.Forget();
 	if (const std::string ticks = tickCounts_.Summary(); !ticks.empty()) Log("ticks: the battle ends: %s", ticks.c_str());
 	tickCounts_.Forget();
-	queuesCarried_ = 0;
-	queueLines_ = 0;
 	for (FighterUnit& unit : fighterUnits_) unit = {};
 	fighterUnitCount_ = 0;
 	battleFacts_ = {};
 	ForgetSocketReads();
 	placedUpdates_ = 0;
 	RngAuditForget();
-	costs_ = {};
 	layout_.TakeCosts(); // the next battle's are its own
-	scenesSkip_ = nullptr;
-	scenesIdleState_ = scenesIdlePhase_ = -1;
-	decidedTicks_ = -1;
-	pausedBits_ = 0;
+	scenes_.Forget();
 }
 
 bool SfvAdapter::Bind()
@@ -144,7 +105,7 @@ bool SfvAdapter::Bind()
 		WaitingToBind(!flowUnit ? "the flow unit" : !ruleUnit ? "the versus rule unit" : "the match data");
 		return false;
 	}
-	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	const uintptr_t base = GameBase();
 	OutsideState outside = {reinterpret_cast<uintptr_t>(ruleUnit), reinterpret_cast<uintptr_t>(battleData),
 		reinterpret_cast<uintptr_t>(battleFrame_), reinterpret_cast<uintptr_t>(inputUnit_), base,
 		reinterpret_cast<uintptr_t>(FindUnit(sfv::kowait::kUnitType))};
@@ -173,26 +134,33 @@ bool SfvAdapter::Bind()
 		return false;
 	}
 	gameInstance_ = reinterpret_cast<uint8_t* (*)()>(base + sfv::kGameInstance.rva);
-	imageBase_ = base;
-	flowRequest_ = reinterpret_cast<decltype(flowRequest_)>(base + sfv::kFlowRequest.rva);
-	setFlowPhase_ = reinterpret_cast<decltype(setFlowPhase_)>(base + sfv::kSetFlowPhase.rva);
-	markResultSkipped_ = reinterpret_cast<decltype(markResultSkipped_)>(base + sfv::kMarkResultSkipped.rva);
+	scenes_.Bind(base);
 	if (!flow_.Bind(flowUnit, base)) {
 		WaitingToBind("a flow it can record");
 		return false;
 	}
 	layout_.Clear();
-	RefreshProcessRanges();
 	layout_.SetAddressTest(LooksLikeAddress);
 	uint8_t* manager = GameGetManager(rollbackUnit_);
-	if (!AddGameRegions(manager) || !regionTable_.Bind(manager)) {
+	if (!AddGameRegions(layout_, regionNames_, rollbackUnit_, manager) || !regionTable_.Bind(manager)) {
 		layout_.Clear();
 		flow_.Forget();
 		WaitingToBind("a usable region table");
 		return false;
 	}
 	gameRegions_ = layout_.Regions().size();
-	CollectPostRestore(manager);
+	{
+		// Which words the hashes read as addresses (mod/AddressRanges.hxx):
+		// where the game's own heap lies decides the rule, from its battle
+		// objects and its rollback regions (all the game allocator's), before
+		// anything is hashed.
+		std::vector<uint64_t> gameHeap = {reinterpret_cast<uint64_t>(battleFrame_), reinterpret_cast<uint64_t>(inputUnit_),
+			reinterpret_cast<uint64_t>(rollbackUnit_), reinterpret_cast<uint64_t>(flowUnit), reinterpret_cast<uint64_t>(ruleUnit),
+			reinterpret_cast<uint64_t>(battleData)};
+		for (const StateRegion& r : layout_.Regions()) gameHeap.push_back(reinterpret_cast<uint64_t>(r.ptr));
+		ChooseAddressRule(gameHeap);
+	}
+	CollectPostRestore(manager, postRestore_);
 	AddStateOutsideTheGameSnapshot(layout_, outside);
 	flow_.AddTo(layout_);
 	battleData_ = battleData;
@@ -260,51 +228,12 @@ void SfvAdapter::WaitingToBind(const char* what)
 
 bool SfvAdapter::SetPracticeGauges()
 {
-	namespace practice = sfv::practice;
-	static const std::pair<int, int> kGauges[] = {{practice::kVitalParam, practice::kVitalRefill},
-		{practice::kExtraParam, practice::kExtraRefill}, {practice::kVGaugeParam, practice::kVGaugeRefill}};
-	if (!SetGaugeParams(kGauges, std::size(kGauges), "Practice gauges")) return false;
-	Log("adapter: Practice gauges set for both players (vital %d, EX %d, V-gauge %d)", practice::kVitalRefill,
-		practice::kExtraRefill, practice::kVGaugeRefill);
-	return true;
+	return practice_gauges::SetPractice(rollbackUnit_, bound_ ? battleData_ : nullptr);
 }
 
 bool SfvAdapter::SetStartFullExtra()
 {
-	namespace practice = sfv::practice;
-	static const std::pair<int, int> kGauges[] = {{practice::kExtraParam, practice::kExtraFullAtRoundStart}};
-	if (!SetGaugeParams(kGauges, std::size(kGauges), "EX gauge full at each round's start")) return false;
-	Log("adapter: the EX gauge starts full at every round's start for both players (param %d = %d)", practice::kExtraParam,
-		practice::kExtraFullAtRoundStart);
-	return true;
-}
-
-bool SfvAdapter::SetGaugeParams(const std::pair<int, int>* gauges, size_t count, const char* what)
-{
-	namespace practice = sfv::practice;
-	using SetParamFn = bool (*)(uint8_t* table, int param, int value);
-	if (!bound_ || !battleData_) return Log("adapter: no %s: the battle is not bound", what), false;
-	const auto set = reinterpret_cast<SetParamFn>(reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)) +
-		sfv::kSetPlayerParam.rva);
-	bool sides[kPlayers] = {};
-	for (int index = 0; index < kPlayers; index++) {
-		uint8_t* chara = GameFindUnit(rollbackUnit_, sfv::unit::kCharaUnitType, (uint32_t)index);
-		const int side = chara ? Field<int32_t>(chara, practice::kCharaSide) : -1;
-		if (side < 0 || side >= kPlayers || sides[side]) {
-			return Log("adapter: no %s: fighter %d has side %d", what, index, side), false;
-		}
-		sides[side] = true;
-		// The battle data is the adapter's (const for the rest of it): its
-		// tables are what Training's menu writes too.
-		uint8_t* table = const_cast<uint8_t*>(battleData_) + practice::kPlayerParams + practice::kPlayerParamsStride * side;
-		for (size_t k = 0; k < count; k++) {
-			const auto& [param, value] = gauges[k];
-			if (!set(table, param, value) || !set(chara + practice::kCharaParams, param, value)) {
-				return Log("adapter: the game refused gauge %d = %d (%s) for side %d", param, value, what, side), false;
-			}
-		}
-	}
-	return true;
+	return practice_gauges::SetStartFullExtra(rollbackUnit_, bound_ ? battleData_ : nullptr);
 }
 
 uint8_t* SfvAdapter::FindUnit(uint32_t typeRva) const
@@ -335,25 +264,6 @@ void SfvAdapter::FighterVisualParts(uint8_t* parts[kPlayers]) const
 	}
 }
 
-void SfvAdapter::NoteCommandQueues()
-{
-	namespace f = sfv::fighter;
-	for (int i = 0; i < fighterUnitCount_; i++) {
-		const uint8_t* action = fighterUnits_[i].action;
-		uintptr_t begin = 0, end = 0;
-		if (!action || !TryRead(action + f::kCommandQueueBegin, &begin) || !TryRead(action + f::kCommandQueueEnd, &end) || end <= begin) {
-			continue;
-		}
-		queuesCarried_++;
-		if (queueLines_++ < kMostQueueLines) {
-			Log("actions: frame %d%s: CharaUnit[%d]'s command queue holds %llu command(s) after the update (outside the snapshot: a "
-				"restore would keep them)",
-				inputUnit_ ? Field<int32_t>(inputUnit_, sfv::inputunit::kInputFrame) : -1, replaying_ ? " replayed" : "", i,
-				(unsigned long long)((end - begin) / sizeof(void*)));
-		}
-	}
-}
-
 void SfvAdapter::PlaceFighterUnits(SocketUpdate* sockets) const
 {
 	namespace f = sfv::fighter;
@@ -377,64 +287,6 @@ void SfvAdapter::PlaceFighterUnits(SocketUpdate* sockets) const
 			place.facingLeft = mirrored == 1;
 			place.anchorable = true;
 		}
-	}
-}
-
-// Every region of the game's rollback manager, named by its owner; the runs
-// sfv::manager::kRunRules lists are restored but not hashed, or masked.
-bool SfvAdapter::AddGameRegions(uint8_t* manager)
-{
-	auto* begin = Field<RegionEntry*>(manager, sfv::manager::kRegionsBegin);
-	auto* end = Field<RegionEntry*>(manager, sfv::manager::kRegionsEnd);
-	if (!begin || end <= begin || size_t(end - begin) > kMaxRegions) {
-		Log("adapter: the rollback manager has no regions (%p..%p)", (void*)begin, (void*)end);
-		return false;
-	}
-	regionNames_.Collect(rollbackUnit_, manager);
-	int applied[std::size(sfv::manager::kRunRules)] = {};
-	for (RegionEntry* r = begin; r < end; r++) {
-		if (!r->ptr || r->size == 0 || r->size > kMaxRegionSize) {
-			Log("adapter: region %zu looks wrong (%p, %llu bytes)", size_t(r - begin), (void*)r->ptr, r->size);
-			return false;
-		}
-		const NamedRun run = regionNames_.Name(r->ptr, (size_t)r->size);
-		const sfv::manager::RunRule* rule = nullptr;
-		for (size_t k = 0; run.owner && k < std::size(sfv::manager::kRunRules); k++) {
-			const sfv::manager::RunRule& candidate = sfv::manager::kRunRules[k];
-			if (strcmp(candidate.owner, run.owner) != 0) continue;
-			if (candidate.offset != sfv::manager::kAnyRun && candidate.offset != run.offset) continue;
-			rule = &candidate;
-			applied[k]++;
-		}
-		const char* kind = rule ? rule->kind : "";
-		const std::string name = run.name.empty() ? "game." + std::to_string(r - begin) : run.name;
-		const size_t index = layout_.Add(name + kind, r->ptr, (size_t)r->size, !*kind);
-		if (rule) {
-			const size_t width = size_t(rule->maskTo) - rule->maskFrom;
-			for (size_t from = rule->maskFrom; from < r->size; from += rule->maskEvery) {
-				for (size_t at = from; at - from < width && at < r->size; at += 8) layout_.IgnoreWord(index, at);
-				if (!rule->maskEvery) break;
-			}
-		}
-	}
-	regionNames_.LogSummary();
-	for (size_t k = 0; k < std::size(sfv::manager::kRunRules); k++) {
-		if (!applied[k]) {
-			Log("adapter: no %s run at +0x%X in this battle; its rule applied nowhere", sfv::manager::kRunRules[k].owner,
-				sfv::manager::kRunRules[k].offset);
-		}
-	}
-	return true;
-}
-
-void SfvAdapter::CollectPostRestore(uint8_t* manager)
-{
-	postRestore_.clear();
-	uint8_t* sentinel = Field<uint8_t*>(manager, sfv::manager::kPostRestoreList);
-	for (uint8_t* node = Field<uint8_t*>(sentinel, 0); node && node != sentinel; node = Field<uint8_t*>(node, 0)) {
-		if (!Field<uint64_t>(node, sfv::manager::kNodeToken)) continue;
-		postRestore_.push_back({Field<PostRestore>(node, sfv::manager::kNodeFunction).fn,
-			Field<void*>(node, sfv::manager::kNodeContext)});
 	}
 }
 
@@ -512,98 +364,7 @@ bool SfvAdapter::LocalPadsAny(uint32_t mask) const
 
 void SfvAdapter::EndScenes()
 {
-	namespace rf = sfv::resultflow;
-	using intro_skip::ScenesAction;
-	uint8_t* flow = flow_.Unit();
-	uint8_t* state = flow ? Field<GameSharedPtr>(flow, sfv::flowunit::kCurrent).object : nullptr;
-	if (!state || !flowRequest_ || !setFlowPhase_ || !markResultSkipped_) return;
-	const int32_t id = Field<int32_t>(state, rf::kStateId);
-	const uint32_t vtable = (uint32_t)(Field<uintptr_t>(state, 0) - imageBase_);
-	const int32_t phase = Field<int32_t>(state, sfv::flowstate::kPhase);
-	// The KO's slow motion (battle frame state word, bit 0x20) holds Finish: a
-	// round that ends in a KO is not cut while the game still plays it
-	// (docs/design/beta9/skip.md section 2). The word is in the rollback state,
-	// so both copies read the same one on the same frame.
-	const uint32_t stateWord = battleFrame_ ? Field<uint32_t>(battleFrame_, sfv::battleframe::kState) : 0;
-	const bool koStop = battleFrame_ && (stateWord & intro_skip::kKoStopBit) != 0;
-	const intro_skip::ScenesStep step = intro_skip::ScenesStepFor(id, vtable, phase, koStop);
-	// Finish's last phase asks for the state the constructor gave it; the
-	// skip asks for that one only when it is RoundOver, as the versus flow's.
-	const bool unexpectedNext = step.action == ScenesAction::RequestNext && Field<int32_t>(state, rf::kNextState) != rf::kRoundOver;
-	if (step.action == ScenesAction::None || unexpectedNext) {
-		// Logged once per state and phase: the skip frames come every 15.
-		if (id != scenesIdleState_ || phase != scenesIdlePhase_) {
-			scenesIdleState_ = id;
-			scenesIdlePhase_ = phase;
-			if (unexpectedNext) {
-				Log("scene skip: Finish asks for flow state %d next, not RoundOver (%d); it plays on",
-					Field<int32_t>(state, rf::kNextState), rf::kRoundOver);
-			} else {
-				// MatchResultDemo's phase 6 waits for the results screens, whose
-				// pages hear the bit as a press (intro_skip::PadsHear).
-				Log("scene skip: the skip bit in flow state %d (class rva 0x%X) phase %d moves no phase here; the "
-					"game's own questions for a press hear it; battle frame state word %08x", id, vtable, phase, stateWord);
-			}
-		}
-		return;
-	}
-	scenesIdleState_ = scenesIdlePhase_ = -1;
-	bool done = false;
-	switch (step.action) {
-	case ScenesAction::RequestNext:
-		// What Finish's last phase does (rva 0x40EBE0): the flow switches to
-		// RoundOver on this frame's update, which asks for the demo on its
-		// first tick.
-		done = flowRequest_(flow, Field<int32_t>(state, rf::kNextState), (uint8_t)Field<int32_t>(state, rf::kNextFlags),
-				   Field<int32_t>(state, sfv::flowstate::kArg)) != 0;
-		snprintf(scenesSkipText_, sizeof(scenesSkipText_), "Finish ends in its phase %d: the flow %s RoundOver", phase,
-			done ? "asked for" : "refused");
-		// The cut skips Finish's phase 12, whose last act is rva 0x3074D0
-		// (fighters, -1): each fighter unit's dword +2376 set to -1 (skip.md,
-		// "Settled in IDA"). What `fighters` is (the state's list at
-		// +272..+280) was not read to its element type, so the writes are
-		// made through the field helpers to the two fighters' units. A
-		// confirmed frame on every copy, in the rollback state.
-		if (done) {
-			for (int i = 0; i < fighterUnitCount_ && i < kPlayers; i++) {
-				if (fighterUnits_[i].chara) Field<int32_t>(fighterUnits_[i].chara, sfv::fighter::kFinishMask) = sfv::fighter::kFinishMaskValue;
-			}
-		}
-		break;
-	case ScenesAction::ResultSkip: {
-		// What phase 3 (rva 0x409930) does on the skip bit when its gate is
-		// open, here whatever the gate says: the skip's mark, skipped, phase 4,
-		// which runs on at once to the results' event and the wait for them.
-		const int32_t gate = Field<int32_t>(state, rf::kResultSkipGate);
-		markResultSkipped_(flow + sfv::unit::kContext);
-		Field<int32_t>(state, rf::kResultSkipped) = 1;
-		done = setFlowPhase_(state, step.phase) != 0;
-		snprintf(scenesSkipText_, sizeof(scenesSkipText_),
-			"the winner's demo skipped from phase %d to %d (its own gate %d)%s, now in phase %d", phase, step.phase, gate,
-			done ? "" : ": the phase was refused", Field<int32_t>(state, sfv::flowstate::kPhase));
-		break;
-	}
-	case ScenesAction::SetPhase:
-		done = setFlowPhase_(state, step.phase) != 0;
-		snprintf(scenesSkipText_, sizeof(scenesSkipText_), "flow state %d moved from phase %d to %d%s, now in phase %d",
-			id, phase, step.phase, done ? "" : ": the phase was refused", Field<int32_t>(state, sfv::flowstate::kPhase));
-		break;
-	case ScenesAction::None: break;
-	}
-	Log("scene skip: %s, battle frame state word %08x", scenesSkipText_, stateWord);
-	scenesSkip_ = scenesSkipText_;
-}
-
-void SfvAdapter::NoteDecidedTicks()
-{
-	if (!MatchDecided()) {
-		decidedTicks_ = -1;
-		return;
-	}
-	if (decidedTicks_ == (int64_t)ticksInLastUpdate_) return;
-	Log("adapter: %u input tick(s) in this update with the match decided (flow state %d; before, %lld)", ticksInLastUpdate_,
-		flow_.Announced(), (long long)decidedTicks_);
-	decidedTicks_ = ticksInLastUpdate_;
+	scenes_.Apply(flow_.Unit(), battleFrame_, fighterUnits_, fighterUnitCount_);
 }
 
 void SfvAdapter::RunUpdate()
@@ -633,7 +394,10 @@ void SfvAdapter::RunUpdate()
 	RngAuditUpdate(bound_, Fighting());
 	original_(battleFrame_);
 	RngAuditUpdate(false, false);
-	if (bound_) NoteCommandQueues();
+	if (bound_) {
+		notes_.CommandQueues(fighterUnits_, fighterUnitCount_,
+			inputUnit_ ? Field<int32_t>(inputUnit_, sfv::inputunit::kInputFrame) : -1, replaying_);
+	}
 	EndFightUpdate(visualParts);
 	if (bound_ && placedUpdates_ % kSocketSummaryUpdates == 0) {
 		Log("sockets: %llu updates in this battle, %d fighter unit(s); %s", (unsigned long long)placedUpdates_, fighterUnitCount_,
@@ -700,89 +464,21 @@ void SfvAdapter::Advance(const FrameInputs& inputs, bool resimulating)
 	// two rounds. The phases it runs hear the session's inputs too, should
 	// they ask the pads.
 	if (InjectedAny(intro_skip::kSkipBit) && intro_skip::Scenes(FlowState(), MatchDecided())) EndScenes();
-	const int64_t from = Ticks();
-	if (!resimulating && !paceBegun_) {
-		paceBegun_ = true;
-		clockAtStart_ = paceClock_.Read();
-		paceAtStart_ = paceSource_ ? paceSource_() : PaceCounts{};
-	}
+	const int64_t from = UpdateCosts::Now();
+	updateCosts_.BeforeUpdate(resimulating);
 	RunUpdate();
-	const int64_t took = Ticks() - from;
+	const int64_t took = UpdateCosts::Now() - from;
 	replaying_ = false;
 	padSource_ = input::PadSource::Pads;
 	resimulating_ = false;
-	NoteDecidedTicks();
-	NotePause();
-	if (resimulating) {
-		costs_.replayed++;
-		costs_.replayedTicks += took;
-		return;
-	}
-	costs_.ticks++;
-	costs_.tickTicks += took;
-	paceClock_.Due();
-	if (paceSource_) pace::Current().SetFrame(paceSource_().frame);
-	if (costs_.ticks >= kCostAdvances) LogCosts();
-}
-
-void SfvAdapter::NotePause()
-{
-	// SFV's own pause never runs in a session's battle (GameHooks keeps the
-	// PauseUnit's task from it, sfv::pause); a pause bit here would be one
-	// copy's alone. Logged on each change.
-	// The mask takes the KO's bits too (0x30: the KO's slow motion, 0x20, and
-	// its neighbour) so a round's ending shows in the log (skip.md section 2).
-	const uint32_t bits = Field<uint32_t>(battleFrame_, sfv::battleframe::kState) & (sfv::pause::kBits | 0x30);
-	if (bits == pausedBits_) return;
-	Log("adapter: the game's pause bits are %x in a session's battle (were %x; flow state %d)", bits, pausedBits_,
-		flow_.Announced());
-	pausedBits_ = bits;
-}
-
-void SfvAdapter::LogCosts()
-{
-	const StateLayout::Costs layout = layout_.TakeCosts();
-	LARGE_INTEGER frequency{};
-	QueryPerformanceFrequency(&frequency);
-	// The time of this window's frames an update was due in, and what the
-	// session did in it: a slow own game has few rollbacks and no waiting
-	// steps, waiting on the peer has waiting steps. The frames the battle
-	// stood still in (the WIN's answers, a decided match's end) are told apart.
-	const pace::FrameClock::Totals clock = paceClock_.Read();
-	const PaceCounts counts = paceSource_ ? paceSource_() : PaceCounts{};
-	const auto seconds = [&](int64_t ticks) { return frequency.QuadPart ? (double)ticks / (double)frequency.QuadPart : 0.0; };
-	pace::Window window;
-	window.updates = costs_.ticks;
-	window.seconds = seconds(clock.due - clockAtStart_.due);
-	window.heldSeconds = seconds(clock.held - clockAtStart_.held);
-	window.rollbacks = counts.rollbacks - paceAtStart_.rollbacks;
-	window.waiting = counts.waiting - paceAtStart_.waiting;
-	const bool slow = pace::Current().AddWindow(window);
-	const std::string paceText = pace::WindowText(window);
-	// Average microseconds per call, and the calls.
-	const auto us = [&](int64_t ticks, uint64_t calls) {
-		return calls && frequency.QuadPart ? 1e6 * (double)ticks / (double)frequency.QuadPart / (double)calls : 0.0;
-	};
-	// The session's counts (docs/design/beta8/perf.md): saves that kept no
-	// copy, and of the hashes, those made once a frame was final; saves a
-	// rollback replaced before they were final, whose hash was never needed.
-	Log("costs: the last %llu updates: tick %.0f us; replayed tick %.0f us (%llu); save %.0f us (%llu, %llu skipped), "
-		"load %.0f us (%llu), hash %.0f us (%llu, %llu once final, %llu not needed), the restore's callbacks %.0f us (%llu); %s",
-		(unsigned long long)costs_.ticks, us(costs_.tickTicks, costs_.ticks), us(costs_.replayedTicks, costs_.replayed),
-		(unsigned long long)costs_.replayed, us(layout.saveTicks, layout.saves), (unsigned long long)layout.saves,
-		(unsigned long long)layout.skippedSaves, us(layout.loadTicks, layout.loads), (unsigned long long)layout.loads,
-		us(layout.hashTicks, layout.hashes), (unsigned long long)layout.hashes, (unsigned long long)layout.confirmedHashes,
-		(unsigned long long)layout.droppedHashes, us(costs_.callbackTicks, costs_.callbacks),
-		(unsigned long long)costs_.callbacks, paceText.c_str());
-	if (slow) Log("%s", pace::SlowText(window).c_str());
-	costs_ = {};
-	clockAtStart_ = clock;
-	paceAtStart_ = counts;
+	notes_.DecidedTicks(MatchDecided(), ticksInLastUpdate_, flow_.Announced());
+	notes_.Pause(battleFrame_, flow_.Announced());
+	updateCosts_.Played(took, resimulating, layout_);
 }
 
 int SfvAdapter::ReseedRandom(uint32_t seed)
 {
-	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	const uintptr_t base = GameBase();
 	const uint64_t vtable = base + sfv::rng::kVtable;
 	int reseeded = 0;
 	for (const StateRegion& r : layout_.Regions()) {
@@ -816,7 +512,7 @@ void SfvAdapter::SetStartTime(uint32_t value)
 
 void SfvAdapter::AfterLoad()
 {
-	const int64_t from = Ticks();
+	const int64_t from = UpdateCosts::Now();
 	// The callbacks take the restored state's frame id, as the game's own load
 	// passes it (rva 0x48A310); the sound callbacks drop what was played after
 	// it (rva 0x4D5820, 0x4B6230).
@@ -827,8 +523,7 @@ void SfvAdapter::AfterLoad()
 	if (uint8_t* instance = gameInstance_()) Field<int32_t>(instance, iu::kInstanceInputFrame) = inputFrame;
 	flow_.Apply();
 	flow_.Capture(); // what the restore left in the game, so a load check sees it
-	costs_.callbacks++;
-	costs_.callbackTicks += Ticks() - from;
+	updateCosts_.Callbacks(UpdateCosts::Now() - from);
 }
 
 std::string SfvAdapter::BuildId() const

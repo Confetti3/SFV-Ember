@@ -821,3 +821,34 @@ TEST_CASE("a room whose game is over shows the backdrop again: pictures released
 	CHECK(cycle.Current() >= 0);
 	CHECK(watch.DrawnLastFrame());
 }
+
+TEST_CASE("a picture that was not usable yet waits out its delay, which grows with each failure in a row up to a limit")
+{
+	// The backdrop's rule: one delay, whatever the failures.
+	sfve::RetryGate flat;
+	CHECK(flat.Ready(0));
+	flat.Failed(10, sfve::RetryRule{1.0});
+	CHECK_FALSE(flat.Ready(10.5));
+	CHECK(flat.Ready(11));
+	flat.Failed(11, sfve::RetryRule{1.0});
+	CHECK_FALSE(flat.Ready(11.9));
+	CHECK(flat.Ready(12));
+	// The art's: the delay doubles to a most, and a success starts it again.
+	const sfve::RetryRule art{1.0, 2.0, 30.0};
+	CHECK(art.DelayAfter(1) == 1.0);
+	CHECK(art.DelayAfter(2) == 2.0);
+	CHECK(art.DelayAfter(5) == 16.0);
+	CHECK(art.DelayAfter(6) == 30.0);
+	CHECK(art.DelayAfter(40) == 30.0);
+	sfve::RetryGate gate;
+	for (int i = 0; i < 6; i++) gate.Failed(100, art);
+	CHECK(gate.Failures() == 6);
+	CHECK_FALSE(gate.Ready(129.9));
+	CHECK(gate.Ready(130));
+	gate.Reset(200);
+	CHECK(gate.Failures() == 0);
+	CHECK(gate.Ready(200));
+	gate.Failed(200, art);
+	CHECK_FALSE(gate.Ready(200.5));
+	CHECK(gate.Ready(201));
+}

@@ -8,7 +8,7 @@ Z42, Z29, Z33), and the fighter the player had picked was not there at the next 
 
 - `SfvPick::LookFor(pick, fighter, remembered)` gave a fighter its remembered look only where
   `SetPick` had stored that fighter this run; any other fighter took the look the player was in
-  (`look = pick`), and the look page's Fighter row (`SfvSelectionScreen::Apply` / `Previewed`)
+  (`look = pick`), and the look page's Fighter row (`SfvPickPages` `Apply` / `Previewed`)
   never asked the memory at all, it carried the look over. So a look chosen once travelled to
   every fighter the player moved to.
 - Nothing saved the pick: `SfvPick` stated "not saved between runs", and `settings.json` holds
@@ -30,10 +30,11 @@ Z42, Z29, Z33), and the fighter the player had picked was not there at the next 
   first colour, V-Skill I, V-Trigger I) for a fighter not stored yet. A remembered look this
   player cannot wear (the catalog's `FitLookWithin` would move it: not owned, not installed) is
   not nudged to the nearest look: the fighter is in its default look. The model size travels with
-  the pick (Tiny is a room rule, not a fighter's look). The Training dummy keeps no memory
-  (`remembered` false) and carries its look as before.
-- **`SfvSelectionScreen`**: the board already used `LookFor`; `Apply` and `Previewed` now do for
-  the look page's Fighter row, with `remembered` false on the dummy's screen.
+  the pick (Tiny is a room rule, not a fighter's look). The Training dummy has a memory of its own, with the same rules (`Whose::Dummy`): each fighter
+  in the look the dummy last had, else the default look; `SetDummy` remembers it and
+  `ChooseFighter(fighter, then, Whose::Dummy)` is the one path the board and the look page use.
+- **`SfvPickPages`** (the pick screen's logic, split from `SfvSelectionScreen`): the board already used `LookFor`; `Apply` and `Previewed` now do for
+  the look page's Fighter row, with `Whose::Dummy` on the dummy's screen.
 - **`SfvPickStore`**: per game frame, once the catalog is usable, reads the overlay section's
   `"sfvPicks"` key (`SettingsStore::LoadOverlay`; the library's SF4 keeps its per-fighter picks in
   that section too) and `RestorePickMemory`s it, unless a pick was already stored; writes it
@@ -43,8 +44,17 @@ Z42, Z29, Z33), and the fighter the player had picked was not there at the next 
 
 ```json
 "overlay": { "sfvPicks": { "version": 1, "fighter": "Z42",
-  "looks": { "Z42": { "costume": 2, "colour": 13, "vSkill": 0, "vTrigger": 1 } } } }
+  "looks": { "Z42": { "costume": 2, "colour": 13, "vSkill": 0, "vTrigger": 1 } },
+  "dummy": { "looks": { "Z29": { "costume": 0, "colour": 1, "vSkill": 1, "vTrigger": 0 } } } } }
 ```
+
+The dummy's looks are under `"dummy"` (written only once it has one); its fighter is not saved, it
+starts as the player's own. The saved picks are read once. If a pick was stored before the read
+succeeded (the first read failed and the player chose within the retry), the saved memory is merged
+under this run's (`PickMemory::MergeUnder`: this run's look wins per fighter, the saved fighter last
+chosen only if this run chose none) and the store writes once. A run whose read never succeeded
+(five tries) never writes `sfvPicks`, so the file's looks are never replaced by a memory that never saw
+them (`PicksNeedSaving`).
 
 V-Skill and V-Trigger are the game's choice numbers (I is 0, II is 1). The costume code, the
 model size and Random / Eleven are not saved (Random and Eleven are chosen again each run).

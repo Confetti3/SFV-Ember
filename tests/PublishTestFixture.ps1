@@ -58,6 +58,7 @@ function New-Fixture {
     G $F @('init', '-q', '-b', 'b9/integrate', 'sfv') | Out-Null
     Write-File "$sfv\CMakeLists.txt" "project(sfv_ember VERSION 0.1.0 LANGUAGES CXX)`nset(SFVE_VERSION `"`${PROJECT_VERSION}-beta.8`")`n"
     Write-File "$sfv\data\pick-space.json" "{`n`t`"build`": `"$oldBuild`"`n}`n"
+    Write-File "$sfv\cmake\EmbedTextFile.cmake" "# embeds a text file as a C++ string`n"
     Write-File "$sfv\src\ember\SfvPickSpace.hxx" "constexpr const char* kMatchBuild = `"sfv-ember/13173604/0.6`";`n"
     Write-File "$sfv\README.md" "This release builds against library commit ``$($L1.Substring(0, 9))``.`n"
     Write-File "$sfv\scripts\build-room-host-linux.sh" "#!/usr/bin/env bash`nCATALOG_SOURCES=`"`$SFV/src/roomhost/SfvHostCatalog.cxx `$SFV/src/ember/SfvPickSpace.cxx `$GEN/SfvHostPickSpace.cxx`"`n"

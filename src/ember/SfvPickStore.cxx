@@ -30,6 +30,8 @@ constexpr int kReadTries = 5;
 
 struct Store {
 	bool restored = false, stopped = false;
+	bool readFailed = false; // the read gave up: this run never writes the picks
+	bool dirty = false;      // the saved picks were merged under this run's: the file lacks its looks
 	int reads = 0;
 	ULONGLONG nextRead = 0;
 	std::uint64_t seen = 0;  // the revision last looked at
@@ -54,14 +56,16 @@ void Restore(ULONGLONG now)
 	if (!Settings().LoadOverlay(overlay, error)) {
 		s_store.nextRead = now + kRetryMs;
 		if (++s_store.reads < kReadTries) return;
-		mod::Log("picks: the saved picks could not be read (%s); this run starts without them", error.c_str());
+		mod::Log("picks: the saved picks could not be read (%s); this run starts without them and does not write them", error.c_str());
+		s_store.readFailed = true;
 	} else {
 		const auto found = overlay.find(kSection);
 		const picks::PickMemory saved =
 			found == overlay.end() ? picks::PickMemory{} : picks::PickMemory::FromJson(*found, FilledPickSpace());
 		const bool applied = RestorePickMemory(saved);
+		s_store.dirty = !applied;
 		const std::optional<int> chosen = saved.ChosenFighter();
-		mod::Log("picks: the saved picks %s%s%s", applied ? "are in" : "came after a pick was made and are left",
+		mod::Log("picks: the saved picks %s%s%s", applied ? "are in" : "came after a pick was made and are merged under it",
 			chosen ? ", the fighter last chosen " : "", chosen ? FighterCode(*chosen).c_str() : "");
 	}
 	s_store.restored = true;
@@ -83,6 +87,7 @@ void Save(ULONGLONG now)
 		return;
 	}
 	s_store.saved = revision;
+	s_store.dirty = false;
 }
 
 bool Pump()
@@ -100,11 +105,18 @@ bool Pump()
 		s_store.seen = revision;
 		s_store.changedAt = now;
 	}
-	if (revision != s_store.saved && now - s_store.changedAt >= kQuietMs) Save(now);
+	if (PicksNeedSaving(true, s_store.readFailed, s_store.dirty, revision, s_store.saved) && now - s_store.changedAt >= kQuietMs) {
+		Save(now);
+	}
 	return true;
 }
 
 } // namespace
+
+bool PicksNeedSaving(bool restored, bool readFailed, bool dirty, std::uint64_t revision, std::uint64_t saved)
+{
+	return restored && !readFailed && (dirty || revision != saved);
+}
 
 void InstallSfvPickStore()
 {
@@ -118,7 +130,7 @@ void FlushSfvPickStore()
 	if (!s_store.restored || TestCopy(mod::Config().instance)) return;
 	std::uint64_t revision = 0;
 	PickMemoryNow(revision);
-	if (revision != s_store.saved) Save(GetTickCount64());
+	if (PicksNeedSaving(true, s_store.readFailed, s_store.dirty, revision, s_store.saved)) Save(GetTickCount64());
 }
 
 } // namespace sfve::adapter

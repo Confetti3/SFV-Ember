@@ -281,7 +281,7 @@ try {
     Check ($rooms.facts.adopted -and $rooms.facts.kit.sfvCommit -ceq $y.K -and $rooms.facts.kit.libraryCommit -ceq $y.L2) 'adopted facts'
     Check ($rooms.facts.'sfve-room-host' -ceq (Get-PubSha256 "$kit\room-build\sfve-room-host") -and $rooms.facts.'sf4-net' -ceq (Get-PubSha256 "$kit\room-build\sf4-net")) 'kit hashes recorded'
     $sp = @($rooms.facts.kit.sfvPaths); $lp = @($rooms.facts.kit.libraryPaths)
-    foreach ($path in 'data/pick-space.json', 'scripts/build-room-host-linux.sh', 'src/roomhost/SfvHostCatalog.cxx', 'src/ember/SfvPickSpace.cxx', 'src/ember/SfvPickSpace.hxx') { Check ($path -cin $sp) "sfv path $path" }
+    foreach ($path in 'data/pick-space.json', 'cmake/EmbedTextFile.cmake', 'scripts/build-room-host-linux.sh', 'src/roomhost/SfvHostCatalog.cxx', 'src/ember/SfvPickSpace.cxx', 'src/ember/SfvPickSpace.hxx') { Check ($path -cin $sp) "sfv path $path" }
     foreach ($path in 'server/roomhost/main.cxx', 'server/roomhost/RoomHost.hxx', 'src/common/Catalog.hxx', 'server/roomhost/sources.txt', 'rust/sf4-net/Cargo.lock', 'rust/sf4-net/src/main.rs', 'server/ember/protocol/src/lib.rs') { Check ($path -cin $lp) "library path $path" }
     foreach ($path in 'server/roomhost/Win.cxx', 'src/common/Sf4Catalog.cxx', 'server/ember/bridge/src/lib.rs', 'src/core.txt') { Check ($path -cnotin $lp) "not a room-host input: $path" }
     Check (!@($y.World.Commands | Where-Object { $_ -like '*sfv.tar*' -or $_ -like '*vps*install*' -or $_ -like 'scp*vps:*' }).Count) 'nothing built or staged'
@@ -301,7 +301,8 @@ try {
     Pass 'rooms -AdoptKit: refuses a kit for another room build (by its BUILD_ID or the build its room host embeds)'
 
     foreach ($case in @(@('data\pick-space.json', "{`n`t`"build`": `"$newBuild`",`n`t`"unshipped`": []`n}`n", '*changed data/pick-space.json*'),
-                        @('src\ember\SfvPickSpace.hxx', "constexpr const char* kMatchBuild = `"sfv-ember/13173604/0.7`"; // edited`n", '*changed src/ember/SfvPickSpace.hxx*'))) {
+                        @('src\ember\SfvPickSpace.hxx', "constexpr const char* kMatchBuild = `"sfv-ember/13173604/0.7`"; // edited`n", '*changed src/ember/SfvPickSpace.hxx*'),
+                        @('cmake\EmbedTextFile.cmake', "# embeds a text file as a C++ string, edited`n", '*changed cmake/EmbedTextFile.cmake*'))) {
         $y = Fresh
         Write-File "$($y.Sfv)\$($case[0])" $case[1]; $null = Commit $y.Sfv 'after the kit'
         $null = Plan $y

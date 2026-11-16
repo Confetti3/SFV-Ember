@@ -40,16 +40,19 @@
 // embedded screen does (GameMenu's EmbeddedReturn), and so does Done.
 //
 // The dummy's screen (Training select's Dummy row) edits the dummy's own
-// pick (SfvPick's CurrentDummy): no Random card, no stage, and no memory of
-// looks.
+// pick (SfvPick's CurrentDummy): no Random card and no stage; each fighter
+// has the look the dummy last had it in, as the player's pick does.
 //
 // The shell's other way to change the pick, the table page's Ultra and
-// Appearance rows and the post-match prompt's Ultra, is StepTableSelection.
+// Appearance rows and the post-match prompt's Ultra, is StepTableSelection
+// (SfvPickPages). What each page lists and does is SfvPickPages, its drawing
+// SfvPickDraw; this class wires them to the menu and the pick.
 //
 // Render thread, inside the shell's frame.
 
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvPick.hxx"
+#include "ember/SfvPickPages.hxx"
 #include "ember/SfvPickPreview.hxx"
 #include "ember/SfvSelectGrid.hxx"
 
@@ -92,137 +95,9 @@ public:
 	const std::string& Page() const { return menu_.navigation.Screen(); }
 	const std::string& Focus() const { return menu_.navigation.Focus(); }
 
-	// What Draw shows and does, without drawing, so the pick screen's
-	// journeys can be walked without a frame. The rows for `pick`, with the
-	// stage row (`withStage`, the player's screen; the dummy's has none)
-	// listing `stageOptions`. `withSize`: the Size row (Normal or Tiny) after
-	// the loadout's rows, for a room that allows tiny fighters.
-	static std::vector<sf4e::ui::MenuEntry> Rows(const PlayerPick& pick, bool editable, bool withStage, bool stageEditable,
-		const std::vector<StageOption>& stageOptions, bool withSize = false);
-	// The pick with the row's change made; false when the action changes
-	// nothing. A stage is one of `stageOptions`' PlayableIds. A new fighter is
-	// in its own look (LookFor, `remembered` as it takes it).
-	static bool Apply(const sf4e::ui::MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions,
-		bool remembered = true);
-	// What the pane shows for the row `rowId`.
-	static PreviewFocus FocusOf(const std::string& rowId);
-	// The pick as the pane shows it while the option `optionId` of the row's
-	// open choice has the focus: that fighter or costume as choosing it would
-	// store the pick (SfvCatalog's FitLookWithin), a colour, a part's choice
-	// or a stage. A fighter or costume this player cannot ready is shown as it
-	// is, fitted to the spec alone, and so is a colour or a stage they cannot
-	// choose. The pick itself for no option, or one that is not the row's.
-	static PlayerPick Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId,
-		bool remembered = true);
-
-	// A choice open on the screen: its row, and the place of its focused
-	// option in the row's choices.
-	struct OpenChoice {
-		std::string row;
-		std::size_t option = 0;
-	};
-	// The pane's contents for the focused row `focus`, or with `choice` open,
-	// for its focused option among this frame's `rows`: the pick previewed
-	// (Previewed), and as its note why a fighter, costume or colour option
-	// cannot be chosen (its detail) or that the stage shown is one the
-	// opponent lacks (`stageOptions`' OpponentLacks), with the stage row
-	// focused or its choice open.
-	static PickPreview PreviewOf(const PlayerPick& pick, const std::string& focus, const std::optional<OpenChoice>& choice,
-		const std::vector<sf4e::ui::MenuEntry>& rows, const std::vector<StageOption>& stageOptions, bool remembered = true);
-
-	// The pages' ids.
-	static constexpr const char* kBoard = "home";
-	static constexpr const char* kLook = "look";
-	static constexpr const char* kCostumes = "costumes";
-	static constexpr const char* kColours = "colors";
-	static constexpr const char* kLoadout = "loadout";
-	static constexpr const char* kStagePage = "stage";
-
-	// The look page's rows: Rows, with the rows that open a page made to
-	// open it (Select activates them; Left and Right still step those that
-	// step): Fighter (the board), Costume and Colour (their cards), V-Skill
-	// and V-Trigger (the loadout cards, even where the fighter has one choice,
-	// to read it), and Stage (the stage cards, for P2 too, to see who
-	// chooses). `random`: the fighter row reads as selection.random_fighter
-	// names it ("Random" and the fighter).
-	static std::vector<sf4e::ui::MenuEntry> LookRows(const PlayerPick& pick, bool random, bool editable, bool withStage,
-		bool stageEditable, const std::vector<StageOption>& stageOptions, bool withSize = false, bool eleven = false);
-
-	// The board's cards: "fighter-<id>" for every fighter of the roster, in
-	// the catalog's order (the grid places them), then, with `withRandom`,
-	// "random-fighter" and the game's ELEVEN's card "eleven-fighter" (in its
-	// own cell, SfvSelectGrid's `eleven`; `eleven`: Eleven is the stored pick,
-	// and `random` is set as well). One this player cannot play, or any other
-	// than the stored one while `fighterKept`, cannot be chosen; the stored
-	// one can always be selected, which opens its look page.
-	static std::vector<sf4e::ui::MenuEntry> BoardRows(const PlayerPick& pick, bool random, bool editable, bool fighterKept,
-		bool withRandom, bool eleven = false);
-	// The pick choosing the board's card `cardId` would store, for the art
-	// pane: the fighter in their remembered look (`remembered`, the player's
-	// screen) or in the pick's look (LookFor); the pick itself for Random's
-	// card or any other id.
-	static PlayerPick BoardPick(const PlayerPick& pick, const std::string& cardId, bool remembered);
-	// Where the board puts a cell of the grid table across, in tile pitches
-	// from row 0's column 0: its column, its row's offset and, right of
-	// Random's column, the room the Random tile takes beyond its own column,
-	// as the game's own select screen places them.
-	static float BoardColumn(const grid::SelectGrid& table, grid::Cell cell);
-	// The board's moves across the Random tile, as the game's cursor makes
-	// them: Random's Left and Right are the tiles beside it on its own row,
-	// and their Right and Left (and those of the tiles beside its foot on the
-	// last row) are Random. Nothing without the Random card among `rows` (the
-	// dummy's board).
-	static void LinkRandom(std::vector<sf4e::ui::MenuEntry>& rows, const grid::SelectGrid& table);
-
-	// The costume cards: "costume-<n>" for every costume of the fighter, in
-	// the game's order, each shown in the colour worn where it has it and
-	// this player can ready it (else its first they can); one with no colour
-	// they can ready cannot be chosen, with NOT OWNED's words.
-	static std::vector<sf4e::ui::MenuEntry> CostumeCards(const PlayerPick& pick, bool editable);
-	// The colour cards of `costume`: "color-<n>" for each colour of it; one
-	// this player cannot ready cannot be chosen.
-	static std::vector<sf4e::ui::MenuEntry> ColourCards(const PlayerPick& pick, int costume, bool editable);
-	// The loadout cards: "vskill-<n>" then "vtrigger-<n>" for each choice the
-	// fighter has (n is the choice number, 0 for I), labelled in the game's
-	// words, each card's detail its note (SfvLoadoutNotes).
-	static std::vector<sf4e::ui::MenuEntry> LoadoutCards(const PlayerPick& pick, bool editable);
-	// The stage cards: "stage-<id>" for Random first, then for every stage of
-	// `stageOptions`. One the opponent lacks cannot be chosen, with the
-	// runtime's reason; none can while the stage is not this player's to
-	// choose (`stageEditable` false), each saying only P1 chooses.
-	static std::vector<sf4e::ui::MenuEntry> StageCards(const PlayerPick& pick, bool editable, bool stageEditable,
-		const std::vector<StageOption>& stageOptions);
-
-	// What Select on a stage card did.
-	enum class StageAnswer {
-		Stored,     // the pick's stage is now that card's
-		Unchanged,  // it already was
-		Locked,     // the pick cannot change now
-		OnlyP1,     // the stage is not this player's to choose
-		NotShared,  // the opponent lacks it
-		Banned,     // the room bans it
-		NotOffered, // no card of the page (not a stage this player is offered)
-	};
-	static StageAnswer ChooseStage(const std::string& cardId, PlayerPick& pick, bool editable, bool stageEditable,
-		const std::vector<StageOption>& stageOptions);
-	// What Select on a loadout card did to the pick: true when the part's
-	// choice changed. A card for a choice the fighter lacks changes nothing.
-	static bool ChooseLoadout(const std::string& cardId, PlayerPick& pick);
-
-	// Where the screen opens for each way the shell opens it: the pages
-	// stacked from the board, each with its focus, and whether the choice it
-	// was opened for closes it again. The board's focus is the stored card
-	// (Random's while Random is the pick). The dummy's screen has no stage
-	// page and opens on its board for Stage.
-	struct Opening {
-		std::vector<std::pair<std::string, std::string>> pages; // page, focus; the board first
-		bool closesOnChoice = false;
-	};
-	static Opening OpeningFor(sf4e::ui::SelectionStart start, const PlayerPick& pick, bool random, bool dummy, bool eleven = false);
-
 private:
 	// Shows the opening's pages, each on its focus.
-	void Open(const Opening& opening);
+	void Open(const pickpages::Opening& opening);
 	// The board's table from the embedded one, brought to the catalog's
 	// roster (a fighter it lacks appended, and logged) once the catalog is
 	// filled.
@@ -253,14 +128,5 @@ private:
 	// The look page's stage card was clicked this frame.
 	bool stageCardClicked_ = false;
 };
-
-// The table page's Ultra and Appearance rows, and the post-match prompt's
-// Ultra, step this player's stored pick (SfvPick) by `step.delta`: the Ultra
-// through the fighter's own loadouts in Ultra number order (LoadoutIndices),
-// while the runtime lets it change (canChangeUltra, which holds over the WIN
-// until the prompt is answered); the colour through the costume's colours
-// this player can ready, while the pick may change (canEditSelection). False,
-// and nothing stored, for a field that cannot change now.
-bool StepTableSelection(const sf4e::ui::SelectionStep& step, bool canEditSelection, bool canChangeUltra);
 
 } // namespace sfve::adapter

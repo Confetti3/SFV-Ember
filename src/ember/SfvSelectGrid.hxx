@@ -29,8 +29,6 @@
 // A catalog fighter the table lacks is appended to the grid (FitToRoster) and
 // logged by the caller, so a new fighter is on the board before the table is
 // re-cut.
-//
-// Stream C fills SfvSelectGrid.cxx. This header is final.
 
 #include <optional>
 #include <string>

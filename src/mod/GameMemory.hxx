@@ -18,16 +18,28 @@ T& Field(uint8_t* object, uint32_t offset)
 	return *reinterpret_cast<T*>(object + offset);
 }
 
+// The faults the guarded reads and writes below take, for an __except
+// filter (GetExceptionCode()): an access to memory that is not there, or not
+// readable or writable as asked, and a page the system could not bring in.
+// Any other exception (a guard page, a breakpoint, a divide by zero, a C++
+// throw) is not the guess about the memory being wrong, and goes on to the
+// crash record.
+inline int MemoryFaultFilter(unsigned long code)
+{
+	return code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_IN_PAGE_ERROR ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH;
+}
+
 // Reads a T at `at` if the memory is readable, for walking game structures
 // whose layout comes from analysis rather than from the game handing them
-// over (a wrong guess logs instead of crashing both test copies).
+// over (a wrong guess logs instead of crashing both test copies). Only a
+// memory fault is taken (MemoryFaultFilter).
 template <typename T>
 bool TryRead(const void* at, T* out)
 {
 	__try {
 		*out = *static_cast<const T*>(at);
 		return true;
-	} __except (1 /* EXCEPTION_EXECUTE_HANDLER */) {
+	} __except (MemoryFaultFilter(GetExceptionCode())) {
 		return false;
 	}
 }
@@ -39,7 +51,7 @@ bool TryWrite(void* at, const T& value)
 	__try {
 		*static_cast<T*>(at) = value;
 		return true;
-	} __except (1 /* EXCEPTION_EXECUTE_HANDLER */) {
+	} __except (MemoryFaultFilter(GetExceptionCode())) {
 		return false;
 	}
 }
@@ -53,6 +65,22 @@ bool TryCall(T (*function)(), T* out)
 {
 	__try {
 		*out = function();
+		return true;
+	} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+		return false;
+	}
+}
+
+// TryCall for a call with arguments or a result of its own: runs `call`, a
+// callable taking nothing that makes the call (a lambda capturing the
+// arguments and the place for the result), and returns false when it faulted on
+// an access. Other exceptions go on to the crash record. What the call does
+// before it faults is not undone: the caller reads a false as "nothing".
+template <typename F>
+bool TryRun(F&& call)
+{
+	__try {
+		call();
 		return true;
 	} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
 		return false;
@@ -113,16 +141,17 @@ inline void GiveBackGameRef(const GameRef& ref)
 	if (ref.block && *reinterpret_cast<int32_t*>(ref.block) > 1) (*reinterpret_cast<int32_t*>(ref.block))--;
 }
 
-// Heap and code addresses of this process, 4-byte aligned: above 1 TB up to
-// the end of user space (where a Windows x64 process puts them with its
-// default ASLR), or inside the process's own committed private memory and
-// images (mod/AddressRanges.hxx, read at the battle's bind), which is where
-// they lie with bottom-up ASLR off or under Wine. They differ between
+// Heap and code addresses of this process, 4-byte aligned, by the rule the
+// battle's bind chose (mod/AddressRanges.hxx): above 1 TB up to the end of
+// user space (where a Windows x64 process puts them with its default ASLR:
+// the value rule, the same on every such copy), and for a copy whose game
+// heap lies below 1 TB also inside that heap's arenas. They differ between
 // processes even when the state is the same, so hashes read them as zero.
 inline bool LooksLikeAddress(uint64_t value)
 {
 	if ((value & 3) != 0) return false;
-	if (value >= (1ull << 40) && value <= 0x00007FFFFFFFFFFFull) return true;
+	if (value >= kHighAddresses && value <= 0x00007FFFFFFFFFFFull) return true;
+	// Empty under the value rule.
 	const AddressRanges* ranges = PublishedProcessRanges();
 	return ranges && ranges->Contains(value);
 }

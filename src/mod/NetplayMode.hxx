@@ -47,20 +47,14 @@
 // frame. Time sync stretches frames by a few milliseconds while this side
 // runs ahead (FramePacer).
 //
-// Pipe commands (cross-copy desync checks): "hash <frame>", "checkpoint
-// [frame]" (latest confirmed per-region checkpoint), "dump <frame>" (that
-// frame's saved state to a file, once it is confirmed) and "freeze <frame>"
-// (hold the battle at that frame so both screens can be compared). Test aid:
-// "perturb <frame> <region name or size> <offset> <add>" adds to a 32-bit
-// value of this copy's state once the session has played that frame: a real
-// desync, for checking that the peers' hashes then differ. "skipafter <n>"
-// (-1 off): this copy presses an attack n frames into each decided match's
-// scenes, which asks to skip them once they have shown the guard's second
-// (IntroSkip.hxx); a test's script presses nothing else there. "vital <P1
-// percent> <P2 percent>" (0 or 100: as the round gives it): a test aid that sets
-// each fighter's vital to that share of its maximum on the first frame of every
-// round's fight, so the next hit (or a trade) ends the round in a KO; for runs
-// with no rollback (docs/design/beta9/skip.md section 2).
+// The pipe's test and desync-check commands ("hash", "checkpoint", "dump",
+// "freeze", "perturb", "skipafter", "vital", "riftgain") are
+// NetplayDevCommands'.
+//
+// Where it lives: NetplayMode.cxx steps the frames; NetplayModeStart.cxx
+// starts a battle's session (settings, start state agreement, recording's
+// wiring). Composed: the battle's recording (MatchRecording), its scenes'
+// log (SceneNotes) and the pipe's commands (NetplayDevCommands).
 
 #include "core/ReplayRecorder.hxx"
 #include "core/ReplaySeeker.hxx"
@@ -70,7 +64,11 @@
 #include "mod/BattleMode.hxx"
 #include "mod/FramePacer.hxx"
 #include "mod/IntroSkip.hxx"
+#include "mod/MatchRecording.hxx"
 #include "mod/ModConfig.hxx"
+#include "mod/NetplayDevCommands.hxx"
+#include "mod/NetplayPhase.hxx"
+#include "mod/SceneNotes.hxx"
 
 #include "sf4e/sf4e__RuntimeTick.hxx"
 
@@ -105,11 +103,26 @@ public:
 
 private:
 	void RegisterCommands();
+	// The battle's phase moved by `event` (netplay::Next); an event the phase
+	// never sees is logged and changes nothing.
+	void Enter(netplay::Event event);
+	// A frame of a battle going back to the main menu: the leave asked again
+	// until the scene manager takes it, the session still answering.
+	void HoldWhileLeaving();
+	// A frame of a Playing battle: offline, watched, replayed, the held WIN,
+	// or the fight (and the match's end) stepped.
+	void PlayFrame(SfvAdapter& adapter);
+	// Over the WIN: a held frame carrying both fighters' answers.
+	void PlayHeldWin(SfvAdapter& adapter);
+	// A fighter's frame: held for a decision on a confirmed frame (or a
+	// "freeze"), else the local input sent and one frame stepped.
+	void StepFight(SfvAdapter& adapter, bool frozen);
 	// Back to the main menu; the battle stands still meanwhile. A leave the
 	// scene manager cannot take yet is asked again on the next frame.
 	void Leave();
 	// Starts the session once the match is known and the copies agree on
-	// their start state; false while the battle waits for either.
+	// their start state (Preparing, then Agreeing); false while the battle
+	// waits for either.
 	bool StartSession(SfvAdapter& adapter);
 	// The session's settings once the match is known, the start state made
 	// (reseeded, a Practice room's gauges) and its agreement begun: Waiting
@@ -125,9 +138,6 @@ private:
 	// free for GGPO.
 	bool AgreeStart(SfvAdapter& adapter);
 	void EndStartAgreement();
-	// -sfve_start_perturb (development): one dword of this copy's start state
-	// changed before the agreement, which then repairs it.
-	void PerturbStart(SfvAdapter& adapter);
 	// A watcher's frame (EMBER_LIBRARY.md section 25): the next frame P1
 	// streamed and, while this copy is behind, a few more (SF4's
 	// SpectatorCatchUp), each through the decisions a fighter's frame takes.
@@ -142,25 +152,14 @@ private:
 	// P1's session kept for its watchers after the battle: closed if it is
 	// not already, and freed.
 	void EndDrain();
-	void DumpIfRequested();
-	void PerturbIfDue();
 	// The first frame of each round's fight, on a fighter's copy and a watcher's
-	// alike: logs the battle frame's state word (the pause, KO and slow-motion
-	// bits a skipped scene must leave clear) and gives the fighters the
-	// "vital" command's shares.
-	// Game thread, inside Frame's step with mutex_ held (it reads vitalPercent_).
+	// alike: logs the battle frame's state word (SceneNotes) and gives the
+	// fighters the "vital" command's shares (NetplayDevCommands).
+	// Game thread, inside Frame's step with mutex_ held (the shares are read under it).
 	void NoteFightStart(SfvAdapter& adapter, int frame);
 	// The room battle's recording: its frames made final so far (after any
-	// step), the end of a game, and the battle's replay saved as it closes.
+	// step), by the battle's session or the one kept for its watchers.
 	void ConfirmRecording();
-	void NoteRecordedGame();
-	void FinishRecording();
-	// The decided match's scenes (IntroSkip.hxx), for the log: where they
-	// start as this copy steps or watches, each skip the adapter applied with
-	// its frame, and their length when the match's end is taken.
-	void NoteScenes(SfvAdapter& adapter, int frame);
-	void NoteScenesSkip(SfvAdapter& adapter);
-	void NoteScenesEnd();
 	// This copy's player's input for `frame`: the pad's (or a test's script)
 	// in the fight, and in the decided match's scenes the press that may skip
 	// them (IntroSkip.hxx).
@@ -172,14 +171,8 @@ private:
 	const ModConfig& config_;
 	input::ScriptedInput script_{config_.script, config_.player}; // the local player's, for tests
 	intro_skip::Request introSkip_; // the local player's ask to skip the intros and the decided match's scenes
-	intro_skip::ScenesClock scenes_; // where this copy saw the decided match's scenes start (NoteScenes)
-	int scenesSkips_ = 0;            // skips the adapter applied in them
-	bool roundScenes_ = false;       // ...which are the scenes between two rounds, not the match's
-	// "skipafter <n>" (tests, runroom's -skipAfter): the script presses an
-	// attack n frames into each decided match's scenes; -1 never.
-	int skipAfter_ = -1;
-	int vitalPercent_[2] = {0, 0}; // "vital": each side's share of its maximum at a fight's start; 0 none
-	bool fightSeen_ = false;       // the fight's first frame was noted (NoteFightStart)
+	SceneNotes scenes_;             // the scenes' and fights' log lines
+	NetplayDevCommands dev_;        // the pipe's test commands and what they ask of the battle
 	mutable std::mutex mutex_; // the game thread steps, the pipe thread reads
 	std::unique_ptr<RollbackSession> session_;
 	// P1's last session, kept after its battle for the watchers still
@@ -187,10 +180,11 @@ private:
 	// runtime's drain ends (adapter::SetWatcherDrain).
 	std::unique_ptr<RollbackSession> drain_;
 	adapter::RoomBattle room_; // what the room hears of its battle
-	bool started_ = false;
-	// Between PrepareStart and the session's start: its settings, and the
-	// start state's agreement with its socket on the session's local port.
-	bool prepared_ = false;
+	// Where the battle is in its life (NetplayPhase.hxx); Unbound exactly
+	// while session_ is null.
+	netplay::Phase phase_ = netplay::Phase::Unbound;
+	// While Agreeing: the session's settings, and the start state's agreement
+	// with its socket on the session's local port.
 	struct PendingStart {
 		RollbackSession::Config config;
 		uint32_t seed = 0;
@@ -204,29 +198,13 @@ private:
 	uint64_t startHash_ = 0;
 	uint32_t seed_ = kSessionSeed; // the session's: a rematch in place reseeds from it
 	uint32_t startTime_ = 0;       // the match's start time, kept the session's (Frame)
-	bool leaveWanted_ = false; // the battle goes back to the main menu
-	bool leaving_ = false;     // ...and the scene manager took the leave
 	// The runtime asked the battle to end (Retire, Abort, Fail); the next
 	// battle frame ends it.
 	std::atomic<bool> exitAsked_{false};
 	FramePacer pacer_;
-	int dumpFrame_ = -1;   // "dump <frame>": write that frame's saved state to the log folder
-	std::vector<uint8_t> dumpBytes_; // its latest save, until it is confirmed
-	int freezeFrame_ = -1; // "freeze <frame>": stop advancing there (to compare screens)
-	struct Perturbation {
-		int frame = -1; // none pending
-		std::string region;
-		size_t offset = 0;
-		int32_t add = 0;
-	};
-	Perturbation perturb_;
 	RollbackSession::StepResult last_ = RollbackSession::StepResult::NoSession;
-	// The room battle being recorded (EMBER_LIBRARY.md section 26): its
-	// frames, its header (made as its session starts) and whether its last
-	// WIN went back, which makes it whole.
-	replay::Recorder recorder_;
-	replay::Header recording_;
-	bool recordingWhole_ = false;
+	// The room battle being recorded (EMBER_LIBRARY.md section 26).
+	MatchRecording recording_;
 	// The replay this battle plays back, from its bind to its close, and why
 	// its playback ended.
 	std::shared_ptr<const replay::Replay> replay_;

@@ -53,7 +53,8 @@ struct LoopbackTrio {
 		// Only P1 streams: a watcher list given to P2 is ignored.
 		cb.watchers.push_back({2, (uint16_t)(base + 3)});
 		ca.inputDelay = cb.inputDelay = delay;
-		ca.verifyLoads = cb.verifyLoads = true; // every save hashed
+		ca.hashEveryFrames = cb.hashEveryFrames = 1; // every save hashed
+		ca.verifyLoadsEvery = cb.verifyLoadsEvery = 1;
 		// Every hash kept, not only the latest 256, so the session's first
 		// frames still compare.
 		ca.keepAllHashes = cb.keepAllHashes = cw.keepAllHashes = true;

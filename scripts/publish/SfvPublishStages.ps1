@@ -716,7 +716,7 @@ function Show-PubStatus([object]$Ctx) {
 # plan's commits would build the same binaries.
 
 # What the Linux build compiles, read from the commits themselves (the same derivation for any commit pair):
-#   sfv-ember: data/pick-space.json (embedded), scripts/build-room-host-linux.sh, the catalog sources that script
+#   sfv-ember: data/pick-space.json (embedded by cmake/EmbedTextFile.cmake), scripts/build-room-host-linux.sh, the catalog sources that script
 #              names (CATALOG_SOURCES) and every header they include from sfv-ember's src/.
 #   library:   server/roomhost/build-linux.sh and sources.txt, every source sources.txt lists for a data catalog
 #              (all groups but host_windows, host_catalog, selection and catalog) and every header those and the
@@ -737,7 +737,7 @@ function Get-PubRoomInputs([object]$Ctx, [string]$SfvCommit, [string]$LibraryCom
         foreach ($part in ($Path -split '/')) { if ($part -ceq '..') { if ($parts.Count) { $parts.RemoveAt($parts.Count - 1) } } elseif ($part -and $part -cne '.') { $parts.Add($part) } }
         $parts -join '/' }
     $found = @{sfv = [Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal); library = [Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)}
-    foreach ($fixed in @('data/pick-space.json', 'scripts/build-room-host-linux.sh')) { $null = $found.sfv.Add($fixed) }
+    foreach ($fixed in @('data/pick-space.json', 'scripts/build-room-host-linux.sh', 'cmake/EmbedTextFile.cmake')) { $null = $found.sfv.Add($fixed) }
     foreach ($fixed in @('server/roomhost/build-linux.sh', 'server/roomhost/sources.txt')) { $null = $found.library.Add($fixed) }
     $queue = [Collections.Generic.Queue[object]]::new()
     $script = & $read 'sfv' 'scripts/build-room-host-linux.sh'

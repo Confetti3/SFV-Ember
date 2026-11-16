@@ -11,6 +11,7 @@
 #include "ember/SfvPick.hxx"
 #include "ember/SfvPickMemory.hxx"
 #include "ember/SfvPickSpace.hxx"
+#include "ember/SfvPickStore.hxx"
 #include "ember/SfvRandomFighter.hxx"
 
 #include "common/SelectionPick.hxx"
@@ -284,6 +285,104 @@ TEST_CASE("the saved picks are restored once, before the player has picked, as t
 	SetPick(ryu);
 	CHECK_FALSE(RestorePickMemory(saved));
 	CHECK(CurrentPick().pick.fighter == kRyu);
+	ForgetPickMemoryForTest();
+}
+
+TEST_CASE("a late restore merges the saved looks under this run's: its own choices win per fighter, the rest come back")
+{
+	FillTestCatalog();
+	ForgetPickMemoryForTest();
+	PickMemory saved;
+	saved.RememberLook(LookOf(kCnl, 0, 1, kTwoOne));
+	saved.RememberLook(LookOf(kRyu, 4, 1, kTwoTwo));
+	saved.Choose(kCnl);
+	// This run stored RYU in another look before the saved picks were read.
+	PlayerPick ryu;
+	ryu.pick = LookOf(kRyu, 0, 0, kOneOne);
+	SetPick(ryu);
+	CHECK_FALSE(RestorePickMemory(ThroughFile(saved, FilledPickSpace())));
+	// RYU keeps this run's look and stays the fighter chosen; CNL's saved look is back.
+	CHECK(SameLook(*RememberedLook(kRyu), LookOf(kRyu, 0, 0, kOneOne)));
+	REQUIRE(RememberedLook(kCnl).has_value());
+	CHECK(SameLook(*RememberedLook(kCnl), LookOf(kCnl, 0, 1, kTwoOne)));
+	CHECK(CurrentPick().pick.fighter == kRyu);
+	std::uint64_t revision = 0;
+	CHECK(PickMemoryNow(revision).ChosenFighter() == kRyu);
+	ForgetPickMemoryForTest();
+	// A run that only rolled Random chose no fighter: the saved one is kept.
+	SetPickRandom(true);
+	PlayerPick rolled;
+	rolled.pick = LookOf(kBsn, 0, 0, kOneOne);
+	SetPick(rolled);
+	CHECK_FALSE(RestorePickMemory(ThroughFile(saved, FilledPickSpace())));
+	CHECK(PickMemoryNow(revision).ChosenFighter() == kCnl);
+	CHECK(SameLook(*RememberedLook(kRyu), LookOf(kRyu, 4, 1, kTwoTwo)));
+	SetPickRandom(false);
+	ForgetPickMemoryForTest();
+}
+
+TEST_CASE("the picks are written only once they were read, never after a read that gave up, and once more after a late merge")
+{
+	// restored, readFailed, dirty, revision, saved
+	CHECK_FALSE(PicksNeedSaving(false, false, false, 3, 0)); // not read yet: nothing is written
+	CHECK_FALSE(PicksNeedSaving(true, false, false, 3, 3));  // nothing changed
+	CHECK(PicksNeedSaving(true, false, false, 4, 3));        // a change
+	CHECK(PicksNeedSaving(true, false, true, 3, 3));         // a late merge: the file lacks this run's looks
+	CHECK_FALSE(PicksNeedSaving(true, true, false, 4, 0));   // the read never succeeded: never written
+	CHECK_FALSE(PicksNeedSaving(true, true, true, 4, 0));
+}
+
+TEST_CASE("the Training dummy remembers a look for each fighter of its own, apart from the player's, and saves them with the picks")
+{
+	FillTestCatalog();
+	ForgetPickMemoryForTest();
+	ForgetDummyForTest();
+	PlayerPick ryu;
+	ryu.pick = LookOf(kRyu, 4, 1, kTwoTwo);
+	SetPick(ryu);
+	std::uint64_t before = 0;
+	PickMemoryNow(before);
+	// The dummy has CNL in one look, then is moved to RYU through the same
+	// path as the player's pick: RYU, never the dummy's, is in its default
+	// look, not CNL's and not the player's.
+	PlayerPick dummy;
+	dummy.pick = LookOf(kCnl, 0, 1, kTwoOne);
+	SetDummy(dummy);
+	const PlayerPick toRyu = ChooseFighter(kRyu, {}, Whose::Dummy);
+	CHECK(toRyu.pick.fighter == kRyu);
+	CHECK(toRyu.pick.costume == 0);
+	CHECK(toRyu.pick.color == 0);
+	CHECK(picks::LoadoutOf(toRyu.pick) == kOneOne);
+	CHECK(CurrentDummy().pick.fighter == kRyu);
+	// Back to CNL, in the look the dummy last had it in.
+	CHECK(SameLook(ChooseFighter(kCnl, {}, Whose::Dummy).pick, LookOf(kCnl, 0, 1, kTwoOne)));
+	// The player's pick and memory are as they were.
+	CHECK(CurrentPick().pick.fighter == kRyu);
+	CHECK(SameLook(*RememberedLook(kRyu), LookOf(kRyu, 4, 1, kTwoTwo)));
+	CHECK_FALSE(RememberedLook(kCnl).has_value());
+	CHECK(SameLook(*RememberedLook(kCnl, Whose::Dummy), LookOf(kCnl, 0, 1, kTwoOne)));
+	// What the dummy remembers is saved (the revision rose), under its own key,
+	// and does not become the fighter last chosen.
+	std::uint64_t after = 0;
+	const PickMemory memory = PickMemoryNow(after);
+	CHECK(after > before);
+	const PickMemory read = ThroughFile(memory, FilledPickSpace());
+	REQUIRE(read.LookOf(kCnl, Whose::Dummy).has_value());
+	CHECK(SameLook(*read.LookOf(kCnl, Whose::Dummy), LookOf(kCnl, 0, 1, kTwoOne)));
+	CHECK_FALSE(read.LookOf(kCnl).has_value());
+	CHECK(read.ChosenFighter() == kRyu);
+	// A file with no dummy key (beta.9's and the player's alone) reads as no dummy looks.
+	PickMemory playerOnly;
+	playerOnly.RememberLook(LookOf(kRyu, 0, 0, kOneOne));
+	CHECK_FALSE(playerOnly.ToJson(FilledPickSpace()).contains("dummy"));
+	// A late restore merges the saved dummy looks under this run's too.
+	PickMemory saved;
+	saved.RememberLook(LookOf(kCnl, 0, 0, kOneOne), Whose::Dummy);
+	saved.RememberLook(LookOf(kBsn, 0, 0, kOneOne), Whose::Dummy);
+	CHECK_FALSE(RestorePickMemory(ThroughFile(saved, FilledPickSpace())));
+	CHECK(SameLook(*RememberedLook(kCnl, Whose::Dummy), LookOf(kCnl, 0, 1, kTwoOne)));
+	CHECK(RememberedLook(kBsn, Whose::Dummy).has_value());
+	ForgetDummyForTest();
 	ForgetPickMemoryForTest();
 }
 

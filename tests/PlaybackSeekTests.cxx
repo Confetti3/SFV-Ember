@@ -359,6 +359,35 @@ TEST_CASE("putting a state back is refused for what it cannot take, and a diagno
 	CHECK(play.seeker.Ground(play.session, recording, false).canRestore);
 }
 
+TEST_CASE("a game the layout no longer describes is neither written by a seek nor read for a snapshot")
+{
+	const ReplayFrames recording = Record(300, kIgnoreFrom, kIgnoreTo);
+	SUBCASE("a seek back: refused before a byte is written, and the session fails")
+	{
+		SeekPlayback play(recording);
+		REQUIRE(play.PlayTo(250));
+		std::vector<uint8_t> bytes(play.session.Layout().TotalSize());
+		play.session.Layout().SaveTo(bytes.data());
+		REQUIRE(play.PlayTo(260));
+		play.game.FailState();
+		CHECK_FALSE(play.session.RestoreReplay(bytes.data(), 250));
+		CHECK(play.session.Failed());
+		CHECK(play.session.FailureReason() == MockFighter::kStateFailure);
+		CHECK(play.game.Frame() == 260); // the state at 250 was not written back
+	}
+	SUBCASE("a snapshot: not taken while the game reports the failure")
+	{
+		SeekPlayback play(recording);
+		REQUIRE(recording[0].Fight());
+		play.game.FailState();
+		play.seeker.Before(play.session, recording);
+		CHECK(play.seeker.Taken() == 0);
+		SeekPlayback healthy(recording);
+		healthy.seeker.Before(healthy.session, recording);
+		CHECK(healthy.seeker.Taken() == 1);
+	}
+}
+
 TEST_CASE("a long playback keeps a bounded ring and still seeks to the start")
 {
 	constexpr int kFrames = 9000;

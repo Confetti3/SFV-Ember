@@ -13,7 +13,7 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvPick.hxx"
 #include "ember/SfvPickSpace.hxx"
-#include "ember/SfvSelectionScreen.hxx"
+#include "ember/SfvPickPages.hxx"
 #include "mod/SfvOffsets.hxx"
 #include "mod/TinyFighters.hxx"
 
@@ -204,7 +204,8 @@ TEST_CASE("a replay's header keeps a side's size, written only for Tiny")
 	// A header with no tiny side holds no size at all, so every other file is what it was.
 	replay::Replay plain;
 	const std::vector<std::uint8_t> plainBytes = replay::Encode(plain);
-	CHECK(std::search(plainBytes.begin(), plainBytes.end(), "\"size\"", "\"size\"" + 6) == plainBytes.end());
+	const std::string sizeKey = "\"size\"";
+	CHECK(std::search(plainBytes.begin(), plainBytes.end(), sizeKey.begin(), sizeKey.end()) == plainBytes.end());
 }
 
 TEST_CASE("the pick screen shows the Size row only in a room that allows tiny fighters")
@@ -216,15 +217,15 @@ TEST_CASE("the pick screen shows the Size row only in a room that allows tiny fi
 	const auto has = [](const std::vector<sf4e::ui::MenuEntry>& rows) {
 		return std::any_of(rows.begin(), rows.end(), [](const sf4e::ui::MenuEntry& row) { return row.id == "size"; });
 	};
-	CHECK_FALSE(has(SfvSelectionScreen::Rows(pick, true, true, true, stages)));
-	CHECK_FALSE(has(SfvSelectionScreen::Rows(pick, true, true, true, stages, false)));
-	const std::vector<sf4e::ui::MenuEntry> rows = SfvSelectionScreen::Rows(pick, true, true, true, stages, true);
+	CHECK_FALSE(has(pickpages::Rows(pick, true, true, true, stages)));
+	CHECK_FALSE(has(pickpages::Rows(pick, true, true, true, stages, false)));
+	const std::vector<sf4e::ui::MenuEntry> rows = pickpages::Rows(pick, true, true, true, stages, true);
 	REQUIRE(has(rows));
 	const auto row = std::find_if(rows.begin(), rows.end(), [](const sf4e::ui::MenuEntry& entry) { return entry.id == "size"; });
 	CHECK(row->choices.size() == 2);
 	CHECK(row->enabled);
 	// Locked while the pick may not change.
-	const std::vector<sf4e::ui::MenuEntry> locked = SfvSelectionScreen::Rows(pick, false, true, true, stages, true);
+	const std::vector<sf4e::ui::MenuEntry> locked = pickpages::Rows(pick, false, true, true, stages, true);
 	CHECK_FALSE(std::find_if(locked.begin(), locked.end(), [](const sf4e::ui::MenuEntry& entry) { return entry.id == "size"; })->enabled);
 
 	// Right makes it Tiny, Left normal again; a chosen option does the same; a number that is no size does nothing.
@@ -232,20 +233,20 @@ TEST_CASE("the pick screen shows the Size row only in a room that allows tiny fi
 	action.kind = sf4e::ui::MenuAction::Adjust;
 	action.id = "size";
 	action.delta = 1;
-	CHECK(SfvSelectionScreen::Apply(action, pick, stages));
+	CHECK(pickpages::Apply(action, pick, stages));
 	CHECK(pick.pick.size == 1);
 	action.delta = -1;
-	CHECK(SfvSelectionScreen::Apply(action, pick, stages));
+	CHECK(pickpages::Apply(action, pick, stages));
 	CHECK(pick.pick.size == 0);
 	action.kind = sf4e::ui::MenuAction::Chosen;
 	action.text = "#1";
-	CHECK(SfvSelectionScreen::Apply(action, pick, stages));
+	CHECK(pickpages::Apply(action, pick, stages));
 	CHECK(pick.pick.size == 1);
 	action.text = "#5";
-	CHECK_FALSE(SfvSelectionScreen::Apply(action, pick, stages));
+	CHECK_FALSE(pickpages::Apply(action, pick, stages));
 	CHECK(pick.pick.size == 1);
 	// The pane previews the focused option.
-	const PlayerPick shown = SfvSelectionScreen::Previewed(pick, "size", "#0");
+	const PlayerPick shown = pickpages::Previewed(pick, "size", "#0");
 	CHECK(shown.pick.size == 0);
 }
 

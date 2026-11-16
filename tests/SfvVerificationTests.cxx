@@ -146,7 +146,7 @@ TEST_CASE("a check that starts late publishes from the oldest checkpoint the ses
 	};
 	std::map<int, BattleHashV2> remote;
 	exchange.Step(pair.a, &send, remote);
-	// The pair hashes every frame (verifyLoads) and the session keeps the
+	// The pair hashes every frame (LoopbackPair) and the session keeps the
 	// last 256 of them, 165 to 420 here: the checkpoints before 165 are gone.
 	REQUIRE(published.size() >= 4);
 	const int firstKept = (165 + kInterval - 1) / kInterval * kInterval;

@@ -44,6 +44,22 @@
 // The session sets nothing process-wide: GGPO's assertion handler, like every
 // other handler a crash reaches, is the host's crash record's (the mod's
 // mod/CrashRecord.hxx, the tests' GgpoAssertions.cxx).
+//
+// Where the class lives, by role (one class, five files under core/):
+// * RollbackSession.cxx: the session's life (Start, Close, a failure, the
+//   abort latch) and the fighters' steps (Step, StepHeld, Poll), with the
+//   link's readings (rift, countdown, recent rollbacks).
+// * RollbackSessionCallbacks.cxx: GGPO's callbacks and what they reach: the
+//   save pool (Save, Load, Free), a rollback's frames and GGPO's events.
+// * RollbackSessionHashes.cxx: the frames' hashes once final, the
+//   checkpoints (their region hashes and kept states) and what the session
+//   answers of them (HashAt, SavedState, CheckpointState, ...).
+// * RollbackSessionWatchers.cxx: a watching copy's frames (StepWatched, a
+//   replay's included), P1's watchers and the session kept for them.
+// * RollbackSessionReplay.cxx: a replay's frames, a lagged replay's
+//   checkpoints and the replay check's log; RestoreReplay is ReplaySeeker.cxx's.
+// RollbackSessionScopes.hxx holds the two scoped helpers the files that make
+// GGPO calls share (ActiveScope, ConfirmedOnReturn).
 
 #include "core/Checkpoints.hxx"
 #include "core/DetachedGame.hxx"
@@ -91,21 +107,17 @@ public:
 		int inputDelay = 0;                // frames
 		int disconnectTimeoutMs = 5000;
 		int disconnectNotifyStartMs = 750;
-		bool verifyLoads = false;          // re-hash every restored state (and hash every frame)
 		// Re-hashes a sample of the restored states: every this many loads,
 		// the restored state's hash is compared with its save's, and a
-		// mismatch is logged and counted (Stats::loadMismatches). 0: none.
-		// verifyLoads checks every load.
+		// mismatch is logged and counted (Stats::loadMismatches). 0: none;
+		// 1: every load.
 		int verifyLoadsEvery = 0;
-		// Cheaper rollbacks (docs/design/beta8/perf.md). Neither changes a
-		// hash peers compare, a checkpoint, or what any load restores; false
-		// plays as before, for comparison.
-		// * A save no load can reach keeps no copy of the state: one made once
-		//   both players' inputs for the frame after it are confirmed.
-		bool skipUnloadableSaves = true;
-		// * A frame is hashed once its state is final (every input before it
-		//   confirmed), from its save, instead of on every save of it.
-		bool hashOnConfirm = true;
+		// The rollbacks' savings (docs/design/beta8/perf.md), which change no
+		// hash peers compare, no checkpoint and nothing any load restores, are
+		// the session's one way: a save no load can reach (one made once both
+		// players' inputs for the frame after it are confirmed) keeps no copy
+		// of the state, and a frame is hashed once its state is final (every
+		// input before it confirmed), from its save.
 		// Diagnostics and tests: each save that kept no copy, by frame.
 		// Called inside GGPO's calls, so it must not call the session.
 		std::function<void(int frame)> onSaveSkipped;
@@ -131,7 +143,7 @@ public:
 		uint64_t watcherSyncDeadlineMs = sf4e::SpectatorPolicy::SyncDeadlineMs;
 		// This copy only watches: it plays the confirmed frames P1 streams
 		// from remoteIp:remotePort and sends nothing of its own. localPlayer,
-		// inputDelay, the disconnect settings and verifyLoads do not apply.
+		// inputDelay, the disconnect settings and verifyLoadsEvery do not apply.
 		bool watching = false;
 		// This copy plays a recorded battle back: frame N plays replay[N], as
 		// a watcher plays P1's frame N, with no GGPO session. It implies
@@ -163,9 +175,8 @@ public:
 		// final. Called inside GGPO's calls, so it must not call the session.
 		std::function<void(int frame, const RecordedFrame& played)> onFrame;
 		// Each checkpoint's peers' hash (every kCheckpointInterval frames), as
-		// the "checkpoint:" log line has it; again for a frame saved again
-		// (with Config::hashOnConfirm, once the frame is final, so again only
-		// for a final frame a dropped fighter's reload saves again, alike).
+		// the "checkpoint:" log line has it, once the frame is final; again
+		// only for a final frame a dropped fighter's reload saves again, alike.
 		std::function<void(int frame, uint64_t hash)> onCheckpoint;
 	};
 
@@ -184,10 +195,10 @@ public:
 		uint64_t resimulatedFrames = 0;
 		int longestRollback = 0;
 		uint64_t predictionStalls = 0;
-		uint64_t loadMismatches = 0;       // verifyLoads, verifyLoadsEvery
-		uint64_t loadsVerified = 0;        // restores re-hashed (verifyLoads, verifyLoadsEvery)
-		uint64_t savesSkipped = 0;         // saves that kept no copy (skipUnloadableSaves)
-		uint64_t hashesOnConfirm = 0;      // frames hashed once final, after their save (hashOnConfirm)
+		uint64_t loadMismatches = 0;       // verifyLoadsEvery
+		uint64_t loadsVerified = 0;        // restores re-hashed (verifyLoadsEvery)
+		uint64_t savesSkipped = 0;         // saves that kept no copy (no load could reach them)
+		uint64_t hashesOnConfirm = 0;      // frames hashed once final, after their save
 		uint64_t hashesDropped = 0;        // saves a rollback replaced before they were final: never hashed
 		uint64_t skippedLoads = 0;         // loads of a save that kept no copy (never expected; fails the session)
 		int timesyncFramesAhead = 0;       // last recommendation; the host paces
@@ -237,8 +248,15 @@ public:
 	// then the game's post-restore callbacks), and the next Step plays
 	// `frame`. False with nothing changed for a replay that is not a plain
 	// one (a lagged or rollback-checked one) or while the game is held; false
-	// with the session failed when the game could not take the state back.
+	// with the session failed when the game could not take the state back,
+	// or when the game no longer is what the layout describes (checked before
+	// a byte is written, as a rollback's load does).
 	bool RestoreReplay(const uint8_t* state, int frame);
+	// The game's own word that its state can no longer be kept faithful
+	// (GameAdapter::StateFailure; the stand-in's once kept for watchers);
+	// null while it can. Whoever reads the layout's memory outside the
+	// session's own calls (ReplaySeeker's snapshots) asks first.
+	const char* GameStateFailure() const { return game_->StateFailure(); }
 	bool Running() const { return gate_.phase == sf4e::gate::PHASE_RUNNING; }
 	bool Failed() const { return failed_; }
 	const std::string& FailureReason() const { return failure_; }
@@ -310,14 +328,13 @@ public:
 	static int DisconnectCountdown(bool warned, uint32_t warnedAtMs, int timeoutMs, uint32_t nowMs);
 	// Hash of the state saved for `frame`, if it was hashed (see
 	// Config::hashEveryFrames) and is still in the history (or kept, see
-	// Config::keepAllHashes). With Config::hashOnConfirm a frame is hashed
-	// once its state is final (frame - 1 confirmed), so there is no hash of
-	// it before; without, each save of it is hashed, and the hash is final
-	// once the frame is. Peers compare final hashes.
+	// Config::keepAllHashes). A frame is hashed once its state is final
+	// (frame - 1 confirmed), so there is no hash of it before. Peers compare
+	// final hashes.
 	bool HashAt(int frame, uint64_t* out) const;
 	// The saved bytes of `frame` while its save is still in the pool (the
 	// latest frames), laid out by StateLayout::SaveTo; null otherwise, and
-	// for a save that kept no copy (Config::skipUnloadableSaves).
+	// for a save that kept no copy (no load could reach it).
 	const uint8_t* SavedState(int frame) const;
 	// The save of `frame` keeps its copy whether or not a load can reach it,
 	// so SavedState answers it (a dump of that frame). Until changed.
@@ -337,7 +354,7 @@ private:
 	struct Slot {
 		bool used = false;
 		bool copied = false;     // bytes hold the frame's state; false: a save no load can reach
-		bool pending = false;    // to be hashed once the frame is final (Config::hashOnConfirm)
+		bool pending = false;    // to be hashed once the frame is final
 		int frame = -1;
 		long long copyTicks = 0; // the copy's time, for the checkpoint line
 		std::vector<uint8_t> bytes;
@@ -346,7 +363,11 @@ private:
 		int frame = -1;
 		uint64_t hash = 0;
 	};
-	class ActiveScope;
+	class ActiveScope; // RollbackSessionScopes.hxx
+	// The session making a GGPO call, for the static callbacks (ActiveScope).
+	static RollbackSession* s_active;
+	// Frame hashes kept for HashAt (the latest this many frames).
+	static constexpr int kHistory = 256;
 
 	static bool __cdecl OnBeginGame(const char*);
 	static bool __cdecl OnSave(unsigned char** buffer, int* len, int* checksum, int frame);
@@ -367,8 +388,8 @@ private:
 	// live state is that frame's and its save kept no copy.
 	void RecordHash(int frame, const uint8_t* bytes, long long copyTicks);
 	// Whether frame `frame`'s state is hashed at all: every checkpoint, and
-	// every Config::hashEveryFrames frame (every frame with verifyLoads); none
-	// once the game is let go (KeepForWatchers).
+	// every Config::hashEveryFrames frame; none once the game is let go
+	// (KeepForWatchers).
 	bool HashedFrame(int frame) const;
 	// The state saved as `frame` is final: the inputs of every frame before
 	// it are confirmed (as of the last reading, confirmed_), so no rollback
@@ -376,12 +397,12 @@ private:
 	// sf4e::statehash::IsConfirmedCheckpoint has).
 	bool Final(int frame) const { return frame - 1 <= confirmed_; }
 	// Reads the last confirmed frame, then hashes the pending saves it made
-	// final, in frame order (Config::hashOnConfirm). Run after every GGPO
+	// final, in frame order. Run after every GGPO
 	// call that may confirm frames, and before each save.
 	void HashConfirmed();
 	void HashPending(Slot& slot);
 	// Runs HashConfirmed as the session call it is made in returns, whatever
-	// way it returns.
+	// way it returns (RollbackSessionScopes.hxx).
 	class ConfirmedOnReturn;
 	bool Load(unsigned char* buffer);
 	void Free(void* buffer);

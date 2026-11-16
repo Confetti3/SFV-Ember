@@ -4,6 +4,7 @@
 #include "mod/ControlPipe.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/GameHooks.hxx"
+#include "mod/GameImage.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
@@ -11,6 +12,7 @@
 #include "mod/ModConfig.hxx"
 #include "mod/SfvOffsets.hxx"
 #include "mod/TinyFighters.hxx"
+#include "mod/VersusPicks.hxx"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +32,7 @@ namespace sfve::mod {
 namespace {
 
 namespace jump = sfv::jump;
+using namespace pick_text;
 
 using GetClassFn = uint8_t* (*)(const wchar_t* package);
 using NewObjectFn = uint8_t* (*)(uint8_t* outer, uint8_t* objectClass);
@@ -55,7 +58,6 @@ constexpr int kWaitForMenuFrames = 60 * 120;
 constexpr int kTargets = 3;
 constexpr int kDataTypeForTarget[kTargets] = {jump::kVersusCpuType, jump::kVersusType, jump::kTrainingType};
 
-uintptr_t s_base;
 bool s_installed; // both jump steps hooked: without them the jump crashes from the menu
 bool s_checkOwnership;
 JumpStepFn o_jumpCopyPlayers;
@@ -84,12 +86,6 @@ std::array<bool, 2> s_loadingTiny = {false, false};
 // The costume codes that launch gave both players (LoadingCodes).
 std::optional<std::array<std::uint32_t, 2>> s_loadingCodes;
 
-template <typename Fn>
-Fn At(const CodeSite& site)
-{
-	return reinterpret_cast<Fn>(s_base + site.rva);
-}
-
 template <typename R, typename... Args>
 R Virtual(uint8_t* object, uint32_t offset, Args... args)
 {
@@ -99,13 +95,13 @@ R Virtual(uint8_t* object, uint32_t offset, Args... args)
 
 void FreeGameBlock(uint8_t* owner, uint32_t pointerOffset)
 {
-	if (void* block = Field<void*>(owner, pointerOffset)) At<FreeFn>(sfv::kGameFree)(block);
+	if (void* block = Field<void*>(owner, pointerOffset)) GameFn<FreeFn>(sfv::kGameFree)(block);
 }
 
 void AssignString(uint8_t* gameString, const std::wstring& text)
 {
 	const GameString from{text.c_str(), (int32_t)text.size() + 1, (int32_t)text.size() + 1};
-	At<AssignStringFn>(sfv::kAssignString)(gameString, &from, 0);
+	GameFn<AssignStringFn>(sfv::kAssignString)(gameString, &from, 0);
 }
 
 std::string Narrow(const uint8_t* gameString)
@@ -238,16 +234,16 @@ void* h_JumpCopyPlayers(uint8_t* jumpState)
 	if (IsOurJump(jumpState) && !s_pending.loaderGiven) {
 		s_pending.loaderGiven = true;
 		GameRef flow{};
-		At<GetFlowFn>(sfv::kGetBattleFlow)(&flow);
+		GameFn<GetFlowFn>(sfv::kGetBattleFlow)(&flow);
 		bool haveLoader = flow.object && Field<uint8_t*>(flow.object, jump::kFlowLoader);
 		if (flow.object && !haveLoader) {
-			At<EnsureLoaderFn>(sfv::kEnsureLoader)(flow.object, jump::kProviderType);
+			GameFn<EnsureLoaderFn>(sfv::kEnsureLoader)(flow.object, jump::kProviderType);
 			uint8_t* provider = ModeData(flow.object);
-			uint8_t* gameData = At<GameDataFn>(sfv::kGameData)();
+			uint8_t* gameData = GameFn<GameDataFn>(sfv::kGameData)();
 			haveLoader = provider && gameData;
 			for (int player = 0; haveLoader && player < jump::kPlayers; player++) {
-				uint8_t* ref = At<PlayerRefFn>(sfv::kPlayerRef)(gameData, player);
-				At<GetPlayerSetupFn>(sfv::kGetPlayerSetup)(ref, provider + jump::kProviderPlayers + jump::kPlayerSetupSize * player);
+				uint8_t* ref = GameFn<PlayerRefFn>(sfv::kPlayerRef)(gameData, player);
+				GameFn<GetPlayerSetupFn>(sfv::kGetPlayerSetup)(ref, provider + jump::kProviderPlayers + jump::kPlayerSetupSize * player);
 			}
 		}
 		GiveBackGameRef(flow);
@@ -280,8 +276,8 @@ std::string ModeDataRefusal(uint8_t* modeData, LaunchTarget target)
 // kSettingCostume and the rest); none where the setting has no record for it.
 std::optional<PlayerLook> LoadedLook(int player)
 {
-	uint8_t* gameData = At<GameDataFn>(sfv::kGameData)();
-	uint8_t* ref = gameData ? At<PlayerRefFn>(sfv::kPlayerRef)(gameData, player) : nullptr;
+	uint8_t* gameData = GameFn<GameDataFn>(sfv::kGameData)();
+	uint8_t* ref = gameData ? GameFn<PlayerRefFn>(sfv::kPlayerRef)(gameData, player) : nullptr;
 	uint8_t* records = ref ? Field<uint8_t*>(ref, jump::kRefRecords) : nullptr;
 	const uint32_t index = ref ? Field<uint32_t>(ref, jump::kRefRecord) : jump::kSettingRecords;
 	if (!records || index >= jump::kSettingRecords) return std::nullopt;
@@ -325,7 +321,7 @@ PlayerLook WriteFighter(uint8_t* modeData, int player, const FighterPick& pick)
 {
 	const uint8_t* current = Virtual<const uint8_t*>(modeData, jump::kDataGetChara, player);
 	alignas(8) uint8_t chara[jump::kCharPkgSize];
-	At<CopyFn>(sfv::kCopyCharPkg)(chara, current);
+	GameFn<CopyFn>(sfv::kCopyCharPkg)(chara, current);
 	const std::string before = Narrow(chara + jump::kCharCode);
 	if (!pick.fighter.empty()) AssignString(chara + jump::kCharCode, pick.fighter);
 	// The voice the game's own menus would give: this copy's options for the
@@ -360,7 +356,7 @@ void WriteStage(uint8_t* modeData, const MatchPicks& picks)
 	const uint8_t* current = Virtual<const uint8_t*>(modeData, jump::kDataGetSpec);
 	if (!current) return Log("launch: no match record; the stage is left as it is");
 	alignas(8) uint8_t spec[jump::kSpecPkgSize];
-	At<CopyFn>(sfv::kCopySpecPkg)(spec, current);
+	GameFn<CopyFn>(sfv::kCopySpecPkg)(spec, current);
 	const std::string before = Narrow(spec + jump::kSpecStage);
 	const MatchRules& rules = picks.rules;
 	if (!rules.stage.empty()) AssignString(spec + jump::kSpecStage, rules.stage);
@@ -426,7 +422,7 @@ void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 // started has, so the opening level-ups depend on nothing a PC's menus left.
 void ClearCarriedCount()
 {
-	uint8_t* instance = At<GameInstanceFn>(sfv::kGameInstance)();
+	uint8_t* instance = GameFn<GameInstanceFn>(sfv::kGameInstance)();
 	if (!instance) return Log("launch: no game instance; the carried count stays as the menus left it");
 	int32_t& count = Field<int32_t>(instance, sfv::gameinstance::kCarriedCount);
 	if (count != 0) Log("launch: the carried count was %d; a room's battle and a replay start from 0", count);
@@ -467,7 +463,7 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	void* next = o_jumpSecondStep(jumpState);
 	if (!IsOurJump(jumpState)) return next;
 	GameRef flow{};
-	At<GetFlowFn>(sfv::kGetBattleFlow)(&flow);
+	GameFn<GetFlowFn>(sfv::kGetBattleFlow)(&flow);
 	uint8_t* modeData = flow.object ? ModeData(flow.object) : nullptr;
 	if (const std::string refusal = ModeDataRefusal(modeData, s_pending.picks.target); !refusal.empty()) {
 		// Too late to go back: the battle loads with the mode's defaults.
@@ -553,7 +549,7 @@ std::string LookRefusal(LookLoad state)
 // has is FighterChoiceCounts'.
 std::string MissingContent(const MatchPicks& picks)
 {
-	uint8_t* singleton = At<GameDataFn>(sfv::kGameData)();
+	uint8_t* singleton = GameFn<GameDataFn>(sfv::kGameData)();
 	if (!singleton) return "the game's content tables are not loaded";
 	for (int player = 0; player < jump::kPlayers; player++) {
 		const FighterPick& pick = picks.players[player];
@@ -593,9 +589,9 @@ void Launch(const MatchPicks& picks, LaunchFailed onFailed)
 	MatchPicks launched = picks;
 	const std::string noVersion = ChooseVersions(&launched);
 	if (!noVersion.empty()) return refuse(noVersion.c_str());
-	uint8_t* messageClass = At<GetClassFn>(sfv::kJumpMessageClass)(L"/Script/KiwiGame");
-	uint8_t* jumpClass = At<GetClassFn>(sfv::kJumpStateClass)(L"/Script/KiwiGame");
-	uint8_t* message = messageClass ? At<NewObjectFn>(sfv::kNewObject)(menu, messageClass) : nullptr;
+	uint8_t* messageClass = GameFn<GetClassFn>(sfv::kJumpMessageClass)(L"/Script/KiwiGame");
+	uint8_t* jumpClass = GameFn<GetClassFn>(sfv::kJumpStateClass)(L"/Script/KiwiGame");
+	uint8_t* message = messageClass ? GameFn<NewObjectFn>(sfv::kNewObject)(menu, messageClass) : nullptr;
 	if (!jumpClass || !message) return refuse("the battle jump's classes are missing");
 	Field<int32_t>(message, jump::kMessageMode) = (int32_t)picks.target;
 	Field<uint8_t>(message, jump::kMessageCopySetting) = 0;
@@ -629,147 +625,10 @@ void Launch(const MatchPicks& picks, LaunchFailed onFailed)
 	});
 }
 
-constexpr size_t kMaxCode = 8;
-
-bool ParseCode(const std::string& text, std::wstring* code)
-{
-	if (text == "-") return code->clear(), true;
-	if (text.empty() || text.size() > kMaxCode) return false;
-	for (char c : text) {
-		if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) return false;
-	}
-	code->assign(text.begin(), text.end());
-	return true;
-}
-
-// A costume or colour number, 0 to 255 (a room carries it in a byte), or
-// "-"/nothing for the default.
-bool ParseVariant(const std::string& text, int* value)
-{
-	if (text.empty() || text == "-") return *value = -1, true;
-	if (text.size() > 3 || text.find_first_not_of("0123456789") != std::string::npos) return false;
-	*value = atoi(text.c_str());
-	return *value <= 0xFF;
-}
-
-// A digit of PlayableRounds, or "-"/nothing for the default.
-bool ParseRounds(const std::string& text, int* rounds)
-{
-	if (text.empty() || text == "-") return *rounds = -1, true;
-	if (text.size() != 1 || !PlayableRounds(text[0] - '0')) return false;
-	*rounds = text[0] - '0';
-	return true;
-}
-
-// Seconds (RoundClockFrames) or "inf"; "-"/nothing for the default.
-bool ParseTime(const std::string& text, int* frames)
-{
-	if (text.empty() || text == "-") return *frames = -1, true;
-	if (text == "inf") return *frames = MatchRules::kNoTimeLimit, true;
-	if (text.size() > 3 || text.find_first_not_of("0123456789") != std::string::npos) return false;
-	const std::optional<int> clock = RoundClockFrames(atoi(text.c_str()));
-	if (!clock) return false;
-	*frames = *clock;
-	return true;
-}
-
-// A V-Skill or V-Trigger as the game calls it, "1" for I or "2" for II, into
-// its number; "-"/nothing for I.
-bool ParsePart(const std::string& text, int* number)
-{
-	if (text.empty() || text == "-") return *number = 0, true;
-	if (text != "1" && text != "2") return false;
-	*number = text[0] - '1';
-	return true;
-}
-
-// "CODE[:costume[:colour[:vskill[:vtrigger]]]]" or "-".
-bool ParsePick(const std::string& word, FighterPick* pick)
-{
-	*pick = FighterPick{};
-	if (word.empty() || word == "-") return true;
-	std::istringstream in(word);
-	std::string code, costume, colour, vSkill, vTrigger, extra;
-	std::getline(in, code, ':');
-	std::getline(in, costume, ':');
-	std::getline(in, colour, ':');
-	std::getline(in, vSkill, ':');
-	std::getline(in, vTrigger, ':');
-	return !std::getline(in, extra, ':') && ParseCode(code, &pick->fighter) && ParseVariant(costume, &pick->costume) &&
-		ParseVariant(colour, &pick->colour) && ParsePart(vSkill, &pick->vSkill) && ParsePart(vTrigger, &pick->vTrigger);
-}
-
 } // namespace
-
-namespace {
-
-bool GameVoice(int voice)
-{
-	return voice == jump::kVoiceJapanese || voice == jump::kVoiceEnglish;
-}
-
-} // namespace
-
-int VoiceToWrite(const FighterPick& pick, std::optional<int> ofOptions)
-{
-	if (GameVoice(pick.voice)) return pick.voice;
-	return ofOptions && GameVoice(*ofOptions) ? *ofOptions : jump::kVoiceEnglish;
-}
-
-void FillCharPkg(uint8_t* chara, const FighterPick& pick)
-{
-	if (pick.costume >= 0) Field<int32_t>(chara, jump::kCharCostume) = pick.costume;
-	if (pick.colour >= 0) Field<int32_t>(chara, jump::kCharColour) = pick.colour;
-	Field<int32_t>(chara, jump::kCharVSkill) = pick.vSkill;
-	Field<int32_t>(chara, jump::kCharVTrigger) = pick.vTrigger;
-	if (GameVoice(pick.voice)) chara[jump::kCharVoice] = (uint8_t)pick.voice;
-}
-
-std::string VoiceName(int voice)
-{
-	if (voice == jump::kVoiceJapanese) return "japanese";
-	if (voice == jump::kVoiceEnglish) return "english";
-	return std::to_string(voice);
-}
-
-bool LookMismatch(const PlayerLook& written, const PlayerLook& loaded)
-{
-	const bool voices = written.voice >= 0 && loaded.voice >= 0;
-	return !SameCode(written.fighter, loaded.fighter) || written.costume != loaded.costume || written.colour != loaded.colour ||
-		(voices && written.voice != loaded.voice);
-}
-
-bool PlayableRounds(int rounds)
-{
-	return rounds == 1 || rounds == 3 || rounds == 5 || rounds == 7;
-}
-
-std::optional<int> RoundClockFrames(int seconds)
-{
-	constexpr int kFramesPerSecond = 60, kMinSeconds = 30, kMaxSeconds = 32767 / kFramesPerSecond;
-	if (seconds < kMinSeconds || seconds > kMaxSeconds) return std::nullopt;
-	return seconds * kFramesPerSecond;
-}
-
-std::optional<int> RoomClockFrames(int seconds)
-{
-	if (seconds == kNoLimitSeconds) return MatchRules::kNoTimeLimit;
-	return RoundClockFrames(seconds);
-}
-
-bool ParseSetup(const std::string& setup, FighterPick* fighter, MatchRules* rules)
-{
-	std::istringstream in(setup);
-	std::string pick, stageCode, rounds, time, extra;
-	in >> pick >> stageCode >> rounds >> time;
-	*rules = MatchRules{};
-	return !(in >> extra) && ParsePick(pick, fighter) && (stageCode.empty() || ParseCode(stageCode, &rules->stage)) &&
-		ParseRounds(rounds, &rules->rounds) && ParseTime(time, &rules->timeFrames);
-}
 
 bool InstallVersusLaunch(uintptr_t imageBase, bool gameCheckOutsideRooms)
 {
-	s_base = imageBase;
 	s_checkOwnership = gameCheckOutsideRooms;
 	Log("launch: the game's ownership check %s; a room's match never runs it",
 		gameCheckOutsideRooms ? "runs in launches that are not a room's" : "does not run");

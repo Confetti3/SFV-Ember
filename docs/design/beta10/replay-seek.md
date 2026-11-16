@@ -16,7 +16,7 @@ list below is the final round's.
 The strip (`DrawReplayStrip`) has a thin timeline (position / total, the earliest reachable point,
 the loop's marks) and a chip per control. The pipe: `replay stepback`, `replay seek <frame>`,
 `replay jump <+/-seconds>`, `replay restart`, `replay loop`; the `replays` status reports `frame`,
-`total`, `floor`, `last`, `loop`, `snapshots`, `seeks`, `seeking`, `furthest`.
+`total`, `floor`, `lastFrame` (not `last`, which is how the last playback ended), `loop`, `snapshots`, `seeks`, `seeking`, `furthest`.
 
 ## 2. Design
 
