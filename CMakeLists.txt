@@ -161,6 +161,10 @@ add_library(sfve_ember STATIC
     src/ember/SfvTextures.cxx
     src/ember/SfvSelectGrid.cxx
     src/ember/SfvSelection.cxx
+    src/ember/SfvPickBoard.cxx
+    src/ember/SfvPickCards.cxx
+    src/ember/SfvPickLook.cxx
+    src/ember/SfvPickPages.cxx
     src/ember/SfvSelectionScreen.cxx
     src/ember/SfvShell.cxx
     src/ember/SfvSwatchStrip.cxx
@@ -318,6 +322,7 @@ add_executable(sfve_ember_tests
     tests/SfvVoiceTests.cxx
     tests/SfvLoadCodeTests.cxx
     tests/SfvSelectionScreenTests.cxx
+    tests/SfvPickPagesTests.cxx
     tests/SfvElevenTests.cxx
     tests/GameContentTests.cxx
     tests/EntitlementGrantTests.cxx
