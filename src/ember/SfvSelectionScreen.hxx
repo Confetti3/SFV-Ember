@@ -40,8 +40,8 @@
 // embedded screen does (GameMenu's EmbeddedReturn), and so does Done.
 //
 // The dummy's screen (Training select's Dummy row) edits the dummy's own
-// pick (SfvPick's CurrentDummy): no Random card, no stage, and no memory of
-// looks.
+// pick (SfvPick's CurrentDummy): no Random card and no stage; each fighter
+// has the look the dummy last had it in, as the player's pick does.
 //
 // The shell's other way to change the pick, the table page's Ultra and
 // Appearance rows and the post-match prompt's Ultra, is StepTableSelection

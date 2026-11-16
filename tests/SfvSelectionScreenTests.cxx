@@ -296,10 +296,20 @@ TEST_CASE("a fighter or costume previewed is what choosing it stores")
 	CHECK(bison.pick.costume == 0);
 	CHECK(bison.pick.color == 0);
 	CHECK(picks::LoadoutOf(bison.pick) == kOneOne);
-	// The Training dummy keeps no memory: CNL in RYU's colour 02 and V-Skill II.
-	const PlayerPick dummy = pickpages::Previewed(from, "fighter", "#4", false);
-	CHECK(dummy.pick.color == 1);
-	CHECK(picks::LoadoutOf(dummy.pick) == kTwoTwo);
+	// The Training dummy has a memory of its own: CNL, never the dummy's, is in
+	// its default look (not the player's colour 02 and V-Skill II, nor RYU's);
+	// once the dummy has had CNL in a look, that look is previewed.
+	ForgetDummyForTest();
+	const PlayerPick dummyNew = pickpages::Previewed(from, "fighter", "#1", Whose::Dummy);
+	CHECK(dummyNew.pick.color == 0);
+	CHECK(picks::LoadoutOf(dummyNew.pick) == kOneOne);
+	PlayerPick dummyCnl = PlayerPickOf(kCnl, kTwoOne);
+	dummyCnl.pick.color = 1;
+	SetDummy(dummyCnl);
+	const PlayerPick dummyBack = pickpages::Previewed(from, "fighter", "#1", Whose::Dummy);
+	CHECK(SameLook(dummyBack.pick, dummyCnl.pick));
+	CHECK(SameLook(pickpages::Previewed(from, "fighter", "#1").pick, cnl.pick));
+	ForgetDummyForTest();
 	ForgetPickMemoryForTest();
 }
 

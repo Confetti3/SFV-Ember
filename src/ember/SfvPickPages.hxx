@@ -121,9 +121,9 @@ std::vector<sf4e::ui::MenuEntry> Rows(const PlayerPick& pick, bool editable, boo
 	const std::vector<StageOption>& stageOptions, bool withSize = false);
 // The pick with the row's change made; false when the action changes
 // nothing. A stage is one of `stageOptions`' PlayableIds. A new fighter is
-// in its own look (LookFor, `remembered` as it takes it).
+// in its own look (LookFor, `whose` look of it).
 bool Apply(const sf4e::ui::MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions,
-	bool remembered = true);
+	Whose whose = Whose::Player);
 // What the pane shows for the row `rowId`.
 PreviewFocus FocusOf(const std::string& rowId);
 // The pick as the pane shows it while the option `optionId` of the row's
@@ -132,7 +132,7 @@ PreviewFocus FocusOf(const std::string& rowId);
 // or a stage. A fighter or costume this player cannot ready is shown as it
 // is, fitted to the spec alone, and so is a colour or a stage they cannot
 // choose. The pick itself for no option, or one that is not the row's.
-PlayerPick Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId, bool remembered = true);
+PlayerPick Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId, Whose whose = Whose::Player);
 
 // A choice open on the screen: its row, and the place of its focused
 // option in the row's choices.
@@ -147,7 +147,7 @@ struct OpenChoice {
 // opponent lacks (`stageOptions`' OpponentLacks), with the stage row
 // focused or its choice open.
 PickPreview PreviewOf(const PlayerPick& pick, const std::string& focus, const std::optional<OpenChoice>& choice,
-	const std::vector<sf4e::ui::MenuEntry>& rows, const std::vector<StageOption>& stageOptions, bool remembered = true);
+	const std::vector<sf4e::ui::MenuEntry>& rows, const std::vector<StageOption>& stageOptions, Whose whose = Whose::Player);
 
 // The look page's rows: Rows, with the rows that open a page made to
 // open it (Select activates them; Left and Right still step those that
@@ -171,10 +171,10 @@ std::vector<sf4e::ui::MenuEntry> LookRows(const PlayerPick& pick, bool random, b
 std::vector<sf4e::ui::MenuEntry> BoardRows(const PlayerPick& pick, bool random, bool editable, bool fighterKept, bool withRandom,
 	bool eleven = false);
 // The pick choosing the board's card `cardId` would store, for the art
-// pane: the fighter in their remembered look (`remembered`, the player's
-// screen) or in the pick's look (LookFor); the pick itself for Random's
+// pane: the fighter in their remembered look (LookFor, the one `whose` pick
+// stored last, the player's or the dummy's); the pick itself for Random's
 // card or any other id.
-PlayerPick BoardPick(const PlayerPick& pick, const std::string& cardId, bool remembered);
+PlayerPick BoardPick(const PlayerPick& pick, const std::string& cardId, Whose whose);
 // Where the board puts a cell of the grid table across, in tile pitches
 // from row 0's column 0: its column, its row's offset and, right of
 // Random's column, the room the Random tile takes beyond its own column,

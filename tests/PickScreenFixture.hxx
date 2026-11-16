@@ -48,6 +48,11 @@ inline bool HasRow(const std::vector<MenuEntry>& rows, const char* id)
 	return std::any_of(rows.begin(), rows.end(), [id](const MenuEntry& entry) { return entry.id == id; });
 }
 
+inline bool SameLook(const sf4e::selection::Pick& a, const sf4e::selection::Pick& b)
+{
+	return a.fighter == b.fighter && a.costume == b.costume && a.color == b.color && picks::LoadoutOf(a) == picks::LoadoutOf(b);
+}
+
 inline std::vector<MenuEntry> PlayerRows(const PlayerPick& pick)
 {
 	return pickpages::Rows(pick, true, true, true, StageOptions(MissingStages()));

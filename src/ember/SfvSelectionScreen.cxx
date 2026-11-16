@@ -142,6 +142,7 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 {
 	auto& nav = menu_.navigation;
 	PlayerPick pick = dummy_ ? CurrentDummy() : CurrentPick();
+	const Whose whose = dummy_ ? Whose::Dummy : Whose::Player;
 	const bool random = !dummy_ && PickRandom();
 	const bool eleven = random && PickEleven();
 	const bool withStage = !dummy_, stageMine = stageEditable && withStage;
@@ -178,7 +179,7 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 		bodyFocus_ = navigation.Focus();
 		return changed;
 	};
-	const BoardFrame frame{grid_, pick, random, !dummy_, fighterKept, eleven};
+	const BoardFrame frame{grid_, pick, random, whose, fighterKept, eleven};
 	const char* status = editable ? "selection.status_editable" : "selection.locked_detail";
 	stageCardClicked_ = false;
 	if (screen == kLook) {
@@ -190,12 +191,12 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 		// focus, opens the stage cards when clicked.
 		menu_.customDetail = true;
 		menu_.paneWidth = kBannerWidth;
-		detail = [this, &pick, &rows, &stageOptions, withStage](const std::string& focus) {
+		detail = [this, &pick, &rows, &stageOptions, withStage, whose](const std::string& focus) {
 			std::optional<OpenChoice> choice;
 			if (menu_.navigation.Choosing()) choice = OpenChoice{menu_.navigation.DialogId(), menu_.navigation.ChoiceIndex()};
 			const ImVec2 at = ImGui::GetCursorScreenPos(), room = ImGui::GetContentRegionAvail();
 			const v2::Box card =
-				DrawPickPreviewIn(PreviewOf(pick, focus, choice, rows, stageOptions, !dummy_), {at, ImVec2(at.x + room.x, at.y + room.y)});
+				DrawPickPreviewIn(PreviewOf(pick, focus, choice, rows, stageOptions, whose), {at, ImVec2(at.x + room.x, at.y + room.y)});
 			if (!withStage || !(card.W() > 0 && card.H() > 0) || menu_.navigation.Choosing()) return;
 			ImGui::SetCursorScreenPos(card.min);
 			if (ImGui::InvisibleButton("##stage-card", ImVec2(card.W(), card.H()))) stageCardClicked_ = true;
@@ -315,6 +316,7 @@ void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& scr
 	bool editable, bool stageMine, bool fighterKept, const std::vector<StageOption>& stageOptions)
 {
 	auto& nav = menu_.navigation;
+	const Whose whose = dummy_ ? Whose::Dummy : Whose::Player;
 	const auto close = [] { sf4e::ui::ForwardMenuAction({MenuAction::Close}); };
 	if (action.kind == MenuAction::Close || action.kind == MenuAction::Shortcut) sf4e::ui::ForwardMenuAction(action);
 	// Opened for one change, Back from the page it opened on goes back to
@@ -348,14 +350,10 @@ void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& scr
 			} else if (const std::optional<int> fighter = sf4e::ui::RowKey<int>(action.id, kFighterCard)) {
 				const bool choosable = editable && !fighterKept && ember::ValidFighter(*fighter) && !FighterLocked(*fighter);
 				if (choosable) {
-					// The player's fighter is chosen as every path chooses it
-					// (ChooseFighter); the dummy has no memory, and no Random.
-					if (dummy_) {
-						pick.pick = LookFor(pick.pick, *fighter, false);
-						store = true;
-					} else {
-						ChooseFighter(*fighter);
-					}
+					// The fighter is chosen as every path chooses it
+					// (ChooseFighter), in the look its pick last had it in; the
+					// dummy has no Random.
+					ChooseFighter(*fighter, {}, whose);
 					if (closesOnChoice_ && startPage_.empty()) close();
 					else look();
 				} else if (*fighter == pick.pick.fighter) look();
@@ -420,10 +418,10 @@ void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& scr
 	} else if (screen == kLook && editable && (action.kind == MenuAction::Adjust || action.kind == MenuAction::Chosen)) {
 		// The value rows step and choose in place; the stage only where it is
 		// this player's.
-		if ((action.id != kStage || stageMine) && Apply(action, pick, stageOptions, !dummy_)) {
+		if ((action.id != kStage || stageMine) && Apply(action, pick, stageOptions, whose)) {
 			// A fighter stepped or chosen here is chosen as on the board:
 			// Random and Eleven off, the fighter in its own look.
-			if (action.id == kFighter && !dummy_) ChooseFighter(pick.pick.fighter);
+			if (action.id == kFighter) ChooseFighter(pick.pick.fighter, {}, whose);
 			else store = true;
 		}
 	}

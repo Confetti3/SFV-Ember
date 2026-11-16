@@ -51,11 +51,6 @@ std::vector<std::string> IdsOf(const std::vector<MenuEntry>& rows)
 	return ids;
 }
 
-bool SameLook(const sf4e::selection::Pick& a, const sf4e::selection::Pick& b)
-{
-	return a.fighter == b.fighter && a.costume == b.costume && a.color == b.color && picks::LoadoutOf(a) == picks::LoadoutOf(b);
-}
-
 using Pages = std::vector<std::pair<std::string, std::string>>;
 
 } // namespace
@@ -110,6 +105,8 @@ TEST_CASE("the board has a card for every fighter in the roster's order, then Ra
 TEST_CASE("the board's art pane shows the look choosing the fighter stores: their remembered look on the player's screen")
 {
 	FillTestCatalog();
+	ForgetPickMemoryForTest();
+	ForgetDummyForTest();
 	// RYU last stored in Nostalgia, colour 02, both II; then CNL.
 	PlayerPick ryu = PlayerPickOf(kRyu, kTwoTwo);
 	ryu.pick.costume = 4;
@@ -121,28 +118,39 @@ TEST_CASE("the board's art pane shows the look choosing the fighter stores: thei
 	REQUIRE(RememberedLook(kRyu).has_value());
 	CHECK(SameLook(*RememberedLook(kRyu), ryu.pick));
 	// The player's screen: RYU as last stored.
-	PlayerPick shown = pickpages::BoardPick(cnl, "fighter-0", true);
+	PlayerPick shown = pickpages::BoardPick(cnl, "fighter-0", Whose::Player);
 	CHECK(SameLook(shown.pick, ryu.pick));
 	CHECK(SameLook(LookFor(cnl.pick, kRyu, true), ryu.pick));
-	// The dummy's screen keeps no memory: CNL's look fitted to RYU.
-	shown = pickpages::BoardPick(cnl, "fighter-0", false);
+	// The dummy's screen has a memory of its own: RYU, which the dummy never
+	// had, is in its default look, not CNL's (nor the player's RYU).
+	shown = pickpages::BoardPick(cnl, "fighter-0", Whose::Dummy);
 	CHECK(shown.pick.fighter == kRyu);
 	CHECK(shown.pick.costume == 0);
-	CHECK(shown.pick.color == 1);
-	CHECK(picks::LoadoutOf(shown.pick) == kTwoOne);
+	CHECK(shown.pick.color == 0);
+	CHECK(picks::LoadoutOf(shown.pick) == kOneOne);
+	// Once the dummy has had RYU in another look, that look is back on its
+	// screen, and the player's RYU is still as the player last stored it.
+	PlayerPick dummyRyu = PlayerPickOf(kRyu, kTwoOne);
+	dummyRyu.pick.color = 1;
+	SetDummy(dummyRyu);
+	shown = pickpages::BoardPick(cnl, "fighter-0", Whose::Dummy);
+	CHECK(SameLook(shown.pick, dummyRyu.pick));
+	CHECK(SameLook(pickpages::BoardPick(cnl, "fighter-0", Whose::Player).pick, ryu.pick));
 	// A fighter this player cannot play, as the spec fits it.
-	shown = pickpages::BoardPick(cnl, "fighter-2", false);
+	shown = pickpages::BoardPick(cnl, "fighter-2", Whose::Dummy);
 	CHECK(shown.pick.fighter == kKen);
 	CHECK(shown.pick.costume == 0);
 	CHECK(picks::LoadoutOf(shown.pick) == kOneOne);
 	// The stored fighter, Random's card and any other id: the pick itself.
 	for (const char* id : {"fighter-1", "random-fighter", "eleven-fighter", "stage-2", "fighter-99"}) {
 		CAPTURE(id);
-		CHECK(SameLook(pickpages::BoardPick(cnl, id, true).pick, cnl.pick));
+		CHECK(SameLook(pickpages::BoardPick(cnl, id, Whose::Player).pick, cnl.pick));
 	}
 	// The stage is never part of a fighter's look.
 	cnl.stage = 2;
-	CHECK(pickpages::BoardPick(cnl, "fighter-0", true).stage == 2);
+	CHECK(pickpages::BoardPick(cnl, "fighter-0", Whose::Player).stage == 2);
+	ForgetDummyForTest();
+	ForgetPickMemoryForTest();
 }
 
 TEST_CASE("the look page's rows open the board and the cards, and the costume code its choices")
@@ -577,7 +585,7 @@ TEST_CASE("the costume cards and the costume row never offer the costume the gam
 	CHECK(pick.pick.costume == 4);
 	CHECK_FALSE(pickpages::Apply(Choose("costume", "#15"), pick, StageOptions(MissingStages())));
 	CHECK(pickpages::Previewed(ryu, "costume", "#15").pick.costume == 0);
-	CHECK(pickpages::BoardPick(PlayerPickOf(kCnl, kOneOne), "fighter-0", false).pick.costume != 15);
+	CHECK(pickpages::BoardPick(PlayerPickOf(kCnl, kOneOne), "fighter-0", Whose::Dummy).pick.costume != 15);
 }
 
 TEST_CASE("choosing a fighter is the same by the board, the look page's Fighter row, a Random roll and the pipe: the fighter in its own look")
@@ -609,14 +617,21 @@ TEST_CASE("choosing a fighter is the same by the board, the look page's Fighter 
 	CHECK(shown.pick.costume == 0);
 	CHECK(shown.pick.color == 0);
 	CHECK(picks::LoadoutOf(shown.pick) == kOneOne);
-	// The dummy's page keeps no memory: it carries its look to the new fighter.
+	// The dummy's page has a memory of its own: RYU, never the dummy's, is in
+	// its default look, and the look the dummy last had once it has had one.
 	shown = cnl;
-	REQUIRE(pickpages::Apply(Choose("fighter", "#0"), shown, stages, false));
-	CHECK(shown.pick.color == 1);
-	CHECK(picks::LoadoutOf(shown.pick) == kTwoOne);
+	REQUIRE(pickpages::Apply(Choose("fighter", "#0"), shown, stages, Whose::Dummy));
+	CHECK(shown.pick.color == 0);
+	CHECK(picks::LoadoutOf(shown.pick) == kOneOne);
+	PlayerPick dummyRyu = PlayerPickOf(kRyu, kTwoOne);
+	dummyRyu.pick.color = 1;
+	SetDummy(dummyRyu);
+	shown = cnl;
+	REQUIRE(pickpages::Apply(Choose("fighter", "#0"), shown, stages, Whose::Dummy));
+	CHECK(SameLook(shown.pick, dummyRyu.pick));
 	// Every way to choose a fighter gives the look the page shows, from CNL.
 	std::uint64_t roll = 0xD0000001;
-	const auto viaBoard = [&](int fighter) { return pickpages::BoardPick(cnl, "fighter-" + std::to_string(fighter), true).pick; };
+	const auto viaBoard = [&](int fighter) { return pickpages::BoardPick(cnl, "fighter-" + std::to_string(fighter), Whose::Player).pick; };
 	const auto viaChoose = [&](int fighter) { return ChooseFighter(fighter).pick; }; // the page's row and the board's card
 	const auto viaPipe = [&](int fighter) {
 		return ChooseFighter(fighter, [](PlayerPick& edited) { edited.stage = 2; }).pick; // `pick CODE S02`

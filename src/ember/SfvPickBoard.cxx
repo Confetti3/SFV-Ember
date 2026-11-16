@@ -229,7 +229,7 @@ void DrawBoard(const std::vector<MenuEntry>& entries, MenuNavigation& nav, MenuA
 	// The art pane: the focused card.
 	if (const MenuEntry* focused = EntryOf(entries, nav.Focus())) {
 		PickPreview preview;
-		preview.pick = pickpages::BoardPick(frame.pick, focused->id, frame.remembered);
+		preview.pick = pickpages::BoardPick(frame.pick, focused->id, frame.whose);
 		if (focused->id == kRandomCard) {
 			preview.focus = PreviewFocus::Random;
 			preview.randomSaved = frame.random && !frame.eleven;

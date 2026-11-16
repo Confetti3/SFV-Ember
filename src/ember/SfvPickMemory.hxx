@@ -37,14 +37,19 @@ namespace sfve::picks {
 // before anyone has chosen one.
 sf4e::selection::Pick UnchosenLook(int fighter);
 
+// Whose pick a look belongs to: the player's, or Training's dummy's (SfvPick's
+// CurrentDummy), which keeps a look for each fighter of its own, apart from the
+// player's, as the player's pick does.
+enum class Whose { Player, Dummy };
+
 class PickMemory {
 public:
 	// The look stored last for the fighter; none for one never stored.
-	std::optional<sf4e::selection::Pick> LookOf(int fighter) const;
+	std::optional<sf4e::selection::Pick> LookOf(int fighter, Whose whose = Whose::Player) const;
 	// Stores the pick as its fighter's look. True when the costume, colour or
 	// loadout changed, which is what is saved; the rest of the pick (its size
 	// and costume code) is remembered for this run only.
-	bool RememberLook(const sf4e::selection::Pick& pick);
+	bool RememberLook(const sf4e::selection::Pick& pick, Whose whose = Whose::Player);
 
 	// The saved memory read after this run began to remember (a late
 	// restore): the saved look of every fighter this run has stored none for,
@@ -58,15 +63,21 @@ public:
 	bool Choose(int fighter);
 
 	// The saved form: {"version": 1, "fighter": "RYU", "looks": {"RYU":
-	// {"costume", "colour", "vSkill", "vTrigger"}}}, the looks in the pick
-	// space's order. Looks of a fighter outside the space are not written.
+	// {"costume", "colour", "vSkill", "vTrigger"}}, "dummy": {"looks": {...}}},
+	// the looks in the pick space's order. Looks of a fighter outside the
+	// space are not written, and "dummy" only where the dummy has a look. The
+	// dummy's fighter is not saved: it starts as the player's own.
 	nlohmann::json ToJson(const PickSpace& space) const;
 	// The memory the saved form holds that the space allows; empty for
 	// anything that is not the saved form.
 	static PickMemory FromJson(const nlohmann::json& saved, const PickSpace& space);
 
 private:
-	std::array<std::optional<sf4e::selection::Pick>, ::ember::MaxFighters> looks_;
+	using Looks = std::array<std::optional<sf4e::selection::Pick>, ::ember::MaxFighters>;
+	Looks& LooksOf(Whose whose) { return whose == Whose::Dummy ? dummyLooks_ : looks_; }
+	const Looks& LooksOf(Whose whose) const { return whose == Whose::Dummy ? dummyLooks_ : looks_; }
+	Looks looks_;
+	Looks dummyLooks_;
 	std::optional<int> chosen_;
 };
 

@@ -178,7 +178,7 @@ std::vector<MenuEntry> Rows(const PlayerPick& pick, bool editable, bool withStag
 	return rows;
 }
 
-bool Apply(const MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions, bool remembered)
+bool Apply(const MenuAction& action, PlayerPick& pick, const std::vector<StageOption>& stageOptions, Whose whose)
 {
 	if (const std::optional<picks::LoadoutPart> part = PartOfRow(action.id)) return ApplyPart(action, *part, pick.pick);
 	const ember::GameCatalog& catalog = ember::Catalog();
@@ -219,7 +219,7 @@ bool Apply(const MenuAction& action, PlayerPick& pick, const std::vector<StageOp
 		else if (action.id == kCostumeCode && pickable(LoadCodeIds())) picks::SetLoadCode(pick.pick, *option);
 		else if (action.id == kSize && pickable(SizeIds())) pick.pick.size = *option;
 	}
-	if (pick.pick.fighter != before.pick.fighter) pick.pick = LookFor(before.pick, pick.pick.fighter, remembered);
+	if (pick.pick.fighter != before.pick.fighter) pick.pick = LookFor(before.pick, pick.pick.fighter, whose);
 	return pick.pick.fighter != before.pick.fighter || pick.pick.costume != before.pick.costume ||
 		pick.pick.color != before.pick.color || pick.stage != before.stage ||
 		pick.pick.personalAction != before.pick.personalAction || pick.pick.size != before.pick.size;
@@ -255,7 +255,7 @@ PreviewFocus FocusOf(const std::string& rowId)
 	return PreviewFocus::Look;
 }
 
-PlayerPick Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId, bool remembered)
+PlayerPick Previewed(const PlayerPick& pick, const std::string& rowId, const std::string& optionId, Whose whose)
 {
 	PlayerPick shown = pick;
 	const std::optional<int> option = OptionOf(optionId);
@@ -271,7 +271,7 @@ PlayerPick Previewed(const PlayerPick& pick, const std::string& rowId, const std
 		// The fighter as choosing it would store the pick (LookFor): in its own
 		// look this player can ready, or for one they cannot play, as the spec
 		// fits it.
-		if (*option != look.fighter) look = LookFor(look, *option, remembered);
+		if (*option != look.fighter) look = LookFor(look, *option, whose);
 	} else if (rowId == kCostume && Contains(CostumeIds(look.fighter, false), *option)) {
 		// A costume this player can ready as choosing it would store it; one
 		// they cannot is shown as it is, in the colour the spec fits to it.
@@ -289,7 +289,7 @@ PlayerPick Previewed(const PlayerPick& pick, const std::string& rowId, const std
 }
 
 PickPreview PreviewOf(const PlayerPick& pick, const std::string& focus, const std::optional<OpenChoice>& choice,
-	const std::vector<MenuEntry>& rows, const std::vector<StageOption>& stageOptions, bool remembered)
+	const std::vector<MenuEntry>& rows, const std::vector<StageOption>& stageOptions, Whose whose)
 {
 	PickPreview preview;
 	// With a choice open, its row and its focused option, the index checked
@@ -306,7 +306,7 @@ PickPreview PreviewOf(const PlayerPick& pick, const std::string& focus, const st
 			if (!option.enabled && FocusOf(rowId) == PreviewFocus::Look) preview.note = option.detail;
 		}
 	}
-	preview.pick = Previewed(pick, rowId, optionId, remembered);
+	preview.pick = Previewed(pick, rowId, optionId, whose);
 	preview.focus = FocusOf(rowId);
 	if (const std::optional<picks::LoadoutPart> part = PartOfRow(rowId)) preview.part = *part;
 	bool stageBanned = false;

@@ -157,9 +157,15 @@ PlayerPick UpdatePick(const std::function<bool(PlayerPick&)>& edit)
 	return SetPick(pick);
 }
 
-PlayerPick ChooseFighter(int fighter, const std::function<void(PlayerPick&)>& then)
+PlayerPick ChooseFighter(int fighter, const std::function<void(PlayerPick&)>& then, Whose whose)
 {
 	std::lock_guard lock(s_mutex);
+	if (whose == Whose::Dummy) {
+		PlayerPick dummy = CurrentDummy();
+		dummy.pick = LookFor(dummy.pick, fighter, Whose::Dummy);
+		if (then) then(dummy);
+		return SetDummy(dummy);
+	}
 	// Before the store, so it is the fighter chosen and not a roll.
 	SetPickRandom(false);
 	return UpdatePick([&](PlayerPick& pick) {
@@ -184,6 +190,9 @@ PlayerPick SetDummy(const PlayerPick& dummy)
 	s_dummy = Fitted(dummy);
 	LogRefitted("dummy asked for", dummy, *s_dummy);
 	s_dummy->stage = 0;
+	// The dummy's own look for its fighter, saved with the player's.
+	s_touched = true;
+	if (s_memory.RememberLook(s_dummy->pick, Whose::Dummy)) s_revision++;
 	return *s_dummy;
 }
 
@@ -259,15 +268,20 @@ void SetPickEleven(bool eleven)
 	s_changes++;
 }
 
-std::optional<sf4e::selection::Pick> RememberedLook(int fighter)
+std::optional<sf4e::selection::Pick> RememberedLook(int fighter, Whose whose)
 {
 	std::lock_guard lock(s_mutex);
-	return s_memory.LookOf(fighter);
+	return s_memory.LookOf(fighter, whose);
+}
+
+sf4e::selection::Pick LookFor(const sf4e::selection::Pick& pick, int fighter, Whose whose)
+{
+	return WornLook(RememberedLook(fighter, whose), fighter, pick);
 }
 
 sf4e::selection::Pick LookFor(const sf4e::selection::Pick& pick, int fighter, bool remembered)
 {
-	if (remembered) return WornLook(RememberedLook(fighter), fighter, pick);
+	if (remembered) return LookFor(pick, fighter, Whose::Player);
 	sf4e::selection::Pick look = pick;
 	look.fighter = fighter;
 	if (ember::ValidFighter(fighter)) FitLookWithin(look);

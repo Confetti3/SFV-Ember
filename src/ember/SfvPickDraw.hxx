@@ -54,7 +54,7 @@ struct BoardFrame {
 	const grid::SelectGrid& table; // the grid table, fitted to the roster
 	const PlayerPick& pick;
 	bool random = false;     // Random is the stored pick
-	bool remembered = false; // the player's screen: fighters in their remembered looks
+	Whose whose = Whose::Player; // whose screen: fighters in their remembered looks
 	bool fighterKept = false;
 	bool eleven = false;     // the stored pick is Eleven (and `random` is set as well)
 };

@@ -218,11 +218,11 @@ void LinkRandom(std::vector<MenuEntry>& rows, const grid::SelectGrid& table)
 	}
 }
 
-PlayerPick BoardPick(const PlayerPick& pick, const std::string& cardId, bool remembered)
+PlayerPick BoardPick(const PlayerPick& pick, const std::string& cardId, Whose whose)
 {
 	PlayerPick shown = pick;
 	const std::optional<int> fighter = sf4e::ui::RowKey<int>(cardId, kFighterCard);
-	if (fighter && ember::ValidFighter(*fighter) && *fighter != pick.pick.fighter) shown.pick = LookFor(pick.pick, *fighter, remembered);
+	if (fighter && ember::ValidFighter(*fighter) && *fighter != pick.pick.fighter) shown.pick = LookFor(pick.pick, *fighter, whose);
 	return shown;
 }
 
