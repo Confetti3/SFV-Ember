@@ -752,7 +752,7 @@ def run_route(index: int, route: list[tuple[int, str, float]]) -> None:
     """Plays a menu route on a running copy's virtual pads (menus need its window in front)."""
     focus(status_pid(index))
     for slot in sorted({slot for slot, _, _ in route}):
-        request(index, f"virtual {slot} on")
+        request_ok(index, f"virtual {slot} on")
     time.sleep(1.0)
     for slot, steps, wait_s in route:
         reply = request(index, f"pad {slot} {steps}")

@@ -47,7 +47,7 @@ def shell(index: int) -> dict:
 
 
 def press(index: int, button: str) -> dict:
-    lib.request(index, f"pad 0 {button}:120 -:250")
+    lib.request_ok(index, f"pad 0 {button}:120 -:250")
     time.sleep(PRESS_S)
     return shell(index)
 
@@ -199,7 +199,7 @@ def step_backdrop(index: int, timeout_s: float = 30) -> str:
     before = backdrop(index)
     if not before["drawn"]:
         return before["current"]
-    lib.request(index, "backdrop step")
+    lib.request_ok(index, "backdrop step")
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         now = backdrop(index)

@@ -272,7 +272,7 @@ def call(shots: Path | None) -> None:
     calls = lib.count_log(0, "training: leaving for the main menu in")
     shell_steps.take_seat(1, 1)
     called_back(0, calls, shots, None)
-    lib.request(0, "pad 0 BACK:100 -:200")
+    lib.request_ok(0, "pad 0 BACK:100 -:200")
     t0 = time.time()
     wait_for("copy 0 back at the main menu after go now", 10, lambda: scene(0) == MAIN_MENU_SCENE)
     if lib.count_log(0, "shell: go now on the Training call") == 0:
@@ -366,7 +366,7 @@ def low_vital_and_hit() -> int:
     wait_for("the fight", 60, lambda: vitals(0) is not None and status(0)["battle"]["mode"]["frame"] > 1000)
     lib.focus(lib.status_pid(0))
     time.sleep(0.5)
-    lib.request(0, "pad 0 RIGHT:1400 -:100")
+    lib.request_ok(0, "pad 0 RIGHT:1400 -:100")
     time.sleep(3)
     full_vital = vitals(0)[1]
     # The timer counts up a frame at a time (1 << 16) to its cap (60 frames,
@@ -380,7 +380,7 @@ def low_vital_and_hit() -> int:
     frame = status(0)["battle"]["mode"]["frame"] + 90
     perturb_both(frame, 0, 1 - full_vital, "P2's vital at its last point on both copies")
     print(f"P2's recovery timer {timer} set to {hold} and its vital {full_vital} to 1 on both copies (frame {frame}); P1 hits")
-    lib.request(0, f"pad 0 {HITS}")
+    lib.request_ok(0, f"pad 0 {HITS}")
     return full_vital
 
 
@@ -465,7 +465,7 @@ def practice(shots: Path | None, seconds: int = 90) -> None:
     # End practice: Start opens Ember over the fight on the room's End practice.
     closes = [lib.count_log(i, "battle closed") for i in (0, 1)]
     time.sleep(2)
-    lib.request(0, "pad 0 START:120 -:250")
+    lib.request_ok(0, "pad 0 START:120 -:250")
     wait_for("Ember over the Practice match", 15, lambda: shell(0)["shown"] and shell(0)["focus"] == "end-practice")
     shot(shots, "practice-3-end-practice", 0)
     press(0, "A")  # End practice asks to confirm: Right and A confirm
