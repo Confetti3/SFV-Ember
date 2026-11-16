@@ -2,6 +2,7 @@
 
 #include "ember/SfvBackdropRules.hxx"
 #include "ember/SfvSettingsFile.hxx"
+#include "ember/SfvTextures.hxx"
 #include "mod/BuildKind.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameArt.hxx"
@@ -43,9 +44,6 @@ namespace {
 
 using backdrop::Cycle;
 
-// A loaded picture's resource comes within a frame or two; one still without
-// it after this long is given up on (as SfvArt does).
-constexpr int kResourceFrames = 120;
 // Smaller than this is not a full-screen picture: skipped.
 constexpr int kLeastWidth = 640, kLeastHeight = 360;
 // The wall clock, in seconds, for the draw watch (backdrop::DrawWatch).
@@ -111,32 +109,10 @@ bool s_scrimSet = false;
 // The setting's last turn off has let its pictures go.
 bool s_letGo = false;
 
-// The game's textures are typeless where it views them as sRGB; Ember draws
-// their stored values as they are, as SfvArt's ViewFormat does.
-DXGI_FORMAT ViewFormat(unsigned format)
-{
-	switch (format) {
-	case DXGI_FORMAT_B8G8R8A8_TYPELESS: return DXGI_FORMAT_B8G8R8A8_UNORM;
-	case DXGI_FORMAT_R8G8B8A8_TYPELESS: return DXGI_FORMAT_R8G8B8A8_UNORM;
-	case DXGI_FORMAT_BC1_TYPELESS: return DXGI_FORMAT_BC1_UNORM;
-	case DXGI_FORMAT_BC2_TYPELESS: return DXGI_FORMAT_BC2_UNORM;
-	case DXGI_FORMAT_BC3_TYPELESS: return DXGI_FORMAT_BC3_UNORM;
-	case DXGI_FORMAT_BC7_TYPELESS: return DXGI_FORMAT_BC7_UNORM;
-	default: return (DXGI_FORMAT)format;
-	}
-}
-
-// Render thread: the view of a taken texture, on the texture's own device.
+// Render thread: the view of a taken texture.
 bool MakeView(Picture& picture)
 {
-	ID3D11Device* device = nullptr;
-	picture.texture.texture->GetDevice(&device);
-	D3D11_SHADER_RESOURCE_VIEW_DESC desc{};
-	desc.Format = ViewFormat(picture.texture.format);
-	desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-	desc.Texture2D.MipLevels = 1;
-	const HRESULT made = device ? device->CreateShaderResourceView(picture.texture.texture, &desc, &picture.view) : E_FAIL;
-	if (device) device->Release();
+	const HRESULT made = textures::MakeView(picture.texture, &picture.view);
 	if (FAILED(made)) mod::Log("backdrop: no view of format %u (0x%08lX)", picture.texture.format, (unsigned long)made);
 	return SUCCEEDED(made);
 }
@@ -247,11 +223,6 @@ bool DrawBackdrop(ImDrawList* draw, ImVec2 min, ImVec2 max)
 		Ink(s_scrim.bottomLeft));
 	s_watch.Drawn();
 	return true;
-}
-
-bool AtMainMenu()
-{
-	return mod::SceneStateKind(mod::CurrentSceneState()) == mod::sfv::scene::kMainMenuVtable;
 }
 
 // --- The development build's load report and contact sheets ---
@@ -456,7 +427,7 @@ void PumpReport(bool gameLoading)
 			bool pending = false;
 			std::string why;
 			const std::optional<mod::GameTexture> texture = mod::TakeGameTexture(s_report.object, &pending, &why);
-			if (!texture && pending && ++s_report.frames < kResourceFrames) return;
+			if (!texture && pending && ++s_report.frames < textures::kResourceFrames) return;
 			s_report.object = nullptr;
 			ReportRow& row = s_report.row;
 			if (!texture) {
@@ -579,7 +550,7 @@ void DropLoading()
 
 void Pump()
 {
-	if (!AtMainMenu()) return DropLoading(); // never in a battle or on its way to one
+	if (!textures::AtMainMenu()) return DropLoading(); // never in a battle or on its way to one
 	const bool gameLoading = mod::GameIsLoading();
 	PumpReport(gameLoading);
 	const bool reporting = ReportRunning();
@@ -598,7 +569,7 @@ void Pump()
 			bool pending = false;
 			std::string why;
 			const std::optional<mod::GameTexture> texture = mod::TakeGameTexture(picture.object, &pending, &why);
-			if (!texture && pending && ++picture.frames < kResourceFrames) {
+			if (!texture && pending && ++picture.frames < textures::kResourceFrames) {
 				inFlight = true;
 				++at;
 				continue;

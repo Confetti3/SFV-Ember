@@ -138,6 +138,7 @@ add_library(sfve_ember STATIC
     src/ember/SfvRoomBuild.cxx
     src/ember/SfvScreenMode.cxx
     src/ember/SfvSettingsFile.cxx
+    src/ember/SfvTextures.cxx
     src/ember/SfvSelectGrid.cxx
     src/ember/SfvSelection.cxx
     src/ember/SfvSelectionScreen.cxx
