@@ -157,6 +157,10 @@ public:
 	// of the session). True when the cycle keeps the picture; false when it
 	// does not want it any more (Reset since), and the loader lets it go.
 	bool Loaded(int entry, bool ok);
+	// The loader let `entry` go before it arrived (the main menu was left
+	// while it loaded): not a failure. A refused one is forgotten; the next
+	// one is wanted again, and stays eligible.
+	void Abandon(int entry);
 	// The backdrop was on screen for `seconds` (clamped to kMostStep).
 	void Advance(double seconds);
 	// Fade to the next picture as soon as it has loaded, whatever the hold.

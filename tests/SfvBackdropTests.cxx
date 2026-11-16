@@ -335,6 +335,41 @@ TEST_CASE("a picture that does not load is skipped for the session, after a paus
 	CHECK(*cycle.Wanted() != first);
 }
 
+TEST_CASE("a picture abandoned while loading is not a failure: the cycle never runs out and the entry loads later")
+{
+	const Timing quick{2, 0.2, 0.1, 0.1};
+	Cycle cycle(3, 5, quick);
+	// Leaving the menu with a load in flight, many more times than there are pictures.
+	for (int i = 0; i < 20; i++) {
+		const int entry = *cycle.Wanted();
+		cycle.Started(entry);
+		CHECK(cycle.Alive() == 1);
+		cycle.Abandon(entry);
+		CHECK(cycle.Alive() == 0);
+		CHECK(cycle.Failed() == 0);
+		CHECK_FALSE(cycle.Exhausted());
+		// Its answer, if it still came, is refused; and the same entry is wanted again.
+		CHECK_FALSE(cycle.Loaded(entry, true));
+		for (int frame = 0; frame < 12; frame++) cycle.Advance(0.05);
+		REQUIRE(cycle.Wanted().has_value());
+		CHECK(*cycle.Wanted() == entry);
+	}
+	// The abandoned entry loads and shows.
+	const int entry = *cycle.Wanted();
+	cycle.Started(entry);
+	CHECK(cycle.Loaded(entry, true));
+	for (int frame = 0; frame < 20; frame++) cycle.Advance(0.05);
+	CHECK(cycle.Current() == entry);
+	// One refused by a Reset while loading is forgotten, not failed.
+	const int next = *cycle.Wanted();
+	cycle.Started(next);
+	cycle.Reset();
+	cycle.Abandon(next);
+	CHECK(cycle.Alive() == 0);
+	CHECK(cycle.Failed() == 0);
+	REQUIRE(cycle.Wanted().has_value());
+}
+
 TEST_CASE("when no picture loads, nothing is ever shown and the cycle stops asking")
 {
 	Run run(4, 8, Timing{2, 0.2, 0.1, 0.1});

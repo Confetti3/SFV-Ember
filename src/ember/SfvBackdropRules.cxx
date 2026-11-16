@@ -275,6 +275,13 @@ bool Cycle::Loaded(int entry, bool ok)
 	return false;
 }
 
+void Cycle::Abandon(int entry)
+{
+	if (entry < 0) return;
+	if (entry == stale_) stale_ = -1;
+	else if (entry == next_.entry && next_.loading) next_.loading = false;
+}
+
 void Cycle::StartFade()
 {
 	fading_ = true;

@@ -572,7 +572,7 @@ std::string StartReport(const std::string& args)
 
 // Game thread, away from the main menu: a picture loaded just before the
 // game left it is not taken later (the game may collect its object on the
-// way): it is dropped, skipped for the session as a failure is.
+// way): it is dropped, and not counted as a failure: it loads again later.
 void DropLoading()
 {
 	{
@@ -583,7 +583,7 @@ void DropLoading()
 				continue;
 			}
 			mod::Log("backdrop: %s: dropped: the main menu was left while it loaded", PathOf(at->first).c_str());
-			s_cycle.Loaded(at->first, false);
+			s_cycle.Abandon(at->first);
 			at = s_pictures.erase(at);
 		}
 	}
@@ -634,7 +634,7 @@ void Pump()
 				continue;
 			}
 			mod::Log("backdrop: %s: skipped: %s", PathOf(at->first).c_str(), pending ? "its resource never came" : why.c_str());
-			s_cycle.Loaded(at->first, false);
+			s_cycle.Abandon(at->first);
 			at = s_pictures.erase(at);
 		}
 		// One load at a time, only while the backdrop is on screen and the
