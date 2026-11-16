@@ -74,6 +74,17 @@ foreach ($folder in 'archives', 'buildtrees', 'packages', 'downloads') {
 }
 $env:VCPKG_BINARY_SOURCES = "clear;files,$VcpkgCache\archives,readwrite"
 $vcpkgOptions = "--x-buildtrees-root=$VcpkgCache\buildtrees;--x-packages-root=$VcpkgCache\packages;--downloads-root=$VcpkgCache\downloads"
+
+# What the build is made from, taken before it starts and checked again after
+# its tests: a tree that changed meanwhile has no receipt (the receipt names
+# these, and scripts\package.ps1 trusts that the binaries were built from them).
+. (Join-Path $EmberRoot 'scripts\BuildProvenance.ps1')
+$EmberRoot = (Resolve-Path -LiteralPath $EmberRoot).Path
+$sourceRevision = (& git -C $repo rev-parse HEAD)
+$sourceFingerprint = Get-SourceFingerprint $repo
+$emberRevision = (& git -C $EmberRoot rev-parse HEAD)
+$emberFingerprint = Get-SourceFingerprint $EmberRoot
+
 $triplet = 'x64-windows-static-md-wchar-filenames'
 & $cmake -S $repo -B $BuildDir -G Ninja "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_BUILD_TYPE=$Config" `
 	"-DCMAKE_TOOLCHAIN_FILE=$VcpkgRoot\scripts\buildsystems\vcpkg.cmake" `
@@ -89,6 +100,12 @@ if (!$SkipTests) {
 	& $ctest --test-dir $BuildDir --output-on-failure
 	if ($LASTEXITCODE) { throw "tests failed ($LASTEXITCODE)" }
 }
+if ($sourceRevision -ne (& git -C $repo rev-parse HEAD) -or $sourceFingerprint -ne (Get-SourceFingerprint $repo)) {
+	throw 'SFV Ember source changed while it was being built; no receipt is made for a tree the binaries were not built from. Build again.'
+}
+if ($emberRevision -ne (& git -C $EmberRoot rev-parse HEAD) -or $emberFingerprint -ne (Get-SourceFingerprint $EmberRoot)) {
+	throw 'The Ember library source changed while SFV Ember was being built; no receipt is made. Build again.'
+}
 
 # The build's receipt (build-provenance.json in the build tree), which
 # scripts/package.ps1 checks and the package carries: both checkouts that
@@ -96,8 +113,6 @@ if (!$SkipTests) {
 # library's Get-SourceFingerprint: every tracked and untracked file's hash),
 # the binaries it made and whether its tests passed. A build without its
 # tests gets one too, marked so, and package.ps1 refuses it.
-. (Join-Path $EmberRoot 'scripts\BuildProvenance.ps1')
-$EmberRoot = (Resolve-Path -LiteralPath $EmberRoot).Path
 $BuildDir = (Resolve-Path -LiteralPath $BuildDir).Path
 # Whether this build made the Discord companion: the configured build's own
 # answer (CMakeLists.txt makes ember-discord only with an SDK archive), never
@@ -114,11 +129,11 @@ $receipt = [ordered]@{
 	version = '{0}-{1}' -f (Select-String -LiteralPath (Join-Path $repo 'CMakeLists.txt') -Pattern '^project\(sfv_ember VERSION ([0-9.]+)').Matches[0].Groups[1].Value,
 		(Select-String -LiteralPath (Join-Path $repo 'CMakeLists.txt') -Pattern '^set\(SFVE_VERSION "\$\{PROJECT_VERSION\}-([^"]+)"\)').Matches[0].Groups[1].Value
 	sourceRoot = $repo
-	sourceRevision = (& git -C $repo rev-parse HEAD)
-	sourceFingerprint = Get-SourceFingerprint $repo
+	sourceRevision = $sourceRevision
+	sourceFingerprint = $sourceFingerprint
 	emberRoot = $EmberRoot
-	emberRevision = (& git -C $EmberRoot rev-parse HEAD)
-	emberFingerprint = Get-SourceFingerprint $EmberRoot
+	emberRevision = $emberRevision
+	emberFingerprint = $emberFingerprint
 	buildRoot = $BuildDir
 	config = $Config
 	# The configured build's own answer, as discordCompanion below.
