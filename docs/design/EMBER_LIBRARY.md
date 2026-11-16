@@ -2934,8 +2934,12 @@ game is reached stayed the library's; what it does is 1.6.0's.
   room; saved as SFV's index (0 to 44); member rows show the main, seats keep showing picks (`roomFacesArePicks`).
 - The gameplay device is the game's (pad 0): no capture, no save, no Change controller.
 
-**Left for later streams (the seams are named in the report of 2026-11-15)**: replay seek, step back and loop;
-Training's recording controls; the frame meter's options (`SfvHud` supplies the default `MeterOptions` in one place).
+**Replay seek** (step back, jumps, restart and the A-B loop) is the library's neutral transport
+(`common/ReplayTransport.hxx`, merged into `b10/lib-160` beside 1.6.0) with SFV's own playback under it
+(docs/design/beta10/replay-seek.md); SF4 keeps its camera panel's seek.
+
+**Left for later streams (the seams are named in the report of 2026-11-15)**: Training's recording controls; the
+frame meter's options (`SfvHud` supplies the default `MeterOptions` in one place).
 
 *Tests:* `sfve_main_tests` (a main past fighter 43, the first pick over none); the library's
 `RuntimeCapabilitiesTest` under the x64 build; SFV's own suites.
