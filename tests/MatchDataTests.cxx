@@ -42,7 +42,7 @@ TEST_CASE("equal facts agree; the first differing unit is named with what differ
 	CHECK(version->local.version == 61);
 	CHECK(version->reference.version == 43);
 	CHECK(Describe(*version) == "game data differs (fighter Z41): balance version 61 here, 43 at the other copy");
-	CHECK(Notice(*version).find("(fighter Z41)") != std::string::npos);
+	CHECK(NoticeFighter(*version) == "Z41");
 
 	Facts altered = here;
 	altered.fighters[1].data = 0x9999; // a mod's move data at the same version
@@ -64,6 +64,8 @@ TEST_CASE("equal facts agree; the first differing unit is named with what differ
 	CHECK(units->what == Difference::What::Units);
 	CHECK(units->unit == 3);
 	CHECK(units->local.code == "Z41");
+	// Another number of units names no fighter in the players' notice.
+	CHECK(NoticeFighter(*units).empty());
 }
 
 TEST_CASE("what either copy could not read is not compared")
