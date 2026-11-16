@@ -137,9 +137,24 @@ def fighter_row(step: str) -> Look:
     return stored()
 
 
+def seek_row(row: str, limit: int = 10) -> None:
+    """On the look page: Down until `row` or the focus stops moving, then Up the same way. (Down and Up in turn
+    never get past a row between: the page's Costume code row sits between Colour and V-Skill.)"""
+    for move in ("DOWN", "UP"):
+        for _ in range(limit):
+            here = sh.pick_place(0)["focus"]
+            if here == row:
+                return
+            sh.press(0, move)
+            if sh.pick_place(0)["focus"] == here:
+                break
+    if sh.pick_place(0)["focus"] != row:
+        raise lib.SfveError(f"copy 0: could not reach {row} on the look page (at {sh.pick_place(0)['focus']})")
+
+
 def step_row(row: str, what: str, out: Path) -> Look:
     before = stored()
-    sh.seek_pick(0, row, ["DOWN", "UP"], 10)
+    seek_row(row)
     sh.press(0, "RIGHT")
     after = stored()
     print(f"  {what}: {before.look()} -> {after.look()}")

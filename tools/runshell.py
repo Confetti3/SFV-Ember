@@ -291,6 +291,12 @@ def enter(index: int, screen: str) -> None:
                 press(index, "A")
 
 
+def seek_rounds(index: int) -> None:
+    """On Create room: the Rounds row, by Down and Up only (Left and Right would change a value)."""
+    seek(index, ("rounds", "host"), ["DOWN"], 30)
+    seek(index, "rounds", ["UP"], 20)
+
+
 def create_room(shots: Path | None) -> None:
     open_home(0)
     shot(shots, "1-menu", 0)
@@ -299,8 +305,11 @@ def create_room(shots: Path | None) -> None:
     expect(0, "online", "create")
     press(0, "A")
     expect(0, "create")
-    # Table rules: 1 round of 30 s, the shortest SFV plays.
-    seek(0, "rounds", ["DOWN", "RIGHT", "UP"], 20)
+    # Table rules: 1 round of 30 s, the shortest SFV plays. Since Ember 1.6.0 the Room panel's rows
+    # (Visibility, Privacy, Type, Tables ...) are values that Left and Right change, so the Rules
+    # panel is reached without them: Down to the Create button below both panels, then Up into the
+    # Rules panel's foot and up it to Rounds.
+    seek_rounds(0)
     press(0, "A")  # every round count SFV plays
     shot(shots, "2-rules-rounds", 0)
     press(0, "B")
