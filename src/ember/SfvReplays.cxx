@@ -119,6 +119,10 @@ sf4e::replayinputs::Summary SummaryOf(const replay::Header& h)
 		s.scored = true;
 		s.score[0] = h.games[0].wins[0];
 		s.score[1] = h.games[0].wins[1];
+		// The room's round count is a best of: 3 rounds is first to 2. A battle of
+		// several games keeps 0 (its set's length is not in the header), and the
+		// list then names no "first to".
+		if (h.rounds > 0) s.firstTo = (h.rounds + 1) / 2;
 	} else if (h.games.size() > 1) {
 		s.scored = std::all_of(h.games.begin(), h.games.end(), [](const replay::Game& g) { return g.decided; });
 		for (const replay::Game& g : h.games) {

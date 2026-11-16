@@ -133,6 +133,7 @@ TEST_CASE("the Replays screen lists the saved battles, keeps the player's mark a
 	CHECK(older.summary->score[0] == 1);
 	CHECK(older.summary->score[1] == 2);
 	CHECK(older.summary->rounds == 3u);
+	CHECK(older.summary->firstTo == 2); // the room's 3 rounds are a best of 3
 	CHECK(older.summary->frames == 250u); // the frames that read inputs
 	CHECK(older.summary->players[1].color == 2);
 	// Each side's Ultra is its loadout's number (section 40).
@@ -144,6 +145,7 @@ TEST_CASE("the Replays screen lists the saved battles, keeps the player's mark a
 	CHECK(newest.summary->score[0] == 1);
 	CHECK(newest.summary->score[1] == 1);
 	CHECK(newest.summary->rounds == 4u);
+	CHECK(newest.summary->firstTo == 0); // a set's length the header does not hold: none named
 	// Replays › Sets (EMBER_LIBRARY.md section 28): two battles of the same
 	// two players within half an hour are one room set, oldest first, as SF4's
 	// games of a room set are (the library's ReplaySets.hxx); no bridge holds
