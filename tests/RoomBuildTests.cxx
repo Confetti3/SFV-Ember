@@ -156,6 +156,7 @@ TEST_CASE("the round's end wait unit keeps its state and the fighter's position,
 	// +0x110 and the counted reference at +0x118 are in no region.
 	for (const sfve::StateRegion& r : layout.Regions()) {
 		const uintptr_t from = reinterpret_cast<uintptr_t>(r.ptr), to = from + r.size;
+		CAPTURE(r.name);
 		CHECK_FALSE((from < 0x70000 + 0x120 && to > 0x70000 + 0x110));
 	}
 	// A battle without the unit adds neither.

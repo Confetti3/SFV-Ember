@@ -14,10 +14,12 @@ using sfve::start_state::Entry;
 
 namespace {
 
-// Two ends of one path in memory; every `dropEvery`th datagram is lost.
+// Two ends of one path in memory; about one datagram in `dropOneIn` is lost,
+// picked by a fixed pseudo-random sequence (a fixed period would take the same
+// parts of the two lists every round, since both send the same count).
 class Link {
 public:
-	explicit Link(int dropEvery = 0) : dropEvery_(dropEvery) {}
+	explicit Link(int dropOneIn = 0) : dropOneIn_(dropOneIn) {}
 
 	class End final : public StartChannel {
 	public:
@@ -25,7 +27,7 @@ public:
 		bool Send(size_t peer, const uint8_t* data, size_t size) override
 		{
 			if (peer != 0) return false;
-			if (link_.dropEvery_ && ++link_.sent_ % link_.dropEvery_ == 0) return true;
+			if (link_.Drops()) return true;
 			link_.queues_[1 - side_].emplace_back(data, data + size);
 			return true;
 		}
@@ -45,9 +47,16 @@ public:
 	};
 
 private:
+	bool Drops()
+	{
+		if (!dropOneIn_) return false;
+		random_ = random_ * 1103515245u + 12345u;
+		return (random_ >> 16) % (uint32_t)dropOneIn_ == 0;
+	}
+
 	std::deque<std::vector<uint8_t>> queues_[2];
-	int dropEvery_;
-	int sent_ = 0;
+	int dropOneIn_;
+	uint32_t random_ = 1;
 };
 
 std::vector<Entry> List(size_t count, uint64_t salt)
