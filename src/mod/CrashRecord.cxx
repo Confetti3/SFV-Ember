@@ -48,6 +48,9 @@ char s_header[1024];
 char s_module[MAX_PATH];
 char s_detail[96];
 char s_line[1200];
+// A GGPO assertion's exception, made up where it failed (OnGgpoAssertion).
+EXCEPTION_RECORD s_assertion = {};
+CONTEXT s_assertionContext = {};
 
 void RecordFirstCrash(const char* kind, EXCEPTION_POINTERS* pointers, const char* message, DWORD threadId);
 
@@ -209,10 +212,27 @@ void OnInvalidParameter(const wchar_t*, const wchar_t*, const wchar_t*, unsigned
 	TerminateProcess(GetCurrentProcess(), STATUS_INVALID_CRUNTIME_PARAMETER);
 }
 
-// GGPO exits the process after an assertion; the record says which.
+// GGPO calls exit() once this returns, which would run the process's atexit
+// work and static destructors on this thread while the others still run. So
+// the assertion is recorded as a crash of its own code, with a dump of the
+// stack it failed on (the context taken here, one frame below GGPO's ASSERT),
+// and the process ends here, as a crash the launcher reports.
 void __cdecl OnGgpoAssertion(const char* message)
 {
-	RecordCrash("ggpo_assertion", nullptr, message, GetCurrentThreadId());
+	RtlCaptureContext(&s_assertionContext);
+	s_assertion = {};
+	s_assertion.ExceptionCode = kGgpoAssertionCode;
+	s_assertion.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
+	s_assertion.ExceptionAddress = reinterpret_cast<void*>(s_assertionContext.Rip);
+	EXCEPTION_POINTERS pointers = {&s_assertion, &s_assertionContext};
+	RecordCrash("ggpo_assertion", &pointers, message, GetCurrentThreadId());
+	// The launcher reads only some exit codes as a crash (IsCrashExit); until
+	// it reads this one, the game ends with an abort's, and the report still
+	// carries the assertion's code from the dump.
+	const UINT exitCode = sf4e::crash::IsCrashExit(kGgpoAssertionCode) ? kGgpoAssertionCode : 3;
+	snprintf(s_line, sizeof(s_line), "crash: GGPO assertion; ending the game with code 0x%08X", exitCode);
+	TryLogLine(s_line);
+	TerminateProcess(GetCurrentProcess(), exitCode);
 }
 
 // A set of one (CommitHookSet). A hook that does not go in leaves
@@ -357,7 +377,12 @@ void RegisterCrashCommand()
 			CloseHandle(thread);
 			return std::string("ok faulting on a thread of the mod's");
 		}
-		return std::string("error crash game|thread");
+		if (where == "ggpo") {
+			Log("crash: failing a GGPO assertion on the game thread, as asked on the pipe");
+			RunOnGameThread([] { OnGgpoAssertion("crash ggpo, as asked on the pipe"); });
+			return std::string("ok failing a GGPO assertion on the game thread");
+		}
+		return std::string("error crash game|thread|ggpo");
 	});
 }
 

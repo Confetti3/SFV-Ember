@@ -10,6 +10,7 @@
 #include "ember/SfvSelection.hxx"
 #include "mod/Log.hxx"
 
+#include "platform/Utf8.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "ui/AppearanceGrid.hxx"
@@ -687,21 +688,17 @@ void DrawLoadoutCards(const std::vector<MenuEntry>& entries, MenuNavigation& nav
 bool StepTableSelection(const sf4e::ui::SelectionStep& step, bool canEditSelection, bool canChangeUltra)
 {
 	using Field = sf4e::ui::SelectionStep::Field;
-	PlayerPick pick = CurrentPick();
-	switch (step.field) {
-	case Field::Ultra: {
-		if (!canChangeUltra) return false;
-		int index = picks::LoadoutIndex(picks::LoadoutOf(pick.pick));
-		sf4e::ui::Step(index, LoadoutIndices(pick.pick.fighter), step.delta);
-		picks::SetLoadout(pick.pick, *picks::LoadoutAt(index));
-		break;
-	}
-	case Field::Color:
-		if (!canEditSelection) return false;
-		sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), step.delta);
-		break;
-	}
-	SetPick(pick);
+	if (step.field == Field::Ultra ? !canChangeUltra : !canEditSelection) return false;
+	UpdatePick([&step](PlayerPick& pick) {
+		if (step.field == Field::Ultra) {
+			int index = picks::LoadoutIndex(picks::LoadoutOf(pick.pick));
+			sf4e::ui::Step(index, LoadoutIndices(pick.pick.fighter), step.delta);
+			picks::SetLoadout(pick.pick, *picks::LoadoutAt(index));
+		} else {
+			sf4e::ui::Step(pick.pick.color, ColourIds(pick.pick.fighter, pick.pick.costume, true), step.delta);
+		}
+		return true;
+	});
 	return true;
 }
 
@@ -893,7 +890,7 @@ void SfvSelectionScreen::LinkRandom(std::vector<MenuEntry>& rows, const grid::Se
 	const auto card = [&table](grid::Cell cell) {
 		const std::optional<std::string> code = grid::CodeAt(table, cell);
 		if (!code || *code == grid::kRandomCellCode) return std::string();
-		const std::optional<int> id = FighterId(std::wstring(code->begin(), code->end()));
+		const std::optional<int> id = FighterId(sf4e::platform::Utf8ToWide(code->c_str()));
 		return id ? CardId(kFighterCard, *id) : std::string();
 	};
 	const auto link = [&rows](const std::string& id, std::string MenuEntry::*side) {
@@ -1310,9 +1307,14 @@ void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& scr
 			} else if (const std::optional<int> fighter = sf4e::ui::RowKey<int>(action.id, kFighterCard)) {
 				const bool choosable = editable && !fighterKept && ember::ValidFighter(*fighter) && !FighterLocked(*fighter);
 				if (choosable) {
-					pick.pick = LookFor(pick.pick, *fighter, !dummy_);
-					store = true;
-					if (!dummy_) SetPickRandom(false);
+					// The player's fighter is chosen as every path chooses it
+					// (ChooseFighter); the dummy has no memory, and no Random.
+					if (dummy_) {
+						pick.pick = LookFor(pick.pick, *fighter, false);
+						store = true;
+					} else {
+						ChooseFighter(*fighter);
+					}
 					if (closesOnChoice_ && startPage_.empty()) close();
 					else look();
 				} else if (*fighter == pick.pick.fighter) look();
@@ -1377,7 +1379,12 @@ void SfvSelectionScreen::Answer(const MenuAction& action, const std::string& scr
 	} else if (screen == kLook && editable && (action.kind == MenuAction::Adjust || action.kind == MenuAction::Chosen)) {
 		// The value rows step and choose in place; the stage only where it is
 		// this player's.
-		if ((action.id != kStage || stageMine) && Apply(action, pick, stageOptions, !dummy_)) store = true;
+		if ((action.id != kStage || stageMine) && Apply(action, pick, stageOptions, !dummy_)) {
+			// A fighter stepped or chosen here is chosen as on the board:
+			// Random and Eleven off, the fighter in its own look.
+			if (action.id == kFighter && !dummy_) ChooseFighter(pick.pick.fighter);
+			else store = true;
+		}
 	}
 	// The look page's stage card, clicked.
 	if (stageCardClicked_ && screen == kLook && nav.Screen() == kLook) {

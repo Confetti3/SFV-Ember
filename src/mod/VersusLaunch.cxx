@@ -1,5 +1,6 @@
 #include "mod/VersusLaunch.hxx"
 
+#include "mod/BalanceVersions.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/GameHooks.hxx"
@@ -22,6 +23,7 @@
 #include <optional>
 #include <sstream>
 #include <utility>
+#include <vector>
 
 namespace sfve::mod {
 
@@ -218,6 +220,7 @@ std::string LaunchStatusJson()
 // Ends the launch in progress, reporting why to whoever asked for it.
 void FailLaunch(const std::string& why)
 {
+	DisarmLaunchVersions();
 	Log("launch: failed: %s", why.c_str());
 	NoteLaunchFailed(why);
 	const LaunchFailed onFailed = std::move(s_pending.onFailed);
@@ -390,6 +393,7 @@ void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 		}
 		if (kind == sfv::scene::kVersusBattleVtable || kind == sfv::scene::kTrainingBattleVtable) {
 			LogLoadedLooks(written);
+			DisarmLaunchVersions();
 			return false;
 		}
 		// Another state after the jump (not a battle's, whose looks are read
@@ -408,6 +412,7 @@ void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 		if (!why) return true; // still loading
 		Log("launch: failed: %s", why);
 		NoteLaunchFailed(why);
+		DisarmLaunchVersions();
 		s_linkedLoading = s_replayLoading = false; // no battle came for it
 		s_loadingTiny = {false, false};
 		ClearTinyFighters();
@@ -426,6 +431,35 @@ void ClearCarriedCount()
 	int32_t& count = Field<int32_t>(instance, sfv::gameinstance::kCarriedCount);
 	if (count != 0) Log("launch: the carried count was %d; a room's battle and a replay start from 0", count);
 	count = 0;
+}
+
+// The launch's balance versions (Launch made each explicit, ChooseVersions),
+// armed for the game's resolve of each player record (BalanceVersions).
+void ArmVersions(const MatchPicks& picks)
+{
+	std::vector<LaunchVersion> versions;
+	for (const FighterPick& pick : picks.players) {
+		if (!pick.fighter.empty()) versions.push_back({pick.fighter, pick.balanceVersion});
+	}
+	Log("launch: balance versions: P1 %d, P2 %d", picks.players[0].balanceVersion, picks.players[1].balanceVersion);
+	ArmLaunchVersions(std::move(versions));
+}
+
+// Makes each player's balance version explicit (BalanceVersionRules'
+// ChooseLaunchVersion against this copy's list): empty when every fighter
+// has its version here, else why not. A fighter left as it is (empty) needs
+// none: the mode's own keeps its record's.
+std::string ChooseVersions(MatchPicks* picks)
+{
+	for (int player = 0; player < jump::kPlayers; player++) {
+		FighterPick& pick = picks->players[player];
+		if (pick.fighter.empty()) continue;
+		const std::string code(pick.fighter.begin(), pick.fighter.end());
+		const VersionChoice choice = ChooseLaunchVersion(code, FighterBalanceVersions(pick.fighter), pick.balanceVersion);
+		if (!choice.refusal.empty()) return "player " + std::to_string(player + 1) + "'s " + choice.refusal;
+		pick.balanceVersion = choice.version;
+	}
+	return {};
 }
 
 void* h_JumpSecondStep(uint8_t* jumpState)
@@ -447,6 +481,7 @@ void* h_JumpSecondStep(uint8_t* jumpState)
 	PlayerLooks written;
 	for (int player = 0; player < jump::kPlayers; player++) written[player] = WriteFighter(modeData, player, picks.players[player]);
 	WriteStage(modeData, picks);
+	ArmVersions(picks);
 	NoteLaunchWritten(written);
 	GiveBackGameRef(flow);
 	if (picks.linked || picks.replay) ClearCarriedCount();
@@ -555,6 +590,9 @@ void Launch(const MatchPicks& picks, LaunchFailed onFailed)
 	if (SceneChangePending()) return refuse("the main menu is already changing scene");
 	const std::string missing = MissingContent(picks);
 	if (!missing.empty()) return refuse(missing.c_str());
+	MatchPicks launched = picks;
+	const std::string noVersion = ChooseVersions(&launched);
+	if (!noVersion.empty()) return refuse(noVersion.c_str());
 	uint8_t* messageClass = At<GetClassFn>(sfv::kJumpMessageClass)(L"/Script/KiwiGame");
 	uint8_t* jumpClass = At<GetClassFn>(sfv::kJumpStateClass)(L"/Script/KiwiGame");
 	uint8_t* message = messageClass ? At<NewObjectFn>(sfv::kNewObject)(menu, messageClass) : nullptr;
@@ -572,7 +610,7 @@ void Launch(const MatchPicks& picks, LaunchFailed onFailed)
 	const bool gameCheck = s_checkOwnership && !picks.linked && !picks.replay;
 	Field<uint8_t>(message, jump::kMessageCheckOwnership) = gameCheck ? 1 : 0;
 	if (!ChangeScene(jumpClass, message)) return refuse("the scene manager is not known");
-	s_pending = Pending{message, false, picks, std::move(onFailed)};
+	s_pending = Pending{message, false, std::move(launched), std::move(onFailed)};
 	NoteLaunchState("jumping");
 	Log("launch: battle jump, target %d, %s", (int)picks.target,
 		picks.linked ? "a room's match: the game's ownership check does not run"
@@ -739,6 +777,7 @@ bool InstallVersusLaunch(uintptr_t imageBase, bool gameCheckOutsideRooms)
 	HookTransaction hooks;
 	hooks.Add(imageBase, sfv::kJumpCopyPlayers, (void*)h_JumpCopyPlayers, (void**)&o_jumpCopyPlayers);
 	hooks.Add(imageBase, sfv::kJumpSecondStep, (void*)h_JumpSecondStep, (void**)&o_jumpSecondStep);
+	AddBalanceVersionHook(hooks, imageBase);
 	s_installed = !CommitHookSet(hooks, "battle jump");
 	return s_installed;
 }

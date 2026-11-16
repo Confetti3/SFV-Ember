@@ -1,6 +1,8 @@
 #include "ember/SfvBackdrop.hxx"
 
 #include "ember/SfvBackdropRules.hxx"
+#include "ember/SfvSettingsFile.hxx"
+#include "ember/SfvTextures.hxx"
 #include "mod/BuildKind.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameArt.hxx"
@@ -10,8 +12,8 @@
 #include "mod/SfvOffsets.hxx"
 #include "overlay/FrameGrab.hxx"
 
-#include "netplay/JsonFileStore.hxx"
 #include "netplay/SettingsStore.hxx"
+#include "platform/Utf8.hxx"
 #include "ui/GameMenu.hxx"
 #include "ui/Theme.hxx"
 
@@ -40,12 +42,8 @@ namespace sfve::adapter {
 
 namespace {
 
-namespace json_file = sf4e::netplay::json_file;
 using backdrop::Cycle;
 
-// A loaded picture's resource comes within a frame or two; one still without
-// it after this long is given up on (as SfvArt does).
-constexpr int kResourceFrames = 120;
 // Smaller than this is not a full-screen picture: skipped.
 constexpr int kLeastWidth = 640, kLeastHeight = 360;
 // The wall clock, in seconds, for the draw watch (backdrop::DrawWatch).
@@ -68,29 +66,13 @@ std::mutex s_choiceMutex;
 bool s_choiceLoaded = false;
 std::atomic<bool> s_enabled{true};
 
-// interface.json as it is now: its object, or an empty one when there is none
-// or it does not read as one (logged; the next save writes a fresh one).
-nlohmann::json ReadChoices()
-{
-	std::string bytes, error;
-	bool missing = false;
-	nlohmann::json choices;
-	if (!json_file::ReadBytes(Folder() / kChoiceFile, bytes, missing, error) || missing) {
-		if (!missing) mod::Log("backdrop: interface.json does not read (%s)", error.c_str());
-		return nlohmann::json::object();
-	}
-	if (!json_file::Parse(bytes, choices, error) || !choices.is_object()) {
-		mod::Log("backdrop: interface.json is no settings object (%s); the next save writes a new one", error.c_str());
-		return nlohmann::json::object();
-	}
-	return choices;
-}
-
 void LoadChoiceLocked()
 {
 	if (s_choiceLoaded) return;
 	s_choiceLoaded = true;
-	const nlohmann::json choices = ReadChoices();
+	std::string problem;
+	const nlohmann::json choices = ReadSettingsFile(Folder(), kChoiceFile, problem);
+	if (!problem.empty()) mod::Log("backdrop: %s; the next save writes a new one", problem.c_str());
 	const auto saved = choices.find(kChoiceKey);
 	s_enabled = saved == choices.end() || !saved->is_boolean() || saved->get<bool>();
 	mod::Log("backdrop: background artwork %s (interface.json)", s_enabled ? "on" : "off");
@@ -127,32 +109,10 @@ bool s_scrimSet = false;
 // The setting's last turn off has let its pictures go.
 bool s_letGo = false;
 
-// The game's textures are typeless where it views them as sRGB; Ember draws
-// their stored values as they are, as SfvArt's ViewFormat does.
-DXGI_FORMAT ViewFormat(unsigned format)
-{
-	switch (format) {
-	case DXGI_FORMAT_B8G8R8A8_TYPELESS: return DXGI_FORMAT_B8G8R8A8_UNORM;
-	case DXGI_FORMAT_R8G8B8A8_TYPELESS: return DXGI_FORMAT_R8G8B8A8_UNORM;
-	case DXGI_FORMAT_BC1_TYPELESS: return DXGI_FORMAT_BC1_UNORM;
-	case DXGI_FORMAT_BC2_TYPELESS: return DXGI_FORMAT_BC2_UNORM;
-	case DXGI_FORMAT_BC3_TYPELESS: return DXGI_FORMAT_BC3_UNORM;
-	case DXGI_FORMAT_BC7_TYPELESS: return DXGI_FORMAT_BC7_UNORM;
-	default: return (DXGI_FORMAT)format;
-	}
-}
-
-// Render thread: the view of a taken texture, on the texture's own device.
+// Render thread: the view of a taken texture.
 bool MakeView(Picture& picture)
 {
-	ID3D11Device* device = nullptr;
-	picture.texture.texture->GetDevice(&device);
-	D3D11_SHADER_RESOURCE_VIEW_DESC desc{};
-	desc.Format = ViewFormat(picture.texture.format);
-	desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-	desc.Texture2D.MipLevels = 1;
-	const HRESULT made = device ? device->CreateShaderResourceView(picture.texture.texture, &desc, &picture.view) : E_FAIL;
-	if (device) device->Release();
+	const HRESULT made = textures::MakeView(picture.texture, &picture.view);
 	if (FAILED(made)) mod::Log("backdrop: no view of format %u (0x%08lX)", picture.texture.format, (unsigned long)made);
 	return SUCCEEDED(made);
 }
@@ -263,11 +223,6 @@ bool DrawBackdrop(ImDrawList* draw, ImVec2 min, ImVec2 max)
 		Ink(s_scrim.bottomLeft));
 	s_watch.Drawn();
 	return true;
-}
-
-bool AtMainMenu()
-{
-	return mod::SceneStateKind(mod::CurrentSceneState()) == mod::sfv::scene::kMainMenuVtable;
 }
 
 // --- The development build's load report and contact sheets ---
@@ -472,7 +427,7 @@ void PumpReport(bool gameLoading)
 			bool pending = false;
 			std::string why;
 			const std::optional<mod::GameTexture> texture = mod::TakeGameTexture(s_report.object, &pending, &why);
-			if (!texture && pending && ++s_report.frames < kResourceFrames) return;
+			if (!texture && pending && ++s_report.frames < textures::kResourceFrames) return;
 			s_report.object = nullptr;
 			ReportRow& row = s_report.row;
 			if (!texture) {
@@ -545,9 +500,7 @@ std::string StartReport(const std::string& args)
 		if (rest.empty()) return "error usage: backdrop report [sheets|plain] <folder>";
 		std::lock_guard lock(s_reportMutex);
 		if (s_report.running) return "error a report is running";
-		std::wstring wide((size_t)MultiByteToWideChar(CP_UTF8, 0, rest.data(), (int)rest.size(), nullptr, 0), L'\0');
-		MultiByteToWideChar(CP_UTF8, 0, rest.data(), (int)rest.size(), wide.data(), (int)wide.size());
-		const std::filesystem::path folder(wide);
+		const std::filesystem::path folder(sf4e::platform::Utf8ToWide(rest.c_str()));
 		std::error_code error;
 		std::filesystem::create_directories(folder, error);
 		Report fresh;
@@ -572,7 +525,7 @@ std::string StartReport(const std::string& args)
 
 // Game thread, away from the main menu: a picture loaded just before the
 // game left it is not taken later (the game may collect its object on the
-// way): it is dropped, skipped for the session as a failure is.
+// way): it is dropped, and not counted as a failure: it loads again later.
 void DropLoading()
 {
 	{
@@ -583,7 +536,7 @@ void DropLoading()
 				continue;
 			}
 			mod::Log("backdrop: %s: dropped: the main menu was left while it loaded", PathOf(at->first).c_str());
-			s_cycle.Loaded(at->first, false);
+			s_cycle.Abandon(at->first);
 			at = s_pictures.erase(at);
 		}
 	}
@@ -597,7 +550,7 @@ void DropLoading()
 
 void Pump()
 {
-	if (!AtMainMenu()) return DropLoading(); // never in a battle or on its way to one
+	if (!textures::AtMainMenu()) return DropLoading(); // never in a battle or on its way to one
 	const bool gameLoading = mod::GameIsLoading();
 	PumpReport(gameLoading);
 	const bool reporting = ReportRunning();
@@ -616,7 +569,7 @@ void Pump()
 			bool pending = false;
 			std::string why;
 			const std::optional<mod::GameTexture> texture = mod::TakeGameTexture(picture.object, &pending, &why);
-			if (!texture && pending && ++picture.frames < kResourceFrames) {
+			if (!texture && pending && ++picture.frames < textures::kResourceFrames) {
 				inFlight = true;
 				++at;
 				continue;
@@ -633,8 +586,11 @@ void Pump()
 				++at;
 				continue;
 			}
-			mod::Log("backdrop: %s: skipped: %s", PathOf(at->first).c_str(), pending ? "its resource never came" : why.c_str());
-			s_cycle.Loaded(at->first, false);
+			// Not here yet, or not whole yet (the game lets go of image detail
+			// in a battle): tried again later, never skipped for good.
+			mod::Log("backdrop: %s: not usable yet, tried again later: %s", PathOf(at->first).c_str(),
+				pending ? "its resource never came" : why.c_str());
+			s_cycle.Retry(at->first);
 			at = s_pictures.erase(at);
 		}
 		// One load at a time, only while the backdrop is on screen and the
@@ -721,10 +677,8 @@ bool ShowSfvBackdrop(bool shown)
 	std::lock_guard lock(s_choiceMutex);
 	LoadChoiceLocked();
 	// The file's other choices stay as they are.
-	nlohmann::json choices = ReadChoices();
-	choices[kChoiceKey] = shown;
 	std::string error;
-	if (!json_file::Publish(Folder(), kChoiceFile, choices, error)) {
+	if (!UpdateSettingsFile(Folder(), kChoiceFile, [shown](nlohmann::json& choices) { choices[kChoiceKey] = shown; }, error)) {
 		mod::Log("backdrop: the choice could not be saved (%s); it stays %s", error.c_str(), s_enabled ? "on" : "off");
 		return false;
 	}

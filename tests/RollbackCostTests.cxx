@@ -307,8 +307,10 @@ TEST_CASE("a fighter who leaves mid-match: the reload GGPO makes reaches a save 
 {
 	// When a fighter is dropped, GGPO restores the other's state at that
 	// fighter's last frame received and plays on with neutral inputs for it.
-	// Kept for the watchers, the session plays on; otherwise it ends, for the
-	// drop and not for a load of a save that kept no copy.
+	// Kept for the watchers, the session plays on without the game (the
+	// reload reaches the stand-in KeepForWatchers puts in its place);
+	// otherwise it ends, for the drop and not for a load of a save that kept
+	// no copy.
 	for (const bool keep : {true, false}) {
 		INFO("kept for watchers " << keep);
 		std::set<int> skipped;
@@ -320,6 +322,9 @@ TEST_CASE("a fighter who leaves mid-match: the reload GGPO makes reaches a save 
 		REQUIRE(pair.a.GetStats().savesSkipped > 0);
 		if (keep) pair.a.KeepForWatchers();
 		const int left = pair.a.Frame();
+		const int gameLeft = pair.gameA.Frame();
+		const size_t targetsLeft = pair.gameA.RollbackTargets().size();
+		const uint64_t rollbacksLeft = pair.a.GetStats().rollbacks;
 		pair.b.Close();
 		// The drop comes after the pair's disconnect timeout (a second).
 		const ULONGLONG start = GetTickCount64();
@@ -333,12 +338,13 @@ TEST_CASE("a fighter who leaves mid-match: the reload GGPO makes reaches a save 
 			CHECK(skipped.count(target) == 0);
 		}
 		if (keep) {
-			// Played on past the drop: the reload came, and the rest of the
-			// saves keep no copy (only A's own inputs are left to confirm).
+			// Played on past the drop: the reload came, and the game was not
+			// touched by it or by any frame after the keep.
 			REQUIRE_FALSE(pair.a.Failed());
 			CHECK(pair.a.Frame() >= left + 200);
-			CHECK(!pair.gameA.RollbackTargets().empty());
-			CHECK(pair.gameA.RollbackTargets().back() > left - 10);
+			CHECK(pair.a.GetStats().rollbacks > rollbacksLeft);
+			CHECK(pair.gameA.Frame() == gameLeft);
+			CHECK(pair.gameA.RollbackTargets().size() == targetsLeft);
 		} else {
 			REQUIRE(pair.a.Failed());
 			CHECK(pair.a.FailureReason() == "the other player disconnected");

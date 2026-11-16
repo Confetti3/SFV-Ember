@@ -446,3 +446,103 @@ TEST_CASE("two loopback peers with one region perturbed before frame 0 agree ove
 	}
 	CHECK(compared >= 3);
 }
+
+namespace {
+
+match_data::Facts Fighters(int32_t p1Version, uint64_t p2Data)
+{
+	match_data::Facts facts;
+	facts.fighters.push_back({"Z41", 0, p1Version, true, 0x1111});
+	facts.fighters.push_back({"Z25", 1, 60, true, p2Data});
+	return facts;
+}
+
+} // namespace
+
+TEST_CASE("copies that compute with other game data both refuse the match, whatever their states")
+{
+	MockFighter p1, p2;
+	Int(p2, kP2Health) -= 7; // a state difference too: the data's is what is reported
+	Exchange x(1);
+	Exchange::End referenceEnd(x, -1), followerEnd(x, 0);
+	StartAgreement::Config referenceConfig = Role(StartAgreement::Role::Reference);
+	referenceConfig.facts = Fighters(61, 0x2222);
+	StartAgreement::Config followerConfig = Role(StartAgreement::Role::Follower);
+	followerConfig.facts = Fighters(43, 0x2222);
+	StartAgreement reference(p1, referenceEnd, referenceConfig);
+	StartAgreement follower(p2, followerEnd, followerConfig);
+	reference.Begin(1000, 1);
+	follower.Begin(1000);
+	Run({&reference, &follower}, 1000);
+
+	CHECK(follower.GetReport().result == StartAgreement::Result::DataDiffers);
+	CHECK(reference.GetReport().result == StartAgreement::Result::DataDiffers);
+	REQUIRE(follower.GetReport().dataDifference.has_value());
+	CHECK(follower.GetReport().dataDifference->what == match_data::Difference::What::Version);
+	CHECK(follower.GetReport().dataDifference->local.version == 43);
+	CHECK(follower.GetReport().dataDifference->reference.version == 61);
+	CHECK(follower.GetReport().otherFacts == referenceConfig.facts);
+	REQUIRE(reference.GetReport().dataDifference.has_value());
+	CHECK(reference.GetReport().dataDifference->local.version == 61);
+	CHECK(reference.GetReport().otherFacts == followerConfig.facts);
+	// Nothing was repaired: no byte of P1's is worth taking.
+	CHECK(follower.GetReport().regions.empty());
+}
+
+TEST_CASE("a watcher with other game data refuses alone; the players' match goes on")
+{
+	MockFighter p1, p2, watcher;
+	Exchange x(2);
+	Exchange::End referenceEnd(x, -1), p2End(x, 0), watcherEnd(x, 1);
+	StartAgreement::Config referenceConfig = Role(StartAgreement::Role::Reference, 1);
+	referenceConfig.facts = Fighters(61, 0x2222);
+	StartAgreement::Config p2Config = Role(StartAgreement::Role::Follower);
+	p2Config.facts = referenceConfig.facts;
+	StartAgreement::Config watcherConfig = Role(StartAgreement::Role::Follower);
+	watcherConfig.facts = Fighters(61, 0x9999);
+	StartAgreement reference(p1, referenceEnd, referenceConfig);
+	StartAgreement second(p2, p2End, p2Config);
+	StartAgreement watching(watcher, watcherEnd, watcherConfig);
+	reference.Begin(1000, 2);
+	second.Begin(1000);
+	watching.Begin(1000);
+	Run({&reference, &second, &watching}, 1000);
+	CHECK(second.GetReport().result == StartAgreement::Result::Agreed);
+	CHECK(watching.GetReport().result == StartAgreement::Result::DataDiffers);
+	CHECK(reference.GetReport().result == StartAgreement::Result::Agreed);
+	CHECK(reference.GetReport().peers.at(1) == StartAgreement::Result::DataDiffers);
+	CHECK_FALSE(reference.GetReport().dataDifference.has_value());
+}
+
+TEST_CASE("the summary and its question carry the match data")
+{
+	Message ask;
+	ask.type = Type::Ask;
+	ask.token = 42;
+	ask.asked = Asked::Summary;
+	ask.facts = Fighters(61, 0x2222);
+	const std::vector<uint8_t> askBytes = Encode(ask);
+	Message back;
+	REQUIRE(Decode(askBytes.data(), askBytes.size(), 42, &back));
+	CHECK(back.facts == ask.facts);
+
+	Message summary;
+	summary.type = Type::Summary;
+	summary.token = 42;
+	summary.layoutId = 7;
+	summary.facts.fighters.assign(match_data::kMostFighters, {"Z41", 0, 61, true, 1});
+	const std::vector<uint8_t> summaryBytes = Encode(summary);
+	CHECK(summaryBytes.size() <= kMaxDatagram);
+	REQUIRE(Decode(summaryBytes.data(), summaryBytes.size(), 42, &back));
+	CHECK(back.facts == summary.facts);
+	CHECK(back.layoutId == 7);
+
+	// Another question carries none, and one that does is refused.
+	Message bytesAsk = ask;
+	bytesAsk.asked = Asked::Bytes;
+	std::vector<uint8_t> plain = Encode(bytesAsk);
+	REQUIRE(Decode(plain.data(), plain.size(), 42, &back));
+	CHECK(back.facts.fighters.empty());
+	plain.insert(plain.end(), askBytes.begin() + (ptrdiff_t)(plain.size()), askBytes.end());
+	CHECK_FALSE(Decode(plain.data(), plain.size(), 42, &back));
+}

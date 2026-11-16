@@ -190,29 +190,6 @@ TEST_CASE("the CRT math is SSE2 in every mode that rolls back, and a player buil
 	LoadConfigFromCommandLine(L"");
 }
 
-TEST_CASE("pose holds are off unless a development build's test turns them on; a player build cannot")
-{
-	using sfve::mod::ChoosePoseHold;
-	static_assert(!sfve::mod::kPoseHoldByDefault);
-	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_room=1 -sfve_pose_hold=1", BuildKind::Player);
-	CHECK(Config().poseHold == -1);
-	CHECK_FALSE(ChoosePoseHold(Config(), BuildKind::Player));
-	CHECK(sfve::mod::PlayerBuildIgnored().find("-sfve_pose_hold") != std::string::npos);
-	sfve::mod::ModConfig given;
-	given.poseHold = 1;
-	CHECK_FALSE(ChoosePoseHold(given, BuildKind::Player));
-	CHECK(ChoosePoseHold(given, BuildKind::Development));
-	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_pose_hold=1", BuildKind::Development);
-	CHECK(ChoosePoseHold(Config(), BuildKind::Development));
-	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_pose_hold=0", BuildKind::Development);
-	CHECK_FALSE(ChoosePoseHold(Config(), BuildKind::Development));
-	LoadConfigFromCommandLine(L"x -sfve_mode=netplay -sfve_pose_hold=5", BuildKind::Development); // not a setting
-	CHECK_FALSE(ChoosePoseHold(Config(), BuildKind::Development));
-	LoadConfigFromCommandLine(L"x -sfve_mode=netplay", BuildKind::Development);
-	CHECK_FALSE(ChoosePoseHold(Config(), BuildKind::Development));
-	LoadConfigFromCommandLine(L"");
-}
-
 TEST_CASE("socket anchors are on unless a development build's test turns them off; a player build cannot")
 {
 	using sfve::mod::ChooseSocketAnchor;
@@ -287,7 +264,7 @@ TEST_CASE("a battle that rolls back runs the tick's tasks on the battle's thread
 TEST_CASE("a player build's pipe answers ping and status only")
 {
 	bool ran = false;
-	sfve::mod::RegisterCommand("buildkind-test", [&ran](const std::string&) {
+	sfve::mod::AddCommand("buildkind-test", [&ran](const std::string&) {
 		ran = true;
 		return std::string("ok ran");
 	});

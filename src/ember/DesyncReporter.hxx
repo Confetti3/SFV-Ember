@@ -50,4 +50,12 @@ void ReportDesync(const RollbackSession& session, const sf4e::SessionClient& cli
 // session's input delay.
 void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& layout, bool watcher, int delay);
 
+// Game thread, once a room battle's start state agreement found that the
+// copies compute with other game data (StartAgreement::Result::DataDiffers):
+// the players' notice (runtime.game_data_differs, with the fighter
+// match_data::NoticeFighter names), and a report of its own class
+// (desync::GameDataTitle) with both copies' facts. `facts` is this copy's.
+// The caller ends the battle: the match never starts.
+void ReportGameDataDiffers(const StartAgreement::Report& report, const match_data::Facts& facts, bool watcher, int delay);
+
 } // namespace sfve::adapter

@@ -13,6 +13,7 @@
 
 #include "common/GameCatalog.hxx"
 #include "common/ProductIdentity.hxx"
+#include "platform/Utf8.hxx"
 #include "platform/HelperProcess.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 
@@ -51,7 +52,7 @@ void ReadOwnVoices()
 	static std::string said;
 	std::string japanese;
 	RefreshOwnVoices([&japanese](const std::string& code) {
-		const std::optional<int> voice = mod::CharaVoiceLanguage(std::wstring(code.begin(), code.end()));
+		const std::optional<int> voice = mod::CharaVoiceLanguage(sf4e::platform::Utf8ToWide(code.c_str()));
 		if (voice && *voice == picks::kVoiceJapanese) japanese += (japanese.empty() ? "" : " ") + code;
 		return voice;
 	});

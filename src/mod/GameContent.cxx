@@ -9,6 +9,8 @@
 
 #include <wchar.h>
 
+#include <xxhash.h>
+
 #include <algorithm>
 #include <string_view>
 #include <utility>
@@ -42,6 +44,7 @@ using OwnedFightersFn = void (*)(uint8_t* setup, GameArray<GameString>* out, boo
 using OwnedCostumesFn = bool (*)(uint8_t* setup, const GameString* code, GameArray<int32_t>* out);
 using OwnedColoursFn = void (*)(uint8_t* setup, const GameString* code, int32_t costume, GameArray<int32_t>* out);
 using LoggedInFn = bool (*)();
+using ResourceLookupFn = uint8_t* (*)(uint8_t* charaAsset, const GameString* code, int32_t version);
 
 // The battle setup data asset (sfv::kOwnedFighters and the rest): the one the
 // battle jump's check loads (rva 0x551520).
@@ -560,6 +563,22 @@ ChoiceCounts CountsOf(const FighterContent& fighter)
 // read them (FighterChoiceCounts); empty before any read.
 std::vector<std::pair<std::wstring, ChoiceCounts>> s_choiceCounts;
 
+// Whether the game says the account is logged in. Its function reads the
+// default online subsystem through the identity interface with no check that
+// either is there, and a null one (Steam's record stale, or its online service
+// not up yet) faults at StreetFighterV.exe+0x742A34. A fault reads as not
+// logged in, as offline does, and is logged once.
+bool AccountLoggedIn()
+{
+	static bool faultLogged = false;
+	bool loggedIn = false;
+	if (!TryCall(At<LoggedInFn>(sfv::kLoggedIn), &loggedIn)) {
+		if (!faultLogged) Log("content: the game's LoggedIn faulted (its online subsystem is not there); read as not logged in");
+		faultLogged = true;
+	}
+	return loggedIn;
+}
+
 // What the game lets this copy's player pick, as its menus and the battle
 // jump's check ask the battle setup asset `setup` (sfv::kOwnedFighters and
 // the rest), into `lists`; the looks' answer is then kContentOwnership's
@@ -574,7 +593,7 @@ void ReadOwnership(uint8_t* setup, ContentLists& lists)
 	source.restricted = Field<uint8_t>(setup, kSetupRestricted) != 0;
 	source.restrictionEntries = Field<int32_t>(setup, kSetupRestrictionCount);
 	source.filter = Field<void*>(setup, kSetupFilter) != nullptr;
-	source.loggedIn = At<LoggedInFn>(sfv::kLoggedIn)();
+	source.loggedIn = AccountLoggedIn();
 	const std::vector<std::string> fighters =
 		TakeCodes([&](GameArray<GameString>* out) { At<OwnedFightersFn>(sfv::kOwnedFighters)(setup, out, false, false); });
 	for (FighterContent& fighter : lists.fighters) {
@@ -800,6 +819,83 @@ std::optional<int> CharaVoiceLanguage(std::wstring_view code)
 	// The battle takes only these two (sfv::jump::kCharVoice); another
 	// number is the lookup's own default, English.
 	return voice == sfv::jump::kVoiceJapanese ? voice : sfv::jump::kVoiceEnglish;
+}
+
+namespace {
+
+// Adds `size` bytes at `data` to the hash, or false when they cannot all be
+// read (no C++ object here: the guard is structured exception handling).
+bool TryHashBytes(XXH3_state_t* state, const void* data, size_t size)
+{
+	__try {
+		XXH3_64bits_update(state, data, size);
+		return true;
+	} __except (1 /* EXCEPTION_EXECUTE_HANDLER */) {
+		return false;
+	}
+}
+
+} // namespace
+
+std::optional<uint64_t> FighterMoveDataHash(std::wstring_view code, int32_t version, bool alternate)
+{
+	namespace r = sfv::resources;
+	const SpecTables tables = Tables();
+	if (!tables.charaAsset || code.empty()) return std::nullopt;
+	const CodeView view(code);
+	const GameString name = view.Get();
+	const uint8_t* asset = At<ResourceLookupFn>(sfv::kBattleResourceLookup)(tables.charaAsset, &name, version);
+	const uint8_t* const* set = nullptr;
+	int32_t count = 0;
+	if (!asset || !TryRead(asset + (alternate ? r::kAlternateSet : r::kSet), &set) ||
+		!TryRead(asset + (alternate ? r::kAlternateSetCount : r::kSetCount), &count) || !set || count <= 0 || count > r::kMostResources) {
+		return std::nullopt;
+	}
+	XXH3_state_t* state = XXH3_createState();
+	if (!state || XXH3_64bits_reset(state) != XXH_OK) {
+		XXH3_freeState(state);
+		return std::nullopt;
+	}
+	bool whole = true;
+	for (int32_t i = 0; i < count && whole; i++) {
+		const uint8_t* resource = nullptr;
+		const uint8_t* data = nullptr;
+		int32_t bytes = 0;
+		whole = TryRead(set + i, &resource);
+		// An empty slot is part of the set's shape: hashed as a size of -1.
+		if (whole && resource) whole = TryRead(resource + r::kData, &data) && TryRead(resource + r::kDataCount, &bytes);
+		if (!resource) bytes = -1;
+		whole = whole && bytes <= r::kMostBytes && (bytes <= 0 || data);
+		if (!whole) break;
+		const int32_t header[2] = {i, bytes};
+		XXH3_64bits_update(state, header, sizeof(header));
+		// The bytes are the game's loaded file; a page that cannot be read
+		// ends the hash rather than the game.
+		if (bytes > 0) whole = TryHashBytes(state, data, (size_t)bytes);
+	}
+	const uint64_t hash = XXH3_64bits_digest(state);
+	XXH3_freeState(state);
+	if (!whole) return std::nullopt;
+	return hash;
+}
+
+std::optional<std::vector<int32_t>> FighterBalanceVersions(std::wstring_view code)
+{
+	namespace v = sfv::versions;
+	const SpecTables tables = Tables();
+	uint8_t* entry = tables.charaAsset && !code.empty() ? EntryWithCode(tables.charaAsset, code) : nullptr;
+	const uint8_t* list = nullptr;
+	const uint8_t* entries = nullptr;
+	int32_t count = 0;
+	if (!entry || !TryRead(entry + sfv::content::kCharaBattleResources, &list) || !list || !TryRead(list + v::kEntries, &entries) ||
+		!TryRead(list + v::kCount, &count) || !entries || count <= 0 || count > v::kMostEntries) {
+		return std::nullopt;
+	}
+	std::vector<int32_t> versions((size_t)count);
+	for (int32_t i = 0; i < count; i++) {
+		if (!TryRead(entries + (size_t)i * v::kEntryStride + v::kEntryVersion, &versions[(size_t)i])) return std::nullopt;
+	}
+	return versions;
 }
 
 } // namespace sfve::mod

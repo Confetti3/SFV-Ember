@@ -1,5 +1,8 @@
 #include "core/ReplayFile.hxx"
 
+#include "core/ByteReader.hxx"
+#include "core/Checkpoints.hxx"
+
 #include <xxhash.h>
 
 #include <nlohmann/json.hpp>
@@ -20,11 +23,6 @@ constexpr size_t kMagicBytes = sizeof(kMagic);
 constexpr size_t kRunBytes = 13;       // u32 frames, u32 P1, u32 P2, u8 flags
 constexpr size_t kCheckpointBytes = 12; // i32 frame, u64 hash
 constexpr size_t kTrailerBytes = 8;
-// RollbackSession::kCheckpointInterval. A file is accepted when its checkpoints
-// are multiples of this: the ones recorded at 60 (beta.8) are, and a playback
-// compares only the frames the file lists (NotePlaybackCheckpoint), so a file
-// with fewer checkpoints than the session now makes still verifies.
-constexpr int kCheckpointInterval = 20;
 
 void PutU32(std::vector<uint8_t>& out, uint32_t v)
 {
@@ -35,46 +33,6 @@ void PutU64(std::vector<uint8_t>& out, uint64_t v)
 	for (int i = 0; i < 8; i++) out.push_back((uint8_t)(v >> (8 * i)));
 }
 
-// Reads forward through a bounded buffer; any read past its end fails.
-class Reader {
-public:
-	Reader(const uint8_t* data, size_t size) : data_(data), size_(size) {}
-	bool Bytes(size_t n, const uint8_t** out)
-	{
-		if (n > size_ - at_) return false;
-		*out = data_ + at_;
-		at_ += n;
-		return true;
-	}
-	bool U32(uint32_t* out)
-	{
-		const uint8_t* p = nullptr;
-		if (!Bytes(4, &p)) return false;
-		*out = (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
-		return true;
-	}
-	bool U64(uint64_t* out)
-	{
-		uint32_t lo = 0, hi = 0;
-		if (!U32(&lo) || !U32(&hi)) return false;
-		*out = (uint64_t)hi << 32 | lo;
-		return true;
-	}
-	bool U8(uint8_t* out)
-	{
-		const uint8_t* p = nullptr;
-		if (!Bytes(1, &p)) return false;
-		*out = *p;
-		return true;
-	}
-	size_t Left() const { return size_ - at_; }
-
-private:
-	const uint8_t* data_;
-	size_t size_;
-	size_t at_ = 0;
-};
-
 json PlayerJson(const Player& p)
 {
 	json j = {{"name", p.name}, {"fighter", p.fighter}, {"costume", p.costume}, {"colour", p.colour}, {"code", p.code},
@@ -82,6 +40,7 @@ json PlayerJson(const Player& p)
 		{"loadCode", p.loadCode}};
 	// Only a Tiny side writes it, so every other header is what it was.
 	if (p.size != 0) j["size"] = p.size;
+	if (p.balanceVersion >= 0) j["balanceVersion"] = p.balanceVersion;
 	return j;
 }
 
@@ -166,6 +125,8 @@ Player ReadPlayer(const json& j)
 	if (p.loadCode < -1 || p.loadCode > 0xFFFFFFFFll) p.loadCode = -1;
 	p.size = FieldOr<int>(j, "size", 0);
 	if (p.size != 0 && p.size != 1) p.size = 0;
+	p.balanceVersion = FieldOr<int>(j, "balanceVersion", -1);
+	if (p.balanceVersion < -1) p.balanceVersion = -1;
 	return p;
 }
 
@@ -225,7 +186,7 @@ bool ReadHeader(const uint8_t* text, size_t size, Header* out, std::string* erro
 
 // Checks the magic, version and trailing hash; on success `body` reads the
 // header length onwards, short of the trailer.
-bool Open(const uint8_t* data, size_t size, Reader* body, std::string* error)
+bool Open(const uint8_t* data, size_t size, ByteReader* body, std::string* error)
 {
 	const auto refuse = [&](const char* why) {
 		if (error) *error = why;
@@ -234,9 +195,9 @@ bool Open(const uint8_t* data, size_t size, Reader* body, std::string* error)
 	if (!data || size < kMagicBytes + 4 + kTrailerBytes) return refuse("too short to be a replay");
 	if (size > kMostFileBytes) return refuse("larger than any replay");
 	if (memcmp(data, kMagic, kMagicBytes) != 0) return refuse("not an SFV Ember replay");
-	Reader r(data + kMagicBytes, size - kMagicBytes - kTrailerBytes);
+	ByteReader r(data + kMagicBytes, size - kMagicBytes - kTrailerBytes);
 	uint32_t version = 0;
-	if (!r.U32(&version)) return refuse("too short to be a replay");
+	if (!r.Get(&version)) return refuse("too short to be a replay");
 	if (version != kVersion) return refuse("a replay of another version");
 	const uint8_t* trailer = data + size - kTrailerBytes;
 	uint64_t stored = 0;
@@ -246,11 +207,11 @@ bool Open(const uint8_t* data, size_t size, Reader* body, std::string* error)
 	return true;
 }
 
-bool ReadHeaderBlock(Reader& r, Header* out, std::string* error)
+bool ReadHeaderBlock(ByteReader& r, Header* out, std::string* error)
 {
 	uint32_t headerBytes = 0;
 	const uint8_t* text = nullptr;
-	if (!r.U32(&headerBytes) || headerBytes > kMostHeaderBytes || !r.Bytes(headerBytes, &text)) {
+	if (!r.Get(&headerBytes) || headerBytes > kMostHeaderBytes || !r.Bytes(headerBytes, &text)) {
 		if (error) *error = "its header is past the file";
 		return false;
 	}
@@ -314,17 +275,17 @@ bool Decode(const uint8_t* data, size_t size, Replay* out, std::string* error)
 		if (error) *error = why;
 		return false;
 	};
-	Reader r(nullptr, 0);
+	ByteReader r(nullptr, 0);
 	if (!Open(data, size, &r, error)) return false;
 	Replay replay;
 	if (!ReadHeaderBlock(r, &replay.header, error)) return false;
 
 	uint32_t runs = 0;
-	if (!r.U32(&runs) || runs > r.Left() / kRunBytes) return refuse("its frames are past the file");
+	if (!r.Get(&runs) || runs > r.Left() / kRunBytes) return refuse("its frames are past the file");
 	for (uint32_t i = 0; i < runs; i++) {
 		uint32_t count = 0;
 		RecordedFrame f;
-		if (!r.U32(&count) || !r.U32(&f.inputs.p[0]) || !r.U32(&f.inputs.p[1]) || !r.U8(&f.flags)) {
+		if (!r.Get(&count) || !r.Get(&f.inputs.p[0]) || !r.Get(&f.inputs.p[1]) || !r.Get(&f.flags)) {
 			return refuse("its frames are past the file");
 		}
 		if (count == 0) return refuse("a run of no frames");
@@ -333,12 +294,12 @@ bool Decode(const uint8_t* data, size_t size, Replay* out, std::string* error)
 		replay.frames.insert(replay.frames.end(), count, f);
 	}
 	uint32_t checkpoints = 0;
-	if (!r.U32(&checkpoints) || checkpoints > r.Left() / kCheckpointBytes) return refuse("its checkpoints are past the file");
+	if (!r.Get(&checkpoints) || checkpoints > r.Left() / kCheckpointBytes) return refuse("its checkpoints are past the file");
 	int previous = -1;
 	for (uint32_t i = 0; i < checkpoints; i++) {
 		uint32_t frame = 0;
 		uint64_t hash = 0;
-		if (!r.U32(&frame) || !r.U64(&hash)) return refuse("its checkpoints are past the file");
+		if (!r.Get(&frame) || !r.Get(&hash)) return refuse("its checkpoints are past the file");
 		// A checkpoint is a state the frames reach: frame N is the state after N frames.
 		if ((int)frame <= previous || frame > replay.frames.size() || frame % kCheckpointInterval != 0) {
 			return refuse("a checkpoint out of order or past the frames");
@@ -353,7 +314,7 @@ bool Decode(const uint8_t* data, size_t size, Replay* out, std::string* error)
 
 bool DecodeHeader(const uint8_t* data, size_t size, Header* out, std::string* error)
 {
-	Reader r(nullptr, 0);
+	ByteReader r(nullptr, 0);
 	return Open(data, size, &r, error) && ReadHeaderBlock(r, out, error);
 }
 

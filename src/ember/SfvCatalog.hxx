@@ -281,6 +281,9 @@ mod::FighterPick FighterPickOf(const sf4e::selection::Pick& pick);
 // Ready carries it for the pick's fighter (SfvPick's AddPickTo).
 void RefreshOwnVoices(const std::function<std::optional<int>(const std::string& code)>& voiceOf);
 int OwnVoice(std::int64_t fighter);
+// Rises each time a read gave other voices than the last, for what is made
+// from them and kept (SfvRandomFighter's note to the runtime).
+std::uint64_t OwnVoicesRevision();
 
 // The other way, from a code as a launch names it (L"RYU", VersusLaunch's
 // FighterPick): its id, empty for one not listed.

@@ -27,8 +27,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import struct
 import sys
 import time
+import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -39,7 +42,7 @@ STEP_BACKDROP = False  # --step-backdrop: each shot on the backdrop's next pictu
 
 
 def status(index: int) -> dict:
-    return json.loads(lib.request(index, "status")[3:])
+    return json.loads(lib.request(index, "status", idempotent=True)[3:])
 
 
 def shell(index: int) -> dict:
@@ -47,7 +50,7 @@ def shell(index: int) -> dict:
 
 
 def press(index: int, button: str) -> dict:
-    lib.request(index, f"pad 0 {button}:120 -:250")
+    lib.request_ok(index, f"pad 0 {button}:120 -:250")
     time.sleep(PRESS_S)
     return shell(index)
 
@@ -199,7 +202,7 @@ def step_backdrop(index: int, timeout_s: float = 30) -> str:
     before = backdrop(index)
     if not before["drawn"]:
         return before["current"]
-    lib.request(index, "backdrop step")
+    lib.request_ok(index, "backdrop step")
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         now = backdrop(index)
@@ -218,11 +221,81 @@ def shot(shots: Path | None, name: str, index: int) -> None:
         lib.screenshot(lib.status_pid(index), shots / f"{name}.png")
 
 
+BACKDROP_LOADED = re.compile(r"backdrop: .*: \d+x\d+, format \d+")
+BACKDROP_WAIT_S = 60
+ARTWORK_MIN_MEAN = 20.0  # a window's mean sample value (0-255) below this is a black screen, not artwork
+
+
+def backdrop_loads(index: int) -> int:
+    """How many pictures the copy's log says the backdrop loaded and took."""
+    return sum(1 for line in lib.log_lines(index) if BACKDROP_LOADED.search(line))
+
+
+def png_mean(path: Path) -> float:
+    """The mean sample value (0-255) of a PNG this toolkit wrote (8-bit RGB, no filtering)."""
+    data = path.read_bytes()
+    at, width, idat = 8, 0, b""
+    while at < len(data):
+        (length,) = struct.unpack_from(">I", data, at)
+        kind = data[at + 4:at + 8]
+        if kind == b"IHDR":
+            (width,) = struct.unpack_from(">I", data, at + 8)
+        elif kind == b"IDAT":
+            idat += data[at + 8:at + 8 + length]
+        at += 12 + length
+    raw = zlib.decompress(idat)
+    stride = width * 3 + 1
+    total = count = 0
+    for row in range(len(raw) // stride):
+        samples = raw[row * stride + 1:(row + 1) * stride]
+        total += sum(samples[::7])
+        count += len(samples[::7])
+    return total / max(count, 1)
+
+
+def backdrop_after_game(game: int, shots: Path, before: list[int]) -> list[str]:
+    """After game `game`, both copies are back on the room page: each log must show a backdrop
+    picture loaded since `before` (the counts at the game's start), and the window's picture must
+    be artwork (not black). Returns the failures."""
+    problems = []
+    for i in (0, 1):
+        deadline = time.time() + BACKDROP_WAIT_S
+        while backdrop_loads(i) <= before[i] and time.time() < deadline:
+            time.sleep(1)
+        loaded = backdrop_loads(i) - before[i]
+        time.sleep(2)  # the fade in
+        picture = lib.screenshot(lib.status_pid(i), shots / f"bd-game{game}-copy{i}.png")
+        mean = png_mean(picture)
+        try:
+            state = json.dumps(backdrop(i))
+        except lib.SfveError:
+            state = "?"
+        print(f"game {game} copy {i}: {loaded} backdrop picture(s) loaded since the game began; the room page's mean sample {mean:.1f}; backdrop {state}")
+        if loaded < 1:
+            problems.append(f"game {game} copy {i}: no backdrop picture loaded after the match")
+        if mean < ARTWORK_MIN_MEAN:
+            problems.append(f"game {game} copy {i}: the room page is dark (mean {mean:.1f}), not artwork")
+    return problems
+
+
+def enter(index: int, screen: str) -> None:
+    """A on a row of Home: the shell's `screen` opens. A press the shell was not yet taking (the copy has just
+    started) is made again once, only while the shell is still on Home."""
+    press(index, "A")
+    for attempt in range(2):
+        try:
+            wait_for(f"copy {index}'s {screen} screen", 4, lambda: shell(index)["screen"] == screen)
+            return
+        except lib.SfveError:
+            if attempt == 0 and shell(index)["screen"] == "home":
+                press(index, "A")
+
+
 def create_room(shots: Path | None) -> None:
     open_home(0)
     shot(shots, "1-menu", 0)
     seek(0, "online", ["UP"])
-    press(0, "A")
+    enter(0, "online")
     expect(0, "online", "create")
     press(0, "A")
     expect(0, "create")
@@ -273,7 +346,7 @@ def copy_invitation(shots: Path | None) -> None:
 def join_room() -> None:
     open_home(1)
     seek(1, "online", ["UP"])
-    press(1, "A")
+    enter(1, "online")
     seek(1, "join", ["DOWN"])
     press(1, "A")
     expect(1, "join", "paste")
@@ -469,6 +542,8 @@ def main(argv: list[str]) -> int:
     p.add_argument("--shots", type=Path)
     p.add_argument("--games", type=int, default=1)
     p.add_argument("--keep", action="store_true")
+    p.add_argument("--backdrop", type=Path, metavar="DIR", help="after each game: a backdrop picture loaded in each log, and "
+                   "a shot of each copy's room page in DIR that is artwork, not black (docs/design/beta10)")
     p.add_argument("--step-backdrop", action="store_true", help="each shot on the menu backdrop's next picture")
     p.add_argument("--unowned", help="copy 0's -sfve_unowned (CODE[:costume[:colour]],...): content its player "
                    "may not pick, to show the pick screen's NOT OWNED")
@@ -478,53 +553,60 @@ def main(argv: list[str]) -> int:
     lib.begin_run()
     if a.shots:
         a.shots.mkdir(parents=True, exist_ok=True)
+    if a.backdrop:
+        a.backdrop.mkdir(parents=True, exist_ok=True)
     lib.kill_all()
-    for i, seed in ((0, 101), (1, 202)):
-        unowned = [f"-sfve_unowned={a.unowned}"] if a.unowned and i == 0 else []
-        lib.launch(i, "netplay", ["-sfve_pads=01", "-sfve_background=1", "-sfve_room=1", f"-sfve_mash={seed}",
-                                  "-sfve_mash_from=300"] + unowned)
     failure = ""
-    try:
-        wait_for("the runtime on both copies", 120,
-                 lambda: all(status(i).get("ember", {}).get("host") == "running" for i in (0, 1)))
-        create_room(a.shots)
-        copy_invitation(a.shots)
-        join_room()
-        take_seat(0, 0)
-        take_seat(1, 1)
-        pick(0, 2, a.shots, "4-pick")
-        pick(1, 3, None, None)
-        if a.unowned:
-            not_owned_shots(a.shots)
-        select_shots(a.shots)
-        room_shots(a.shots)
-        for game in range(1, a.games + 1):
-            results = [lib.count_log(i, "netplay: match result") for i in (0, 1)]
-            closes = [lib.count_log(i, "battle closed at its match") for i in (0, 1)]
-            desyncs = [lib.count_log(i, "desync:") for i in (0, 1)]
-            ready_both(game)
-
-            def decided() -> bool:
-                if any(lib.count_log(i, "desync:") > desyncs[i] for i in (0, 1)):
-                    raise lib.SfveError(f"game {game} desynced (see the copies' logs)")
-                return all(lib.count_log(i, "netplay: match result") > results[i] for i in (0, 1))
-            wait_for(f"game {game}'s result on both copies", 300, decided)
-            wait_for(f"both copies back in the room after game {game}", 120,
-                     lambda: all(lib.count_log(i, "battle closed at its match") > closes[i] and
-                                 status(i)["room"]["room"] == "joined" and shell(i)["shown"] and
-                                 shell(i)["screen"] == "room" for i in (0, 1)))
-            time.sleep(2)
-            shot(a.shots, f"8-back-in-room-game{game}", 0)
-    except lib.SfveError as e:
-        failure = str(e)
-    for i in (0, 1):
+    backdrop_problems: list[str] = []
+    # Whatever happens (a launch that fails, a wait that times out, an unexpected error), the copies this run
+    # started are ended on the way out, unless --keep.
+    with lib.run_scope(keep=a.keep):
         try:
-            print(f"copy {i}: shell {json.dumps(shell(i))} room {json.dumps(status(i)['room'])}")
-        except lib.SfveError:
-            print(f"copy {i} is not answering")
-    if not a.keep:
-        lib.kill_all()
-    return lib.verdict(failure)
+            for i, seed in ((0, 101), (1, 202)):
+                unowned = [f"-sfve_unowned={a.unowned}"] if a.unowned and i == 0 else []
+                lib.launch(i, "netplay", ["-sfve_pads=01", "-sfve_background=1", "-sfve_room=1", f"-sfve_mash={seed}",
+                                          "-sfve_mash_from=300"] + unowned)
+            wait_for("the runtime on both copies", 120,
+                     lambda: all(status(i).get("ember", {}).get("host") == "running" for i in (0, 1)))
+            create_room(a.shots)
+            copy_invitation(a.shots)
+            join_room()
+            take_seat(0, 0)
+            take_seat(1, 1)
+            pick(0, 2, a.shots, "4-pick")
+            pick(1, 3, None, None)
+            if a.unowned:
+                not_owned_shots(a.shots)
+            select_shots(a.shots)
+            room_shots(a.shots)
+            for game in range(1, a.games + 1):
+                results = [lib.count_log(i, "netplay: match result") for i in (0, 1)]
+                closes = [lib.count_log(i, "battle closed at its match") for i in (0, 1)]
+                desyncs = [lib.count_desyncs(i) for i in (0, 1)]
+                loads = [backdrop_loads(i) for i in (0, 1)]
+                ready_both(game)
+
+                def decided() -> bool:
+                    if any(lib.count_desyncs(i) > desyncs[i] for i in (0, 1)):
+                        raise lib.SfveError(f"game {game} desynced (see the copies' logs)")
+                    return all(lib.count_log(i, "netplay: match result") > results[i] for i in (0, 1))
+                wait_for(f"game {game}'s result on both copies", 300, decided)
+                wait_for(f"both copies back in the room after game {game}", 120,
+                         lambda: all(lib.count_log(i, "battle closed at its match") > closes[i] and
+                                     status(i)["room"]["room"] == "joined" and shell(i)["shown"] and
+                                     shell(i)["screen"] == "room" for i in (0, 1)))
+                time.sleep(2)
+                shot(a.shots, f"8-back-in-room-game{game}", 0)
+                if a.backdrop:
+                    backdrop_problems += backdrop_after_game(game, a.backdrop, loads)
+        except lib.SfveError as e:
+            failure = str(e)
+        for i in (0, 1):
+            try:
+                print(f"copy {i}: shell {json.dumps(shell(i))} room {json.dumps(status(i)['room'])}")
+            except lib.SfveError:
+                print(f"copy {i} is not answering")
+    return lib.verdict([failure] + backdrop_problems)
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ namespace fu = sfve::mod::sfv::flowunit;
 
 constexpr uintptr_t kBase = 0x140000000; // the image base the vtables are read against
 constexpr uint32_t kPlainClass = 0x2C6A390;   // 152 bytes: its 8 own bytes are kept
-constexpr uint32_t kPointerClass = 0x2C6A668; // Finish, 168 bytes: own fields hold pointers, only the base is kept
+constexpr uint32_t kPointerClass = 0x2C6AA18; // the flow builder's state, 184 bytes: own fields hold heap pointers, only the base is kept
 constexpr uint32_t kUnlistedClass = 0x1234560; // in no table: only the base is kept
 constexpr int kStates = 3;
 

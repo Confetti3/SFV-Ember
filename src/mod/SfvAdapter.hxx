@@ -16,13 +16,17 @@
 // Rollbacks replay by calling Advance again, exactly like a forward frame.
 
 #include "core/GameAdapter.hxx"
+#include "core/MatchData.hxx"
 #include "mod/BattleIdentity.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/IntroSkip.hxx"
+#include "mod/Pace.hxx"
+#include "mod/RegionTable.hxx"
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvRegionNames.hxx"
 #include "mod/SocketReads.hxx"
+#include "mod/TickCounts.hxx"
 
 #include <stdint.h>
 
@@ -114,6 +118,10 @@ public:
 	// True when the battle is running ticks (not paused, not between rounds
 	// with ticks stopped): the last original update recorded at least one tick.
 	uint32_t TicksInLastUpdate() const { return ticksInLastUpdate_; }
+	// What each fighter unit of the bound battle computes with
+	// (FighterData), read as it bound: what a room's copies compare before
+	// frame 0, and what a replay records.
+	const match_data::Facts& BattleFacts() const { return battleFacts_; }
 
 	// The state the battle flow last announced (part of the rollback state);
 	// each change with the match decided is logged.
@@ -164,13 +172,13 @@ public:
 	// What the game's own Restore does after copying the regions back, then
 	// the flow record written back.
 	void AfterLoad() override;
-	// The flow record's latched failure (FlowRollback::Failure).
-	const char* StateFailure() const override { return flow_.Failure(); }
-	// Pose holds (SocketReads, core/PoseHold.hxx): the update just run gave a
-	// fight socket read the live value (a miss), and what the session did
-	// about it: one log line per hold or refusal, and the battle's counts.
-	bool WantsDrawnFrame() const override { return wantsDrawnFrame_; }
-	void NotePoseHold(const pose_hold::Event& event) override;
+	// The flow record's latched failure (FlowRollback::Failure), or the game's
+	// region table no longer the one the layout was built from (RegionTable).
+	const char* StateFailure() const override
+	{
+		const char* flow = flow_.Failure();
+		return flow ? flow : regionTable_.Changed();
+	}
 
 	std::string Describe() const; // JSON for the status report
 
@@ -180,6 +188,12 @@ public:
 	// starts reseed the fighters' generators from) to `seed`. The game takes
 	// both from the clock. Returns how many generators were reseeded.
 	int ReseedRandom(uint32_t seed);
+	// The battle frame's own counts (sfv::battleframe kUpdates,
+	// kTickedUpdates, kClock), 0 on every copy at frame 0: they count the
+	// updates each process ran before its battle bound, one or two more on
+	// one copy, and the slow-motion gate reads the update count. Restored
+	// with the state from then on, so the copies keep them equal.
+	void ZeroBattleFrameCounts();
 	// The match's start time (sfv::battledata::kStartTime), which lies outside
 	// the rollback state: a match data reset takes it from the clock again.
 	uint32_t StartTime() const;
@@ -231,6 +245,11 @@ public:
 		uint64_t waiting = 0;
 	};
 	void SetPaceSource(std::function<PaceCounts()> source) { paceSource_ = std::move(source); }
+	// An update is due in the frame now running: the mode steps its session
+	// (whether a frame is played or waits for the other player's inputs), so
+	// the frame's time is the pace line's. A frame Advance plays forward is
+	// due by itself; one the battle stands still in is not (pace::FrameClock).
+	void NoteUpdateDue() { paceClock_.Due(); }
 
 private:
 
@@ -243,6 +262,7 @@ private:
 	bool bound_ = false;
 	const char* waitingFor_ = nullptr; // what Bind last waited for (logged once)
 	StateLayout layout_;
+	RegionTable regionTable_; // the game's table the layout was built from
 	size_t gameRegions_ = 0;
 	RegionNames regionNames_;
 	std::vector<PostRestore> postRestore_;
@@ -256,44 +276,29 @@ private:
 	uint8_t* (*gameInstance_)() = nullptr; // sfv::kGameInstance
 	uint32_t ticksThisUpdate_ = 0;
 	bool replaying_ = false; // the update Advance runs replays a frame (SocketReads' log)
-	// What the fighters' models show: fresh (the engine drew a frame since the
-	// last update, and nothing was restored), placed (the last update's visual
-	// task placed them, and nothing was restored since), and whether the first
-	// update after a pose hold was the held frame's, fresh (SocketReads).
-	socket_reads::PoseFreshness pose_;
-	// Pose holds: the last update's reads, whether it wants a drawn frame
-	// (a miss), the reads of the update a hold is pending for (its session
-	// frame), and the hold lines logged this battle.
-	socket_reads::UpdateReads lastReads_;
-	bool wantsDrawnFrame_ = false;
-	socket_reads::UpdateReads holdReads_;
-	int holdFrame_ = -1;
-	int holdLines_ = 0;
-	static constexpr int kMostHoldLines = 400;
-	// As an update begins: a pose hold's outcome counted and logged.
-	void NoteAfterHold(socket_reads::PoseFreshness::AfterHold afterHold, int32_t inputFrame);
 	// The battle's fighter units, partners included, in its order (from Bind):
-	// what their socket reads are keyed by, and whose meshes are kept at LOD 0.
+	// where their anchored socket reads start, and whose meshes are kept at
+	// LOD 0.
 	struct FighterUnit {
 		uint8_t* chara = nullptr;
 		int32_t side = -1;
-		uint8_t* motion = nullptr; // CharaMotionPart (sfv::fighter::kMotionPartType)
 		uint8_t* action = nullptr; // CharaActionPart, for the facing
 		uint8_t* visual = nullptr; // CharaVisualPart
 	};
-	// The keys of every fighter unit as an update begins (SocketReads).
-	void KeyFighterUnits(SocketUpdate* sockets) const;
+	// Where every fighter unit stands and faces as an update begins (SocketReads).
+	void PlaceFighterUnits(SocketUpdate* sockets) const;
 	// After an update: a fighter unit's command queue left not empty
 	// (sfv::fighter::kCommandQueueBegin), outside the snapshot, is counted
 	// and the first few logged. Diagnostics only: nothing is changed.
 	void NoteCommandQueues();
+	match_data::Facts battleFacts_;
+	TickCounts tickCounts_; // the bound battle's ticks per update
 	uint64_t queuesCarried_ = 0;
 	int queueLines_ = 0;
 	static constexpr int kMostQueueLines = 8;
 	FighterUnit fighterUnits_[kMostFighterUnits];
 	int fighterUnitCount_ = 0;
-	uint64_t keyedUpdates_ = 0; // this battle's updates whose fighter units were keyed, and the time that took
-	int64_t keyTicks_ = 0;
+	uint64_t placedUpdates_ = 0; // this battle's updates whose fighter units were placed (the sockets line)
 	FlowRollback flow_;
 	// The costs since the last cost line (LogCosts), in QueryPerformanceCounter
 	// ticks: updates played forward and replayed, and AfterLoad's work.
@@ -302,11 +307,14 @@ private:
 		int64_t tickTicks = 0, replayedTicks = 0, callbackTicks = 0;
 	};
 	UpdateCosts costs_;
-	// The pace of the updates played forward (mod/Pace.hxx): when the window
-	// the next costs line covers began (a monotonic tick, 0 not begun), and
-	// the session's counts then.
+	// The pace of the updates played forward (mod/Pace.hxx): the battle's
+	// frames' time (QueryPerformanceCounter ticks, split by whether an update
+	// was due), whether the window the next costs line covers has begun, and
+	// the clock's and the session's counts then.
 	std::function<PaceCounts()> paceSource_;
-	int64_t paceFrom_ = 0;
+	pace::FrameClock paceClock_;
+	bool paceBegun_ = false;
+	pace::FrameClock::Totals clockAtStart_;
 	PaceCounts paceAtStart_;
 
 	// Ending the decided match's scenes (EndScenes); the game's functions

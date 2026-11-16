@@ -59,94 +59,8 @@ std::string MockFighter::BuildId() const
 	return "mockfighter-1";
 }
 
-void MockFighter::PoseReadsEvery(int every, int run, bool rebuild)
-{
-	poseEvery_ = every;
-	poseRun_ = run < 1 ? 1 : run;
-	poseRebuild_ = rebuild;
-	placed_ = PoseOf(world_);
-	placedSinceRestore_ = true;
-}
-
-uint32_t MockFighter::StanceOf(const World& world)
-{
-	uint32_t h = 2166136261u;
-	const auto mix = [&](int32_t v) {
-		for (int i = 0; i < 4; i++) h = (h ^ (uint8_t)(v >> (8 * i))) * 16777619u;
-	};
-	for (const Fighter& f : world.fighters) {
-		mix(f.y);
-		mix(f.attackFrames);
-		mix(f.hitstun);
-		mix(f.facing);
-	}
-	return h;
-}
-
-uint32_t MockFighter::PoseOf(const World& world)
-{
-	uint32_t h = 2166136261u;
-	const auto mix = [&](int32_t v) {
-		for (int i = 0; i < 4; i++) h = (h ^ (uint8_t)(v >> (8 * i))) * 16777619u;
-	};
-	for (const Fighter& f : world.fighters) {
-		mix(f.x);
-		mix(f.y);
-		mix(f.attackFrames);
-		mix(f.hitstun);
-		mix(f.facing);
-	}
-	return h;
-}
-
-void MockFighter::ReadPose()
-{
-	missed_ = false;
-	if (poseEvery_ <= 0 || world_.frame <= 0 || world_.frame % poseEvery_ >= poseRun_ || !InputsMatter()) return;
-	const uint32_t pose = PoseOf(world_);
-	uint32_t value = 0;
-	if (fresh_) {
-		// What the engine drew: the pose of this state.
-		value = drawn_;
-		posesSeen_.insert(pose);
-		stancesSeen_.insert(StanceOf(world_));
-	} else if (posesSeen_.count(pose)) {
-		value = pose; // the straight read of this pose where the fighters stand
-	} else if (poseRebuild_ && placedSinceRestore_ && stancesSeen_.count(StanceOf(world_))) {
-		value = pose; // rebuilt where they stand now
-	} else {
-		// The live value: the pose last drawn, another state's.
-		value = drawn_;
-		missed_ = true;
-		poseMisses_++;
-	}
-	world_.rng ^= value;
-}
-
-void MockFighter::NotePoseHold(const pose_hold::Event& event)
-{
-	switch (event.kind) {
-	case pose_hold::Event::Kind::Pending: posePending_++; break;
-	case pose_hold::Event::Kind::Cancelled: poseCancelled_++; break;
-	case pose_hold::Event::Kind::Held:
-		poseHolds_++;
-		awaitingHold_ = event.frame;
-		break;
-	case pose_hold::Event::Kind::Refused:
-		poseRefused_++;
-		refusedBy_[(int)event.why]++;
-		break;
-	}
-}
-
 void MockFighter::Advance(const FrameInputs& inputs, bool resimulating)
 {
-	if (awaitingHold_ >= 0) {
-		if (fresh_ && world_.frame == awaitingHold_) freshAfterHold_++;
-		else notFreshAfterHold_++;
-		awaitingHold_ = -1;
-	}
-	ReadPose();
 	if (resimulating) resimulated_++;
 	if (resimulating && !lastWasResimulation_) rollbackTargets_.push_back(world_.frame);
 	lastWasResimulation_ = resimulating;
@@ -214,11 +128,6 @@ void MockFighter::Advance(const FrameInputs& inputs, bool resimulating)
 	// The round flow reacts to the battle's KO a little later, like SFV's.
 	if (flowKoFrame_ < 0 && world_.koAt >= 0 && world_.frame - world_.koAt >= 2) flowKoFrame_ = world_.koAt;
 	presentation_.animationClock += 1.0f / 60.0f;
-	// The update's last phase places the models for the state it leaves; the
-	// engine shows them after its next frame.
-	placed_ = PoseOf(world_);
-	fresh_ = false;
-	placedSinceRestore_ = true;
 }
 
 } // namespace sfve::testbed

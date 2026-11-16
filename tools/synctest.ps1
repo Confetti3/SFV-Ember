@@ -16,10 +16,10 @@ param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash 
 # Every block of moves faces the way its fighter does. -idle 0|1 has that
 # player (P1 or P2) stand still, and the other walk forward at the start of
 # each block, so its moves land. -tiny draws -tinySides (1 P1, 2 P2, 3 both)
-# small. -socketLog logs the fight's reads of the fighters' models
+# small. -socketLog logs the fight's anchored reads of the fighters' models
 # (SocketReads) and prints them with the report; the `sockets:` lines (the
-# reads recorded, given the straight read, missed and conflicting, and the
-# microseconds per update the keys cost) are printed either way.
+# reads given the fight's position, those at a call site not classified, and
+# the anchors unresolved) are printed either way.
 # -rngAudit checks every random draw of a battle update against the rollback
 # state (RngAudit; docs/design/beta8/determinism.md): a generator outside it,
 # or in it but not reseeded, is logged once with its caller, and the battle's
@@ -32,8 +32,8 @@ param([string]$p1 = 'RYU', [string]$p2 = 'KEN', [string]$rules = '', [int]$mash 
 # -tasks 0|1|2 places the tick's tasks as the game does (0), on the battle's
 # thread (1, the synctest's own without it) or so with P2's first (2)
 # (-sfve_tasks; ModConfig's ChooseTickTasks); the `tasks:` lines say which.
-# -check ends with PASS (the run reached -frames, 0 failures, no conflicting
-# socket read, and with -rngAudit no generator outside the rollback state)
+# -check ends with PASS (the run reached -frames, 0 failures, and with
+# -rngAudit no generator outside the rollback state)
 # or FAIL, and the exit code says the same.
 Set-Location (Split-Path -Parent $PSScriptRoot)
 python -I tools\sfve.py kill | Out-Null
@@ -70,11 +70,9 @@ if (!$keep) { python -I tools\sfve.py kill | Out-Null }
 if ($check) {
   $run = [regex]::Match($s, '"framesRun":(\d+)')
   $failures = [regex]::Match($s, '"failures":(\d+)')
-  $conflicts = @(Select-String -Path $log -Pattern 'sockets: .* ([1-9]\d*) conflicting' | Select-Object -Last 1)
   $why = @()
   if (-not $run.Success -or [int]$run.Groups[1].Value -lt $frames) { $why += "the run stopped before $frames frames" }
   if (-not $failures.Success -or [int]$failures.Groups[1].Value -ne 0) { $why += "failures: $(if ($failures.Success) { $failures.Groups[1].Value } else { 'no report' })" }
-  if ($conflicts.Count) { $why += 'a socket read conflicted with the straight read of its state' }
   if ($rngAudit -and @(Select-String -Path $log -Pattern 'rng audit: a draw from a generator outside').Count) { $why += 'a random generator outside the rollback state was drawn from' }
   if ($why.Count) { "FAIL: $($why -join '; ')"; exit 1 }
   "PASS: $($run.Groups[1].Value) frames, 0 failures"

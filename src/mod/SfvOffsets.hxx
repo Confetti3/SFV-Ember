@@ -192,6 +192,22 @@ constexpr CodeSite kPlayerRef{"PlayerRef", 0x68D1E0,
 constexpr CodeSite kGetPlayerSetup{"GetPlayerSetup", 0x7B5940,
 	{0x40, 0x53, 0x57, 0x48, 0x83, 0xEC, 0x38, 0x48, 0x83, 0x79, 0x28, 0x00, 0x48, 0x8B, 0xFA, 0x48}};
 
+// void ResolvePlayerVersion(PlayerRef*): resolves the player's setting record's
+// balance version (jump::kSettingVersion) against this copy's version list
+// and writes it back (and to the support fighter's, +172). The battle's
+// resource load (rva 0x69BC20) calls it for each player just before it adds
+// the fighter's assets; hooked by BalanceVersions to write the launch's
+// explicit version first.
+constexpr CodeSite kResolvePlayerVersion{"ResolvePlayerVersion", 0x7B32D0,
+	{0x40, 0x53, 0x48, 0x83, 0xEC, 0x40, 0x48, 0x83, 0x79, 0x28, 0x00, 0x48, 0x8B, 0xD9, 0x0F, 0x84}};
+// UObject* BattleResourceLookup(CharaAsset*, const FString* code, int version):
+// the fighter's battle resources at that version (sfv::resources), the
+// version resolved as rva 0x56B2E0 does; null when the fighter or its list is
+// not there. Found by its path (rva 0x553530), loaded only if not already
+// (it is, once the battle bound the fighter). FighterData's fingerprint.
+constexpr CodeSite kBattleResourceLookup{"BattleResourceLookup", 0x5518C0,
+	{0x48, 0x89, 0x5C, 0x24, 0x18, 0x55, 0x48, 0x83, 0xEC, 0x30, 0x41, 0x8B, 0xD8, 0xE8, 0x5E, 0xD7}};
+
 // The jump state's second step (rva 0x602C80): after the first one made the
 // new mode's data object. For local versus it only moves on; the mod puts
 // the players and stage into the data object here, before the third step
@@ -619,7 +635,7 @@ constexpr CodeSite kRandomDraw{"RandomDraw", 0x32B2B0,
 constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecord, kPadsAny, kRollbackUnitPre, kGetManager, kFlowMessage,
 	kFindUnit, kFindPart, kProjectileReleasable, kAddBattleTask, kGameInstance, kGetBattleData, kGameAlloc, kShowErrorDialog, kShowNamedDialog, kChangeSceneState, kSceneManagerTick, kTitleLeaveStep,
 	kJumpMessageClass, kJumpStateClass, kNewObject, kJumpCopyPlayers, kGetBattleFlow, kEnsureLoader, kGameData,
-	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
+	kPlayerRef, kGetPlayerSetup, kJumpSecondStep, kResolvePlayerVersion, kBattleResourceLookup, kCopyCharPkg, kCopySpecPkg, kAssignString, kGameFree,
 	kFighterInstalled, kCostumePackage, kShowResult, kRestartBattle, kFlowRequest, kSetFlowPhase, kMarkResultSkipped,
 	kPauseUnitPreUpdate,
 	kSpecData, kMainMenuClass,
@@ -636,7 +652,7 @@ constexpr CodeSite kSites[] = {kBattleFrameUpdate, kBattleFrameCtor, kInputRecor
 	kScriptPosture, kStartAction, kProjectileDie, kDamage,
 	// The fighter's picture, for Tiny fighters (TinyFighters), and the fight's
 	// reads of its model (SocketReads).
-	kCharaVisualUpdate, kSetWorldScale3D, kActorSetMeshTransform, kSocketWorldPosition, kMakeName, kSocketTransform,
+	kCharaVisualUpdate, kSetWorldScale3D, kActorSetMeshTransform, kSocketWorldPosition,
 	// The random generators' draw, for the development audit (RngAudit).
 	kRandomDraw,
 	// The fighters' boxes and the camera, for the hitbox viewer (SfvBoxOffsets.hxx).

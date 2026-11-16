@@ -33,7 +33,7 @@ std::string MakeLayoutRulesId()
 {
 	// The outside state laid out at fixed made-up addresses, so each region's
 	// place in its object (its offset) is hashed with its size, flags and masks.
-	OutsideState where = {0x10000000, 0x20000000, 0x30000000, 0x40000000, 0x50000000};
+	OutsideState where = {0x10000000, 0x20000000, 0x30000000, 0x40000000, 0x50000000, 0x58000000};
 	for (size_t fighter = 0; fighter < std::size(where.fighterParts); fighter++) {
 		for (size_t row = 0; row < kMaxPartRuns; row++) where.fighterParts[fighter][row] = 0x60000000 + (fighter * kMaxPartRuns + row) * 0x1000000;
 	}
@@ -53,7 +53,7 @@ std::string MakeLayoutRulesId()
 	text += "; flow record " + std::to_string(sizeof(FlowRecord)) + ", " + std::to_string(kMaxFlowStates) + " states, base " +
 		std::to_string(fs::kBaseSize) + ", largest " + std::to_string(fs::kMaxSize) + "; classes";
 	for (const fs::ClassSize& state : fs::kClassSizes) {
-		text += " " + Hex(state.vtable) + ":" + std::to_string(state.size) + (state.keepOwn ? "+own" : "") + "/" +
+		text += " " + Hex(state.vtable) + ":" + std::to_string(state.size) + (state.kept == state.size ? std::string("+own") : state.kept > fs::kBaseSize ? "+own to " + std::to_string(state.kept) : std::string()) + "/" +
 			std::to_string(state.leftoverWords);
 	}
 	// What every copy must do alike that no table above shows
@@ -63,15 +63,12 @@ std::string MakeLayoutRulesId()
 	// battle that rolls back runs its tick's tasks (ModConfig.hxx): the
 	// placement this copy takes (a development build's -sfve_tasks changes
 	// it, so a -sfve_tasks=0 copy cannot meet a default one; the default's
-	// text is kRollbackTickTasks' name as before); and whether a fight socket
-	// read that missed is held for a drawn frame (ChoosePoseHold: a
-	// development build's -sfve_pose_hold=1 copy cannot meet a default one, as
-	// holds are off by default); and whether the four fight socket reads that
-	// feed fight state are given the fight's position, and the version of
-	// their offsets (ChooseSocketAnchor, socket_reads::kAnchorVersion).
-	text += "; socket grid 1/" + std::to_string(socket_reads::kGridSteps) + "; address rule " + std::to_string(kAddressRuleVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath) +
-		"; rollback tick tasks " + TickTasksName(ChooseTickTasks(Config(), true)) + "; pose hold " +
-		(ChoosePoseHold(Config()) ? "on" : "off") + "; socket anchors " +
+	// text is kRollbackTickTasks' name as before); and whether the fight
+	// socket reads that may feed fight state are given the fight's position,
+	// and the version of the rules that decide them (ChooseSocketAnchor,
+	// socket_reads::kAnchorVersion).
+	text += "; address rule " + std::to_string(kAddressRuleVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath) +
+		"; rollback tick tasks " + TickTasksName(ChooseTickTasks(Config(), true)) + "; socket anchors " +
 		(ChooseSocketAnchor(Config()) ? std::to_string(socket_reads::kAnchorVersion) : std::string("off"));
 	return Hex(XXH3_64bits(text.data(), text.size()));
 }
@@ -83,8 +80,9 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 	layout.Add("global.rng", At(where.base, sfv::rng::kGlobal + sfv::rng::kState), 4);
 	namespace bf = sfv::battleframe;
 	namespace iu = sfv::inputunit;
-	const size_t frame = layout.Add("battleframe", At(where.battleFrame, bf::kState), bf::kStateSize);
-	for (uint32_t own : {bf::kUpdates, bf::kTickedUpdates, bf::kClock}) layout.IgnoreForPeers(frame, own - bf::kState);
+	// Its counts are 0 on every copy at frame 0 (SfvAdapter::
+	// ZeroBattleFrameCounts) and compared like the rest.
+	layout.Add("battleframe", At(where.battleFrame, bf::kState), bf::kStateSize);
 	const size_t counters = layout.Add("inputunit.counters", At(where.inputUnit, iu::kCounters), iu::kCountersSize);
 	layout.IgnoreForPeers(counters, iu::kSyncClock - iu::kCounters);
 	layout.Add("ruleunit.judge", At(where.ruleUnit, sfv::ruleunit::kJudgeState), 4);
@@ -98,6 +96,11 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 	}
 	layout.Add("battledata.judgement", At(where.battleData, bd::kDecided), bd::kResults + bd::kResultsSize - bd::kDecided);
 	layout.Add("battledata.flowflags", At(where.battleData, bd::kFlowFlags), bd::kFlowFlagsSize);
+	if (where.koWait) {
+		namespace kw = sfv::kowait;
+		layout.Add("kowait.state", At(where.koWait, kw::kState), kw::kStateSize);
+		layout.Add("kowait.position", At(where.koWait, kw::kPosition), kw::kPositionSize);
+	}
 	static_assert(std::size(sfv::kPartRunsOutsideSnapshot) <= kMaxPartRuns);
 	for (size_t fighter = 0; fighter < std::size(where.fighterParts); fighter++) {
 		for (size_t row = 0; row < std::size(sfv::kPartRunsOutsideSnapshot); row++) {

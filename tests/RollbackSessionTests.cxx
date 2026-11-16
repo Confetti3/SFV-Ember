@@ -249,6 +249,45 @@ TEST_CASE("a peer that goes away ends the other's session cleanly")
 	CHECK(pair.a.Step(0) == RollbackSession::StepResult::Failed);
 }
 
+TEST_CASE("a session kept for its watchers never touches the game again, though the other fighter's drop rolls it back")
+{
+	// P1's session after the fight, as the main menu polls it (NetplayMode's
+	// drain) while the battle it played is freed. P1 played a few frames on
+	// guessed inputs P2 never sent; once P2 is dropped, GGPO reloads P2's last
+	// frame received and replays them, which must reach no game.
+	int reports = 0;
+	LoopbackPair pair(kBugNone, 0, false, LoopbackPair::BeforeStart{},
+		[&reports](RollbackSession::Config& a, RollbackSession::Config&) {
+			a.onFrame = [&reports](int, const RecordedFrame&) { reports++; };
+		});
+	REQUIRE(pair.RunTo(120));
+	for (int i = 0; i < 4; i++) pair.a.Step(ScriptedInput(0, pair.a.Frame(), kLoopbackSeed));
+	REQUIRE(pair.a.Frame() > pair.b.Frame());
+	pair.a.KeepForWatchers();
+	CHECK(pair.a.Layout().Regions().empty());
+	const int gameFrame = pair.gameA.Frame();
+	const uint64_t gameState = pair.gameA.Layout().HashLive();
+	const size_t targets = pair.gameA.RollbackTargets().size();
+	const uint64_t rollbacks = pair.a.GetStats().rollbacks;
+	const int reported = reports;
+	pair.b.Close();
+	// The drop comes after the pair's disconnect timeout (a second).
+	const ULONGLONG start = GetTickCount64();
+	while (pair.a.GetStats().rollbacks == rollbacks && GetTickCount64() - start < 5000) {
+		pair.a.Poll();
+		Sleep(1);
+	}
+	REQUIRE(pair.a.GetStats().rollbacks > rollbacks);
+	CHECK(pair.a.Live());
+	CHECK_FALSE(pair.a.Failed());
+	CHECK(pair.gameA.Frame() == gameFrame);
+	CHECK(pair.gameA.Layout().HashLive() == gameState);
+	CHECK(pair.gameA.RollbackTargets().size() == targets);
+	CHECK(reports == reported); // nothing more reported for a replay
+	uint64_t hash = 0;
+	CHECK_FALSE(pair.a.HashAt(pair.a.Frame() - 1, &hash)); // nor hashed
+}
+
 TEST_CASE("peers keep matching per-region checkpoints for confirmed frames")
 {
 	LoopbackPair pair(kBugNone, 0);

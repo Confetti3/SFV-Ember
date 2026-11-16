@@ -43,11 +43,15 @@ namespace sfve::picks {
 // the tick tasks run on the battle's thread in every battle, every fighter
 // unit's outside state and socket reads are kept, and a checkpoint is taken
 // every 20 frames instead of 60, so a beta.8 copy cannot meet one of these
-// (docs/design/beta8/desync.md, "Beta.9"). 0.8 (beta.10): the library's
-// Ember 1.6.0 room wire (the post-match answer and privacy kinds before the
-// Tiny fighters, Skip winner scenes and Banned stages ones, the room's
-// charter), so a beta.9 copy cannot share a room with one of these
-// (EMBER_LIBRARY.md section 62). No earlier copy may meet one of these.
+// (docs/design/beta8/desync.md, "Beta.9"). 0.8 (beta.10): every launch names
+// each fighter's balance version, the start agreement carries the match data
+// (protocol 2) and refuses copies whose game data differ, a mismatch trades
+// region lists, and the status part's effect switches, Finish's own fields and
+// the round's end wait unit are restored (docs/design/beta10/desync.md), and
+// the room wire is the library's Ember 1.6.0 one (the post-match answer and
+// privacy kinds before the Tiny fighters, Skip winner scenes and Banned stages
+// ones, the room's charter; EMBER_LIBRARY.md section 62). No earlier copy may
+// meet one of these.
 constexpr const char* kMatchBuild = "sfv-ember/13173604/0.8";
 
 // The stage choice that stands for Random (GameCatalog::randomStage): the

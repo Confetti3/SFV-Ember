@@ -1523,7 +1523,7 @@ What was SF4-only is the battle's GGPO layer (`sf4e__Game__Battle__System__Ggpo*
 - **A watching copy** starts GGPO's spectator backend (`ggpo_start_spectating`, one link to P1, no delay or disconnect settings, which it refuses). Its `Step` plays the next frame P1 sent: `synchronize_input` answers `PREDICTION_THRESHOLD` for a frame not here yet (Waiting) and `GENERAL_FAILURE` for one overwritten before it was played (the stream fails). The frame's inputs reach the game exactly as the fighters' sessions give them (`InputsMatter`, `InputBits`), without telling GGPO anything. It keeps no saves and never rolls back.
 - **Its hashes.** The fighters hash the state GGPO saves as frame N, the state after N frames, frame 0 on their first input. The watcher hashes the same states: frame 0 before its first frame runs, then frame N after its Nth, through the same `RecordHash` (one scratch copy, `SaveTo`, `HashSaved(Peers)`, the region hashes and the same `checkpoint:` log line). `LastConfirmedFrame` is its current frame (every state it reaches is final), so the desync check (`SfvVerification`) takes its checkpoints and compares them with the fighters' as SF4's spectator does: a mismatch is logged and the spectator-only notice shown, and nothing ends the fight.
 - **Its held frames.** `StepHeld` on a watcher plays the next streamed frame as a held one: the fighters' answer bits reach `onInputs` and the game does not advance, so the decision (`Decide`, a function of the two inputs and the held count) is the fighters'.
-- **Kept for the watchers.** `KeepForWatchers` marks a session whose fight is over; the other fighter's interruption and disconnect are then expected and recorded as nothing.
+- **Kept for the watchers.** `KeepForWatchers` marks a session whose fight is over; the other fighter's interruption and disconnect are then expected and recorded as nothing. It also lets the game go, since the battle is freed from the main menu on: the frames final by then are hashed and reported, and every later callback (GGPO still rolls the session back when the other fighter is dropped with frames this copy guessed) reaches a stand-in with no state (`core/DetachedGame.hxx`), never the freed battle. Nothing more is hashed or reported. The adapter's pace source reads the mode's current session, none once the session has moved to the drain.
 - `SpectatorStreamWatch`: a watcher's stream that has not run 30 s after its start fails.
 
 **The room's battle** (`ember/RoomBattle`, `mod/NetplayMode`)
@@ -1592,6 +1592,7 @@ The maintainer: SFV Ember "pretty much up to parity with usf4 ember in all funct
 **Library change (SF4 unchanged)**
 - `Capabilities` gains `replayGameList`, `replayVideo`, `replayMeter` and `replayInputs`, which SF4 sets (and so does the tests' fake game). `ShellView` carries them, true by default, and `ReplaysPanel` offers only what the game does: the Battle Log row, Add, Export video with its tab and a set's videos, Watch with frame meter, and Inputs. SF4's rows, choices and their order are as before (the journey test's existing checks pass unchanged); `WatchOnlyJourney` checks SFV's.
 - `ReplayHudView` gains `meterOffered` (true by default: SF4's F5 stays) and `stopOffered` (View and Esc, with the shared "room.stop_watching" words).
+- beta.10 adds seeks to the playback (`docs/design/beta10/replay-seek.md`): step back (X, comma), jump 5 s (D-pad Left and Right, the arrow keys), restart (D-pad Down, Home), an A-B loop (D-pad Up, L), a timeline in the strip, and the pipe's `replay stepback|restart|loop|seek <frame>|jump <+/-seconds>`. Tests: `tests/PlaybackSeekTests.cxx` (`sfve_tests`: the span and landings, the snapshot ring, a MockFighter playback that goes back, restarts and loops and reaches the first pass's hashes) and `tests/PlaybackBookTests.cxx` (`sfve_ember_tests`: the clock after a seek, checkpoints compared again, completeness); `tools/runreplay.py --seeks`.
 - The strip asked the Training meter for its place by calling `TrainingMeterBottom()`, which SF4's TrainingMeter.cxx defines and SFV does not link. The meter now hands it over as it starts (`SetReplayStripMeterBottom`, in TrainingMeter.cxx), so SF4's strip reads the same function as before; with none, the strip keeps below the meter's default place (`TrainingHudBottom`). SF4's render goldens pass, but they cannot tell the registration from the fallback: at the meter's default position the two agree (TrainingMeter.cxx's own `static_assert`), so that the registration takes effect is shown by the code, not by a test.
 - `feat/ember-library` (ec04b962f, Training's `Capabilities::frameMeter`) is merged into `feat/sfv-replays`; the two capability lists sit side by side in `Capabilities`, `ShellView` and `ShellHost`.
 - No SF4-visible text changed and no msgid was added. SFV's English overlay rewords the Replays lines that name SF4's Battle Log, and gives two notices SFV never shows otherwise their SFV meaning: a replay that cannot be played (`inputs.unreadable_detail`) and one that did not play to its end (`replays.not_added`).
@@ -2933,8 +2934,12 @@ game is reached stayed the library's; what it does is 1.6.0's.
   room; saved as SFV's index (0 to 44); member rows show the main, seats keep showing picks (`roomFacesArePicks`).
 - The gameplay device is the game's (pad 0): no capture, no save, no Change controller.
 
-**Left for later streams (the seams are named in the report of 2026-11-15)**: replay seek, step back and loop;
-Training's recording controls; the frame meter's options (`SfvHud` supplies the default `MeterOptions` in one place).
+**Replay seek** (step back, jumps, restart and the A-B loop) is the library's neutral transport
+(`common/ReplayTransport.hxx`, merged into `b10/lib-160` beside 1.6.0) with SFV's own playback under it
+(docs/design/beta10/replay-seek.md); SF4 keeps its camera panel's seek.
+
+**Left for later streams (the seams are named in the report of 2026-11-15)**: Training's recording controls; the
+frame meter's options (`SfvHud` supplies the default `MeterOptions` in one place).
 
 *Tests:* `sfve_main_tests` (a main past fighter 43, the first pick over none); the library's
 `RuntimeCapabilitiesTest` under the x64 build; SFV's own suites.

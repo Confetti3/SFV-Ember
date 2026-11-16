@@ -9,6 +9,13 @@
 // window of updates played forward (its `costs:` line's window, 600 updates),
 // and this file holds the arithmetic, the texts and the battle's record:
 //
+//  - FrameClock: the time of the battle's rendered frames, split into the
+//    frames in which an update was due (one played forward, or the session
+//    waited for the other player's inputs: the pace players feel) and the
+//    frames the battle stood still on purpose (the WIN's answers, a decided
+//    match waiting for its confirmed frame, a leave, a paused playback). A
+//    window's seconds are its due frames' only, so a WIN held for six
+//    seconds no longer reads as a slow game; the held time is told apart.
 //  - Window / Summary: a window's updates and seconds, with the session's
 //    rollbacks and its waiting steps (the calls that ran no frame because
 //    the other player's inputs or the gate were not there yet) in it. A
@@ -34,11 +41,39 @@ constexpr std::size_t kMostListedEvents = 8;
 // How many are kept (a pad that flaps for a whole battle).
 constexpr std::size_t kMostKeptEvents = 64;
 
+// Each rendered frame's time, from its start to the next frame's start, is
+// counted as the next one starts: as due when an update was due in it (Due),
+// else as held. Ticks of any monotonic clock.
+class FrameClock {
+public:
+	struct Totals {
+		std::int64_t due = 0, held = 0;
+	};
+	// A rendered frame starts.
+	void Frame(std::int64_t now)
+	{
+		if (started_) (due_ ? totals_.due : totals_.held) += now - last_;
+		started_ = true;
+		last_ = now;
+		due_ = false;
+	}
+	// An update is due in the frame now running.
+	void Due() { due_ = true; }
+	const Totals& Read() const { return totals_; }
+
+private:
+	Totals totals_;
+	std::int64_t last_ = 0;
+	bool started_ = false;
+	bool due_ = false;
+};
+
 struct Window {
 	std::uint64_t updates = 0;
-	double seconds = 0;
+	double seconds = 0;          // of the frames an update was due in (FrameClock)
 	std::uint64_t rollbacks = 0; // the session's, during the window
 	std::uint64_t waiting = 0;   // steps that ran no frame, during the window
+	double heldSeconds = 0;      // of the frames the battle stood still in, besides
 };
 
 inline double Rate(std::uint64_t updates, double seconds)
@@ -77,11 +112,14 @@ inline std::string Format(double value)
 	return text;
 }
 
-// "pace 600 updates in 16.6 s (36.1 a second)": the end of the costs line.
+// "pace 600 updates in 16.6 s (36.1 a second)", and ", 6.2 s held" when the
+// battle stood still in the window: the end of the costs line.
 inline std::string WindowText(const Window& window)
 {
-	return "pace " + std::to_string(window.updates) + " updates in " + Format(window.seconds) + " s (" + Format(Rate(window)) +
-		" a second)";
+	std::string text = "pace " + std::to_string(window.updates) + " updates in " + Format(window.seconds) + " s (" +
+		Format(Rate(window)) + " a second)";
+	if (window.heldSeconds > 0) text += ", " + Format(window.heldSeconds) + " s held";
+	return text;
 }
 
 // "pace: slow: 36.1 updates a second over the last 600 (rollbacks N, frames

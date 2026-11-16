@@ -11,6 +11,7 @@
 #include "ember/SfvTraining.hxx"
 #include "ember/SfvVerification.hxx"
 #include "mod/ControlPipe.hxx"
+#include "mod/GameExit.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/GameMemory.hxx"
@@ -52,6 +53,14 @@ const char* StepName(RollbackSession::StepResult r)
 void NetplayMode::Install()
 {
 	RegisterCommands();
+	// The mode is never destroyed (the driver lives as long as the process):
+	// its sessions close in the game's exit work, with every thread still
+	// running, after the room's leave has gone out (EmberHost's steps).
+	OnGameExit({nullptr, nullptr, [this] {
+		std::lock_guard lock(mutex_);
+		EndDrain();
+		if (session_ && session_->Live()) session_->Close();
+	}});
 	if (!config_.room) return;
 	adapter::RegisterRoomCommands();
 	adapter::RegisterReplayCommands();
@@ -83,13 +92,17 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	});
 	session_ = std::move(session);
 	// The pace line's counts (mod/Pace.hxx), read on the battle's thread
-	// inside the session's own calls: no lock of this mode's.
-	adapter.SetPaceSource([raw = session_.get()]() {
-		const RollbackSession::Stats& s = raw->GetStats();
-		return SfvAdapter::PaceCounts{raw->Frame(), s.rollbacks, s.waitingSteps + s.predictionStalls};
+	// inside the session's own calls, under Frame's lock. Of the battle's
+	// session, whichever that is now: none once it is kept for the watchers
+	// (PollBattle), so the adapter never holds a session the drain frees.
+	adapter.SetPaceSource([this]() {
+		if (!session_) return SfvAdapter::PaceCounts{};
+		const RollbackSession::Stats& s = session_->GetStats();
+		return SfvAdapter::PaceCounts{session_->Frame(), s.rollbacks, s.waitingSteps + s.predictionStalls};
 	});
 	replay_.reset();
 	replayEnd_.clear();
+	seeker_.Reset();
 	if (TakeReplayBattle()) {
 		// The battle the Replays screen's Watch now launched.
 		replay_ = adapter::TakeArmedReplay();
@@ -170,8 +183,8 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	room_.NoteLink(*session_);
 	adapter::RoomBattle::EndDroppedWatcherLinks(*session_);
 	if (session_->Watching()) {
-		// A replay steps as its transport says: paused, slower, or a step.
-		if (replay_ && !adapter::PlaybackFrameWanted()) return;
+		// A replay steps as its transport says: paused, slower, a step, or a seek.
+		if (replay_) return PlayReplay(adapter);
 		return WatchFrames(adapter);
 	}
 	const bool frozen = freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_;
@@ -239,6 +252,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 			startTime_);
 		adapter.SetStartTime(startTime_);
 	}
+	adapter.NoteUpdateDue();
 	last_ = session_->Step(local);
 	NoteScenesSkip(adapter);
 	DumpIfRequested();
@@ -349,7 +363,7 @@ bool NetplayMode::WatchFrame(SfvAdapter& adapter)
 		});
 		if (last_ != RollbackSession::StepResult::Advanced) return false;
 		room_.Decided(decided, *session_);
-		if (replay_) adapter::NotePlaybackFrame(false, room_.GamesInPlace());
+		if (replay_) adapter::NotePlaybackFrame(session_->Frame() - 1, false, room_.GamesInPlace());
 		if (decided == adapter::RoomBattle::Answer::Rematch) {
 			startTime_ = adapter.StartTime();
 		} else if (decided == adapter::RoomBattle::Answer::Leave) {
@@ -373,14 +387,37 @@ bool NetplayMode::WatchFrame(SfvAdapter& adapter)
 		adapter.SetStartTime(startTime_);
 	}
 	NoteFightStart(adapter, session_->Frame());
+	adapter.NoteUpdateDue();
+	// The state at the start of a fight frame, when a seek back may need it.
+	if (replay_) seeker_.Before(*session_, replay_->frames);
 	last_ = session_->Step(0);
 	NoteScenesSkip(adapter);
 	const bool advanced = last_ == RollbackSession::StepResult::Advanced;
 	if (advanced && replay_) {
 		const int played = session_->Frame() - 1;
-		adapter::NotePlaybackFrame(played >= 0 && replay_->frames[(size_t)played].Fight(), room_.GamesInPlace());
+		adapter::NotePlaybackFrame(played, played >= 0 && replay_->frames[(size_t)played].Fight(), room_.GamesInPlace());
 	}
 	return advanced;
+}
+
+void NetplayMode::PlayReplay(SfvAdapter& adapter)
+{
+	// A lagged or rollback-checked playback (a test's) plays its own rollbacks: it never seeks.
+	const bool diagnostics = config_.replayLag > 0 || config_.replayCheck > 0;
+	const adapter::PlaybackTurn turn = adapter::PlaybackTurnFor(seeker_.Ground(*session_, replay_->frames, diagnostics));
+	if (turn.restoreBefore >= 0) {
+		const int restored = seeker_.Restore(*session_, turn.restoreBefore);
+		adapter::NotePlaybackRestored(restored);
+		if (restored < 0) return;
+	}
+	if (turn.goal < 0) {
+		if (turn.frames) WatchFrames(adapter);
+		return;
+	}
+	for (unsigned played = 0; played < sf4e::replaytransport::kMostSeekFrames && session_->Frame() < turn.goal &&
+		!leaveWanted_ && session_->Live(); played++) {
+		if (!WatchFrame(adapter)) return;
+	}
 }
 
 void NetplayMode::EndDrain()
@@ -525,8 +562,12 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 			if (started) Log("netplay: the room's match is not known; this battle is not recorded");
 			recorder_.Stop();
 		}
-		// P1's start state, which a playback compares its own with.
+		// P1's start state, which a playback compares its own with, and the
+		// balance versions every copy agreed on before frame 0.
 		recording_.startHash = startHash_;
+		for (int side = 0; side < kPlayers; side++) {
+			recording_.players[side].balanceVersion = match_data::SideVersion(adapter.BattleFacts(), side);
+		}
 	}
 	// The results menu would let each player leave the match their own way.
 	// A replay's battle holds its WIN as the room's did.
@@ -584,12 +625,10 @@ NetplayMode::Prepared NetplayMode::PrepareStart(SfvAdapter& adapter)
 	c.skipUnloadableSaves = config_.skipSaves;
 	c.hashOnConfirm = config_.hashOnConfirm;
 	c.verifyLoadsEvery = config_.verifyLoadsEvery;
-	// A fight socket read that missed holds the tick for a drawn frame
-	// (core/PoseHold.hxx): a fighter's session and a lagged replay's playback;
-	// a watcher never holds.
-	c.poseHolds = ChoosePoseHold(config_);
-	// Both copies are at the battle's first frame: give the clock-seeded
-	// random generators the same seeds before anything is simulated.
+	// Both copies are at the battle's first frame: the battle frame's counts
+	// start from 0 on each, and the clock-seeded random generators get the
+	// same seeds, before anything is simulated.
+	adapter.ZeroBattleFrameCounts();
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
 	// What the battle's ticks before the session recorded for each player,
 	// which the session's first frames read back: nothing pressed for a
@@ -639,6 +678,7 @@ void NetplayMode::BeginStartAgreement(SfvAdapter& adapter)
 	// differently; every other region name is its owner's (RegionNames,
 	// SfvLayoutRules) and the same in every process.
 	agreement.stableName = [](const std::string& name) { return name.rfind("game.", 0) != 0; };
+	agreement.facts = adapter.BattleFacts();
 	std::vector<uint16_t> ports{c.remotePort};
 	if (!c.watching && c.localPlayer == 0) {
 		// P1: P2 first, then each watcher it streams to.
@@ -666,6 +706,16 @@ bool NetplayMode::AgreeStart(SfvAdapter& adapter)
 {
 	if (!startAgreement_->Pump(GetTickCount64())) return false;
 	const StartAgreement::Report& report = startAgreement_->GetReport();
+	if (report.result == StartAgreement::Result::DataDiffers) {
+		// Two copies that compute with other game data cannot play one match
+		// (core/MatchData.hxx): it ends here, on each copy, before frame 0.
+		adapter::ReportGameDataDiffers(report, adapter.BattleFacts(), room_.Watching(), pending_.config.inputDelay);
+		EndStartAgreement();
+		room_.FlushHeld("the copies' game data differs");
+		started_ = true;
+		Leave();
+		return false;
+	}
 	startHash_ = report.reference ? report.reference : report.localBefore;
 	// A repair is reported as a desync is (it was one, before frame 0).
 	if (!report.regions.empty() && room_.Active()) {

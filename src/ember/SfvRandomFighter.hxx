@@ -15,18 +15,40 @@
 //
 // The dummy's pick screen has no Random card: nothing here touches the dummy.
 //
-// Stream C fills SfvRandomFighter.cxx (and SfvPick's memory and flag); this
-// header is final.
-
 #include "sf4e/sf4e__NetplayFacade.hxx"
 
+#include <cstdint>
+#include <optional>
+
 namespace sfve::adapter {
+
+// What NoteRandomFighter's note to the runtime is made from. The note is the
+// same while these are, and the runtime keeps the last one it was given.
+struct RandomNoteInputs {
+	bool random = false, eleven = false, tiny = false;
+	int fighters = 0;
+	std::uint64_t pick = 0;   // SfvPick's PickChanges: the stored pick, the remembered looks
+	std::uint64_t voices = 0; // SfvCatalog's OwnVoicesRevision
+	std::uint64_t roll = 0;   // the roll Eleven's looks are drawn for (Eleven only)
+	bool operator==(const RandomNoteInputs&) const = default;
+};
+// Whether the note is due: the first time, and each time the inputs differ
+// from the last that was due.
+class RandomNoteGate {
+public:
+	bool Due(const RandomNoteInputs& inputs);
+
+private:
+	std::optional<RandomNoteInputs> last_;
+};
 
 // Any thread, every frame the pick screen or the runtime's shell is up: tells
 // the runtime whether the player's pick is Random
 // (NetplayFacade::NoteRandomFighter, with the stored pick and the per-fighter
 // remembered looks as the wire carries them), so it rolls the next game's
-// fighter and sends it with every Ready.
+// fighter and sends it with every Ready. Each frame it compares what the note
+// is made from (RandomNoteInputs) with the last note's, and only a change
+// makes and sends a new one.
 void NoteRandomFighter(bool random);
 
 // Game thread, every frame: when `snapshot` carries a roll this function has

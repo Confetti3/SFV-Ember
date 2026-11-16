@@ -6,6 +6,7 @@
 #include "mod/SfvLayoutRules.hxx"
 #include "mod/SfvOffsets.hxx"
 
+#include "platform/Utf8.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "common/StageCatalog.hxx"
@@ -39,6 +40,7 @@ std::vector<int> s_rosterOrder;
 // read by any thread; empty before the first read.
 std::mutex s_voicesMutex;
 std::vector<int> s_ownVoices;
+std::uint64_t s_voicesRevision = 0;
 static_assert(picks::kVoiceJapanese == mod::sfv::jump::kVoiceJapanese && picks::kVoiceEnglish == mod::sfv::jump::kVoiceEnglish,
 	"a pick carries the voice as the game numbers it");
 // The table rules a room offers that SFV plays (VersusLaunch's
@@ -301,12 +303,6 @@ void FillLimits()
 const mod::StageContent* StageAt(std::int64_t stage)
 {
 	return stage >= 0 && stage < (std::int64_t)s_lists.stages.size() ? &s_lists.stages[(size_t)stage] : nullptr;
-}
-
-// The game's codes are ASCII capitals and digits.
-std::wstring WideCode(const std::string& code)
-{
-	return std::wstring(code.begin(), code.end());
 }
 
 // What the spec lists for ELEVEN, once, so a run's log says which look Eleven
@@ -648,7 +644,7 @@ std::string ElevenName()
 mod::FighterPick FighterPickOf(const sf4e::selection::Pick& pick)
 {
 	const picks::Loadout loadout = picks::LoadoutOf(pick);
-	return {WideCode(FighterCode(pick.fighter)), pick.costume, pick.color, loadout.choice[picks::VSkill],
+	return {sf4e::platform::Utf8ToWide(FighterCode(pick.fighter).c_str()), pick.costume, pick.color, loadout.choice[picks::VSkill],
 		loadout.choice[picks::VTrigger], picks::VoiceIn(pick).value_or(mod::kVoiceOfOptions)};
 }
 
@@ -660,7 +656,15 @@ void RefreshOwnVoices(const std::function<std::optional<int>(const std::string& 
 		voices.push_back(voice && (*voice == picks::kVoiceJapanese || *voice == picks::kVoiceEnglish) ? *voice : picks::kVoiceEnglish);
 	}
 	std::lock_guard lock(s_voicesMutex);
+	if (voices == s_ownVoices) return;
 	s_ownVoices = std::move(voices);
+	s_voicesRevision++;
+}
+
+std::uint64_t OwnVoicesRevision()
+{
+	std::lock_guard lock(s_voicesMutex);
+	return s_voicesRevision;
 }
 
 int OwnVoice(std::int64_t fighter)
@@ -672,7 +676,7 @@ int OwnVoice(std::int64_t fighter)
 std::optional<int> FighterId(const std::wstring& code)
 {
 	for (size_t id = 0; id < s_lists.fighters.size(); id++) {
-		if (WideCode(s_lists.fighters[id].code) == code) return (int)id;
+		if (sf4e::platform::Utf8ToWide(s_lists.fighters[id].code.c_str()) == code) return (int)id;
 	}
 	return std::nullopt;
 }
@@ -680,7 +684,7 @@ std::optional<int> FighterId(const std::wstring& code)
 std::optional<int> StageId(const std::wstring& code)
 {
 	for (size_t id = 0; id < s_lists.stages.size(); id++) {
-		if (WideCode(s_lists.stages[id].code) == code) return (int)id;
+		if (sf4e::platform::Utf8ToWide(s_lists.stages[id].code.c_str()) == code) return (int)id;
 	}
 	return std::nullopt;
 }
@@ -738,7 +742,7 @@ MatchLaunch LaunchPicks(const RoomMatch& match)
 		picks.players[side].loadCode =
 			codes[0] && codes[1] ? (std::int64_t)sfve::picks::LoadCodeButtons(*codes[side]) : mod::kNoLoadCode;
 	}
-	picks.rules.stage = WideCode(StageCode(match.stage));
+	picks.rules.stage = sf4e::platform::Utf8ToWide(StageCode(match.stage).c_str());
 	picks.rules.rounds = match.rounds;
 	picks.rules.timeFrames = *mod::RoomClockFrames(match.roundSeconds);
 	picks.practice = match.practice;

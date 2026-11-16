@@ -5,9 +5,15 @@ player's PC after a desync, EMBER_LIBRARY.md section 55).
   python tools/diffstate.py <a> <b>
   python tools/diffstate.py --selftest
 
-A state file names its regions, so two of them are paired by name. A dump
-does not, and regions are listed in a different order in each process, so
-they are paired by size, then by fewest differing bytes. Words that look like
+Pairing rule: never pair two processes' regions by name alone. A state file
+names its regions, and a named region ("CharaUnit[0]+0xF8") is paired by its
+name; but a run with no owner is called "game.N", N being its place in that
+process's region list, and two processes number them differently (pairing
+`game.N` by name made about 150 false differences). Those runs, and every
+region of a dump (which has no names), are paired by size, then by fewest
+differing bytes; from the desync log's lines (size and hash only) they are
+paired as a multiset of (size, hash), as tools/compare.py and
+sfvelib.unmatched_regions do. Words that look like
 addresses (the mod's own test) are ignored, as the state hash ignores them:
 only words on an 8-byte boundary of their real address (masked).
 

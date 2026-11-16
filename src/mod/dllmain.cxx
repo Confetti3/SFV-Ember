@@ -41,12 +41,14 @@
 #include "mod/MatchEnd.hxx"
 #include "mod/ModConfig.hxx"
 #include "mod/RngAudit.hxx"
+#include "mod/RuntimeModules.hxx"
 #include "mod/SocketReads.hxx"
 #include "mod/TinyFighters.hxx"
 #include "mod/MultiInstance.hxx"
 #include "mod/NetGuard.hxx"
 #include "mod/NetplayMode.hxx"
 #include "mod/OfflineDialogs.hxx"
+#include "mod/PakList.hxx"
 #include "mod/ProjectileRelease.hxx"
 #include "mod/SdlPads.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -76,12 +78,14 @@ bool s_started = false;
 std::unique_ptr<sfve::mod::BattleMode> MakeMode(const sfve::mod::ModConfig& config)
 {
 	using namespace sfve::mod;
-	switch (config.mode) {
-	case ModMode::SyncTest: return std::make_unique<SyncTestMode>(config);
-	case ModMode::Netplay: return std::make_unique<NetplayMode>(config);
-	case ModMode::Booth: return std::make_unique<BoothMode>(config);
-	default: return std::make_unique<PassThroughMode>();
+	// The modes a player never starts (the synctest and the photo booth) are
+	// in a development build only.
+	if constexpr (sfve::kBuildKind == sfve::BuildKind::Development) {
+		if (config.mode == ModMode::SyncTest) return std::make_unique<SyncTestMode>(config);
+		if (config.mode == ModMode::Booth) return std::make_unique<BoothMode>(config);
 	}
+	if (config.mode == ModMode::Netplay) return std::make_unique<NetplayMode>(config);
+	return std::make_unique<PassThroughMode>();
 }
 
 // SFV Ember's settings moved from beside the mod (SFVEmber\settings.json in
@@ -182,6 +186,7 @@ extern "C" int SfveStart(int beforeGameCode)
 
 	LoadConfigFromCommandLine(GetCommandLineW());
 	OpenLog(Config().instance);
+	LogRuntimeModules();
 	const char* loader = StartedByEntryHook() ? "launcher" : "proxy";
 	const StartClaimResult claim = ClaimStart(loader);
 	if (!claim.won) {
@@ -255,7 +260,9 @@ extern "C" int SfveStart(int beforeGameCode)
 	// Instance 0 is a player's game, whose mutexes keep their names.
 	const int instance = Config().instance;
 	std::string multiInstanceState = "off";
-	if (instance > 0) multiInstanceState = HookSetState(InstallMultiInstance(instance));
+	if constexpr (sfve::kBuildKind == sfve::BuildKind::Development) {
+		if (instance > 0) multiInstanceState = HookSetState(InstallMultiInstance(instance));
+	}
 	RegisterHookSetStatus("multiInstance", std::move(multiInstanceState));
 	// Without them every slot is the physical pad's, whatever -sfve_pads asked.
 	const std::optional<HookFailure> padHooksMissing = InstallXInputHooks();
@@ -287,6 +294,9 @@ extern "C" int SfveStart(int beforeGameCode)
 		return 1;
 	}
 	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	// Every pak the engine will mount, and whether each is Steam's own
+	// (PakList): logged now, and named in every report.
+	TakePakCensus();
 	// The scene manager's tick runs the game-thread queue; without it the
 	// title cannot be moved on, so the offline notice must stay.
 	const bool scene = InstallGameScene(base);
@@ -308,9 +318,10 @@ extern "C" int SfveStart(int beforeGameCode)
 	// A Tiny fighters room's tiny sides are drawn small (EMBER_LIBRARY.md
 	// section 59); with no tiny side the hooks change nothing.
 	InstallTinyFighters(base);
-	// The fight's reads of the fighters' models take the pose a straight play
-	// of the same state shows, on replayed frames too (docs/design/beta8/
-	// desync.md); -sfve_socket_log (development) logs every one.
+	// The fight's reads of the fighters' models that may feed fight state are
+	// given a value from the fighter's fight position in a battle a session
+	// plays (docs/design/beta9/socket-anchors.md); -sfve_socket_log
+	// (development) logs every one.
 	InstallSocketReads(base, Config().socketLog, ChooseSocketAnchor(Config()));
 	// Development: every random draw a battle update makes, placed against
 	// the rollback state (RngAudit; docs/design/beta8/determinism.md).
@@ -371,7 +382,11 @@ extern "C" int SfveStart(int beforeGameCode)
 		});
 		return std::string("ok queued (see the log)");
 	});
-	static BattleDriver driver(MakeMode(Config()));
+	// Never destroyed: the game's hooks call it until the process ends, and a
+	// destructor would run at DLL detach, under the loader lock after every
+	// other thread was killed (closing GGPO sessions, taking the log's lock).
+	// What must end gracefully ends in the game's exit work (GameExit).
+	static BattleDriver& driver = *new BattleDriver(MakeMode(Config()));
 	driver.RegisterControl();
 	const std::optional<HookFailure> missing = InstallBattleHooks(base, driver);
 	RegisterHookSetStatus("battleHooks", HookSetState(missing));

@@ -5,6 +5,8 @@
 
 #include <windows.h>
 
+#include <atomic>
+
 namespace sfve::mod {
 
 namespace {
@@ -14,6 +16,9 @@ WindowQuery_t o_GetForegroundWindow;
 WindowQuery_t o_GetActiveWindow;
 WindowQuery_t o_GetFocus;
 WNDPROC s_gameWndProc;
+// The window the filter is on, once it is: every focus query then compares
+// instead of searching the process's windows.
+std::atomic<HWND> s_gameWindow{nullptr};
 
 bool OwnedByThisProcess(HWND hwnd)
 {
@@ -21,28 +26,43 @@ bool OwnedByThisProcess(HWND hwnd)
 	return hwnd && GetWindowThreadProcessId(hwnd, &pid) && pid == GetCurrentProcessId();
 }
 
-// The largest visible top-level window of this process: the game viewport.
+} // namespace
+
+int SelectGameWindow(const std::vector<WindowCandidate>& windows)
+{
+	int best = -1;
+	for (size_t i = 0; i < windows.size(); i++) {
+		const WindowCandidate& window = windows[i];
+		if (window.className != L"UnrealWindow" || !window.visible) continue;
+		if (best < 0 || window.area > windows[best].area) best = (int)i;
+	}
+	return best;
+}
+
+namespace {
+
+// The game's window (SelectGameWindow) among this process's, or null before
+// it exists.
 HWND OwnMainWindow()
 {
 	struct Search {
-		HWND best = nullptr;
-		LONG bestArea = 0;
+		std::vector<HWND> handles;
+		std::vector<WindowCandidate> windows;
 	} search;
 	EnumWindows(
 		[](HWND hwnd, LPARAM param) -> BOOL {
 			auto* s = reinterpret_cast<Search*>(param);
 			RECT r;
-			if (OwnedByThisProcess(hwnd) && IsWindowVisible(hwnd) && GetWindowRect(hwnd, &r)) {
-				const LONG area = (r.right - r.left) * (r.bottom - r.top);
-				if (area > s->bestArea) {
-					s->best = hwnd;
-					s->bestArea = area;
-				}
+			wchar_t name[64] = {};
+			if (OwnedByThisProcess(hwnd) && GetClassNameW(hwnd, name, 64) && GetWindowRect(hwnd, &r)) {
+				s->handles.push_back(hwnd);
+				s->windows.push_back({name, IsWindowVisible(hwnd) != 0, (r.right - r.left) * (r.bottom - r.top)});
 			}
 			return TRUE;
 		},
 		reinterpret_cast<LPARAM>(&search));
-	return search.best;
+	const int chosen = SelectGameWindow(search.windows);
+	return chosen < 0 ? nullptr : search.handles[chosen];
 }
 
 // Every "which window has the user's attention" query answers with ours.
@@ -51,7 +71,8 @@ HWND WINAPI OwnWindowFirst()
 {
 	const HWND real = (*Original)();
 	if (OwnedByThisProcess(real)) return real;
-	const HWND own = OwnMainWindow();
+	HWND own = s_gameWindow.load(std::memory_order_acquire);
+	if (!own) own = OwnMainWindow();
 	return own ? own : real;
 }
 
@@ -76,7 +97,7 @@ LRESULT CALLBACK KeepActiveWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
 	return CallWindowProcW(s_gameWndProc, hwnd, message, wParam, lParam);
 }
 
-// Waits for the game window, puts the filter in front of its window procedure
+// Waits for the game window (its class, not the splash screen's), puts the filter in front of its window procedure
 // and tells it once that it is active (it may have lost the focus already).
 DWORD WINAPI SubclassWhenReady(void*)
 {
@@ -84,6 +105,12 @@ DWORD WINAPI SubclassWhenReady(void*)
 		if (const HWND window = OwnMainWindow()) {
 			s_gameWndProc = reinterpret_cast<WNDPROC>(
 				SetWindowLongPtrW(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&KeepActiveWndProc)));
+			if (!s_gameWndProc || GetWindowLongPtrW(window, GWLP_WNDPROC) != reinterpret_cast<LONG_PTR>(&KeepActiveWndProc)) {
+				Log("background play: the game window %p did not take the filter (Win32 %lu); the engine hears focus changes", (void*)window,
+					GetLastError());
+				return 1;
+			}
+			s_gameWindow.store(window, std::memory_order_release);
 			PostMessageW(window, WM_ACTIVATEAPP, TRUE, 0);
 			PostMessageW(window, WM_ACTIVATE, WA_ACTIVE, 0);
 			PostMessageW(window, WM_SETFOCUS, 0, 0);

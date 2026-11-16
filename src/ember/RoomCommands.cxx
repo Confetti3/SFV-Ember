@@ -9,6 +9,7 @@
 #include "mod/Log.hxx"
 #include "mod/VersusLaunch.hxx"
 
+#include "platform/Utf8.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/NativeMenuLock.hxx"
 #include "ember/RoomBattle.hxx"
@@ -70,7 +71,7 @@ std::optional<std::vector<std::int64_t>> BannedStagesOf(const std::string& text)
 	std::istringstream in(text);
 	std::string code;
 	while (std::getline(in, code, ',')) {
-		const std::optional<int> id = StageId(std::wstring(code.begin(), code.end()));
+		const std::optional<int> id = StageId(sf4e::platform::Utf8ToWide(code.c_str()));
 		if (!id) return std::nullopt;
 		ids.push_back(*id);
 	}
@@ -255,24 +256,29 @@ std::string Pick(const std::string& pipeArgs)
 	// and one named is Random or one this copy's player is offered
 	// (NameStage). Whether the opponent has it is the room's to say: the
 	// runtime's Ready check refuses one they lack.
-	PlayerPick pick = CurrentPick();
-	const NamedStage stage = NameStage(rules.stage, pick.stage);
-	if (stage.refusal != StageRefusal::None) return StageRefusalText(stage.refusal);
-	pick.stage = stage.stage;
-	pick.pick.fighter = *id;
-	pick.pick.costume = fighter.costume < 0 ? 0 : fighter.costume;
-	pick.pick.color = fighter.colour < 0 ? 0 : fighter.colour;
+	const NamedStage named = NameStage(rules.stage, 0);
+	if (named.refusal != StageRefusal::None) return StageRefusalText(named.refusal);
+	// A code alone chooses the fighter as the board does, in the fighter's
+	// own look; a look named after it (CODE:costume...) is that look.
+	const bool namesLook = args.substr(0, args.find(' ')).find(':') != std::string::npos;
 	// ParseSetup takes only 1 or 2 for each, so the numbers make a loadout.
 	const picks::Loadout loadout = *picks::LoadoutOfNumbers(fighter.vSkill, fighter.vTrigger);
-	picks::SetLoadout(pick.pick, loadout);
-	// A size left out stays; Tiny is sent only in a room that allows it (AddPickTo).
-	if (size) pick.pick.size = *size;
+	PlayerPick asked;
+	const PlayerPick pick = ChooseFighter(*id, [&](PlayerPick& edited) {
+		edited.stage = NameStage(rules.stage, edited.stage).stage;
+		if (namesLook) {
+			edited.pick.costume = fighter.costume < 0 ? 0 : fighter.costume;
+			edited.pick.color = fighter.colour < 0 ? 0 : fighter.colour;
+			picks::SetLoadout(edited.pick, loadout);
+		}
+		// A size left out stays; Tiny is sent only in a room that allows it (AddPickTo).
+		if (size) edited.pick.size = *size;
+		asked = edited;
+	});
 	// The store fits the pick to the catalog, as for the shell's picks: a
 	// V-Skill or V-Trigger the fighter does not have becomes I.
-	const PlayerPick asked = pick;
-	pick = SetPick(pick);
 	const bool fitted = pick.pick.costume != asked.pick.costume || pick.pick.color != asked.pick.color ||
-		picks::LoadoutOf(pick.pick) != loadout;
+		picks::LoadoutOf(pick.pick) != picks::LoadoutOf(asked.pick);
 	if (fitted) mod::Log("room: pick %s fitted to %s", PickText(asked).c_str(), PickText(pick).c_str());
 	return "ok " + PickText(pick) + (fitted ? " (fitted)" : "");
 }
@@ -293,9 +299,10 @@ std::string Code(const std::string& args)
 	if (index < 0 || index >= picks::kLoadCodeCount) {
 		return "error usage: code N (0 none, 1 to " + std::to_string(picks::kLoadCodeCount - 1) + ")";
 	}
-	PlayerPick pick = CurrentPick();
-	picks::SetLoadCode(pick.pick, index);
-	pick = SetPick(pick);
+	const PlayerPick pick = UpdatePick([index](PlayerPick& edited) {
+		picks::SetLoadCode(edited.pick, index);
+		return true;
+	});
 	const char* label = picks::kLoadCodes[index].label;
 	return "ok code " + std::to_string(picks::LoadCodeIn(pick.pick).value_or(0)) + " " + (label ? label : "none");
 }

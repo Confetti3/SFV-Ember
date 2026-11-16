@@ -1,5 +1,6 @@
 #include "ember/DesyncReporter.hxx"
 
+#include "ember/DesyncRegions.hxx"
 #include "ember/DesyncReport.hxx"
 #include "ember/DesyncTrace.hxx"
 #include "ember/RoomBattle.hxx"
@@ -10,17 +11,24 @@
 #include "mod/SfvAdapter.hxx"
 #include "mod/Log.hxx"
 #include "mod/Pace.hxx"
+#include "mod/PakList.hxx"
 #include "mod/SocketReads.hxx"
 
+#include "common/Localization.hxx"
 #include "launcher/update/PackageInstaller.hxx"
 #include "launcher/update/github_release_client.hxx"
 #include "netplay/SettingsStore.hxx"
 #include "platform/ReportWorkflow.hxx"
 #include "session/sf4e__SessionClient.hxx"
+#include "sf4e/sf4e__NetplayFacade.hxx"
 #include "sf4e/sf4e__RuntimeSession.hxx"
 
 // SFV Ember's source revision (CMakeLists.txt, sfve_build_identity).
 #include "SfvBuildIdentity.hxx"
+
+#include "core/RegionExchange.hxx"
+
+#include <xxhash.h>
 
 #include <windows.h>
 
@@ -119,21 +127,13 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	facts.recent = Trace().Recent(session.Frame(), desync::kRecentFrames);
 	facts.inputs = Trace().Inputs(mismatch.frame - desync::kInputFrames, mismatch.frame);
 	// This battle's socket-read counts (mod/SocketReads.cxx: ForgetSocketReads
-	// zeroes them as each battle starts): the fresh reads recorded, the stale
-	// ones served exact or rebuilt at their root, the misses by reason (a pose
-	// never read, a pose read at other roots only) and the conflicting records.
-	// The summary takes the counts' own lock, so it is safe from here.
+	// zeroes them as each battle starts): the reads given the fight's
+	// position, those at a call site not classified, and the anchors
+	// unresolved (the engine's value kept). The summary takes the counts' own
+	// lock, so it is safe from here.
 	facts.socketReads = mod::SocketReadsSummary();
-	// The battle's pose holds (the same lock): how many misses a hold put right.
-	facts.poseHolds = mod::PoseHoldsSummary();
 	// The battle's pace and controller events (mod/Pace.hxx; its own lock).
 	facts.pace = mod::pace::Current().Report();
-	// The misses among them from the frames before the checkpoint, copied
-	// under the same lock.
-	facts.socketMissesKnown = true;
-	for (const mod::socket_reads::Miss& miss : mod::SocketMissesBetween(mismatch.frame - desync::kRecentFrames, mismatch.frame)) {
-		facts.socketMisses.push_back({miss.frame, miss.unit, miss.from, miss.socket, mod::socket_reads::MissReasonName(miss.reason)});
-	}
 	// The named objects, copied here on the game thread: the report thread
 	// reads only this copy (RegionNames is the adapter's, not thread-safe).
 	if (const mod::SfvAdapter* game = CurrentBattle().game) {
@@ -143,6 +143,9 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	}
 	facts.layoutId = session.Layout().LayoutId();
 	facts.matchBuild = MatchBuildId();
+	if (const mod::SfvAdapter* game = CurrentBattle().game) facts.battleData = match_data::Text(game->BattleFacts());
+	facts.paks = mod::PakCensusSummary();
+	facts.os = desync::WindowsVersion();
 	if (const std::vector<uint8_t>* state = session.CheckpointState(mismatch.frame)) {
 		for (const StateRegion& r : session.Layout().Regions()) {
 			facts.stateRegions.push_back({r.name, r.size, reinterpret_cast<std::uint64_t>(r.ptr), r.checked, r.comparedWithPeers});
@@ -425,6 +428,59 @@ void Run()
 // Hands gathered facts to the report's own thread.
 void Queue(desync::Facts facts);
 
+// The mismatch's regions logged, then the report queued: only those that
+// differ from the other copy's when its list arrived, else every one.
+void LogRegionsAndQueue(desync::Facts facts)
+{
+	const std::string lines = desync::RegionLines(facts);
+	for (size_t from = 0; from < lines.size();) {
+		const size_t end = lines.find('\n', from);
+		mod::Log("%s", lines.substr(from, end - from).c_str());
+		from = end == std::string::npos ? lines.size() : end + 1;
+	}
+	mod::Log("desync: checkpoint %d differs in %s", facts.frame, desync::DifferingText(facts).c_str());
+	Queue(std::move(facts));
+}
+
+// Where the region lists travel (core/RegionExchange.hxx): the session's
+// UDP path, which GGPO gives up once the fight has ended.
+struct Path {
+	uint16_t localPort = 0;
+	std::string remoteIp;
+	uint16_t remotePort = 0;
+};
+constexpr uint64_t kPortWaitMs = 3000;
+constexpr uint64_t kExchangeMs = 4000;
+
+// On a thread of its own: waits for the session's port, trades region lists
+// with the other copy, keeps the differing regions, then logs and queues.
+void CompareRegions(desync::Facts facts, std::vector<start_state::Entry> mine, std::vector<std::string> names, Path path,
+	uint64_t token)
+{
+	UdpStartChannel channel;
+	const uint64_t from = GetTickCount64();
+	bool open = false;
+	while (!(open = channel.Open(path.localPort, path.remoteIp, {path.remotePort})) && GetTickCount64() - from < kPortWaitMs) Sleep(50);
+	if (!open) {
+		facts.regionExchange = "the session's port stayed in use";
+		return LogRegionsAndQueue(std::move(facts));
+	}
+	RegionExchange::Config config;
+	config.token = token;
+	config.timeLimitMs = kExchangeMs;
+	RegionExchange exchange(channel, std::move(mine), config);
+	exchange.Begin(GetTickCount64());
+	while (!exchange.Pump(GetTickCount64())) Sleep(5);
+	if (const auto& theirs = exchange.Theirs()) {
+		facts.differing = desync::DifferingRegions(exchange.Mine(), names, *theirs);
+		facts.regionsCompared = true;
+		facts.regionExchange = "the other copy's list of " + std::to_string(theirs->size()) + " regions arrived";
+	} else {
+		facts.regionExchange = "the other copy's list did not arrive within " + std::to_string(kExchangeMs / 1000) + " s";
+	}
+	LogRegionsAndQueue(std::move(facts));
+}
+
 } // namespace
 
 void ReportDesync(const RollbackSession& session, const sf4e::SessionClient& client,
@@ -434,7 +490,28 @@ void ReportDesync(const RollbackSession& session, const sf4e::SessionClient& cli
 	mod::Log("desync report: checkpoint %d, room %016llx table %d match %llu, %zu regions; written down off the game thread",
 		facts.frame, (unsigned long long)facts.roomEpoch, facts.table, (unsigned long long)facts.generation,
 		facts.regions.size());
-	Queue(std::move(facts));
+	// A fighter's copy trades its region list with the other fighter's
+	// before it logs and reports (a watcher's session goes on, its port busy).
+	const std::vector<uint8_t>* state = session.CheckpointState(mismatch.frame);
+	if (!player || !state) {
+		facts.regionExchange = !player ? "a watcher does not trade lists" : "the checkpoint's state was no longer kept";
+		return LogRegionsAndQueue(std::move(facts));
+	}
+	const StateLayout& layout = session.Layout();
+	// "game.N" is a place in one process's table: never paired by name.
+	std::vector<start_state::Entry> mine = start_state::ListEntries(layout, state->data(), [](const std::string& name) {
+		return name.rfind("game.", 0) != 0;
+	});
+	std::vector<std::string> names;
+	for (const StateRegion& r : layout.Regions()) names.push_back(r.name);
+	const std::string key = desync::MatchKey(facts) + ":" + std::to_string(mismatch.frame);
+	const uint64_t token = XXH3_64bits(key.data(), key.size());
+	const Path path{session.LocalPort(), session.RemoteIp(), session.RemotePort()};
+	try {
+		std::thread(&CompareRegions, std::move(facts), std::move(mine), std::move(names), path, token).detach();
+	} catch (const std::system_error& error) {
+		mod::Log("desync report: no thread to compare the regions (%s); every region is listed", error.what());
+	}
 }
 
 void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& layout, bool watcher, int delay)
@@ -454,6 +531,9 @@ void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& 
 	facts.delay = delay;
 	facts.layoutId = layout.LayoutId();
 	facts.matchBuild = MatchBuildId();
+	if (const mod::SfvAdapter* game = CurrentBattle().game) facts.battleData = match_data::Text(game->BattleFacts());
+	facts.paks = mod::PakCensusSummary();
+	facts.os = desync::WindowsVersion();
 	size_t written = 0, kept = 0, still = 0;
 	for (const StartAgreement::RegionOutcome& r : report.regions) {
 		facts.regions.push_back({r.name, r.size, r.before});
@@ -473,6 +553,36 @@ void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& 
 		" unpaired. Result: " + StartAgreement::ResultName(report.result) + ", now " +
 		(report.localAfter == report.reference ? "the same as P1's." : "still not P1's.");
 	mod::Log("desync report: the start state's repair, %zu region(s); written down off the game thread", facts.regions.size());
+	Queue(std::move(facts));
+}
+
+void ReportGameDataDiffers(const StartAgreement::Report& report, const match_data::Facts& battle, bool watcher, int delay)
+{
+	const std::string what = report.dataDifference ? match_data::Describe(*report.dataDifference) : std::string("game data differs");
+	mod::Log("netplay: %s; the match ends before frame 0", what.c_str());
+	const std::string fighter = report.dataDifference ? match_data::NoticeFighter(*report.dataDifference) : std::string();
+	const std::string notice = fighter.empty() ? std::string(sf4e::loc::T("runtime.game_data_differs"))
+		: sf4e::loc::Tf("runtime.game_data_differs_fighter", fighter);
+	sf4e::NetplayFacade::PushAlert(notice.c_str(), sf4e::NoticeSeverity::Error);
+	desync::Facts facts;
+	facts.watcher = watcher;
+	if (const RoomBattle* room = CurrentBattle().room) {
+		facts.slot = static_cast<int>(room->LocalSlot());
+		facts.gamesEnded = room->GamesEnded();
+	}
+	if (const auto& netplay = ember::RuntimeSession::netplay) RoomFacts(facts, netplay->client.GetRoomSnapshot());
+	PickFacts(facts);
+	facts.frame = 0;
+	facts.local = report.localBefore;
+	facts.remote = report.reference;
+	facts.confirmed = -1;
+	facts.delay = delay;
+	facts.matchBuild = MatchBuildId();
+	facts.battleData = match_data::Text(battle);
+	facts.paks = mod::PakCensusSummary();
+	facts.os = desync::WindowsVersion();
+	facts.otherBattleData = match_data::Text(report.otherFacts);
+	facts.gameDataDiffers = what;
 	Queue(std::move(facts));
 }
 

@@ -7,6 +7,7 @@
 #include "mod/HudText.hxx"
 #include "mod/Log.hxx"
 
+#include "platform/Utf8.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "common/NativeMenuLock.hxx"
@@ -37,14 +38,6 @@ namespace {
 
 namespace facade = sf4e::NetplayFacade;
 
-std::wstring Wide(const std::string& utf8)
-{
-	const int length = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), (int)utf8.size(), nullptr, 0);
-	std::wstring out((size_t)(length > 0 ? length : 0), L'\0');
-	if (length > 0) MultiByteToWideChar(CP_UTF8, 0, utf8.data(), (int)utf8.size(), out.data(), length);
-	return out;
-}
-
 // A side's name while a room's game is prepared or fought: the member in that
 // seat of the local member's table (P1 the left plate, P2 the right). The HUD
 // names its plates as the battle loads, before the runtime's session starts
@@ -70,7 +63,7 @@ bool PlateName(int side, std::wstring& name)
 	if (!table) return false;
 	const sf4e::room::MemberId seated = side == 0 ? table->p1 : table->p2;
 	for (const auto& member : room.members)
-		if (seated != 0 && member.id == seated) name = Wide(member.name);
+		if (seated != 0 && member.id == seated) name = sf4e::platform::Utf8ToWide(member.name.c_str());
 	return !name.empty();
 }
 

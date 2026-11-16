@@ -22,12 +22,13 @@
 namespace sfve::mod {
 
 // Where one battle keeps the state its snapshot leaves out: the rule unit,
-// the match data, the battle frame, the input unit, the exe's base and each
+// the match data, the battle frame, the input unit, the exe's base, the
+// round's end wait unit and each
 // fighter unit's parts that sfv::kPartRunsOutsideSnapshot names, by the
 // unit's place among the battle's CharaUnits (partners after the two
 // fighters, sfv::unit::kMostCharaUnits) and the row (0: the unit has no such
 // part).
-constexpr size_t kMaxPartRuns = 4;
+constexpr size_t kMaxPartRuns = 12;
 constexpr size_t kMaxFighterUnits = 8; // sfv::unit::kMostCharaUnits (checked in SfvLayoutRules.cxx)
 struct OutsideState {
 	uintptr_t ruleUnit = 0;
@@ -35,6 +36,7 @@ struct OutsideState {
 	uintptr_t battleFrame = 0;
 	uintptr_t inputUnit = 0;
 	uintptr_t base = 0;
+	uintptr_t koWait = 0; // the round's end wait unit (sfv::kowait); 0 for a battle without one
 	uintptr_t fighterParts[kMaxFighterUnits][kMaxPartRuns] = {};
 };
 
@@ -55,9 +57,9 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 // address rule's version (kAddressRuleVersion), the CRT math of the modes
 // that roll back (kRollbackCrtMath), where their battles run the tick's
 // tasks (kRollbackTickTasks, or the placement -sfve_tasks gave a development
-// build), whether they hold for a drawn frame (ChoosePoseHold) and whether
-// the fight socket reads that feed fight state are anchored to the fight's
-// position, with their offsets' version (ChooseSocketAnchor): first
+// build) and whether the fight socket reads that may feed fight state are
+// anchored to the fight's position, with their rules' version
+// (ChooseSocketAnchor): first
 // computed once the config is loaded. The same for every copy of one build;
 // any change to a table or rule that decides what is saved, restored,
 // computed or compared changes it, and a new one must feed it too.

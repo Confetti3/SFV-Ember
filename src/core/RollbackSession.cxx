@@ -20,12 +20,9 @@ constexpr size_t kCheckpointsKept = 900;
 
 RollbackSession* s_active = nullptr;
 
-void __cdecl OnGgpoAssert(const char* message)
-{
-	CoreLog("ggpo: assertion failed: %s", message ? message : "?");
-}
-
 } // namespace
+
+RollbackSession::Slot RollbackSession::refusedSave_;
 
 // Publishes the session making a GGPO call to the static callbacks.
 class RollbackSession::ActiveScope {
@@ -57,7 +54,7 @@ private:
 	RollbackSession& s_;
 };
 
-RollbackSession::RollbackSession(GameAdapter& game) : game_(game)
+RollbackSession::RollbackSession(GameAdapter& game) : driven_(game), game_(&game)
 {
 	gate_.Reset();
 	history_.resize(kHistory);
@@ -78,11 +75,12 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 		return false;
 	};
 	if (Live()) return refuse("a session is already running");
+	game_ = &driven_; // again, if a keep for watchers let it go
 	const bool watches = config.watching || config.replay;
 	if (!watches && (config.localPlayer < 0 || config.localPlayer >= kPlayers)) {
 		return refuse("local player out of range");
 	}
-	if (game_.Layout().Empty()) return refuse("the game has no rollback state yet");
+	if (game_->Layout().Empty()) return refuse("the game has no rollback state yet");
 	if (config.hashEveryFrames < 1) return refuse("hashEveryFrames must be at least 1");
 	if (config.verifyLoadsEvery < 0) return refuse("verifyLoadsEvery must not be negative");
 
@@ -102,10 +100,17 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	for (HashRecord& h : history_) h = {};
 	allHashes_.clear();
 	checkpoints_.clear();
-	for (KeptState& kept : checkpointStates_) kept.frame = -1;
+	// Every buffer of a state is made here, before frame 0, so the battle's
+	// first frames allocate none (its first checkpoints' kept states were
+	// made as they came, a state's size each: a dip in the pace line).
+	const size_t stateSize = game_->Layout().TotalSize();
+	for (KeptState& kept : checkpointStates_) {
+		kept.frame = -1;
+		kept.bytes.resize(stateSize);
+	}
 	// A watcher keeps no saves: one buffer holds the state it hashes.
 	pool_.assign(watches ? 1 : kPoolSlots, Slot{});
-	for (Slot& s : pool_) s.bytes.resize(game_.Layout().TotalSize());
+	for (Slot& s : pool_) s.bytes.resize(stateSize);
 	confirmed_ = -1;
 	rollingBack_ = false;
 	rollbackFrom_ = rollbackEnd_ = -1;
@@ -125,29 +130,25 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	laggedFinished_ = false;
 	replayCheckFailures_ = 0;
 	replayCheckLogged_.clear();
-	// A watcher plays confirmed frames only and never holds; a lagged
-	// replay's playback holds in LaggedReplay, with a book of its own.
-	poseHolds_.Start(config.poseHolds && !watches);
-	poseHolding_ = poseReplayWanted_ = false;
 
 	if (config.replay) {
 		// No GGPO: the frames are here, all of them confirmed, so the session
 		// runs from its first step.
 		replaying_ = true;
 		if (config.replayLag > 0) {
-			lagged_ = std::make_unique<LaggedReplay>(game_, *config.replay, config.replayLagPlayer, config.replayLag,
-				config.replayLagJitter, config.poseHolds);
+			lagged_ = std::make_unique<LaggedReplay>(*game_, *config.replay, config.replayLagPlayer, config.replayLag,
+				config.replayLagJitter);
 			lagged_->onGuessedState = [this](int frame, const uint8_t* state) {
 				if (frame % kCheckpointInterval != 0) return;
 				CoreLog("replay lag: checkpoint %d on guessed inputs, hash %016llx", frame,
-					(unsigned long long)game_.Layout().HashSaved(state, HashScope::Peers));
+					(unsigned long long)game_->Layout().HashSaved(state, HashScope::Peers));
 			};
 			CoreLog("replay lag: P%d's inputs arrive %s%d frame(s) late (jitter seed %u); guessed frames are played and "
-				"rolled back; pose holds %s", config.replayLagPlayer + 1, config.replayLagJitter ? "up to " : "",
-				config.replayLag, config.replayLagJitter, config.poseHolds ? "on" : "off");
+				"rolled back", config.replayLagPlayer + 1, config.replayLagJitter ? "up to " : "",
+				config.replayLag, config.replayLagJitter);
 		} else if (config.replayCheckDistance > 0) {
 			const uint32_t seed = config.replayCheckSeed ? config.replayCheckSeed : 1;
-			replayCheck_ = std::make_unique<SyncTester>(game_, config.replayCheckDistance, true, true, seed);
+			replayCheck_ = std::make_unique<SyncTester>(*game_, config.replayCheckDistance, true, true, seed);
 			CoreLog("replay check: rollbacks of up to %d frame(s), schedule %u, each first played with wrong inputs",
 				config.replayCheckDistance, seed);
 		}
@@ -155,11 +156,9 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 		gate_.OnSessionStarted();
 		gate_.OnRunning();
 		CoreLog("session: playing a replay of %zu frame(s), state %zu bytes in %zu regions", config.replay->size(),
-			game_.Layout().TotalSize(), game_.Layout().Regions().size());
+			game_->Layout().TotalSize(), game_->Layout().Regions().size());
 		return true;
 	}
-
-	ggpo_set_assert_handler(OnGgpoAssert);
 
 	GGPOSessionCallbacks cb = {};
 	cb.begin_game = OnBeginGame;
@@ -187,7 +186,7 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 		gate_.Reset();
 		gate_.OnSessionStarted();
 		CoreLog("session: watching, port %u <- P1 at %s:%u, state %zu bytes in %zu regions", config.localPort,
-			config.remoteIp.c_str(), config.remotePort, game_.Layout().TotalSize(), game_.Layout().Regions().size());
+			config.remoteIp.c_str(), config.remotePort, game_->Layout().TotalSize(), game_->Layout().Regions().size());
 		return true;
 	}
 	GGPOErrorCode err = ggpo_start_session(&session_, &cb, "sfv-ember", kPlayers, sizeof(PackedInput), config.localPort);
@@ -253,21 +252,19 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	gate_.OnSessionStarted();
 	CoreLog("session: started as P%d, port %u -> %s:%u, delay %d, %zu watcher(s), state %zu bytes in %zu regions",
 		config.localPlayer + 1, config.localPort, config.remoteIp.c_str(), config.remotePort, config.inputDelay,
-		watching.size(), game_.Layout().TotalSize(), game_.Layout().Regions().size());
+		watching.size(), game_->Layout().TotalSize(), game_->Layout().Regions().size());
 	char verified[48] = "never";
 	if (config.verifyLoads) snprintf(verified, sizeof(verified), "every one");
 	else if (config.verifyLoadsEvery > 0) snprintf(verified, sizeof(verified), "one in %d", config.verifyLoadsEvery);
-	CoreLog("session: a save no load can reach %s; frames hashed %s; restores re-hashed: %s; pose holds %s",
+	CoreLog("session: a save no load can reach %s; frames hashed %s; restores re-hashed: %s",
 		config.skipUnloadableSaves ? "keeps no copy" : "is copied all the same",
-		config.hashOnConfirm ? "once final" : "on every save", verified, config.poseHolds ? "on" : "off");
+		config.hashOnConfirm ? "once final" : "on every save", verified);
 	return true;
 }
 
 RollbackSession::StepResult RollbackSession::Step(PackedInput localInput)
 {
 	const StepResult result = StepBody(localInput);
-	// Whatever way the step ended, a hold its rollbacks asked for ends it.
-	FinishPoseHold();
 	if (result == StepResult::Waiting) stats_.waitingSteps++;
 	return result;
 }
@@ -290,7 +287,7 @@ RollbackSession::StepResult RollbackSession::StepBody(PackedInput localInput)
 	}
 	// A frame that reads bits only confirmed (GameAdapter::ConfirmedBits)
 	// waits for its inputs to be final, as a held frame does.
-	if (ReadsConfirmed(game_, frame_) && LastConfirmedFrame() < frame_) return StepResult::Waiting;
+	if (ReadsConfirmed(*game_, frame_) && LastConfirmedFrame() < frame_) return StepResult::Waiting;
 
 	StepResult result = StepResult::Advanced;
 	GGPOErrorCode err = ggpo_add_local_input(session_, localHandle_, &localInput, sizeof(localInput));
@@ -303,7 +300,7 @@ RollbackSession::StepResult RollbackSession::StepBody(PackedInput localInput)
 	err = ggpo_synchronize_input(session_, inputs.p, sizeof(inputs.p), &disconnectFlags);
 	if (!HandleResult(err, "synchronize_input", &result)) return result;
 
-	AdvanceGame(InputsForThisFrame(inputs), false);
+	game_->Advance(InputsForThisFrame(inputs), false);
 	stats_.framesAdvanced++;
 	err = ggpo_advance_frame(session_);
 	if (DrainPendingAbort()) return StepResult::Failed;
@@ -315,7 +312,6 @@ RollbackSession::StepResult RollbackSession::StepHeld(PackedInput localInput,
 	const std::function<void(const FrameInputs&)>& onInputs)
 {
 	const StepResult result = StepHeldBody(localInput, onInputs);
-	FinishPoseHold();
 	if (result == StepResult::Waiting) stats_.waitingSteps++;
 	return result;
 }
@@ -364,14 +360,11 @@ RollbackSession::StepResult RollbackSession::StepHeldBody(PackedInput localInput
 void RollbackSession::Poll()
 {
 	if (!session_) return;
-	{
-		ActiveScope active(this);
-		ConfirmedOnReturn confirmed(*this);
-		ggpo_idle(session_, 0);
-		if (DrainPendingAbort()) return;
-		PollWatchers();
-	}
-	FinishPoseHold();
+	ActiveScope active(this);
+	ConfirmedOnReturn confirmed(*this);
+	ggpo_idle(session_, 0);
+	if (DrainPendingAbort()) return;
+	PollWatchers();
 }
 
 RollbackSession::StepResult RollbackSession::StepWatched(const std::function<void(const FrameInputs&)>* onHeld)
@@ -382,9 +375,9 @@ RollbackSession::StepResult RollbackSession::StepWatched(const std::function<voi
 		if (!gate_.CanAdvanceDeterministicFrame()) return StepResult::Waiting;
 		if (lagged_ && !laggedFinished_ && (size_t)frame_ >= config_.replay->size()) {
 			// Past the last frame every input is known: the last guesses are
-			// settled and the last checkpoints hashed, in a step of their own
-			// (in more than one while a pose hold waits for a drawn frame).
-			laggedFinished_ = lagged_->Finish();
+			// settled and the last checkpoints hashed, in a step of their own.
+			lagged_->Finish();
+			laggedFinished_ = true;
 			HashLagged();
 			return StepResult::Waiting;
 		}
@@ -457,7 +450,7 @@ RollbackSession::StepResult RollbackSession::StepWatched(const std::function<voi
 			replayCheck_->Step(given);
 			LogReplayCheck();
 		} else {
-			game_.Advance(given, false);
+			game_->Advance(given, false);
 		}
 		stats_.framesAdvanced++;
 		// A watcher saves nothing, so its frames are checked here instead.
@@ -493,7 +486,7 @@ bool RollbackSession::ReplayInputs(bool held, FrameInputs* inputs)
 	// the fight reading inputs). One the recording did not have means the
 	// playback is no longer the recorded battle. A lagged replay's live state
 	// may be a guess, so its kinds are not compared.
-	const bool fight = !held && game_.InputsMatter();
+	const bool fight = !held && game_->InputsMatter();
 	if (!lagged_ && (recorded.Held() != held || (!held && recorded.Fight() != fight))) {
 		snprintf(why, sizeof(why), "the playback left the recording at frame %d (recorded %s, played %s)", frame_,
 			recorded.Held() ? "held" : recorded.Fight() ? "fight" : "ignored", held ? "held" : fight ? "fight" : "ignored");
@@ -508,7 +501,7 @@ bool RollbackSession::ReplayInputs(bool held, FrameInputs* inputs)
 // recording's states, if the rollbacks restored everything.
 void RollbackSession::HashLagged()
 {
-	StateLayout& layout = game_.Layout();
+	StateLayout& layout = game_->Layout();
 	Slot& slot = pool_[0];
 	for (int frame = laggedHashed_ + 1; frame <= lagged_->ConfirmedThrough(); frame++) {
 		if (frame % kCheckpointInterval != 0 && frame % config_.hashEveryFrames != 0) continue;
@@ -556,7 +549,7 @@ void RollbackSession::HashWatched(int frame)
 	Slot& slot = pool_[0];
 	LARGE_INTEGER started, copied;
 	QueryPerformanceCounter(&started);
-	game_.Layout().SaveTo(slot.bytes.data());
+	game_->Layout().SaveTo(slot.bytes.data());
 	QueryPerformanceCounter(&copied);
 	slot.frame = frame;
 	slot.used = true; // SavedState answers it (a dump)
@@ -581,7 +574,23 @@ void RollbackSession::KeepForWatchers()
 {
 	if (keptForWatchers_) return;
 	keptForWatchers_ = true;
-	CoreLog("session: kept for %zu watcher stream(s) after the fight", WatcherStreams());
+	// The frames final by now are hashed and reported while the game is
+	// still the one they describe; the saves not final yet never will be.
+	HashConfirmed();
+	game_ = &detached_;
+	config_.onFrame = nullptr;
+	config_.onCheckpoint = nullptr;
+	config_.onSaveSkipped = nullptr;
+	config_.verifyLoads = false;
+	config_.verifyLoadsEvery = 0;
+	// The stand-in's state is nothing, so every save holds all of it: no load
+	// GGPO makes from here can reach a save without its copy.
+	config_.skipUnloadableSaves = false;
+	for (Slot& s : pool_) {
+		s.copied = s.used;
+		s.pending = false;
+	}
+	CoreLog("session: kept for %zu watcher stream(s) after the fight; the game is let go", WatcherStreams());
 }
 
 bool RollbackSession::WatcherHandle(GGPOPlayerHandle handle) const
@@ -665,10 +674,10 @@ void RollbackSession::CloseNow()
 			const Stats& s = stats_;
 			CoreLog("session costs: %llu frame(s) played, %llu replayed in %llu rollback(s); %llu save(s) kept no copy; "
 				"%llu frame(s) hashed once final, %llu save(s) replaced before final; %llu restore(s) re-hashed, %llu "
-				"differed; %llu pose hold(s), %llu refused", (unsigned long long)s.framesAdvanced,
+				"differed", (unsigned long long)s.framesAdvanced,
 				(unsigned long long)s.resimulatedFrames, (unsigned long long)s.rollbacks, (unsigned long long)s.savesSkipped,
 				(unsigned long long)s.hashesOnConfirm, (unsigned long long)s.hashesDropped, (unsigned long long)s.loadsVerified,
-				(unsigned long long)s.loadMismatches, (unsigned long long)s.poseHolds, (unsigned long long)s.poseHoldsRefused);
+				(unsigned long long)s.loadMismatches);
 		}
 		closing_ = true;
 		ggpo_close_session(session_);
@@ -677,8 +686,8 @@ void RollbackSession::CloseNow()
 	}
 	replaying_ = false;
 	if (lagged_) {
-		CoreLog("replay lag: %d frame(s), %d rollback(s), the longest %d frame(s); %d pose hold(s), %d refused", frame_,
-			lagged_->Rollbacks(), lagged_->LongestRollback(), lagged_->PoseHolds(), lagged_->PoseHoldsRefused());
+		CoreLog("replay lag: %d frame(s), %d rollback(s), the longest %d frame(s)", frame_,
+			lagged_->Rollbacks(), lagged_->LongestRollback());
 		lagged_.reset();
 	}
 	if (replayCheck_) {
@@ -688,10 +697,7 @@ void RollbackSession::CloseNow()
 	}
 	localHandle_ = remoteHandle_ = -1;
 	gate_.OnSessionClosed();
-	for (Slot& s : pool_) s.used = s.pending = s.copied = s.junk = false;
-	// No hold's frames are replayed any more: Frame() is the frame reached.
-	poseHolds_.Start(false);
-	poseHolding_ = poseReplayWanted_ = false;
+	for (Slot& s : pool_) s.used = s.pending = s.copied = false;
 	// No watcher is served any more. A drop not yet handed to the room was
 	// this session's, and the room ends this match's links itself (SF4's
 	// RetireGgpoSession forgets it the same way).
@@ -715,7 +721,7 @@ void RollbackSession::Fail(const char* reason)
 
 bool RollbackSession::FailedByGame()
 {
-	const char* why = game_.StateFailure();
+	const char* why = game_->StateFailure();
 	if (!why) return false;
 	Fail(why);
 	return true;
@@ -734,13 +740,7 @@ int RollbackSession::LastConfirmedFrame() const
 	// A lagged replay's frames are final only once its guesses are settled.
 	if (Live() && config_.watching) return lagged_ ? lagged_->ConfirmedThrough() : frame_;
 	int frame = -1;
-	if (session_ && ggpo_get_last_confirmed_frame(session_, &frame) == GGPO_OK) {
-		// A pose hold's frames wait to be played again: from the held one on,
-		// none is final here yet (its save, hash and report are still the
-		// tick's), whatever inputs have come.
-		if (poseHolds_.Resuming() && frame >= poseHolds_.HeldAt()) frame = poseHolds_.HeldAt() - 1;
-		return frame;
-	}
+	if (session_ && ggpo_get_last_confirmed_frame(session_, &frame) == GGPO_OK) return frame;
 	return -1;
 }
 
@@ -783,7 +783,7 @@ bool RollbackSession::HashAt(int frame, uint64_t* out) const
 const uint8_t* RollbackSession::SavedState(int frame) const
 {
 	for (const Slot& s : pool_) {
-		if (s.used && s.copied && !s.junk && s.frame == frame) return s.bytes.data();
+		if (s.used && s.copied && s.frame == frame) return s.bytes.data();
 	}
 	return nullptr;
 }
@@ -791,7 +791,7 @@ const uint8_t* RollbackSession::SavedState(int frame) const
 const std::vector<uint8_t>* RollbackSession::CheckpointState(int frame) const
 {
 	for (const KeptState& kept : checkpointStates_) {
-		if (kept.frame == frame && !kept.bytes.empty()) return &kept.bytes;
+		if (frame >= 0 && kept.frame == frame) return &kept.bytes; // -1: none kept there yet
 	}
 	return nullptr;
 }
@@ -820,7 +820,14 @@ bool __cdecl RollbackSession::OnLogState(char*, unsigned char*, int) { return tr
 
 bool __cdecl RollbackSession::OnSave(unsigned char** buffer, int* len, int* checksum, int frame)
 {
-	return s_active && s_active->Save(buffer, len, checksum, frame);
+	// GGPO keeps whatever it is handed and asserts, ending the process, when
+	// it loads a frame it holds no buffer for. So every save hands one over: a
+	// refused save the refusal, which a load fails on cleanly (Load).
+	Slot* slot = s_active ? s_active->Save(frame) : nullptr;
+	*buffer = reinterpret_cast<unsigned char*>(slot ? slot : &refusedSave_);
+	*len = 1;      // GGPO asserts on a zero length; it never reads the bytes
+	*checksum = 0; // nor the checksum (only its synctest backend would)
+	return slot != nullptr;
 }
 
 bool __cdecl RollbackSession::OnLoad(unsigned char* buffer, int)
@@ -844,20 +851,17 @@ bool __cdecl RollbackSession::OnEvent(GGPOEvent* info)
 	return true;
 }
 
-bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int frame)
+RollbackSession::Slot* RollbackSession::Save(int frame)
 {
 	sf4e::gate::AbortLatch::Scope scope(latch_);
 	// GGPO saves after every frame it advances, a rollback's replays
 	// included, so this is where a failure the game latched while advancing
 	// (or while a held frame changed it) ends the session, before a state it
 	// can no longer restore is kept.
-	if (FailedByGame()) return false;
+	if (FailedByGame()) return nullptr;
 	// Nor after any other failure inside this call (a load that could not
 	// restore): the live state is no frame's state any more.
-	if (failed_) return false;
-	// A save a rollback's replay makes, or a pose hold's replay: one a later
-	// hold may load (FinishPoseHold), so with holds on it keeps its copy.
-	const bool replaySave = rollingBack_ || poseHolds_.Resuming();
+	if (failed_) return nullptr;
 	// The last frame a rollback replays: every save it left on the guessed
 	// timeline has been replaced (GGPO freed this frame's old one first).
 	if (rollingBack_ && frame >= rollbackEnd_) rollingBack_ = false;
@@ -873,9 +877,9 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 	}
 	if (!slot) {
 		Fail("save pool exhausted");
-		return false;
+		return nullptr;
 	}
-	StateLayout& layout = game_.Layout();
+	StateLayout& layout = game_->Layout();
 	slot->used = true;
 	slot->frame = frame;
 	slot->pending = false;
@@ -886,18 +890,7 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 	// last frame received, never before the last confirmed one. So once the
 	// inputs of frame F + 1 are confirmed, no load reaches F's save
 	// (docs/design/beta8/perf.md), and its copy is skipped.
-	// After a frame whose update wanted a drawn frame, while its hold is
-	// pending: what the tick played on a live value, which the hold's replay
-	// replaces (never hashed unless the hold does not come).
-	slot->junk = poseHolds_.Pending() >= 0 && frame > poseHolds_.Pending();
-	// A pose hold loads the state the frame before the held one starts from,
-	// and a chain up to kChainLimit - 1 frames before that: a hold reaches
-	// that much further back than a rollback (FinishPoseHold), so with holds
-	// on a save keeps its copy until the inputs that far past it are
-	// confirmed.
-	const int holdReach = poseHolds_.On() ? pose_hold::kChainLimit : 0;
-	slot->copied = !config_.skipUnloadableSaves || frame == keepSave_ || confirmed_ < frame + 1 + holdReach ||
-		(poseHolds_.On() && (replaySave || slot->junk));
+	slot->copied = !config_.skipUnloadableSaves || frame == keepSave_ || confirmed_ < frame + 1;
 	if (slot->copied) {
 		LARGE_INTEGER started, copied;
 		QueryPerformanceCounter(&started);
@@ -912,23 +905,17 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 	if (HashedFrame(frame)) {
 		// A save with no copy is final (its inputs are confirmed past it), and
 		// the live state is its state: hashed now, from memory.
-		if (slot->junk) slot->pending = true; // Unjunk hashes it if no hold replaces it
-		else if (!slot->copied) RecordHash(frame, nullptr, 0);
+		if (!slot->copied) RecordHash(frame, nullptr, 0);
 		else if (!config_.hashOnConfirm || Final(frame)) RecordHash(frame, slot->bytes.data(), slot->copyTicks);
 		else slot->pending = true;
 	}
 	frame_ = frame;
-	// A pose hold's replay has reached the frame its tick stood at.
-	if (poseHolds_.Resuming() && frame >= poseHolds_.ResumeTo()) poseHolds_.Resumed();
-
-	*buffer = reinterpret_cast<unsigned char*>(slot);
-	*len = 1;      // GGPO asserts on a zero length; it never reads the bytes
-	*checksum = 0; // nor the checksum (only its synctest backend would)
-	return true;
+	return slot;
 }
 
 bool RollbackSession::HashedFrame(int frame) const
 {
+	if (keptForWatchers_) return false; // no game's state to hash
 	return frame % kCheckpointInterval == 0 || config_.verifyLoads || frame % config_.hashEveryFrames == 0;
 }
 
@@ -949,7 +936,7 @@ void RollbackSession::HashConfirmed()
 	for (;;) {
 		Slot* next = nullptr;
 		for (Slot& s : pool_) {
-			if (!s.used || !s.pending || s.junk || !Final(s.frame) || Replaced(s.frame)) continue;
+			if (!s.used || !s.pending || !Final(s.frame) || Replaced(s.frame)) continue;
 			if (!next || s.frame < next->frame) next = &s;
 		}
 		if (!next) return;
@@ -961,13 +948,13 @@ void RollbackSession::HashPending(Slot& slot)
 {
 	slot.pending = false;
 	stats_.hashesOnConfirm++;
-	game_.Layout().CountConfirmedHash();
+	game_->Layout().CountConfirmedHash();
 	RecordHash(slot.frame, slot.bytes.data(), slot.copyTicks);
 }
 
 void RollbackSession::RecordHash(int frame, const uint8_t* bytes, long long copyTicks)
 {
-	StateLayout& layout = game_.Layout();
+	StateLayout& layout = game_->Layout();
 	const bool checkpoint = frame % kCheckpointInterval == 0;
 	// A checkpoint's bytes are kept (CheckpointState), in the oldest of the
 	// kept states (an empty one first) unless this frame's own (saved again
@@ -1006,7 +993,9 @@ void RollbackSession::RecordHash(int frame, const uint8_t* bytes, long long copy
 		allHashes_[frame] = {frame, hash};
 	}
 	if (checkpoint) {
-		layout.PeerRegionHashesSaved(bytes, checkpoints_[frame]); // a replay overwrites it
+		std::vector<RegionHash>& regions = checkpoints_[frame]; // a replay overwrites it
+		regions.reserve(layout.Regions().size());
+		layout.PeerRegionHashesSaved(bytes, regions);
 		if (config_.onCheckpoint) config_.onCheckpoint(frame, hash); // RegionHashesAt(frame) answers
 		QueryPerformanceFrequency(&perSecond);
 		const auto us = [&](long long ticks) { return ticks * 1000000 / perSecond.QuadPart; };
@@ -1021,9 +1010,12 @@ bool RollbackSession::Load(unsigned char* buffer)
 	sf4e::gate::AbortLatch::Scope scope(latch_);
 	Slot* slot = reinterpret_cast<Slot*>(buffer);
 	if (!slot || !slot->used) {
-		Fail("load of a freed state");
+		Fail(slot == &refusedSave_ ? "load of a save the session refused" : "load of a freed state");
 		return false;
 	}
+	// Nor into a game the layout no longer describes (GameAdapter::
+	// StateFailure): the session fails before a byte is written.
+	if (FailedByGame()) return false;
 	// GGPO replays from here back to the current frame, saving each again.
 	rollingBack_ = true;
 	rollbackFrom_ = slot->frame;
@@ -1038,16 +1030,9 @@ bool RollbackSession::Load(unsigned char* buffer)
 		Fail("load of a save that kept no copy");
 		return false;
 	}
-	// A rollback in the tick of a pending pose hold, from the held frame or
-	// before it: it plays that frame again, and the hold waits for what that
-	// replay finds. (The hold's own load is not one.)
-	if (!poseHolding_) {
-		const int dropped = poseHolds_.Loaded(slot->frame);
-		if (dropped >= 0) game_.NotePoseHold({pose_hold::Event::Kind::Cancelled, dropped, 0, pose_hold::Refusal::None});
-	}
-	StateLayout& layout = game_.Layout();
+	StateLayout& layout = game_->Layout();
 	layout.LoadFrom(slot->bytes.data());
-	game_.AfterLoad();
+	game_->AfterLoad();
 	if (FailedByGame()) return false; // the restore did not reach all of the game
 
 	const int depth = frame_ - slot->frame;
@@ -1080,16 +1065,15 @@ void RollbackSession::Free(void* buffer)
 	// after the one it loads again) held the guessed timeline: the new save
 	// is hashed instead. As GGPO closes, the frames still not final are left
 	// unhashed: no peer compares a frame before it is confirmed.
-	// A pose hold's replay replaces a junk save the same way.
 	if (slot->pending && !closing_) {
-		if (!slot->junk && !Replaced(slot->frame) && Final(slot->frame)) {
+		if (!Replaced(slot->frame) && Final(slot->frame)) {
 			HashPending(*slot);
 		} else {
 			stats_.hashesDropped++;
-			game_.Layout().CountDroppedHash();
+			game_->Layout().CountDroppedHash();
 		}
 	}
-	slot->used = slot->pending = slot->copied = slot->junk = false;
+	slot->used = slot->pending = slot->copied = false;
 }
 
 // The frame about to be advanced: when the game ignores its inputs, GGPO is
@@ -1099,14 +1083,14 @@ void RollbackSession::Free(void* buffer)
 // only the bits a pad can produce reach it.
 FrameInputs RollbackSession::InputsForThisFrame(const FrameInputs& inputs)
 {
-	ggpo_set_inputs_ignored(session_, !game_.InputsMatter());
+	ggpo_set_inputs_ignored(session_, !game_->InputsMatter());
 	return GivenAndReported(inputs);
 }
 
 FrameInputs RollbackSession::GivenAndReported(const FrameInputs& inputs)
 {
-	const bool matter = game_.InputsMatter();
-	const FrameInputs given = GivenInputs(game_, inputs, frame_);
+	const bool matter = game_->InputsMatter();
+	const FrameInputs given = GivenInputs(*game_, inputs, frame_);
 	Report(given, matter ? RecordedFrame::kFight : 0);
 	if (!matter && given != FrameInputs{}) {
 		CoreLog("session: frame %d gives the game confirmed bits %08x %08x", frame_, given.p[0], given.p[1]);
@@ -1140,146 +1124,11 @@ bool RollbackSession::AdvanceFromRollback()
 		ggpo_advance_frame(session_);
 		return true;
 	}
-	AdvanceGame(InputsForThisFrame(inputs), true);
+	game_->Advance(InputsForThisFrame(inputs), true);
 	stats_.resimulatedFrames++;
 	rollbackHud_.Replayed(GetTickCount64());
 	ggpo_advance_frame(session_);
 	return true;
-}
-
-void RollbackSession::AdvanceGame(const FrameInputs& given, bool resimulating)
-{
-	const int frame = frame_;
-	game_.Advance(given, resimulating);
-	if (!poseHolds_.On()) return;
-	const bool wanted = game_.WantsDrawnFrame();
-	if (poseHolding_) {
-		// A hold's own replay of the frame before the held one: it places the
-		// models, so it must read what it needs too (FinishPoseHold).
-		poseReplayWanted_ = poseReplayWanted_ || wanted;
-		return;
-	}
-	pose_hold::Refusal why = pose_hold::Refusal::None;
-	const int candidate = poseHolds_.Wanted(frame, wanted, &why);
-	if (candidate >= 0) ConsiderPoseHold(candidate, why);
-}
-
-void RollbackSession::ConsiderPoseHold(int frame, pose_hold::Refusal why)
-{
-	using pose_hold::Refusal;
-	// Kept only for the watchers: the fight is over, nothing is held.
-	if (keptForWatchers_) return;
-	if (why == Refusal::None) {
-		if (Held(frame - 1) || Held(frame)) {
-			why = Refusal::HeldFrame;
-		} else if (!SavedState(frame - 1) || ggpo_can_hold_at(session_, frame) != GGPO_OK) {
-			// The state the frame before starts from: its copy here (a rollback's
-			// saves keep theirs while holds are on) and GGPO's save and inputs.
-			why = Refusal::StateNotKept;
-		}
-	}
-	if (why != Refusal::None) {
-		if (poseHolds_.Refuse(frame)) UnjunkAll();
-		stats_.poseHoldsRefused++;
-		game_.NotePoseHold({pose_hold::Event::Kind::Refused, frame, 0, why});
-		return;
-	}
-	poseHolds_.Pend(frame);
-	MarkJunkAbove(frame);
-	game_.NotePoseHold({pose_hold::Event::Kind::Pending, frame, 0, Refusal::None});
-}
-
-void RollbackSession::MarkJunkAbove(int frame)
-{
-	for (Slot& s : pool_) {
-		if (s.used && s.frame > frame) s.junk = true;
-	}
-}
-
-void RollbackSession::Unjunk(int above, int through)
-{
-	for (Slot& s : pool_) {
-		if (!s.used || !s.junk || s.frame <= above || s.frame > through) continue;
-		s.junk = false;
-		// Hashed as Save would have: at once without hashOnConfirm, else once
-		// final (HashConfirmed). A junk save always kept its copy.
-		if (s.pending && !config_.hashOnConfirm) {
-			s.pending = false;
-			RecordHash(s.frame, s.bytes.data(), s.copyTicks);
-		}
-	}
-	HashConfirmed();
-}
-
-void RollbackSession::FinishPoseHold()
-{
-	using pose_hold::Event;
-	using pose_hold::Refusal;
-	int frame = poseHolds_.Pending();
-	if (frame < 0) {
-		poseHolds_.EndTick();
-		return;
-	}
-	if (!session_ || failed_ || config_.watching || keptForWatchers_) {
-		UnjunkAll();
-		poseHolds_.EndTick();
-		return;
-	}
-	ActiveScope active(this);
-	ConfirmedOnReturn confirmed(*this);
-	// The frame the tick stood at: the hold's replay comes back to it.
-	const int resumeTo = frame_;
-	int held = -1;
-	for (int chained = 0;; chained++) {
-		int left = 0;
-		poseReplayWanted_ = false;
-		poseHolding_ = true;
-		const GGPOErrorCode err =
-			SavedState(frame - 1) ? ggpo_hold_at(session_, frame, &left) : GGPO_ERRORCODE_INVALID_REQUEST;
-		poseHolding_ = false;
-		if (DrainPendingAbort() || failed_) {
-			poseHolds_.EndTick();
-			return;
-		}
-		if (!GGPO_SUCCEEDED(err)) {
-			// Never expected: its checks passed during the tick.
-			CoreLog("session: ggpo_hold_at(%d) returned %d", frame, (int)err);
-			stats_.poseHoldsRefused++;
-			game_.NotePoseHold({Event::Kind::Refused, frame, 0, Refusal::Refused});
-			if (held < 0) {
-				// No hold at all: what the tick played stands, live values and all.
-				UnjunkAll();
-				poseHolds_.EndTick();
-				return;
-			}
-			// The hold one frame later stands; this frame's save is not replaced.
-			Unjunk(frame, held);
-			break;
-		}
-		held = frame;
-		if (!poseReplayWanted_) break;
-		// The hold's own replay of the frame before wanted a drawn frame too
-		// (a read a rollback's first frame cannot rebuild): the state the held
-		// frame starts from kept a live value, so hold one frame further back.
-		Refusal why = Refusal::None;
-		if (chained + 1 >= pose_hold::kChainLimit) why = Refusal::ChainLimit;
-		else if (frame - 1 < 1) why = Refusal::FirstFrame;
-		else if (Held(frame - 2) || Held(frame - 1)) why = Refusal::HeldFrame;
-		else if (!SavedState(frame - 2) || ggpo_can_hold_at(session_, frame - 1) != GGPO_OK) why = Refusal::StateNotKept;
-		if (why != Refusal::None) {
-			stats_.poseHoldsRefused++;
-			game_.NotePoseHold({Event::Kind::Refused, frame - 1, 0, why});
-			break;
-		}
-		frame--;
-		poseHolds_.Pend(frame);
-		MarkJunkAbove(frame);
-		game_.NotePoseHold({Event::Kind::Pending, frame, 0, Refusal::None});
-	}
-	poseHolds_.Held(held, resumeTo);
-	poseHolds_.EndTick();
-	stats_.poseHolds++;
-	game_.NotePoseHold({Event::Kind::Held, held, resumeTo - (held - 1), Refusal::None});
 }
 
 void RollbackSession::Event(const GGPOEvent& info)

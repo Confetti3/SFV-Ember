@@ -63,6 +63,7 @@
 // with no rollback (docs/design/beta9/skip.md section 2).
 
 #include "core/ReplayRecorder.hxx"
+#include "core/ReplaySeeker.hxx"
 #include "core/RollbackSession.hxx"
 #include "core/StartAgreement.hxx"
 #include "ember/RoomBattle.hxx"
@@ -133,6 +134,11 @@ private:
 	void WatchFrames(SfvAdapter& adapter);
 	// One of them; false when no frame was played.
 	bool WatchFrame(SfvAdapter& adapter);
+	// A replay's engine frame: what its playback asks of this one (ember/
+	// SfvPlayback.cxx): a frame by the transport, or a seek on its way, which
+	// puts back a state first when it goes back and plays on to its frame, up to
+	// 30 updates an engine frame, each through the decisions a watcher's frame takes.
+	void PlayReplay(SfvAdapter& adapter);
 	// P1's session kept for its watchers after the battle: closed if it is
 	// not already, and freed.
 	void EndDrain();
@@ -225,6 +231,8 @@ private:
 	// its playback ended.
 	std::shared_ptr<const replay::Replay> replay_;
 	std::string replayEnd_;
+	// The states its playback takes as it plays, for the seeks that go back.
+	ReplaySeeker seeker_;
 	// The last checkpoint whose regions a playback logged (-sfve_replay_regions).
 };
 

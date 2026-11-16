@@ -27,6 +27,7 @@
 #include "common/SelectionPick.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -38,9 +39,29 @@ struct PlayerPick {
 	int stage = 0;
 };
 
+// A copy of the stored pick, which is fitted when it is stored (and, for one
+// stored before the catalog was filled, at the first read after): no read
+// fits it again.
 PlayerPick CurrentPick();
+// Rises with each change to the stored pick, the remembered looks and the
+// Random and Eleven flags; any thread. For what is made from them and kept.
+std::uint64_t PickChanges();
 // Stores the pick, fitted; returns what was stored.
 PlayerPick SetPick(const PlayerPick& pick);
+// Changes the stored pick as one step: `edit` gets a copy of it under the
+// pick's lock and returns whether to store it (SetPick, fitted); nothing
+// can be stored between the read and the write. For every change made from
+// the pick as it is (the pipe's commands, a step of the table's Ultra, a
+// roll), where CurrentPick then SetPick would lose another thread's edit.
+// `edit` may call this file's other functions. Returns the pick stored, or
+// as it was when `edit` kept it.
+PlayerPick UpdatePick(const std::function<bool(PlayerPick&)>& edit);
+// Choosing `fighter` as the board does, in one step: Random and Eleven off
+// (the fighter is the player's choice, not a roll), the pick in the
+// fighter's own look (LookFor, remembered), then `then`'s changes to the
+// pick (the pipe's stage and size), stored. The board's card, the look
+// page's Fighter row and the pipe's `pick` all choose a fighter by this.
+PlayerPick ChooseFighter(int fighter, const std::function<void(PlayerPick&)>& then = {});
 
 // Training's other side (Training select's Dummy row, EMBER_LIBRARY.md
 // section 27): a pick of its own, fitted the same way, as SF4 Ember keeps its

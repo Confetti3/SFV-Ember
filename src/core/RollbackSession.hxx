@@ -41,14 +41,12 @@
 //   (Config::replay): the same path, the same held frames and hashes, with
 //   no GGPO session and no network at all.
 //
-// Pose holds (Config::poseHolds, core/PoseHold.hxx): a fighter's update that
-// wanted a drawn frame (GameAdapter::WantsDrawnFrame) ends the call it ran
-// in held at its frame's start (ggpo_hold_at, the GGPO port's
-// pose-hold.patch), and the next call's GGPO first plays the frames from it
-// again. Meanwhile the saves made after it are junk: never hashed, reported
-// final or dumped; Frame() stays the frame the call stood at, and
-// LastConfirmedFrame() stops before the held frame.
+// The session sets nothing process-wide: GGPO's assertion handler, like every
+// other handler a crash reaches, is the host's crash record's (the mod's
+// mod/CrashRecord.hxx, the tests' GgpoAssertions.cxx).
 
+#include "core/Checkpoints.hxx"
+#include "core/DetachedGame.hxx"
 #include "core/GameAdapter.hxx"
 #include "core/ReplayFrames.hxx"
 
@@ -58,7 +56,6 @@
 #include "sf4e__GgpoGate.hxx"
 
 #include <ggponet.h>
-#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -76,15 +73,12 @@ class LaggedReplay;
 
 class RollbackSession {
 public:
-	// Every kCheckpointInterval frames the session also keeps one hash per
-	// region, so peers that disagree can find where. The latest five minutes
-	// are kept. (20 from beta.9, 60 before: a checkpoint every third of a
-	// second of play instead of every second, and a replay's recorded
-	// checkpoints, which are multiples of the interval it was recorded at, stay
-	// valid at any divisor of it: ReplayFile accepts every multiple of 20.)
-	// Frame and region hashes here are the peers' (HashScope::Peers): two
-	// processes playing the same match agree on them.
-	static constexpr int kCheckpointInterval = 20;
+	// Every kCheckpointInterval frames (core/Checkpoints.hxx) the session also
+	// keeps one hash per region, so peers that disagree can find where. The
+	// latest five minutes are kept. Frame and region hashes here are the
+	// peers' (HashScope::Peers): two processes playing the same match agree
+	// on them.
+	static constexpr int kCheckpointInterval = sfve::kCheckpointInterval;
 	// How many checkpoints' whole states are kept (CheckpointState): 120
 	// frames of them, a state's size each, for the desync report's state file.
 	static constexpr int kCheckpointStatesKept = 6;
@@ -163,12 +157,6 @@ public:
 		int replayLag = 0;
 		int replayLagPlayer = 0;
 		uint32_t replayLagJitter = 0; // nonzero: the delay wanders up to replayLag (LaggedReplay), from this seed
-		// Pose holds (core/PoseHold.hxx): an update that wanted a drawn frame
-		// (GameAdapter::WantsDrawnFrame) ends the tick held at its frame's
-		// start, drawn, and the frames from it are played again first thing
-		// in the next call. A fighter's session over GGPO, and a lagged
-		// replay (LaggedReplay); a watcher never rolls back and never holds.
-		bool poseHolds = false;
 		// Each frame as this session plays it, before the game sees it: its
 		// number and what it gave the game (RecordedFrame). A rollback's replay
 		// reports the frame again; the last report of a confirmed frame is
@@ -207,8 +195,6 @@ public:
 		uint64_t heldFrames = 0;           // StepHeld's frames
 		uint64_t heldReplays = 0;          // held frames a rollback replayed (never expected)
 		uint64_t waitingSteps = 0;         // Step / StepHeld calls that returned Waiting: no frame run, the other player's inputs or the gate not there yet (pace log)
-		uint64_t poseHolds = 0;            // ticks that ended held for a drawn frame (Config::poseHolds; each also counts as a rollback)
-		uint64_t poseHoldsRefused = 0;     // updates that wanted a drawn frame and kept the live value (pose_hold::Refusal)
 	};
 
 	explicit RollbackSession(GameAdapter& game);
@@ -245,14 +231,19 @@ public:
 	bool Live() const { return session_ != nullptr || replaying_; }
 	// This session plays a replay (Config::replay).
 	bool Replaying() const { return replaying_; }
+	// A replay's playback goes back (core/ReplaySeeker.hxx, where it is
+	// defined): `state`, a StateLayout::SaveTo taken at the start of `frame`
+	// by this playback, is put back as a rollback's load does it (LoadFrom,
+	// then the game's post-restore callbacks), and the next Step plays
+	// `frame`. False with nothing changed for a replay that is not a plain
+	// one (a lagged or rollback-checked one) or while the game is held; false
+	// with the session failed when the game could not take the state back.
+	bool RestoreReplay(const uint8_t* state, int frame);
 	bool Running() const { return gate_.phase == sf4e::gate::PHASE_RUNNING; }
 	bool Failed() const { return failed_; }
 	const std::string& FailureReason() const { return failure_; }
-	// The frame the next Step plays. While a pose hold's frames wait to be
-	// played again, the game stands at the held frame's start and this is
-	// still the frame the tick stood at; LastConfirmedFrame then says no
-	// frame from the held one is final yet.
-	int Frame() const { return poseHolds_.Resuming() ? poseHolds_.ResumeTo() : frame_; }
+	// The frame the next Step plays.
+	int Frame() const { return frame_; }
 	// The last frame whose inputs both fighters have given. A watcher plays
 	// only such frames, so for it every state it has reached is final: its
 	// current frame.
@@ -262,6 +253,11 @@ public:
 	bool Watching() const { return config_.watching; }
 	// The side this copy plays (Config::localPlayer: 0 P1, 1 P2).
 	int LocalPlayer() const { return config_.localPlayer; }
+	// The session's UDP path (Config): its local port and the peer it plays
+	// with, which a mismatch's region exchange reuses once GGPO has closed.
+	uint16_t LocalPort() const { return config_.localPort; }
+	const std::string& RemoteIp() const { return config_.remoteIp; }
+	uint16_t RemotePort() const { return config_.remotePort; }
 	// A watcher's frames received from P1 and not played yet; -1 when the
 	// session cannot tell (not a watcher's, or none).
 	int WatchedBacklog() const;
@@ -272,7 +268,12 @@ public:
 	std::vector<size_t> TakeDroppedWatchers() { return links_.Take(); }
 	// The fight is over and the session is kept only so P1's watchers get
 	// the frames still on their way: the other fighter leaving is expected
-	// then, and no warning or failure of theirs is recorded.
+	// then, and no warning or failure of theirs is recorded. The game is let
+	// go here, as its battle may be freed from now on: the frames final so
+	// far are hashed and reported, and from here every callback, a rollback's
+	// included, reaches a stand-in with no state (DetachedGame). Nothing more
+	// is hashed or reported (Config::onFrame, onCheckpoint), and Layout() is
+	// the stand-in's, empty.
 	void KeepForWatchers();
 	bool KeptForWatchers() const { return keptForWatchers_; }
 	// GGPO's time-sync view of the remote player: how many frames each side
@@ -330,18 +331,13 @@ public:
 	const std::vector<uint8_t>* CheckpointState(int frame) const;
 	int LatestCheckpoint(int atOrBefore) const;
 	const Stats& GetStats() const { return stats_; }
-	const StateLayout& Layout() const { return game_.Layout(); }
+	const StateLayout& Layout() const { return game_->Layout(); }
 
 private:
 	struct Slot {
 		bool used = false;
 		bool copied = false;     // bytes hold the frame's state; false: a save no load can reach
 		bool pending = false;    // to be hashed once the frame is final (Config::hashOnConfirm)
-		// Saved after a frame whose update wanted a drawn frame, while the
-		// pose hold for it is pending or its frames wait to be replayed: the
-		// replay replaces it, so it is never hashed (unless no hold comes),
-		// and it always keeps its copy.
-		bool junk = false;
 		int frame = -1;
 		long long copyTicks = 0; // the copy's time, for the checkpoint line
 		std::vector<uint8_t> bytes;
@@ -360,7 +356,10 @@ private:
 	static bool __cdecl OnAdvance(int flags);
 	static bool __cdecl OnEvent(GGPOEvent* info);
 
-	bool Save(unsigned char** buffer, int* len, int* checksum, int frame);
+	// The slot `frame`'s state is saved in, or null when the session refuses
+	// the save (it failed, or the pool is full): OnSave hands GGPO
+	// refusedSave_ then.
+	Slot* Save(int frame);
 	// The hash of `frame`'s state, kept for HashAt, and at a checkpoint its
 	// regions' hashes, its bytes (CheckpointState) and the checkpoint's log
 	// line (with the copy's time, `copyTicks` of QueryPerformanceCounter).
@@ -368,7 +367,8 @@ private:
 	// live state is that frame's and its save kept no copy.
 	void RecordHash(int frame, const uint8_t* bytes, long long copyTicks);
 	// Whether frame `frame`'s state is hashed at all: every checkpoint, and
-	// every Config::hashEveryFrames frame (every frame with verifyLoads).
+	// every Config::hashEveryFrames frame (every frame with verifyLoads); none
+	// once the game is let go (KeepForWatchers).
 	bool HashedFrame(int frame) const;
 	// The state saved as `frame` is final: the inputs of every frame before
 	// it are confirmed (as of the last reading, confirmed_), so no rollback
@@ -386,22 +386,6 @@ private:
 	bool Load(unsigned char* buffer);
 	void Free(void* buffer);
 	bool AdvanceFromRollback();
-	// Advances the game one frame (frame_), then notes whether its update
-	// wanted a drawn frame (pose holds).
-	void AdvanceGame(const FrameInputs& given, bool resimulating);
-	// The update of `frame` wanted a drawn frame and the book did not rule it
-	// out (`why`, or None): the hold is pending, or refused.
-	void ConsiderPoseHold(int frame, pose_hold::Refusal why);
-	// After each call that may have rolled back (Step, StepHeld, Poll): the
-	// pending hold is made (ggpo_hold_at), chained one frame back at a time
-	// while its own replay wants a drawn frame too.
-	void FinishPoseHold();
-	// The saves of frames after `frame` are a pending hold's to replace.
-	void MarkJunkAbove(int frame);
-	// No hold replaces the saves of frames in (above, through]: hashed as
-	// usual once final.
-	void Unjunk(int above, int through);
-	void UnjunkAll() { Unjunk(-1, INT_MAX); }
 	// The frame about to be advanced as the game gets it; reported to
 	// onFrame as this frame's.
 	FrameInputs InputsForThisFrame(const FrameInputs& inputs);
@@ -445,7 +429,11 @@ private:
 	bool DrainPendingAbort();
 	bool HandleResult(int ggpoError, const char* call, StepResult* out);
 
-	GameAdapter& game_;
+	// The game this session drives, and the one its calls reach: that game,
+	// or the stand-in once the session is kept for its watchers.
+	GameAdapter& driven_;
+	GameAdapter* game_;
+	DetachedGame detached_;
 	GGPOSession* session_ = nullptr;
 	int localHandle_ = -1;
 	int remoteHandle_ = -1;
@@ -453,6 +441,9 @@ private:
 	sf4e::gate::GgpoGateModel gate_{};
 	sf4e::gate::AbortLatch latch_;
 	std::vector<Slot> pool_;
+	// What GGPO holds for a refused save: never used, so a load of it fails
+	// the session (Load) and Free finds nothing to clear in it.
+	static Slot refusedSave_;
 	// The last frame whose inputs both players have given, as last read
 	// (HashConfirmed: ggpo_get_confirmed_input_frame, the local input added
 	// since GGPO's last poll included). Free cannot ask GGPO, which may be
@@ -484,12 +475,6 @@ private:
 	bool holding_ = false;
 	int heldFrom_ = -1, heldTo_ = -1;
 	bool Held(int frame) const { return frame >= heldFrom_ && (holding_ || frame < heldTo_); }
-	// Pose holds (Config::poseHolds): the book, whether a hold's own load and
-	// replay are running (FinishPoseHold), and whether that replay wanted a
-	// drawn frame too.
-	pose_hold::Book poseHolds_;
-	bool poseHolding_ = false;
-	bool poseReplayWanted_ = false;
 	bool failed_ = false;
 	std::string failure_;
 	Stats stats_;

@@ -37,7 +37,7 @@ param([int]$lag = 0, [int]$delay = 2, [int]$games = 2, [string]$p1 = 'RYU:0:1', 
 # $work is left for its logs: bridge.log, rooms.log (the room host's log is the
 # supervisor's stderr).
 . (Join-Path $PSScriptRoot 'localstack.ps1')
-function Press([int]$i, [string]$button) { Ctl $i "pad 0 ${button}:120 -:250" | Out-Null; Start-Sleep -Milliseconds 600; (Status $i).shell }
+function Press([int]$i, [string]$button) { CtlOk $i "pad 0 ${button}:120 -:250" | Out-Null; Start-Sleep -Milliseconds 600; (Status $i).shell }
 # Presses $moves in turn until the shell's focus is $focus.
 function Seek([int]$i, [string]$focus, [string[]]$moves, [int]$limit = 12) {
 	for ($step = 0; $step -lt $limit; $step++) {
@@ -156,7 +156,7 @@ try {
 	WaitFor 'both copies in the room' 90 { $s0 = Status 0; $s1 = Status 1; $s0.room.room -eq 'joined' -and $s1.room.room -eq 'joined' -and $s0.room.members -eq 2 -and $s1.room.members -eq 2 }
 	}
 
-	foreach ($i in 0, 1) { Ctl $i "sit 0 $i" | Out-Null }
+	foreach ($i in 0, 1) { CtlOk $i "sit 0 $i" | Out-Null }
 	WaitFor 'both copies seated' 60 { (Status 0).room.slot -eq 0 -and (Status 1).room.slot -eq 1 }
 	if ($ranked) {
 		# Each ticket carried its player's SFV class: on both copies the room
@@ -180,11 +180,11 @@ try {
 			Press 1 'B' | Out-Null
 		}
 	}
-	foreach ($i in 0, 1) { Ctl $i "delay $delay" | Out-Null }
-	Ctl 0 "pick $p1 $stage" | Out-Null
-	Ctl 1 "pick $p2" | Out-Null
+	foreach ($i in 0, 1) { CtlOk $i "delay $delay" | Out-Null }
+	CtlOk 0 "pick $p1 $stage" | Out-Null
+	CtlOk 1 "pick $p2" | Out-Null
 	for ($n = 0; $n -lt $presses; $n++) {
-		foreach ($i in 0, 1) { Ctl $i 'pad 0 DOWN:120 -:250' | Out-Null }
+		foreach ($i in 0, 1) { CtlOk $i 'pad 0 DOWN:120 -:250' | Out-Null }
 		Start-Sleep -Milliseconds 600
 	}
 	for ($game = 1; $game -le $games; $game++) {
@@ -291,16 +291,23 @@ try {
 	}
 } catch {
 	$failure = $_.Exception.Message
+} finally {
+	# The copies and the supervisor are ended here whatever happened above: a report line that cannot be read
+	# is a failure of the run, not a reason to leave them running.
+	try {
+		# SFV's league icons as the game loaded them, or why not, and its league
+		# names as the game gave them (SfvArt).
+		foreach ($i in 0, 1) {
+			if ($ranked -and (Test-Path $logOf[$i])) { Select-String -Path $logOf[$i] -Pattern "art: /Game/CommonAsset/LeagueIcon/|ranks: SFV's leagues" | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
+		}
+		# Room hosts outlive a supervisor that is killed: register what runs under it now (the
+		# supervisor is still up unless it died), so Complete-Run's `kill` ends this run's hosts
+		# by identity and no other run's. (-keep leaves the copies and the hosts; `sfve.py kill --all`
+		# ends them later.)
+		if ($processes.Count -and !$processes[0].HasExited) { python -I tools\sfve.py track rooms $processes[0].Id | Out-Null }
+	} catch {
+		if (!$failure) { $failure = "the end-of-run report failed: $($_.Exception.Message)" }
+	}
+	$passed = Complete-Run $failure $processes $keep.IsPresent "$games game(s) in a public room, no desync"
 }
-# SFV's league icons as the game loaded them, or why not, and its league
-# names as the game gave them (SfvArt).
-foreach ($i in 0, 1) {
-	if ($ranked -and (Test-Path $logOf[$i])) { Select-String -Path $logOf[$i] -Pattern "art: /Game/CommonAsset/LeagueIcon/|ranks: SFV's leagues" | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
-}
-# Room hosts outlive a supervisor that is killed: register what runs under it now (the
-# supervisor is still up unless it died), so Complete-Run's `kill` ends this run's hosts
-# by identity and no other run's. (-keep leaves the copies and the hosts; `sfve.py kill --all`
-# ends them later.)
-if ($processes.Count -and !$processes[0].HasExited) { python -I tools\sfve.py track rooms $processes[0].Id | Out-Null }
-$passed = Complete-Run $failure $processes $keep.IsPresent "$games game(s) in a public room, no desync"
 exit $(if ($passed) { 0 } else { 1 })

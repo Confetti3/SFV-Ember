@@ -158,7 +158,7 @@ try {
 		WaitFor "copy $i at the main menu" 60 { (Status $i).room.atMainMenu }
 		Answer (Ctl $i "rules $rounds $seconds") | Out-Null
 		WaitFor "copy $i's table rules" 15 { $r = (Status $i).match.rules; $r.rounds -eq $rounds -and $r.seconds -eq $seconds }
-		Ctl $i "delay $delay" | Out-Null
+		CtlOk $i "delay $delay" | Out-Null
 	}
 	Answer (Ctl 0 "pick $p1 $stage") | Out-Null
 	Answer (Ctl 1 "pick $p2") | Out-Null

@@ -6,6 +6,10 @@ named where the game's code says what they are.
   python tools/stateregion.py <file.state> NAME [--all]        one region (zero words skipped unless --all)
   python tools/stateregion.py <file.state> NAME --against <other.state>
                                                                only the words that differ, both sides
+                                                               (NAME is looked up by name in both files: use it
+                                                               for a named region; a `game.N` run's N is its place
+                                                               in that process's list and differs between the two
+                                                               processes, see tools/diffstate.py)
   python tools/stateregion.py <file.state> --fighters          what each fighter and live projectile plays
   python tools/stateregion.py <file.state> NAME --census       the region's pointer words and what each refers to (version 2)
 
