@@ -2975,3 +2975,33 @@ form: what players get, the sign-in step by step, what is left out and the `--fr
 
 *Tests:* the library's `AccountRoutes` and `LevelsAnswers`; the helper's session and card-save tests; the bridge's
 `card_friend_code`; `LocaleOverlayTests` (the two overlay entries that name SF4 Ember).
+
+## 64. The 1.6.1 hotfix in SFV Ember (beta 10, 2026-11-16)
+
+The library line carries SF4 Ember's 1.6.1 hotfix (`b10/lib-uxint`: the hotfix merged onto the current library, then the
+settings-load fix). What SFV Ember takes and what stays on SF4's side:
+
+- **Room tables** (open seats as the buttons, compact cards, `RoomTableCards`), the one **Invite** button of a private
+  room's bar and the new catalog ids: shared, nothing to do in SFV. The Invite menu's friends are the Friends
+  state's (the account service: `FriendInvitees`, `SameGame`), the invite is sent to the bridge the Friends screen names
+  (`FriendsPanel::Bridge`, the account bridge) and carries the room's own invitation; a public room has no Invite, and a
+  friend's visit to one takes its ticket from the game's bridge (`GoToFriend`, `Ask::RoomTicket`). Arcade rooms keep
+  their cabinets.
+- **Links are product data** (`ProductIdentity::links`, `platform::Links()`): SF4 Ember keeps its four (Discord, Ko-fi,
+  website, Twitter); SFV Ember has the community's Discord and Ko-fi (the same author and community) and its own
+  project page, `github.com/Confetti3/SFV-Ember` (`about.project`, wearing Ember's mark), and no Twitter. A product that
+  names none shows no link button and no link row; Settings > Discord ends with the Discord link only when there is one.
+- **Training**: F10 and the controls' Back to room row in a room's Training (`Action::LeaveToRoom` is answered by
+  `LeaveTrainingToRoom`, the call's countdown cut to the next update that may leave: `SfvTraining.cxx`). F10 is Ember's
+  menu key at the main menu and, in a room's Training, the way back (`F10Owner`, handed to the overlay by SfvShell);
+  nowhere else is it the game's, and SFV's keys F1-F9 are unchanged. "Empty all slots" is the typed replies' row
+  (`TrainingFeatures::typedReplies`), which SFV has not: not offered.
+- **Replay snapshot ring** (`ReplaySnapshotRing`): SF4's replay seek; SFV's is `core/PlaybackSnapshots`. Not used.
+- **Crash record**: `DumpClient::Request` answers a `DumpAnswer`; the record logs why the launcher's dump is missing.
+  The unloaded-module lines (`CrashUnloaded.hxx`) read a 32-bit ntdll table (`RTL_UNLOAD_EVENT_TRACE` as an x86 process
+  has it): SFV is x64, so they are not fed.
+- The library's `CMakeLists.txt` version (1.6.1) is not SFV's: the binaries carry `0.1.0-beta.10` from `SFVE_VERSION`.
+- **Settings load** (`SavedRead`, `SettingsGuard`): the runtime reads the file once with retries and saves nothing
+  until it has; SFV's own name and boolean reads (`LoadSavedSettings`) wait out a busy file as the library's launcher
+  does and leave a damaged file to the runtime, which sets it aside and tells the player once. The launcher keeps its
+  default name for a launch whose settings were not read.
