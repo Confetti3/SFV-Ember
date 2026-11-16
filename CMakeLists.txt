@@ -135,6 +135,8 @@ add_library(sfve_ember STATIC
     src/ember/SfvPictureSpec.cxx
     src/ember/SfvRandomFighter.cxx
     src/ember/SfvEleven.cxx
+    src/ember/PlaybackBook.cxx
+    src/ember/SfvPlayback.cxx
     src/ember/SfvReplays.cxx
     src/ember/SfvRoomBuild.cxx
     src/ember/SfvScreenMode.cxx
@@ -332,6 +334,7 @@ add_executable(sfve_ember_tests
     tests/HudLayoutTests.cxx
     tests/SfvReplayBuildTests.cxx
     tests/SfvReplaysTests.cxx
+    tests/PlaybackBookTests.cxx
     tests/CrashRecordTests.cxx
     tests/LocaleOverlayTests.cxx
     tests/VirtualPadsTests.cxx

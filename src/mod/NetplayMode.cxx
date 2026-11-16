@@ -90,6 +90,7 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	});
 	replay_.reset();
 	replayEnd_.clear();
+	seeker_.Reset();
 	if (TakeReplayBattle()) {
 		// The battle the Replays screen's Watch now launched.
 		replay_ = adapter::TakeArmedReplay();
@@ -170,8 +171,8 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 	room_.NoteLink(*session_);
 	adapter::RoomBattle::EndDroppedWatcherLinks(*session_);
 	if (session_->Watching()) {
-		// A replay steps as its transport says: paused, slower, or a step.
-		if (replay_ && !adapter::PlaybackFrameWanted()) return;
+		// A replay steps as its transport says: paused, slower, a step, or a seek.
+		if (replay_) return PlayReplay(adapter);
 		return WatchFrames(adapter);
 	}
 	const bool frozen = freezeFrame_ >= 0 && session_->Frame() >= freezeFrame_;
@@ -349,7 +350,7 @@ bool NetplayMode::WatchFrame(SfvAdapter& adapter)
 		});
 		if (last_ != RollbackSession::StepResult::Advanced) return false;
 		room_.Decided(decided, *session_);
-		if (replay_) adapter::NotePlaybackFrame(false, room_.GamesInPlace());
+		if (replay_) adapter::NotePlaybackFrame(session_->Frame() - 1, false, room_.GamesInPlace());
 		if (decided == adapter::RoomBattle::Answer::Rematch) {
 			startTime_ = adapter.StartTime();
 		} else if (decided == adapter::RoomBattle::Answer::Leave) {
@@ -373,14 +374,36 @@ bool NetplayMode::WatchFrame(SfvAdapter& adapter)
 		adapter.SetStartTime(startTime_);
 	}
 	NoteFightStart(adapter, session_->Frame());
+	// The state at the start of a fight frame, when a seek back may need it.
+	if (replay_) seeker_.Before(*session_, replay_->frames);
 	last_ = session_->Step(0);
 	NoteScenesSkip(adapter);
 	const bool advanced = last_ == RollbackSession::StepResult::Advanced;
 	if (advanced && replay_) {
 		const int played = session_->Frame() - 1;
-		adapter::NotePlaybackFrame(played >= 0 && replay_->frames[(size_t)played].Fight(), room_.GamesInPlace());
+		adapter::NotePlaybackFrame(played, played >= 0 && replay_->frames[(size_t)played].Fight(), room_.GamesInPlace());
 	}
 	return advanced;
+}
+
+void NetplayMode::PlayReplay(SfvAdapter& adapter)
+{
+	// A lagged or rollback-checked playback (a test's) plays its own rollbacks: it never seeks.
+	const bool diagnostics = config_.replayLag > 0 || config_.replayCheck > 0;
+	const adapter::PlaybackTurn turn = adapter::PlaybackTurnFor(seeker_.Ground(*session_, replay_->frames, diagnostics));
+	if (turn.restoreBefore >= 0) {
+		const int restored = seeker_.Restore(*session_, turn.restoreBefore);
+		adapter::NotePlaybackRestored(restored);
+		if (restored < 0) return;
+	}
+	if (turn.goal < 0) {
+		if (turn.frames) WatchFrames(adapter);
+		return;
+	}
+	for (unsigned played = 0; played < sf4e::replaytransport::kMostSeekFrames && session_->Frame() < turn.goal &&
+		!leaveWanted_ && session_->Live(); played++) {
+		if (!WatchFrame(adapter)) return;
+	}
 }
 
 void NetplayMode::EndDrain()
