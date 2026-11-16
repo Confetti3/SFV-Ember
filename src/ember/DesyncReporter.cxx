@@ -7,6 +7,7 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
 #include "ember/SfvPickSpace.hxx"
+#include "mod/AddressRanges.hxx"
 #include "mod/GameMemory.hxx"
 #include "mod/SfvAdapter.hxx"
 #include "mod/Log.hxx"
@@ -146,6 +147,7 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	if (const mod::SfvAdapter* game = CurrentBattle().game) facts.battleData = match_data::Text(game->BattleFacts());
 	facts.paks = mod::PakCensusSummary();
 	facts.os = desync::WindowsVersion();
+	facts.addressRule = sfve::mod::AddressRuleText();
 	if (const std::vector<uint8_t>* state = session.CheckpointState(mismatch.frame)) {
 		for (const StateRegion& r : session.Layout().Regions()) {
 			facts.stateRegions.push_back({r.name, r.size, reinterpret_cast<std::uint64_t>(r.ptr), r.checked, r.comparedWithPeers});
@@ -534,6 +536,7 @@ void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& 
 	if (const mod::SfvAdapter* game = CurrentBattle().game) facts.battleData = match_data::Text(game->BattleFacts());
 	facts.paks = mod::PakCensusSummary();
 	facts.os = desync::WindowsVersion();
+	facts.addressRule = sfve::mod::AddressRuleText();
 	size_t written = 0, kept = 0, still = 0;
 	for (const StartAgreement::RegionOutcome& r : report.regions) {
 		facts.regions.push_back({r.name, r.size, r.before});
@@ -581,6 +584,7 @@ void ReportGameDataDiffers(const StartAgreement::Report& report, const match_dat
 	facts.battleData = match_data::Text(battle);
 	facts.paks = mod::PakCensusSummary();
 	facts.os = desync::WindowsVersion();
+	facts.addressRule = sfve::mod::AddressRuleText();
 	facts.otherBattleData = match_data::Text(report.otherFacts);
 	facts.gameDataDiffers = what;
 	Queue(std::move(facts));

@@ -190,6 +190,9 @@ struct Facts {
 	std::string paks;
 	// This PC's Windows (WindowsVersion); empty when not read.
 	std::string os;
+	// The address rule this copy hashes and checks by (mod/AddressRanges.hxx
+	// AddressRuleText); empty when not read.
+	std::string addressRule;
 	// The regions that differ from the other copy's, once its list arrived
 	// (`regionsCompared`); otherwise every region is listed (`regions`).
 	// `regionExchange` says how the lists' exchange went, in words.

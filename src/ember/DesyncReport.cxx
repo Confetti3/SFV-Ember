@@ -222,6 +222,7 @@ std::string Comment(const Facts& facts, std::string_view buildId)
 	if (!facts.otherBattleData.empty()) text += "The other copy's game data: " + facts.otherBattleData + "\n";
 	text += "Paks: " + (facts.paks.empty() ? std::string("not read") : facts.paks) + "\n";
 	text += "OS: " + (facts.os.empty() ? std::string("not read") : facts.os) + "\n";
+	text += "Address rule: " + (facts.addressRule.empty() ? std::string("not read") : facts.addressRule) + "\n";
 	if (facts.roomEpoch) {
 		text += "Room " + Hex16(facts.roomEpoch) + ", table " + std::to_string(facts.table) + ", match " +
 			std::to_string(facts.generation);

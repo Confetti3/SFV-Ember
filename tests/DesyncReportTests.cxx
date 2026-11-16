@@ -123,6 +123,16 @@ TEST_CASE("both fighters' copies of one mismatch name it by the same keys")
 		std::string::npos);
 }
 
+TEST_CASE("a desync's comment says the address rule beside the OS")
+{
+	Facts facts = SampleFacts();
+	facts.os = "Windows 10.0 build 19045";
+	facts.addressRule = "value (words above 1 TB)";
+	CHECK(Comment(facts, kBuild).find("OS: Windows 10.0 build 19045\nAddress rule: value (words above 1 TB)\n") != std::string::npos);
+	facts.addressRule.clear();
+	CHECK(Comment(facts, kBuild).find("Address rule: not read\n") != std::string::npos);
+}
+
 TEST_CASE("a desync's comment names the match, this copy, both picks and the checkpoint")
 {
 	const std::string comment = Comment(SampleFacts(), kBuild);
