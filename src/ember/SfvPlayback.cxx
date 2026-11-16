@@ -233,7 +233,7 @@ void StatusFields(nlohmann::json& out)
 	out["frame"] = p.ground.frame;
 	out["total"] = p.playing ? p.playing->frames.size() : 0;
 	out["floor"] = p.seekable ? p.bounds.floor : -1;
-	out["last"] = p.seekable ? p.bounds.last : -1;
+	out["lastFrame"] = p.seekable ? p.bounds.last : -1;
 	out["loop"] = {{"phase", (int)p.seek.Loop()}, {"a", p.seek.MarkA()}, {"b", p.seek.MarkB()}};
 	out["snapshots"] = p.ground.snapshots;
 	out["seeks"] = p.seek.Landed();

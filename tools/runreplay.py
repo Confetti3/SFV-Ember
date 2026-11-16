@@ -257,7 +257,7 @@ def exercise_seeks(shots: Path | None) -> int:
         wait_for("the pause", 5, lambda: replays(0)["paused"])
     time.sleep(0.5)
     r = replays(0)
-    made, f0, floor, last = r["seeks"], r["frame"], r["floor"], r["last"]
+    made, f0, floor, last = r["seeks"], r["frame"], r["floor"], r["lastFrame"]
     shot(shots, "6-seek-start", 0)
     # Three steps back: exactly one frame each, the playback paused throughout.
     for k in range(1, 4):
