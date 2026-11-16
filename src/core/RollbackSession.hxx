@@ -53,6 +53,7 @@
 // other handler a crash reaches, is the host's crash record's (the mod's
 // mod/CrashRecord.hxx, the tests' GgpoAssertions.cxx).
 
+#include "core/DetachedGame.hxx"
 #include "core/GameAdapter.hxx"
 #include "core/ReplayFrames.hxx"
 
@@ -276,7 +277,12 @@ public:
 	std::vector<size_t> TakeDroppedWatchers() { return links_.Take(); }
 	// The fight is over and the session is kept only so P1's watchers get
 	// the frames still on their way: the other fighter leaving is expected
-	// then, and no warning or failure of theirs is recorded.
+	// then, and no warning or failure of theirs is recorded. The game is let
+	// go here, as its battle may be freed from now on: the frames final so
+	// far are hashed and reported, and from here every callback, a rollback's
+	// included, reaches a stand-in with no state (DetachedGame). Nothing more
+	// is hashed or reported (Config::onFrame, onCheckpoint), and Layout() is
+	// the stand-in's, empty.
 	void KeepForWatchers();
 	bool KeptForWatchers() const { return keptForWatchers_; }
 	// GGPO's time-sync view of the remote player: how many frames each side
@@ -334,7 +340,7 @@ public:
 	const std::vector<uint8_t>* CheckpointState(int frame) const;
 	int LatestCheckpoint(int atOrBefore) const;
 	const Stats& GetStats() const { return stats_; }
-	const StateLayout& Layout() const { return game_.Layout(); }
+	const StateLayout& Layout() const { return game_->Layout(); }
 
 private:
 	struct Slot {
@@ -372,7 +378,8 @@ private:
 	// live state is that frame's and its save kept no copy.
 	void RecordHash(int frame, const uint8_t* bytes, long long copyTicks);
 	// Whether frame `frame`'s state is hashed at all: every checkpoint, and
-	// every Config::hashEveryFrames frame (every frame with verifyLoads).
+	// every Config::hashEveryFrames frame (every frame with verifyLoads); none
+	// once the game is let go (KeepForWatchers).
 	bool HashedFrame(int frame) const;
 	// The state saved as `frame` is final: the inputs of every frame before
 	// it are confirmed (as of the last reading, confirmed_), so no rollback
@@ -449,7 +456,11 @@ private:
 	bool DrainPendingAbort();
 	bool HandleResult(int ggpoError, const char* call, StepResult* out);
 
-	GameAdapter& game_;
+	// The game this session drives, and the one its calls reach: that game,
+	// or the stand-in once the session is kept for its watchers.
+	GameAdapter& driven_;
+	GameAdapter* game_;
+	DetachedGame detached_;
 	GGPOSession* session_ = nullptr;
 	int localHandle_ = -1;
 	int remoteHandle_ = -1;

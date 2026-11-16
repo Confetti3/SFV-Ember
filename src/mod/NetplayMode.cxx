@@ -83,10 +83,13 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	});
 	session_ = std::move(session);
 	// The pace line's counts (mod/Pace.hxx), read on the battle's thread
-	// inside the session's own calls: no lock of this mode's.
-	adapter.SetPaceSource([raw = session_.get()]() {
-		const RollbackSession::Stats& s = raw->GetStats();
-		return SfvAdapter::PaceCounts{raw->Frame(), s.rollbacks, s.waitingSteps + s.predictionStalls};
+	// inside the session's own calls, under Frame's lock. Of the battle's
+	// session, whichever that is now: none once it is kept for the watchers
+	// (PollBattle), so the adapter never holds a session the drain frees.
+	adapter.SetPaceSource([this]() {
+		if (!session_) return SfvAdapter::PaceCounts{};
+		const RollbackSession::Stats& s = session_->GetStats();
+		return SfvAdapter::PaceCounts{session_->Frame(), s.rollbacks, s.waitingSteps + s.predictionStalls};
 	});
 	replay_.reset();
 	replayEnd_.clear();
