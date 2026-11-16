@@ -120,23 +120,23 @@ TEST_CASE("a checkpoint is compared by its frame, again when reached again, and 
 	uint64_t recorded = 0;
 	CHECK(book.NoteCheckpoint(7, 1, &recorded) == Compared::NotACheckpoint);
 	CHECK(book.NoteCheckpoint(100000, 1, &recorded) == Compared::NotACheckpoint);
-	CHECK(book.Compared() == 0);
+	CHECK(book.CheckpointsCompared() == 0);
 	CHECK(book.NoteCheckpoint(60, 0x7000u + 60, &recorded) == Compared::Equal);
 	CHECK(recorded == 0x7000u + 60);
 	CHECK(book.NoteCheckpoint(80, 0x7000u + 80, &recorded) == Compared::Equal);
-	CHECK(book.Compared() == 2);
+	CHECK(book.CheckpointsCompared() == 2);
 	CHECK(book.Comparisons() == 2);
 	// The seek goes back and reaches them again: compared again, never double-counted.
 	CHECK(book.NoteCheckpoint(60, 0x7000u + 60, &recorded) == Compared::Equal);
 	CHECK(book.NoteCheckpoint(80, 0x7000u + 80, &recorded) == Compared::Equal);
-	CHECK(book.Compared() == 2);
+	CHECK(book.CheckpointsCompared() == 2);
 	CHECK(book.Comparisons() == 4);
 	CHECK(book.Differing() == 0);
 	// A difference after a seek is the first of that checkpoint, logged once...
 	CHECK(book.NoteCheckpoint(80, 0xBAD, &recorded) == Compared::FirstDifference);
 	CHECK(recorded == 0x7000u + 80);
 	CHECK(book.Differing() == 1);
-	CHECK(book.Compared() == 2);
+	CHECK(book.CheckpointsCompared() == 2);
 	// ...is not logged again when it differs again, and is not undone by a later equal one.
 	CHECK(book.NoteCheckpoint(80, 0xBAD, &recorded) == Compared::Differs);
 	CHECK(book.NoteCheckpoint(80, 0x7000u + 80, &recorded) == Compared::Differs);
@@ -145,10 +145,10 @@ TEST_CASE("a checkpoint is compared by its frame, again when reached again, and 
 	CHECK(book.NoteCheckpoint(100, 0xBAD, &recorded) == Compared::FirstDifference);
 	CHECK(book.Differing() == 2);
 	CHECK(book.NoteCheckpoint(60, 0x7000u + 60, &recorded) == Compared::Equal);
-	CHECK(book.Compared() == 3);
+	CHECK(book.CheckpointsCompared() == 3);
 	// The start state is compared once, with the same counts.
 	book.NoteStart(true);
-	CHECK(book.Compared() == 4);
+	CHECK(book.CheckpointsCompared() == 4);
 	CHECK(book.Differing() == 2);
 	book.NoteStart(false);
 	CHECK(book.Differing() == 3);

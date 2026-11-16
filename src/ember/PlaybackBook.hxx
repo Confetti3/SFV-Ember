@@ -70,7 +70,7 @@ public:
 	int Furthest() const { return furthest_; }
 	bool Whole() const { return replay_ && (size_t)furthest_ == replay_->frames.size(); }
 	// Checkpoints compared (each once, the start state's included) and those that ever differed.
-	int Compared() const { return compared_ + (startCompared_ ? 1 : 0); }
+	int CheckpointsCompared() const { return compared_ + (startCompared_ ? 1 : 0); }
 	int Differing() const { return differing_ + (startDiffers_ ? 1 : 0); }
 	// Every comparison made, a checkpoint reached again counted again.
 	int Comparisons() const { return comparisons_; }

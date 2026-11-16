@@ -240,7 +240,7 @@ void StatusFields(nlohmann::json& out)
 	out["seeking"] = p.seek.Seeking();
 	out["furthest"] = p.book.Furthest();
 	out["frames"] = p.book.Played();
-	out["compared"] = p.book.Compared();
+	out["compared"] = p.book.CheckpointsCompared();
 	out["differing"] = p.book.Differing();
 	out["comparisons"] = p.book.Comparisons();
 }
@@ -397,7 +397,7 @@ void EndPlayback(const std::string& why)
 	char line[400];
 	snprintf(line, sizeof(line),
 		"%s; %d of %zu frame(s) played, %d checkpoint(s) compared with the recording, %d differing; %d frame(s) played in all, "
-		"%u seek(s)", why.c_str(), p.book.Furthest(), p.playing->frames.size(), p.book.Compared(), p.book.Differing(),
+		"%u seek(s)", why.c_str(), p.book.Furthest(), p.playing->frames.size(), p.book.CheckpointsCompared(), p.book.Differing(),
 		p.book.Played(), p.seek.Landed());
 	Log("replays: playback ended: %s", line);
 	s_last = line;
