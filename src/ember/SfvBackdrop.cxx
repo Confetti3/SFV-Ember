@@ -1,6 +1,7 @@
 #include "ember/SfvBackdrop.hxx"
 
 #include "ember/SfvBackdropRules.hxx"
+#include "ember/SfvSettingsFile.hxx"
 #include "mod/BuildKind.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameArt.hxx"
@@ -10,7 +11,6 @@
 #include "mod/SfvOffsets.hxx"
 #include "overlay/FrameGrab.hxx"
 
-#include "netplay/JsonFileStore.hxx"
 #include "netplay/SettingsStore.hxx"
 #include "ui/GameMenu.hxx"
 #include "ui/Theme.hxx"
@@ -40,7 +40,6 @@ namespace sfve::adapter {
 
 namespace {
 
-namespace json_file = sf4e::netplay::json_file;
 using backdrop::Cycle;
 
 // A loaded picture's resource comes within a frame or two; one still without
@@ -68,29 +67,13 @@ std::mutex s_choiceMutex;
 bool s_choiceLoaded = false;
 std::atomic<bool> s_enabled{true};
 
-// interface.json as it is now: its object, or an empty one when there is none
-// or it does not read as one (logged; the next save writes a fresh one).
-nlohmann::json ReadChoices()
-{
-	std::string bytes, error;
-	bool missing = false;
-	nlohmann::json choices;
-	if (!json_file::ReadBytes(Folder() / kChoiceFile, bytes, missing, error) || missing) {
-		if (!missing) mod::Log("backdrop: interface.json does not read (%s)", error.c_str());
-		return nlohmann::json::object();
-	}
-	if (!json_file::Parse(bytes, choices, error) || !choices.is_object()) {
-		mod::Log("backdrop: interface.json is no settings object (%s); the next save writes a new one", error.c_str());
-		return nlohmann::json::object();
-	}
-	return choices;
-}
-
 void LoadChoiceLocked()
 {
 	if (s_choiceLoaded) return;
 	s_choiceLoaded = true;
-	const nlohmann::json choices = ReadChoices();
+	std::string problem;
+	const nlohmann::json choices = ReadSettingsFile(Folder(), kChoiceFile, problem);
+	if (!problem.empty()) mod::Log("backdrop: %s; the next save writes a new one", problem.c_str());
 	const auto saved = choices.find(kChoiceKey);
 	s_enabled = saved == choices.end() || !saved->is_boolean() || saved->get<bool>();
 	mod::Log("backdrop: background artwork %s (interface.json)", s_enabled ? "on" : "off");
@@ -724,10 +707,8 @@ bool ShowSfvBackdrop(bool shown)
 	std::lock_guard lock(s_choiceMutex);
 	LoadChoiceLocked();
 	// The file's other choices stay as they are.
-	nlohmann::json choices = ReadChoices();
-	choices[kChoiceKey] = shown;
 	std::string error;
-	if (!json_file::Publish(Folder(), kChoiceFile, choices, error)) {
+	if (!UpdateSettingsFile(Folder(), kChoiceFile, [shown](nlohmann::json& choices) { choices[kChoiceKey] = shown; }, error)) {
 		mod::Log("backdrop: the choice could not be saved (%s); it stays %s", error.c_str(), s_enabled ? "on" : "off");
 		return false;
 	}

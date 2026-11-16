@@ -1,6 +1,7 @@
 #include "ember/SfvScreenMode.hxx"
 
-#include "netplay/JsonFileStore.hxx"
+#include "ember/SfvSettingsFile.hxx"
+
 #include "netplay/SettingsStore.hxx"
 
 #include <nlohmann/json.hpp>
@@ -12,29 +13,7 @@ namespace sfve::adapter {
 
 namespace {
 
-namespace json_file = sf4e::netplay::json_file;
-
 constexpr const wchar_t* kChoiceFile = L"interface.json";
-
-// interface.json's object: empty when there is none or it does not read as
-// one. `problem` says which of the two; a missing file is no problem.
-nlohmann::json ReadChoices(const std::filesystem::path& folder, std::string& problem)
-{
-	problem.clear();
-	std::string bytes, error;
-	bool missing = false;
-	nlohmann::json choices;
-	if (!json_file::ReadBytes(folder / kChoiceFile, bytes, missing, error)) {
-		problem = "interface.json does not read (" + error + ")";
-		return nlohmann::json::object();
-	}
-	if (missing) return nlohmann::json::object();
-	if (!json_file::Parse(bytes, choices, error) || !choices.is_object()) {
-		problem = "interface.json is no settings object (" + error + ")";
-		return nlohmann::json::object();
-	}
-	return choices;
-}
 
 std::mutex s_mutex;
 bool s_loaded = false;
@@ -52,7 +31,7 @@ void LoadLocked()
 
 screen::Mode ReadScreenMode(const std::filesystem::path& folder, std::string& problem)
 {
-	const nlohmann::json choices = ReadChoices(folder, problem);
+	const nlohmann::json choices = ReadSettingsFile(folder, kChoiceFile, problem);
 	const auto saved = choices.find(screen::kChoiceKey);
 	if (saved == choices.end()) return screen::Mode::Game;
 	if (saved->is_string()) {
@@ -64,13 +43,7 @@ screen::Mode ReadScreenMode(const std::filesystem::path& folder, std::string& pr
 
 bool WriteScreenMode(const std::filesystem::path& folder, screen::Mode mode, std::string& error)
 {
-	// The folder exists wherever Ember has run; a fresh one (a test's) is made.
-	std::error_code ignored;
-	std::filesystem::create_directories(folder, ignored);
-	std::string problem;
-	nlohmann::json choices = ReadChoices(folder, problem);
-	choices[screen::kChoiceKey] = screen::Name(mode);
-	return json_file::Publish(folder, kChoiceFile, choices, error);
+	return UpdateSettingsFile(folder, kChoiceFile, [mode](nlohmann::json& choices) { choices[screen::kChoiceKey] = screen::Name(mode); }, error);
 }
 
 screen::Mode SfvScreenMode()
