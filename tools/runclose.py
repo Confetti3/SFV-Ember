@@ -93,82 +93,83 @@ def main(argv: list[str]) -> int:
     a = p.parse_args(argv)
     lib.begin_run()
     lib.kill_all()
-    for i in (0, 1):
-        lib.launch(i, "netplay", ["-sfve_pads=01", "-sfve_background=1", "-sfve_room=1"])
     failure = ""
-    try:
-        wait_for("the runtime on both copies", 120,
-                 lambda: all(status(i)["ember"]["host"] == "running" for i in (0, 1)))
-        pids = {i: lib.status_pid(i) for i in (0, 1)}
-        wait_for("the room", 30, lambda: ctl(0, "room 1 30").startswith("ok"))
-        invitation = ""
+    # The copies this run started are ended on the way out, whatever happens.
+    with lib.run_scope():
+        try:
+            for i in (0, 1):
+                lib.launch(i, "netplay", ["-sfve_pads=01", "-sfve_background=1", "-sfve_room=1"])
+            wait_for("the runtime on both copies", 120,
+                     lambda: all(status(i)["ember"]["host"] == "running" for i in (0, 1)))
+            pids = {i: lib.status_pid(i) for i in (0, 1)}
+            wait_for("the room", 30, lambda: ctl(0, "room 1 30").startswith("ok"))
+            invitation = ""
 
-        def invited() -> bool:
-            nonlocal invitation
-            invitation = ctl(0, "invite")
-            return invitation.startswith("ok ")
-        wait_for("the invitation", 60, invited)
-        wait_for("the join", 30, lambda: ctl(1, "join " + invitation[3:]).startswith("ok"))
-        wait_for("both copies in the room", 90,
-                 lambda: all(status(i)["room"]["room"] == "joined" and status(i)["room"]["members"] == 2 for i in (0, 1)))
-        print("both copies in the room")
+            def invited() -> bool:
+                nonlocal invitation
+                invitation = ctl(0, "invite")
+                return invitation.startswith("ok ")
+            wait_for("the invitation", 60, invited)
+            wait_for("the join", 30, lambda: ctl(1, "join " + invitation[3:]).startswith("ok"))
+            wait_for("both copies in the room", 90,
+                     lambda: all(status(i)["room"]["room"] == "joined" and status(i)["room"]["members"] == 2 for i in (0, 1)))
+            print("both copies in the room")
 
-        # A1: a battle of copy 1's own while it is in the room.
-        loaded = lib.count_log(1, "the room's battle has loaded")
-        print("copy 1 launch:", ctl(1, "launch versus RYU KEN S25"))
-        wait_for("copy 1's own battle", 60, lambda: status(1).get("battle") not in (None, "null")
-                 and status(1)["battle"]["frames"] > 600)
-        frames = status(1)["battle"]["frames"]
-        time.sleep(5)
-        s1 = status(1)
-        mode = s1["battle"]["mode"]
-        print(f"copy 1 battle: frames {frames} -> {s1['battle']['frames']}, mode {json.dumps(mode)[:160]}")
-        print(f"copy 1 room: {json.dumps(s1['room'])[:200]}")
-        if lib.count_log(1, "the room's battle has loaded") != loaded:
-            raise lib.SfveError("copy 1's own battle was taken as the room's")
-        if mode["room"] or mode["live"]:
-            raise lib.SfveError("copy 1's own battle has a room session")
-        if s1["battle"]["frames"] <= frames:
-            raise lib.SfveError("copy 1's own battle is not running")
-        if s1["room"]["room"] != "joined":
-            raise lib.SfveError("copy 1 left the room for its own battle")
-        if a.shots:
-            lib.screenshot(pids[1], a.shots / "7-own-battle-in-room.png")
-        print("A1: copy 1's own battle plays offline, still in the room")
+            # A1: a battle of copy 1's own while it is in the room.
+            loaded = lib.count_log(1, "the room's battle has loaded")
+            print("copy 1 launch:", ctl(1, "launch versus RYU KEN S25"))
+            wait_for("copy 1's own battle", 60, lambda: status(1).get("battle") not in (None, "null")
+                     and status(1)["battle"]["frames"] > 600)
+            frames = status(1)["battle"]["frames"]
+            time.sleep(5)
+            s1 = status(1)
+            mode = s1["battle"]["mode"]
+            print(f"copy 1 battle: frames {frames} -> {s1['battle']['frames']}, mode {json.dumps(mode)[:160]}")
+            print(f"copy 1 room: {json.dumps(s1['room'])[:200]}")
+            if lib.count_log(1, "the room's battle has loaded") != loaded:
+                raise lib.SfveError("copy 1's own battle was taken as the room's")
+            if mode["room"] or mode["live"]:
+                raise lib.SfveError("copy 1's own battle has a room session")
+            if s1["battle"]["frames"] <= frames:
+                raise lib.SfveError("copy 1's own battle is not running")
+            if s1["room"]["room"] != "joined":
+                raise lib.SfveError("copy 1 left the room for its own battle")
+            if a.shots:
+                lib.screenshot(pids[1], a.shots / "7-own-battle-in-room.png")
+            print("A1: copy 1's own battle plays offline, still in the room")
 
-        # A2: the host closes its window.
-        guest_log = log_length(1)
-        before = helpers()
-        host_helpers = [pid for pid, parent in before.items() if parent == pids[0]]
-        seconds = close_and_time(0, pids[0])
-        time.sleep(1)
-        left_over = [pid for pid in host_helpers if pid in helpers()]
-        print(f"copy 0 (host) closed in {seconds:.1f} s; its helper(s) {host_helpers} left running: {left_over}")
-        for line in log_lines(0, "exit:", "ember: left", "ember: leaving", "ember: the room was not left", "departure", "Leave"):
-            print("  copy 0:", line[24:200])
-        if seconds > CLOSE_LIMIT_S:
-            raise lib.SfveError(f"the host took {seconds:.1f} s to close")
-        if not host_helpers or left_over:
-            raise lib.SfveError("the host's helper outlived it" if left_over else "the host had no helper")
-        if not log_lines(0, "ember: left the room, stopped the helper"):
-            raise lib.SfveError("the host did not leave the room from its exit request")
-        wait_for("copy 1 to see the host leave", 30, lambda: status(1)["room"]["members"] == 1)
-        print(f"copy 1 room after the host left: {json.dumps(status(1)['room'])[:200]}")
-        for line in log_lines(1, "Room", "room", "timed out", "timeout", after=guest_log)[:12]:
-            print("  copy 1:", line[24:200])
-        if log_lines(1, "timed out", "timeout", "Room control is recovering", after=guest_log):
-            raise lib.SfveError("copy 1 lost the host and recovered rather than saw it leave")
+            # A2: the host closes its window.
+            guest_log = log_length(1)
+            before = helpers()
+            host_helpers = [pid for pid, parent in before.items() if parent == pids[0]]
+            seconds = close_and_time(0, pids[0])
+            time.sleep(1)
+            left_over = [pid for pid in host_helpers if pid in helpers()]
+            print(f"copy 0 (host) closed in {seconds:.1f} s; its helper(s) {host_helpers} left running: {left_over}")
+            for line in log_lines(0, "exit:", "ember: left", "ember: leaving", "ember: the room was not left", "departure", "Leave"):
+                print("  copy 0:", line[24:200])
+            if seconds > CLOSE_LIMIT_S:
+                raise lib.SfveError(f"the host took {seconds:.1f} s to close")
+            if not host_helpers or left_over:
+                raise lib.SfveError("the host's helper outlived it" if left_over else "the host had no helper")
+            if not log_lines(0, "ember: left the room, stopped the helper"):
+                raise lib.SfveError("the host did not leave the room from its exit request")
+            wait_for("copy 1 to see the host leave", 30, lambda: status(1)["room"]["members"] == 1)
+            print(f"copy 1 room after the host left: {json.dumps(status(1)['room'])[:200]}")
+            for line in log_lines(1, "Room", "room", "timed out", "timeout", after=guest_log)[:12]:
+                print("  copy 1:", line[24:200])
+            if log_lines(1, "timed out", "timeout", "Room control is recovering", after=guest_log):
+                raise lib.SfveError("copy 1 lost the host and recovered rather than saw it leave")
 
-        seconds = close_and_time(1, pids[1])
-        print(f"copy 1 closed from its battle in {seconds:.1f} s")
-        if seconds > CLOSE_LIMIT_S:
-            raise lib.SfveError(f"copy 1 took {seconds:.1f} s to close")
-        time.sleep(1)
-        if helpers():
-            raise lib.SfveError(f"helpers still running: {helpers()}")
-    except (lib.SfveError, KeyError, TypeError) as e:
-        failure = str(e) or type(e).__name__
-    lib.kill_all()
+            seconds = close_and_time(1, pids[1])
+            print(f"copy 1 closed from its battle in {seconds:.1f} s")
+            if seconds > CLOSE_LIMIT_S:
+                raise lib.SfveError(f"copy 1 took {seconds:.1f} s to close")
+            time.sleep(1)
+            if helpers():
+                raise lib.SfveError(f"helpers still running: {helpers()}")
+        except (lib.SfveError, KeyError, TypeError) as e:
+            failure = str(e) or type(e).__name__
     return lib.verdict(failure)
 
 

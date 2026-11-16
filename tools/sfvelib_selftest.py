@@ -130,6 +130,63 @@ def regions_pair_by_size_and_hash_not_by_name():
     assert [r[0] for r in only_here] == ["game.12", "CharaUnit[0]+0xF8"] and [r[0] for r in only_there] == ["CharaUnit[0]+0xF8"], (only_here, only_there)
 
 
+@check
+def kill_all_keeps_a_survivor_in_the_registry():
+    import os
+    import tempfile
+    folder = Path(tempfile.mkdtemp(prefix="sfvelib-selftest-"))
+    saved = (lib._registry_dir, lib.process_identity, lib._kill_tree, os.environ.get("SFVE_RUN"))
+    alive = {(10, 1), (11, 2)}
+    try:
+        lib._registry_dir = lambda: folder
+        lib.process_identity = lambda pid: next((i for i in alive if i[0] == pid), None)
+
+        def kill_tree(roots):  # ends 10; 11 will not end
+            alive.discard((10, 1))
+            return [(10, 1)]
+        lib._kill_tree = kill_tree
+        os.environ["SFVE_RUN"] = "selftest"
+        lib._remember(0, (10, 1), (11, 2))
+        assert lib.surviving() == [(10, 1), (11, 2)] or sorted(lib.surviving()) == [(10, 1), (11, 2)]
+        ended = lib.kill_all(timeout_s=0.3)
+        assert ended == [10], ended
+        assert lib.surviving() == [(11, 2)], lib.surviving()  # still registered: the next kill finds it
+        alive.clear()
+        lib.kill_all(timeout_s=0.3)
+        assert lib.surviving() == [] and not lib.registry_path().exists(), "an ended run's registry is gone"
+    finally:
+        lib._registry_dir, lib.process_identity, lib._kill_tree = saved[:3]
+        if saved[3] is None:
+            os.environ.pop("SFVE_RUN", None)
+        else:
+            os.environ["SFVE_RUN"] = saved[3]
+        import shutil
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+@check
+def run_scope_ends_the_run_however_it_ends():
+    calls = []
+    saved = lib.kill_all, lib.surviving
+    lib.kill_all = lambda *a, **k: calls.append("kill") or []
+    lib.surviving = lambda *a, **k: []
+    try:
+        try:
+            with lib.run_scope():
+                raise ValueError("the runner failed half way")
+        except ValueError:
+            pass
+        assert calls == ["kill"], calls  # and the runner's own error was not hidden
+        with lib.run_scope(keep=True):
+            pass
+        assert calls == ["kill"], calls  # keep leaves the copies
+        with lib.run_scope():
+            pass
+        assert calls == ["kill", "kill"], calls
+    finally:
+        lib.kill_all, lib.surviving = saved
+
+
 def main() -> int:
     failed = 0
     for fn in CHECKS:

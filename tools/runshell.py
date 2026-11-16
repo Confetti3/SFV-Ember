@@ -479,51 +479,52 @@ def main(argv: list[str]) -> int:
     if a.shots:
         a.shots.mkdir(parents=True, exist_ok=True)
     lib.kill_all()
-    for i, seed in ((0, 101), (1, 202)):
-        unowned = [f"-sfve_unowned={a.unowned}"] if a.unowned and i == 0 else []
-        lib.launch(i, "netplay", ["-sfve_pads=01", "-sfve_background=1", "-sfve_room=1", f"-sfve_mash={seed}",
-                                  "-sfve_mash_from=300"] + unowned)
     failure = ""
-    try:
-        wait_for("the runtime on both copies", 120,
-                 lambda: all(status(i).get("ember", {}).get("host") == "running" for i in (0, 1)))
-        create_room(a.shots)
-        copy_invitation(a.shots)
-        join_room()
-        take_seat(0, 0)
-        take_seat(1, 1)
-        pick(0, 2, a.shots, "4-pick")
-        pick(1, 3, None, None)
-        if a.unowned:
-            not_owned_shots(a.shots)
-        select_shots(a.shots)
-        room_shots(a.shots)
-        for game in range(1, a.games + 1):
-            results = [lib.count_log(i, "netplay: match result") for i in (0, 1)]
-            closes = [lib.count_log(i, "battle closed at its match") for i in (0, 1)]
-            desyncs = [lib.count_desyncs(i) for i in (0, 1)]
-            ready_both(game)
-
-            def decided() -> bool:
-                if any(lib.count_desyncs(i) > desyncs[i] for i in (0, 1)):
-                    raise lib.SfveError(f"game {game} desynced (see the copies' logs)")
-                return all(lib.count_log(i, "netplay: match result") > results[i] for i in (0, 1))
-            wait_for(f"game {game}'s result on both copies", 300, decided)
-            wait_for(f"both copies back in the room after game {game}", 120,
-                     lambda: all(lib.count_log(i, "battle closed at its match") > closes[i] and
-                                 status(i)["room"]["room"] == "joined" and shell(i)["shown"] and
-                                 shell(i)["screen"] == "room" for i in (0, 1)))
-            time.sleep(2)
-            shot(a.shots, f"8-back-in-room-game{game}", 0)
-    except lib.SfveError as e:
-        failure = str(e)
-    for i in (0, 1):
+    # Whatever happens (a launch that fails, a wait that times out, an unexpected error), the copies this run
+    # started are ended on the way out, unless --keep.
+    with lib.run_scope(keep=a.keep):
         try:
-            print(f"copy {i}: shell {json.dumps(shell(i))} room {json.dumps(status(i)['room'])}")
-        except lib.SfveError:
-            print(f"copy {i} is not answering")
-    if not a.keep:
-        lib.kill_all()
+            for i, seed in ((0, 101), (1, 202)):
+                unowned = [f"-sfve_unowned={a.unowned}"] if a.unowned and i == 0 else []
+                lib.launch(i, "netplay", ["-sfve_pads=01", "-sfve_background=1", "-sfve_room=1", f"-sfve_mash={seed}",
+                                          "-sfve_mash_from=300"] + unowned)
+            wait_for("the runtime on both copies", 120,
+                     lambda: all(status(i).get("ember", {}).get("host") == "running" for i in (0, 1)))
+            create_room(a.shots)
+            copy_invitation(a.shots)
+            join_room()
+            take_seat(0, 0)
+            take_seat(1, 1)
+            pick(0, 2, a.shots, "4-pick")
+            pick(1, 3, None, None)
+            if a.unowned:
+                not_owned_shots(a.shots)
+            select_shots(a.shots)
+            room_shots(a.shots)
+            for game in range(1, a.games + 1):
+                results = [lib.count_log(i, "netplay: match result") for i in (0, 1)]
+                closes = [lib.count_log(i, "battle closed at its match") for i in (0, 1)]
+                desyncs = [lib.count_desyncs(i) for i in (0, 1)]
+                ready_both(game)
+
+                def decided() -> bool:
+                    if any(lib.count_desyncs(i) > desyncs[i] for i in (0, 1)):
+                        raise lib.SfveError(f"game {game} desynced (see the copies' logs)")
+                    return all(lib.count_log(i, "netplay: match result") > results[i] for i in (0, 1))
+                wait_for(f"game {game}'s result on both copies", 300, decided)
+                wait_for(f"both copies back in the room after game {game}", 120,
+                         lambda: all(lib.count_log(i, "battle closed at its match") > closes[i] and
+                                     status(i)["room"]["room"] == "joined" and shell(i)["shown"] and
+                                     shell(i)["screen"] == "room" for i in (0, 1)))
+                time.sleep(2)
+                shot(a.shots, f"8-back-in-room-game{game}", 0)
+        except lib.SfveError as e:
+            failure = str(e)
+        for i in (0, 1):
+            try:
+                print(f"copy {i}: shell {json.dumps(shell(i))} room {json.dumps(status(i)['room'])}")
+            except lib.SfveError:
+                print(f"copy {i} is not answering")
     return lib.verdict(failure)
 
 

@@ -50,6 +50,7 @@ Safety rules this module enforces:
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import ctypes.wintypes as wt
 import hashlib
@@ -59,6 +60,7 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import time
 import zlib
 from dataclasses import dataclass
@@ -646,21 +648,68 @@ def _kill_tree(roots: list[Identity]) -> list[Identity]:
     return [(pid, created) for pid, created in victims.items() if _terminate((pid, created))]
 
 
+def _registries(all_runs: bool) -> list[Path]:
+    return [p for p in sorted(_registry_dir().glob("sfve-launched-*")) if p.is_dir()] if all_runs else [registry_path()]
+
+
+def surviving(all_runs: bool = False) -> list[Identity]:
+    """The processes this run's registry (or, with `all_runs`, every run's) still lists that
+    are running now: what kill_all has not ended, or ended and that came back."""
+    return [identity for path in _registries(all_runs) for copy in _registered(path).values() for identity in copy
+            if process_identity(identity[0]) == identity]
+
+
 def kill_all(timeout_s: float = 15.0, all_runs: bool = False) -> list[int]:
     """Kills the copies this run started (and their launchers) and the helper
     processes it tracked (track), never Steam, and waits
     until they are gone, their pipes with them. A copy anything else started
     is left running, and so is a process that only has a recorded id's
     number now. `all_runs` also ends the copies other runs' registries
-    still list, to clean up after a run that died. Returns the ids ended."""
-    paths = [p for p in sorted(_registry_dir().glob("sfve-launched-*")) if p.is_dir()] if all_runs else [registry_path()]
+    still list, to clean up after a run that died. Returns the ids ended.
+    A process that is still running afterwards (it did not end in time, or could not be ended)
+    stays in the registry, so the next kill_all, `sfve.py kill` or `sfve.py kill --all` finds it
+    again: surviving() names them, and only an ended process is forgotten."""
+    paths = _registries(all_runs)
     killed = _kill_tree([identity for path in paths for copy in _registered(path).values() for identity in copy])
     deadline = time.monotonic() + timeout_s
     while any(process_identity(pid) == (pid, created) for pid, created in killed) and time.monotonic() < deadline:
         time.sleep(0.2)
     for folder in paths:
-        shutil.rmtree(folder, ignore_errors=True)
+        left = False
+        for entry in sorted(folder.glob("*.json")):
+            alive = [identity for identity in _read_entry(entry) if process_identity(identity[0]) == identity]
+            if alive:
+                left = True
+                entry.write_text(json.dumps(alive))
+            else:
+                entry.unlink(missing_ok=True)
+        if not left:
+            shutil.rmtree(folder, ignore_errors=True)
     return sorted(pid for pid, _ in killed)
+
+
+@contextlib.contextmanager
+def run_scope(keep: bool = False):
+    """The one wrapper a runner puts around everything it starts: on the way out, normally or by
+    an exception, kill_all() ends what this run started (by id and creation time: never a game
+    this run did not launch) unless `keep`. Needs a run (begin_run() / use_run() first). The
+    cleanup never hides what went wrong inside; a copy that is still running afterwards is said
+    on stderr and stays in the registry for `sfve.py kill`."""
+    try:
+        yield
+    finally:
+        if not keep:
+            try:
+                kill_all()
+            except (SfveError, OSError) as error:
+                print(f"cleanup: could not end this run's copies: {error}", file=sys.stderr)
+            try:
+                left = surviving()
+            except (SfveError, OSError):
+                left = []
+            if left:
+                print(f"cleanup: still running after kill_all: {', '.join(str(pid) for pid, _ in left)} "
+                      "(kept in the run's registry: python tools/sfve.py kill ends them)", file=sys.stderr)
 
 
 # --- menu routes ----------------------------------------------------------------
