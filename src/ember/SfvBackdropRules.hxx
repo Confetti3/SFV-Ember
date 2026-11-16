@@ -17,6 +17,8 @@
 // SfvBackdrop runs them: it loads through the game (mod/GameArt) and draws
 // behind the shell's pages (ui::SetMenuBackdropDrawer).
 
+#include "ember/SfvRetryGate.hxx"
+
 #include <cstdint>
 #include <optional>
 #include <random>
@@ -227,7 +229,8 @@ private:
 	Slot current_, next_;
 	int stale_ = -1; // loading when Reset came: refused when it arrives, and alive until then
 	bool fading_ = false, stepWanted_ = false;
-	double clock_ = 0, faded_ = 0, held_ = 0, settleUntil_ = 0, retryAt_ = 0;
+	double clock_ = 0, faded_ = 0, held_ = 0, settleUntil_ = 0;
+	RetryGate retry_; // after a picture that was not usable yet (SfvRetryGate.hxx)
 	std::vector<int> releases_;
 };
 
