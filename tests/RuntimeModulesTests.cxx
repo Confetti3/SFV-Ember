@@ -22,7 +22,11 @@ TEST_CASE("a loaded module is described by its path and version, and one that is
 	GetSystemDirectoryW(system, MAX_PATH);
 	const std::string kernel = sfve::mod::DescribeModule(L"kernel32.dll", L"C:\\Games\\SFV\\Win64");
 	CAPTURE(kernel);
-	CHECK(kernel.rfind("kernel32.dll 10.", 0) == 0);
+	// Its version is the file's own fixed version (6.2.x for kernel32 on
+	// Windows 10 and 11, not the OS's 10.0), read the way the description reads it.
+	const std::string version = sfve::mod::FileVersionText(std::wstring(system) + L"\\kernel32.dll");
+	CHECK_FALSE(version.empty());
+	CHECK(kernel.rfind("kernel32.dll " + version + " at ", 0) == 0);
 	CHECK(kernel.find(" at ") != std::string::npos);
 	CHECK(kernel.find("the game's own folder") == std::string::npos);
 	// The same module, with its own folder as the game's folder: named as such.
