@@ -22,6 +22,8 @@ RollbackSession* s_active = nullptr;
 
 } // namespace
 
+RollbackSession::Slot RollbackSession::refusedSave_;
+
 // Publishes the session making a GGPO call to the static callbacks.
 class RollbackSession::ActiveScope {
 public:
@@ -832,7 +834,14 @@ bool __cdecl RollbackSession::OnLogState(char*, unsigned char*, int) { return tr
 
 bool __cdecl RollbackSession::OnSave(unsigned char** buffer, int* len, int* checksum, int frame)
 {
-	return s_active && s_active->Save(buffer, len, checksum, frame);
+	// GGPO keeps whatever it is handed and asserts, ending the process, when
+	// it loads a frame it holds no buffer for. So every save hands one over: a
+	// refused save the refusal, which a load fails on cleanly (Load).
+	Slot* slot = s_active ? s_active->Save(frame) : nullptr;
+	*buffer = reinterpret_cast<unsigned char*>(slot ? slot : &refusedSave_);
+	*len = 1;      // GGPO asserts on a zero length; it never reads the bytes
+	*checksum = 0; // nor the checksum (only its synctest backend would)
+	return slot != nullptr;
 }
 
 bool __cdecl RollbackSession::OnLoad(unsigned char* buffer, int)
@@ -856,17 +865,17 @@ bool __cdecl RollbackSession::OnEvent(GGPOEvent* info)
 	return true;
 }
 
-bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int frame)
+RollbackSession::Slot* RollbackSession::Save(int frame)
 {
 	sf4e::gate::AbortLatch::Scope scope(latch_);
 	// GGPO saves after every frame it advances, a rollback's replays
 	// included, so this is where a failure the game latched while advancing
 	// (or while a held frame changed it) ends the session, before a state it
 	// can no longer restore is kept.
-	if (FailedByGame()) return false;
+	if (FailedByGame()) return nullptr;
 	// Nor after any other failure inside this call (a load that could not
 	// restore): the live state is no frame's state any more.
-	if (failed_) return false;
+	if (failed_) return nullptr;
 	// A save a rollback's replay makes, or a pose hold's replay: one a later
 	// hold may load (FinishPoseHold), so with holds on it keeps its copy.
 	const bool replaySave = rollingBack_ || poseHolds_.Resuming();
@@ -885,7 +894,7 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 	}
 	if (!slot) {
 		Fail("save pool exhausted");
-		return false;
+		return nullptr;
 	}
 	StateLayout& layout = game_->Layout();
 	slot->used = true;
@@ -932,11 +941,7 @@ bool RollbackSession::Save(unsigned char** buffer, int* len, int* checksum, int 
 	frame_ = frame;
 	// A pose hold's replay has reached the frame its tick stood at.
 	if (poseHolds_.Resuming() && frame >= poseHolds_.ResumeTo()) poseHolds_.Resumed();
-
-	*buffer = reinterpret_cast<unsigned char*>(slot);
-	*len = 1;      // GGPO asserts on a zero length; it never reads the bytes
-	*checksum = 0; // nor the checksum (only its synctest backend would)
-	return true;
+	return slot;
 }
 
 bool RollbackSession::HashedFrame(int frame) const
@@ -1034,7 +1039,7 @@ bool RollbackSession::Load(unsigned char* buffer)
 	sf4e::gate::AbortLatch::Scope scope(latch_);
 	Slot* slot = reinterpret_cast<Slot*>(buffer);
 	if (!slot || !slot->used) {
-		Fail("load of a freed state");
+		Fail(slot == &refusedSave_ ? "load of a save the session refused" : "load of a freed state");
 		return false;
 	}
 	// GGPO replays from here back to the current frame, saving each again.

@@ -370,7 +370,10 @@ private:
 	static bool __cdecl OnAdvance(int flags);
 	static bool __cdecl OnEvent(GGPOEvent* info);
 
-	bool Save(unsigned char** buffer, int* len, int* checksum, int frame);
+	// The slot `frame`'s state is saved in, or null when the session refuses
+	// the save (it failed, or the pool is full): OnSave hands GGPO
+	// refusedSave_ then.
+	Slot* Save(int frame);
 	// The hash of `frame`'s state, kept for HashAt, and at a checkpoint its
 	// regions' hashes, its bytes (CheckpointState) and the checkpoint's log
 	// line (with the copy's time, `copyTicks` of QueryPerformanceCounter).
@@ -468,6 +471,9 @@ private:
 	sf4e::gate::GgpoGateModel gate_{};
 	sf4e::gate::AbortLatch latch_;
 	std::vector<Slot> pool_;
+	// What GGPO holds for a refused save: never used, so a load of it fails
+	// the session (Load) and Free finds nothing to clear in it.
+	static Slot refusedSave_;
 	// The last frame whose inputs both players have given, as last read
 	// (HashConfirmed: ggpo_get_confirmed_input_frame, the local input added
 	// since GGPO's last poll included). Free cannot ask GGPO, which may be
