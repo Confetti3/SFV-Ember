@@ -232,7 +232,10 @@ def backdrop_loads(index: int) -> int:
 
 
 def png_mean(path: Path) -> float:
-    """The mean sample value (0-255) of a PNG this toolkit wrote (8-bit RGB, no filtering)."""
+    """The mean sample value (0-255) of a PNG this toolkit wrote (8-bit RGB, no filtering), over its content: a game
+    window the system scales (a display above 100 %) is captured at its client size with the game's picture in the
+    top left corner and pure black to the right and below, which would darken the mean by half; those columns and
+    rows are left out."""
     data = path.read_bytes()
     at, width, idat = 8, 0, b""
     while at < len(data):
@@ -245,11 +248,14 @@ def png_mean(path: Path) -> float:
         at += 12 + length
     raw = zlib.decompress(idat)
     stride = width * 3 + 1
+    rows = [raw[row * stride + 1:(row + 1) * stride] for row in range(len(raw) // stride)]
+    bottom = max((y + 1 for y, samples in enumerate(rows) if any(samples)), default=0)
+    right = max((len(samples.rstrip(b"\0")) for samples in rows[:bottom]), default=0)
     total = count = 0
-    for row in range(len(raw) // stride):
-        samples = raw[row * stride + 1:(row + 1) * stride]
-        total += sum(samples[::7])
-        count += len(samples[::7])
+    for samples in rows[:bottom]:
+        content = samples[:right]
+        total += sum(content[::7])
+        count += len(content[::7])
     return total / max(count, 1)
 
 
