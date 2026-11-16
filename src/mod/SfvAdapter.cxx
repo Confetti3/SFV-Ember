@@ -87,6 +87,7 @@ void SfvAdapter::Forget()
 	bound_ = false;
 	battleData_ = nullptr;
 	layout_.Clear();
+	regionTable_.Forget();
 	gameRegions_ = 0;
 	postRestore_.clear();
 	inputUnit_ = nullptr;
@@ -185,7 +186,7 @@ bool SfvAdapter::Bind()
 	layout_.Clear();
 	layout_.SetAddressTest(LooksLikeAddress);
 	uint8_t* manager = GameGetManager(rollbackUnit_);
-	if (!AddGameRegions(manager)) {
+	if (!AddGameRegions(manager) || !regionTable_.Bind(manager)) {
 		layout_.Clear();
 		flow_.Forget();
 		WaitingToBind("a usable region table");

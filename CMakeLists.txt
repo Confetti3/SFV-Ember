@@ -290,7 +290,7 @@ add_library(sfve_ember_test_mod OBJECT
     src/mod/BoothMode.cxx src/mod/GameArt.cxx src/mod/GameInput.cxx
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx src/mod/TinyFighters.cxx
-    src/mod/ModConfig.cxx src/mod/PadLayer.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx
+    src/mod/ModConfig.cxx src/mod/PadLayer.cxx src/mod/RegionTable.cxx src/mod/SfvAdapter.cxx src/mod/SfvFlow.cxx src/mod/SfvLayoutRules.cxx
     src/mod/SfvRegionNames.cxx src/mod/RngAudit.cxx src/mod/SocketReads.cxx src/mod/VersusLaunch.cxx src/mod/VirtualPads.cxx src/mod/XInputHooks.cxx)
 target_link_libraries(sfve_ember_test_mod PUBLIC sfve_ember minhook::minhook)
 # The runtime under SFV's definitions, with nothing of SF4's roster, stages
@@ -324,6 +324,7 @@ add_executable(sfve_ember_tests
     tests/SfvVerificationTests.cxx
     tests/DesyncReportTests.cxx
     tests/PaceTests.cxx
+    tests/RegionTableTests.cxx
     tests/ReportsDefaultTests.cxx
     src/launcher/ReportsDefault.cxx
     tests/BattleIdentityTests.cxx
@@ -398,6 +399,7 @@ add_library(sfv_ember SHARED
     src/mod/BackgroundPlay.cxx
     src/mod/MultiInstance.cxx
     src/mod/SfvAdapter.cxx
+    src/mod/RegionTable.cxx
     src/mod/SfvLayoutRules.cxx
     src/mod/SfvRegionNames.cxx
     src/mod/ProjectileRelease.cxx

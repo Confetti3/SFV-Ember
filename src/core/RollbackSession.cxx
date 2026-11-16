@@ -1042,6 +1042,9 @@ bool RollbackSession::Load(unsigned char* buffer)
 		Fail(slot == &refusedSave_ ? "load of a save the session refused" : "load of a freed state");
 		return false;
 	}
+	// Nor into a game the layout no longer describes (GameAdapter::
+	// StateFailure): the session fails before a byte is written.
+	if (FailedByGame()) return false;
 	// GGPO replays from here back to the current frame, saving each again.
 	rollingBack_ = true;
 	rollbackFrom_ = slot->frame;

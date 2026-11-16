@@ -20,6 +20,7 @@
 #include "mod/GameHooks.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/IntroSkip.hxx"
+#include "mod/RegionTable.hxx"
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvRegionNames.hxx"
 #include "mod/SocketReads.hxx"
@@ -153,8 +154,13 @@ public:
 	// What the game's own Restore does after copying the regions back, then
 	// the flow record written back.
 	void AfterLoad() override;
-	// The flow record's latched failure (FlowRollback::Failure).
-	const char* StateFailure() const override { return flow_.Failure(); }
+	// The flow record's latched failure (FlowRollback::Failure), or the game's
+	// region table no longer the one the layout was built from (RegionTable).
+	const char* StateFailure() const override
+	{
+		const char* flow = flow_.Failure();
+		return flow ? flow : regionTable_.Changed();
+	}
 	// Pose holds (SocketReads, core/PoseHold.hxx): the update just run gave a
 	// fight socket read the live value (a miss), and what the session did
 	// about it: one log line per hold or refusal, and the battle's counts.
@@ -232,6 +238,7 @@ private:
 	bool bound_ = false;
 	const char* waitingFor_ = nullptr; // what Bind last waited for (logged once)
 	StateLayout layout_;
+	RegionTable regionTable_; // the game's table the layout was built from
 	size_t gameRegions_ = 0;
 	RegionNames regionNames_;
 	std::vector<PostRestore> postRestore_;

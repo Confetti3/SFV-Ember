@@ -86,9 +86,11 @@ public:
 	virtual void AfterLoad() {}
 
 	// Why the adapter can no longer keep its state faithful to the game (a
-	// record it can no longer mirror or write back), or null. Latched for the
-	// rest of the battle: a session over it fails with this reason, since a
-	// rollback would restore bytes without the game they describe.
+	// record it can no longer mirror or write back, a layout whose addresses
+	// no longer describe the game's state), or null. Latched for the rest of
+	// the battle: a session over it fails with this reason, since a rollback
+	// would restore bytes without the game they describe. A session asks
+	// before every save and every load, and after every frame a watcher plays.
 	virtual const char* StateFailure() const { return nullptr; }
 
 	// Pose holds (core/PoseHold.hxx). After Advance: the update just run made
