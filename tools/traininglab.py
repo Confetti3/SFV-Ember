@@ -54,6 +54,8 @@ def host(index: int = 0) -> dict:
 
 
 def ask(line: str, index: int = 0) -> None:
+    """The overlay carries the request out on its next frame ("ok queued");
+    its own log line says done or refused."""
     lib.request_ok(index, f"traininglab {line}")
     time.sleep(0.4)
 
@@ -135,6 +137,9 @@ def p2_moves(lines: list[str]) -> list[str]:
 
 def record_slot(slot: int, steps: str, settle_s: float) -> int:
     ask(f"select {slot}")
+    # Record from rest on a recorded slot asks before overwriting it (the
+    # dummy's slots are kept between battles), so the slot is cleared first.
+    ask("clear")
     ask("record")
     if lab()["mode"] != "standby":
         raise lib.SfveError(f"Record did not put the dummy on standby ({lab()['mode']})")
@@ -154,6 +159,8 @@ def record_slot(slot: int, steps: str, settle_s: float) -> int:
 
 
 def play_once(mark_label: str, length: int) -> list[str]:
+    # Play loops unless told not to (the session's default, as SF4's).
+    ask("loop off")
     mark = log_mark()
     ask("play")
     if lab()["mode"] != "playback":

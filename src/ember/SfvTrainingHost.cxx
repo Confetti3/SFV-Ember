@@ -137,7 +137,7 @@ std::string Requested(const std::string& args)
 {
 	std::lock_guard lock(s_requestMutex);
 	s_requests.push_back(args);
-	return "{\"queued\":true}";
+	return "ok queued";
 }
 
 } // namespace
