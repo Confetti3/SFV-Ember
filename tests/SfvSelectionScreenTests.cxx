@@ -999,7 +999,8 @@ TEST_CASE("choosing a fighter is the same by the board, the look page's Fighter 
 	for (const int fighter : {kRyu, kBsn}) {
 		CAPTURE(fighter);
 		const sf4e::selection::Pick expected = fighter == kRyu ? ryu.pick : PickOf(kBsn);
-		for (const auto& via : {std::function<sf4e::selection::Pick(int)>(viaBoard), viaChoose, viaPipe, viaRandom}) {
+		const std::function<sf4e::selection::Pick(int)> vias[] = {viaBoard, viaChoose, viaPipe, viaRandom};
+		for (const auto& via : vias) {
 			SetPick(cnl);
 			CHECK(SameLook(via(fighter), expected));
 		}

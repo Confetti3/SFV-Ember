@@ -61,8 +61,8 @@ int ReplaySeeker::Restore(RollbackSession& session, int before)
 bool RollbackSession::RestoreReplay(const uint8_t* state, int frame)
 {
 	if (!replaying_ || lagged_ || replayCheck_ || holding_ || failed_ || !state || frame < 0) return false;
-	game_.Layout().LoadFrom(state);
-	game_.AfterLoad();
+	game_->Layout().LoadFrom(state);
+	game_->AfterLoad();
 	// The restore did not reach all of the game: the session ends (Fail).
 	if (FailedByGame()) return false;
 	frame_ = frame;
