@@ -57,24 +57,24 @@ bool TryWrite(void* at, const T& value)
 }
 
 // Calls the game function `function` (no arguments) and stores its result at
-// `out`; false when the call itself faulted on an access (a game function that
-// reads a subsystem the game has not made yet). Other exceptions go on to the
-// crash record. The function must not need cleanup on a fault.
+// `out`; false when the call itself took a memory fault (MemoryFaultFilter: a
+// game function that reads a subsystem the game has not made yet). Other
+// exceptions go on to the crash record. The function must not need cleanup on a fault.
 template <typename T>
 bool TryCall(T (*function)(), T* out)
 {
 	__try {
 		*out = function();
 		return true;
-	} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+	} __except (MemoryFaultFilter(GetExceptionCode())) {
 		return false;
 	}
 }
 
 // TryCall for a call with arguments or a result of its own: runs `call`, a
 // callable taking nothing that makes the call (a lambda capturing the
-// arguments and the place for the result), and returns false when it faulted on
-// an access. Other exceptions go on to the crash record. What the call does
+// arguments and the place for the result), and returns false when it took a
+// memory fault (MemoryFaultFilter). Other exceptions go on to the crash record. What the call does
 // before it faults is not undone: the caller reads a false as "nothing".
 template <typename F>
 bool TryRun(F&& call)
@@ -82,7 +82,7 @@ bool TryRun(F&& call)
 	__try {
 		call();
 		return true;
-	} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+	} __except (MemoryFaultFilter(GetExceptionCode())) {
 		return false;
 	}
 }

@@ -37,6 +37,54 @@ bool GuardPageFaultReachesCaller()
 	return reached;
 }
 
+// A game function whose page the system could not bring in.
+int FailsToPageIn()
+{
+	RaiseException(EXCEPTION_IN_PAGE_ERROR, 0, 0, nullptr);
+	return 1;
+}
+
+void FailsToPageInRun()
+{
+	RaiseException(EXCEPTION_IN_PAGE_ERROR, 0, 0, nullptr);
+}
+
+int HitsGuardPage()
+{
+	RaiseException(EXCEPTION_GUARD_PAGE, 0, 0, nullptr);
+	return 1;
+}
+
+void HitsGuardPageRun()
+{
+	RaiseException(EXCEPTION_GUARD_PAGE, 0, 0, nullptr);
+}
+
+// Whether `run` lets a guard page's fault through to this handler.
+template <typename F>
+bool GuardPageReachesCaller(F run)
+{
+	bool reached = false;
+	__try {
+		run();
+	} __except (GetExceptionCode() == EXCEPTION_GUARD_PAGE ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+		reached = true;
+	}
+	return reached;
+}
+
+bool CallGuarded()
+{
+	int out = 0;
+	sfve::mod::TryCall(&HitsGuardPage, &out);
+	return out == 0;
+}
+
+bool RunGuarded()
+{
+	return sfve::mod::TryRun(HitsGuardPageRun);
+}
+
 } // namespace
 
 TEST_CASE("a game call that works gives its answer, one that faults on an access gives none and the process lives")
@@ -83,4 +131,15 @@ TEST_CASE("a game call with arguments is guarded the same way: its result when i
 		touched = 2;
 	}));
 	CHECK(touched == 1); // stopped at the fault
+}
+
+TEST_CASE("a game call takes the same memory faults as a guarded read: a page that would not come in too, nothing else")
+{
+	int out = 5;
+	CHECK_FALSE(sfve::mod::TryCall(&FailsToPageIn, &out));
+	CHECK(out == 5);
+	CHECK_FALSE(sfve::mod::TryRun(FailsToPageInRun));
+	// A guard page's fault is no memory fault: it goes on to the caller's handler.
+	CHECK(GuardPageReachesCaller(CallGuarded));
+	CHECK(GuardPageReachesCaller(RunGuarded));
 }
