@@ -204,7 +204,8 @@ TEST_CASE("a replay's header keeps a side's size, written only for Tiny")
 	// A header with no tiny side holds no size at all, so every other file is what it was.
 	replay::Replay plain;
 	const std::vector<std::uint8_t> plainBytes = replay::Encode(plain);
-	CHECK(std::search(plainBytes.begin(), plainBytes.end(), "\"size\"", "\"size\"" + 6) == plainBytes.end());
+	const std::string sizeKey = "\"size\"";
+	CHECK(std::search(plainBytes.begin(), plainBytes.end(), sizeKey.begin(), sizeKey.end()) == plainBytes.end());
 }
 
 TEST_CASE("the pick screen shows the Size row only in a room that allows tiny fighters")

@@ -69,7 +69,12 @@ std::vector<Entry> List(size_t count, uint64_t salt)
 uint64_t Run(RegionExchange& a, RegionExchange& b, uint64_t from)
 {
 	uint64_t now = from;
-	while (!(a.Pump(now) & b.Pump(now)) && now - from < 10000) now += 5;
+	// Both copies are pumped at each step, so neither waits on the other.
+	for (;;) {
+		const bool aDone = a.Pump(now), bDone = b.Pump(now);
+		if ((aDone && bDone) || now - from >= 10000) break;
+		now += 5;
+	}
 	return now - from;
 }
 

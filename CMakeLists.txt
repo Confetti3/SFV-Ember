@@ -20,6 +20,7 @@ find_package(minhook CONFIG REQUIRED)
 find_package(xxHash CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(CLI11 CONFIG REQUIRED)
 # The launcher deflates a desync's state file for its report (src/launcher/DesyncCourier.cxx).
@@ -564,7 +565,8 @@ add_library(sfve_room_host_catalog STATIC
     src/ember/SfvRoomBuild.cxx
     "${CMAKE_BINARY_DIR}/generated/SfvHostPickSpace.cxx")
 target_include_directories(sfve_room_host_catalog PUBLIC src "${SFVE_EMBER_SOURCE_ROOT}/src" "${SFVE_EMBER_SOURCE_ROOT}/server/roomhost")
-target_link_libraries(sfve_room_host_catalog PUBLIC ember_neutral_x64 xxHash::xxhash nlohmann_json::nlohmann_json bcrypt ws2_32)
+# spdlog::spdlog, not its headers alone: the catalog and the library it links compile the logger one way.
+target_link_libraries(sfve_room_host_catalog PUBLIC ember_neutral_x64 spdlog::spdlog xxHash::xxhash nlohmann_json::nlohmann_json bcrypt ws2_32)
 add_executable(sfve-room-host ${SFVE_ROOM_HOST_SOURCES})
 target_link_libraries(sfve-room-host PRIVATE sfve_room_host_catalog)
 
