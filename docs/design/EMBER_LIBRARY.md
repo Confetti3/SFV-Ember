@@ -2919,7 +2919,7 @@ game is reached stayed the library's; what it does is 1.6.0's.
 
 **What SFV Ember has of 1.6.0**
 - On: points (FP/BP) and tiers, profiles, the card and Edit card, the Fighters tab over SFV's 45 fighters, awards,
-  Find a player, friends and private-room privacy, News and Notifications, interface size 0.70x to 1.50x, the
+  Find a player, friends (named as SFV's game, `ProductIdentity::roomGame`) and private-room privacy, News and Notifications, interface size 0.70x to 1.50x, the
   Discord account row, the pointer hidden in a room fight, prompts that follow the device, areas, relay names and
   the ping wording (helper), Arcade and King of the Hill tables with a waiting line, the load timeout, the
   opponent's answer at once, the updater under an administrator, the out-of-date join message, the firewall

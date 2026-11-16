@@ -47,11 +47,11 @@ pads, in slots no Xbox-style pad holds. `"controllerLayer": false` in
 Needs Visual Studio 18 Build Tools (C++ x64), a vcpkg checkout next to this
 folder (`..\vcpkg`), and the Ember library: the `feat/ember-library` branch of
 [SF4-Ember-Netplay](https://github.com/Confetti3/SF4-Ember-Netplay). This
-release builds against library commit `60f487a5d`.
+release builds against library commit `f24f03be4`.
 
 ```powershell
 git clone -b feat/ember-library https://github.com/Confetti3/SF4-Ember-Netplay ember-library
-git -C ember-library checkout 60f487a5d
+git -C ember-library checkout f24f03be4
 .\scripts\build.ps1 -EmberRoot ..\ember-library
 ```
 
