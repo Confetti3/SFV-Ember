@@ -313,18 +313,6 @@ def call(shots: Path | None) -> None:
                          status(i)["room"]["room"] == "joined" for i in (0, 1)))
 
 
-def checkpoints(index: int) -> dict[int, str]:
-    """frame -> overall hash, as the copy logged them (SfvVerification), as
-    runroom.ps1 reads them."""
-    found: dict[int, str] = {}
-    pattern = re.compile(r"checkpoint: frame (\d+) hash (\w+)")
-    for line in lib.log_path(index).read_text(errors="replace").splitlines():
-        m = pattern.search(line)
-        if m:
-            found[int(m.group(1))] = m.group(2)
-    return found
-
-
 def vitals(index: int) -> list[int] | None:
     """Both fighters' vital (CharaStatusPart's dword 48, the first word of its
     first snapshot run), from the bound battle's regions; None when not bound."""
@@ -460,7 +448,7 @@ def practice(shots: Path | None, seconds: int = 90) -> None:
     samples: list[list[int]] = []
     t0 = time.time()
     while time.time() - t0 < seconds:
-        if any(lib.count_log(i, "desync:") for i in (0, 1)):
+        if any(lib.count_desyncs(i) for i in (0, 1)):
             raise lib.SfveError("the Practice match desynced (see the copies' logs)")
         if any(lib.count_log(i, "netplay: match result") > results[i] for i in (0, 1)):
             raise lib.SfveError("the Practice match ended by itself (a KO or the clock)")
@@ -491,12 +479,10 @@ def practice(shots: Path | None, seconds: int = 90) -> None:
         raise lib.SfveError("End practice reported a result")
     time.sleep(2)
     shot(shots, "practice-4-ended", 1)
-    h0, h1 = checkpoints(0), checkpoints(1)
-    common = sorted(set(h0) & set(h1))
-    differing = [f for f in common if h0[f] != h1[f]]
-    print(f"practice checkpoints: {len(common)} compared, {len(differing)} differing")
-    if len(common) < seconds // 2 or differing:
-        raise lib.SfveError(f"checkpoints: {len(common)} compared, {len(differing)} differing")
+    compared, differing = lib.compare_checkpoints(*(lib.parse_checkpoints(lib.log_lines(i)) for i in (0, 1)))
+    print(f"practice checkpoints: {compared} compared, {differing} differing")
+    if compared < seconds // 2 or differing:
+        raise lib.SfveError(f"checkpoints: {compared} compared, {differing} differing")
 
 
 def main(argv: list[str]) -> int:

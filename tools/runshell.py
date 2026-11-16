@@ -501,11 +501,11 @@ def main(argv: list[str]) -> int:
         for game in range(1, a.games + 1):
             results = [lib.count_log(i, "netplay: match result") for i in (0, 1)]
             closes = [lib.count_log(i, "battle closed at its match") for i in (0, 1)]
-            desyncs = [lib.count_log(i, "desync:") for i in (0, 1)]
+            desyncs = [lib.count_desyncs(i) for i in (0, 1)]
             ready_both(game)
 
             def decided() -> bool:
-                if any(lib.count_log(i, "desync:") > desyncs[i] for i in (0, 1)):
+                if any(lib.count_desyncs(i) > desyncs[i] for i in (0, 1)):
                     raise lib.SfveError(f"game {game} desynced (see the copies' logs)")
                 return all(lib.count_log(i, "netplay: match result") > results[i] for i in (0, 1))
             wait_for(f"game {game}'s result on both copies", 300, decided)

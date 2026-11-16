@@ -157,9 +157,7 @@ $env:SFVE_RUN = [guid]::NewGuid().ToString('N')
 # The mod logs under %APPDATA%\SFVEmber\logs (mod/Log.cxx), whether the launcher or the proxy started it.
 $logs = Join-Path $env:APPDATA 'SFVEmber\logs'
 $logOf = @("$logs\sfv_ember.log", "$logs\sfv_ember.1.log", "$logs\sfv_ember.2.log")
-# A desync's lines; a start state's repair (its report is filed as a desync's
-# is) is not one: the match then plays from the same state.
-$desyncPattern = '^(?!.*desync report)(?!.*start state).*(desync|mismatch)'
+# $DesyncPattern (verdict.ps1) is a desync's lines: not a start state's repair, whose match then plays from the same state.
 if ($watchers -lt 0 -or $watchers -gt 1) { throw '-watchers is 0 or 1' }
 $copies = if ($watchers) { @(0, 1, 2) } else { @(0, 1) }
 # The fighters' game (from 0) each of the watcher's battles was, in order.
@@ -759,7 +757,7 @@ try {
 }
 foreach ($i in $copies) {
   try { "copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress) } catch { "copy $i is not answering" }
-  if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern $desyncPattern | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
+  if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern $DesyncPattern | ForEach-Object { "copy ${i}: " + $_.Line.Substring(24) } }
 }
 # The copies close here, whatever happened above; the logs stay.
 RemoveRollingShots
@@ -769,7 +767,7 @@ if (!$keep) { python -I tools\sfve.py kill | Out-Null }
 $h0 = Get-Checkpoints $logOf[0]; $h1 = Get-Checkpoints $logOf[1]
 $checkpoints = Compare-Checkpoints $h0 $h1
 "checkpoints: $($checkpoints.Compared) compared, $($checkpoints.Differing) differing"
-$desyncs = (Count 0 $desyncPattern) + (Count 1 $desyncPattern) + $checkpoints.Differing
+$desyncs = (Count 0 $DesyncPattern) + (Count 1 $DesyncPattern) + $checkpoints.Differing
 if ($watchers) {
   # The watcher's battle k is the fighters' game $watchedGames[k]: its
   # checkpoints against copy 0's of that game and frame (copy 0's equal
@@ -795,7 +793,7 @@ if ($watchers) {
       if (-not $failure) { $failure = "the watcher's scenes ended apart from the fighters' ($line)" }
     }
   }
-  $desyncs += (Count 2 $desyncPattern) + $watcherDiffering.Count
+  $desyncs += (Count 2 $DesyncPattern) + $watcherDiffering.Count
   if (-not $failure -and -not $watchedKeys.Count) { $failure = "no watcher checkpoint could be compared" }
 }
 if ($socketLog) {

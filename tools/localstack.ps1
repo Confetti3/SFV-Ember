@@ -113,13 +113,13 @@ function WaitIdentity([int]$i, [string]$ticket, [string]$what) {
 function Complete-Run([string]$failure, [System.Diagnostics.Process[]]$processes, [bool]$keep, [string]$passText) {
 	foreach ($i in 0, 1) {
 		try { Write-Host ("copy $i status: " + ((Status $i).room | ConvertTo-Json -Compress)) } catch { Write-Host "copy $i is not answering" }
-		if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern 'desync|mismatch' | ForEach-Object { Write-Host ("copy ${i}: " + $_.Line.Substring(24)) } }
+		if (Test-Path $logOf[$i]) { Select-String -Path $logOf[$i] -Pattern $DesyncPattern | ForEach-Object { Write-Host ("copy ${i}: " + $_.Line.Substring(24)) } }
 	}
 	if (!$keep) { python -I tools\sfve.py kill | Out-Null }
 	foreach ($process in $processes) { if ($process -and !$process.HasExited) { Stop-Process -Id $process.Id -Force } }
 	$checkpoints = Compare-Checkpoints (Get-Checkpoints $logOf[0]) (Get-Checkpoints $logOf[1])
 	Write-Host "checkpoints: $($checkpoints.Compared) compared, $($checkpoints.Differing) differing"
 	$desyncs = $checkpoints.Differing
-	foreach ($i in 0, 1) { if (Test-Path $logOf[$i]) { $desyncs += Count $i 'desync|mismatch' } }
+	foreach ($i in 0, 1) { if (Test-Path $logOf[$i]) { $desyncs += Count $i $DesyncPattern } }
 	Write-Verdict $failure $desyncs $checkpoints.Compared $passText
 }

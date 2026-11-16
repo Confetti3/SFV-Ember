@@ -8,13 +8,39 @@
 #   ... cleanup ...
 #   exit $(if ($passed) { 0 } else { 1 })
 
+# The logs' evidence is read the way tools/sfvelib.py reads it (parse_checkpoints,
+# DESYNC_PATTERN, compare_checkpoints): the same checkpoint line, the same key
+# (game and frame), the same desync lines. Change one, change the other.
+#
+# A desync's lines ("desync: checkpoint F is H here and H at the other player",
+# its region lines, a load "mismatch"), but not the report writer's own
+# "desync report:" lines and not a start state's repair (its report is filed as
+# a desync's is; the match then plays from the same state). Select-String is
+# case-insensitive, as sfvelib.DESYNC_PATTERN's (?i).
+$DesyncPattern = '^(?!.*desync report)(?!.*start state).*(desync|mismatch)'
+
+# Copy log $log's desync lines (Select-String matches); none for a log that was never written.
+function Get-DesyncLines([string]$log) {
+	if (Test-Path $log) { @(Select-String -Path $log -Pattern $DesyncPattern) } else { @() }
+}
+
+# A control-pipe command that must be taken: the caller's Ctl (copy index, command
+# line) answered, and the answer must start with "ok". A refusal, an error or no
+# answer stops the run with the command in the message, so a pad press, a pick or
+# a delay that was refused is never counted as done. Returns the reply.
+function CtlOk([int]$i, [string]$line) {
+	$reply = Ctl $i $line
+	if ("$reply" -notlike 'ok*') { throw "copy ${i}: '$line' was refused: $reply" }
+	"$reply"
+}
+
 # Copy log $log's checkpoint hashes by game and frame ("<game>/<frame>"): a
 # frame far below the last one starts the next game. A log that was never
 # written has none.
 function Get-Checkpoints([string]$log) {
 	$hashes = @{}; $game = 0; $previous = -1
 	if (!(Test-Path $log)) { return $hashes }
-	foreach ($m in Select-String -Path $log -Pattern 'checkpoint: frame (\d+) hash (\w+)') {
+	foreach ($m in Select-String -Path $log -Pattern 'checkpoint: frame (\d+) hash ([0-9a-f]+)') {
 		$frame = [int]$m.Matches[0].Groups[1].Value
 		if ($frame -lt $previous - 600) { $game++ }
 		$previous = $frame; $hashes["$game/$frame"] = $m.Matches[0].Groups[2].Value
