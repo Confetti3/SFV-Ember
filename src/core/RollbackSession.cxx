@@ -20,11 +20,6 @@ constexpr size_t kCheckpointsKept = 900;
 
 RollbackSession* s_active = nullptr;
 
-void __cdecl OnGgpoAssert(const char* message)
-{
-	CoreLog("ggpo: assertion failed: %s", message ? message : "?");
-}
-
 } // namespace
 
 // Publishes the session making a GGPO call to the static callbacks.
@@ -158,8 +153,6 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 			game_.Layout().TotalSize(), game_.Layout().Regions().size());
 		return true;
 	}
-
-	ggpo_set_assert_handler(OnGgpoAssert);
 
 	GGPOSessionCallbacks cb = {};
 	cb.begin_game = OnBeginGame;

@@ -48,6 +48,10 @@
 // again. Meanwhile the saves made after it are junk: never hashed, reported
 // final or dumped; Frame() stays the frame the call stood at, and
 // LastConfirmedFrame() stops before the held frame.
+//
+// The session sets nothing process-wide: GGPO's assertion handler, like every
+// other handler a crash reaches, is the host's crash record's (the mod's
+// mod/CrashRecord.hxx, the tests' GgpoAssertions.cxx).
 
 #include "core/GameAdapter.hxx"
 #include "core/ReplayFrames.hxx"

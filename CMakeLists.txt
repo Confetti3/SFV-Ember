@@ -84,6 +84,7 @@ target_link_libraries(sfve_testbed PUBLIC sfve_core)
 
 add_executable(sfve_tests
     tests/main.cxx
+    tests/GgpoAssertions.cxx
     tests/StateRegionsTests.cxx
     tests/SyncTestTests.cxx
     tests/RollbackSessionTests.cxx
@@ -296,6 +297,7 @@ target_link_libraries(sfve_ember_test_mod PUBLIC sfve_ember minhook::minhook)
 # or custom content: SFV's catalog (SfvCatalog.cxx) answers every pick check.
 add_executable(sfve_ember_tests
     tests/main.cxx
+    tests/GgpoAssertions.cxx
     tests/EmberAdapterTests.cxx
     tests/SfvCatalogTests.cxx
     tests/SfvPickRulesTests.cxx
