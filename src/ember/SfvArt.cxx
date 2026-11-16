@@ -5,6 +5,7 @@
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPictureSpec.hxx"
 #include "ember/SfvRankNames.hxx"
+#include "ember/SfvRetryGate.hxx"
 #include "ember/SfvTextures.hxx"
 #include "mod/GameArt.hxx"
 #include "mod/GameContent.hxx"
@@ -21,6 +22,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cwchar>
 #include <deque>
 #include <iterator>
@@ -37,6 +39,17 @@ namespace {
 // Loads are synchronous on the game thread: a few a frame keep the menu
 // moving while a screen full of faces comes in.
 constexpr int kLoadsPerFrame = 2;
+// A picture whose texture never came in time, or that the game has not
+// streamed whole yet, is tried again after this (the backdrop's rule,
+// SfvRetryGate), longer after each failure in a row. Only a picture the game
+// does not have is Missing for the session.
+constexpr RetryRule kPictureRetry{1.0, 2.0, 30.0};
+
+// Seconds on a steady clock, for the retry gates.
+double Now()
+{
+	return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 using pictures::Framing;
 using pictures::PixelRect;
@@ -45,6 +58,7 @@ struct Picture {
 	enum class State { Queued, WaitingForResource, Ready, Missing } state = State::Queued;
 	uint8_t* object = nullptr; // the game's texture, until its Direct3D texture is taken
 	int frames = 0;
+	RetryGate retry;                           // after a texture that was not usable yet
 	mod::GameTexture texture;                  // Ready: the game's texture, with our reference
 	ID3D11ShaderResourceView* view = nullptr;  // made on the render thread
 	std::optional<PixelRect> crop;             // FaceSquare or Centre: found with the view; empty draws it whole
@@ -213,16 +227,31 @@ void PumpPictures()
 			if (const std::optional<mod::GameTexture> texture = mod::TakeGameTexture(picture.object, &pending, &why)) {
 				picture.texture = *texture;
 				picture.state = Picture::State::Ready;
+				picture.retry.Reset(Now());
 				mod::Log("art: %ls: %dx%d, format %u", spec.path.c_str(), texture->width, texture->height, texture->format);
 			} else if (!pending || ++picture.frames >= textures::kResourceFrames) {
-				mod::Log("art: %ls: not drawn: %s", spec.path.c_str(), pending ? "its resource never came" : why.c_str());
-				picture.state = Picture::State::Missing;
+				// Not here in time, or not whole yet: queued to load again once
+				// the picture's delay has passed, never Missing for good.
+				picture.retry.Failed(Now(), kPictureRetry);
+				mod::Log("art: %ls: not drawn yet, tried again in %.0f s: %s", spec.path.c_str(),
+					kPictureRetry.DelayAfter(picture.retry.Failures()), pending ? "its resource never came" : why.c_str());
+				picture.frames = 0;
+				picture.state = Picture::State::Queued;
+				s_queue.push_back(spec);
 			}
 			if (picture.state != Picture::State::WaitingForResource) picture.object = nullptr;
 		}
-		while (!s_queue.empty() && (int)load.size() < kLoadsPerFrame) {
-			load.push_back(std::move(s_queue.front()));
+		// A picture waiting out its retry delay keeps its place at the back.
+		const double now = Now();
+		for (size_t waiting = s_queue.size(); waiting > 0 && (int)load.size() < kLoadsPerFrame; waiting--) {
+			pictures::Spec spec = std::move(s_queue.front());
 			s_queue.pop_front();
+			const auto picture = s_pictures.find(spec);
+			if (picture != s_pictures.end() && !picture->second.retry.Ready(now)) {
+				s_queue.push_back(std::move(spec));
+				continue;
+			}
+			load.push_back(std::move(spec));
 		}
 	}
 	for (const pictures::Spec& spec : load) {

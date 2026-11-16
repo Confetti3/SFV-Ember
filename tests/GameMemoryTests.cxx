@@ -70,3 +70,17 @@ TEST_CASE("a guarded read or write takes a memory fault and lets every other exc
 	CHECK(value == 7);
 	CHECK(GuardPageFaultReachesCaller());
 }
+
+TEST_CASE("a game call with arguments is guarded the same way: its result when it works, none when it faults")
+{
+	int sum = 0;
+	CHECK(sfve::mod::TryRun([&] { sum = 3 + 4; }));
+	CHECK(sum == 7);
+	int touched = 0;
+	CHECK_FALSE(sfve::mod::TryRun([&] {
+		touched = 1;
+		ReadsNullSubsystem();
+		touched = 2;
+	}));
+	CHECK(touched == 1); // stopped at the fault
+}

@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -96,6 +97,38 @@ TEST_CASE("a log this run has written, an empty one and a missing one stay where
 	REQUIRE(holder != INVALID_HANDLE_VALUE);
 	CHECK_FALSE(sfve::mod::RotateLog(log.wstring(), 5, now));
 	CloseHandle(holder);
+	fs::remove_all(folder);
+}
+
+TEST_CASE("opening the log rotates an earlier run's, once: a second copy in this process leaves the first's file alone")
+{
+	const fs::path folder = FreshFolder("sfve-log-rotation-open");
+	FILETIME now;
+	GetSystemTimeAsFileTime(&now);
+	const fs::path log = folder / "sfv_ember.log";
+	Put(log, "the earlier run");
+	Age(log, now, 60);
+	const std::vector<sfve::mod::LogCandidate> candidates = sfve::mod::LogCandidates(0, 4242, folder.wstring(), L"", L"");
+
+	// The first copy to open: the earlier run's log is .old1, and this run's is a new file.
+	sfve::mod::OpenedLog first = sfve::mod::OpenRotatedLog(candidates, 5, now);
+	REQUIRE(first.file != INVALID_HANDLE_VALUE);
+	CHECK(first.path == log.wstring());
+	CHECK(Get(folder / "sfv_ember.old1.log") == "the earlier run");
+	CHECK(Get(log).empty());
+	const char line[] = "this run's first line";
+	DWORD written = 0;
+	REQUIRE(WriteFile(first.file, line, (DWORD)sizeof(line) - 1, &written, nullptr));
+
+	// A second copy of the mod in the same process opens it afterwards: the
+	// log was written since this process started, so it is not rotated away.
+	sfve::mod::OpenedLog second = sfve::mod::OpenRotatedLog(candidates, 5, now);
+	REQUIRE(second.file != INVALID_HANDLE_VALUE);
+	CHECK(Get(folder / "sfv_ember.old1.log") == "the earlier run");
+	CHECK_FALSE(fs::exists(folder / "sfv_ember.old2.log"));
+	CHECK(Get(log) == "this run's first line");
+	CloseHandle(first.file);
+	CloseHandle(second.file);
 	fs::remove_all(folder);
 }
 

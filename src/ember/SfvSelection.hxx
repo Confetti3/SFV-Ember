@@ -13,8 +13,6 @@
 // the package's `assets\selection\<CODE>\vs<k>.png` / `vt<k>.png`
 // (SfvSelectionAssetPath.hxx). LoadoutPicture is the one typed way for the
 // screens to ask.
-//
-// Stream B fills the bodies in SfvSelection.cxx; this header is final.
 
 #include "ember/SfvPickSpace.hxx"
 

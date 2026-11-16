@@ -1,0 +1,13 @@
+diff --git a/src/lib/ggpo/network/udp_proto.h b/src/lib/ggpo/network/udp_proto.h
+index 94d6dfd..bf78e39 100644
+--- a/src/lib/ggpo/network/udp_proto.h
++++ b/src/lib/ggpo/network/udp_proto.h
+@@ -64,7 +64,7 @@ public:
+          } network_interrupted;
+       } u;
+ 
+-      UdpProtocol::Event(Type t = Unknown) : type(t) { }
++      Event(Type t = Unknown) : type(t) { }
+    };
+ 
+ public:

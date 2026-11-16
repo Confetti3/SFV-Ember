@@ -61,18 +61,38 @@ sf4e::selection::Pick UnchosenLook(int fighter)
 	return pick;
 }
 
-std::optional<sf4e::selection::Pick> PickMemory::LookOf(int fighter) const
+std::optional<sf4e::selection::Pick> PickMemory::LookOf(int fighter, Whose whose) const
 {
-	return Stored(fighter) ? looks_[(size_t)fighter] : std::nullopt;
+	return Stored(fighter) ? LooksOf(whose)[(size_t)fighter] : std::nullopt;
 }
 
-bool PickMemory::RememberLook(const sf4e::selection::Pick& pick)
+bool PickMemory::RememberLook(const sf4e::selection::Pick& pick, Whose whose)
 {
 	if (!Stored(pick.fighter)) return false;
-	std::optional<sf4e::selection::Pick>& look = looks_[(size_t)pick.fighter];
+	std::optional<sf4e::selection::Pick>& look = LooksOf(whose)[(size_t)pick.fighter];
 	const bool changed = !look || look->costume != pick.costume || look->color != pick.color || look->ultra != pick.ultra;
 	look = pick;
 	return changed;
+}
+
+bool PickMemory::MergeUnder(const PickMemory& saved)
+{
+	bool taken = false;
+	for (size_t id = 0; id < looks_.size(); id++) {
+		if (!looks_[id] && saved.looks_[id]) {
+			looks_[id] = saved.looks_[id];
+			taken = true;
+		}
+		if (!dummyLooks_[id] && saved.dummyLooks_[id]) {
+			dummyLooks_[id] = saved.dummyLooks_[id];
+			taken = true;
+		}
+	}
+	if (!chosen_ && saved.chosen_) {
+		chosen_ = saved.chosen_;
+		taken = true;
+	}
+	return taken;
 }
 
 bool PickMemory::Choose(int fighter)
@@ -84,16 +104,22 @@ bool PickMemory::Choose(int fighter)
 
 nlohmann::json PickMemory::ToJson(const PickSpace& space) const
 {
-	nlohmann::json looks = nlohmann::json::object();
-	for (size_t id = 0; id < space.fighters.size() && id < looks_.size(); id++) {
-		if (!looks_[id]) continue;
-		const sf4e::selection::Pick& pick = *looks_[id];
-		const Loadout loadout = LoadoutOf(pick);
-		looks[space.fighters[id].code] = {{"costume", pick.costume}, {"colour", pick.color}, {"vSkill", loadout.choice[VSkill]},
-			{"vTrigger", loadout.choice[VTrigger]}};
-	}
-	nlohmann::json saved = {{"version", kVersion}, {"looks", std::move(looks)}};
+	// A fighter's looks by code, in the space's order, for fighters it holds.
+	const auto write = [&space](const Looks& looks) {
+		nlohmann::json written = nlohmann::json::object();
+		for (size_t id = 0; id < space.fighters.size() && id < looks.size(); id++) {
+			if (!looks[id]) continue;
+			const sf4e::selection::Pick& pick = *looks[id];
+			const Loadout loadout = LoadoutOf(pick);
+			written[space.fighters[id].code] = {{"costume", pick.costume}, {"colour", pick.color}, {"vSkill", loadout.choice[VSkill]},
+				{"vTrigger", loadout.choice[VTrigger]}};
+		}
+		return written;
+	};
+	nlohmann::json saved = {{"version", kVersion}, {"looks", write(looks_)}};
 	if (chosen_ && FighterAt(space, *chosen_)) saved["fighter"] = FighterAt(space, *chosen_)->code;
+	nlohmann::json dummy = write(dummyLooks_);
+	if (!dummy.empty()) saved["dummy"] = {{"looks", std::move(dummy)}};
 	return saved;
 }
 
@@ -103,13 +129,21 @@ PickMemory PickMemory::FromJson(const nlohmann::json& saved, const PickSpace& sp
 	if (!saved.is_object()) return memory;
 	const auto version = saved.find("version");
 	if (version == saved.end() || !version->is_number_integer() || version->get<int>() != kVersion) return memory;
-	const auto looks = saved.find("looks");
-	if (looks != saved.end() && looks->is_object()) {
-		for (const auto& [code, entry] : looks->items()) {
+	// The looks of an object of fighters' codes, into `into`.
+	const auto read = [&space](const nlohmann::json& looks, Looks& into) {
+		if (!looks.is_object()) return;
+		for (const auto& [code, entry] : looks.items()) {
 			const std::optional<int> fighter = FighterOfCode(space, code);
 			if (!fighter || !Stored(*fighter)) continue;
-			if (const std::optional<sf4e::selection::Pick> pick = LookRead(entry, space, *fighter)) memory.looks_[(size_t)*fighter] = *pick;
+			if (const std::optional<sf4e::selection::Pick> pick = LookRead(entry, space, *fighter)) into[(size_t)*fighter] = *pick;
 		}
+	};
+	const auto looks = saved.find("looks");
+	if (looks != saved.end()) read(*looks, memory.looks_);
+	const auto dummy = saved.find("dummy");
+	if (dummy != saved.end() && dummy->is_object()) {
+		const auto dummyLooks = dummy->find("looks");
+		if (dummyLooks != dummy->end()) read(*dummyLooks, memory.dummyLooks_);
 	}
 	const auto chosen = saved.find("fighter");
 	if (chosen != saved.end() && chosen->is_string()) {

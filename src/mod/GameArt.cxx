@@ -58,9 +58,17 @@ uint8_t* PointerAt(const uint8_t* object, uint32_t offset)
 
 uint8_t* LoadTexture(const std::wstring& path)
 {
+	static bool faultLogged = false;
 	uint8_t* textureClass = GameFn<ClassFn>(sfv::kTexture2DClass)(L"/Script/Engine");
 	if (!textureClass) return nullptr;
-	return GameFn<LoadFn>(sfv::kStaticLoadObject)(textureClass, nullptr, path.c_str(), nullptr, 0, nullptr, true);
+	// A fault in the game's loader reads as the game having no such picture.
+	uint8_t* loaded = nullptr;
+	if (!TryRun([&] { loaded = GameFn<LoadFn>(sfv::kStaticLoadObject)(textureClass, nullptr, path.c_str(), nullptr, 0, nullptr, true); })) {
+		if (!faultLogged) Log("art: the game's StaticLoadObject faulted; read as no picture");
+		faultLogged = true;
+		return nullptr;
+	}
+	return loaded;
 }
 
 std::optional<GameTexture> TakeGameTexture(uint8_t* texture, bool* pending, std::string* failure)
@@ -100,7 +108,14 @@ std::optional<std::pair<uint32_t, uint32_t>> ColourSwatch(const std::string& fig
 	const std::wstring wide(fighterCode.begin(), fighterCode.end());
 	const GameString code{wide.c_str(), (int32_t)wide.size() + 1, (int32_t)wide.size() + 1};
 	uint32_t colours[2] = {};
-	if (!GameFn<SwatchFn>(sfv::kColourSwatch)(charaAsset, &code, costume, colour, colours)) return std::nullopt;
+	static bool faultLogged = false;
+	bool found = false;
+	if (!TryRun([&] { found = GameFn<SwatchFn>(sfv::kColourSwatch)(charaAsset, &code, costume, colour, colours); })) {
+		if (!faultLogged) Log("art: the game's colour swatch call faulted; read as no swatch");
+		faultLogged = true;
+		return std::nullopt;
+	}
+	if (!found) return std::nullopt;
 	return std::make_pair(colours[0], colours[1]);
 }
 

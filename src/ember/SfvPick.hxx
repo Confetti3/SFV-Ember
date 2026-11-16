@@ -34,6 +34,10 @@
 
 namespace sfve::adapter {
 
+// Whose pick a look is for: the player's or Training's dummy's, each with a
+// look of its own for every fighter (picks::Whose).
+using picks::Whose;
+
 struct PlayerPick {
 	sf4e::selection::Pick pick;
 	int stage = 0;
@@ -61,7 +65,10 @@ PlayerPick UpdatePick(const std::function<bool(PlayerPick&)>& edit);
 // fighter's own look (LookFor, remembered), then `then`'s changes to the
 // pick (the pipe's stage and size), stored. The board's card, the look
 // page's Fighter row and the pipe's `pick` all choose a fighter by this.
-PlayerPick ChooseFighter(int fighter, const std::function<void(PlayerPick&)>& then = {});
+// For `whose` Dummy it is the dummy's: in the fighter's look the dummy last
+// had (or its default one), then `then`'s changes, stored as SetDummy stores
+// it; the dummy has no Random.
+PlayerPick ChooseFighter(int fighter, const std::function<void(PlayerPick&)>& then = {}, Whose whose = Whose::Player);
 
 // Training's other side (Training select's Dummy row, EMBER_LIBRARY.md
 // section 27): a pick of its own, fitted the same way, as SF4 Ember keeps its
@@ -69,7 +76,8 @@ PlayerPick ChooseFighter(int fighter, const std::function<void(PlayerPick&)>& th
 // loads on the player's). Until the player picks a dummy it is their own
 // fighter, costume and colour. Neither is saved between runs; the player's
 // pick is, as the fighter last chosen and each fighter's look
-// (RestorePickMemory, PickMemoryNow).
+// (RestorePickMemory, PickMemoryNow); so is each fighter's look of the dummy,
+// which keeps its own, apart from the player's, as the player's pick does.
 PlayerPick CurrentDummy();
 PlayerPick SetDummy(const PlayerPick& dummy);
 // For the tests, which share one process: no dummy picked, so the dummy is
@@ -120,26 +128,35 @@ void SetPickEleven(bool eleven);
 // The look last stored for each fighter (SetPick remembers the stored pick
 // under its fighter: costume, colour, loadout, costume code and size), as SF4
 // Ember keeps one per fighter, and as the player's saved ones come back at
-// the start (RestorePickMemory); none for a fighter never stored. The dummy's
-// picks are not remembered (SF4 Ember's dummy keeps to its own pick too).
+// the start (RestorePickMemory); none for a fighter never stored. The dummy
+// remembers its own looks the same way (SetDummy), as `whose` Dummy.
 // Any thread.
-std::optional<sf4e::selection::Pick> RememberedLook(int fighter);
+std::optional<sf4e::selection::Pick> RememberedLook(int fighter, Whose whose = Whose::Player);
 
 // The pick that choosing `fighter` on the board stores, from `pick`: with
 // `remembered`, the fighter's own look: the one stored last, or for a
 // fighter not stored yet, or one whose remembered look this player cannot
 // wear, the fighter's default look (the first costume they can wear, in its
 // first colour, V-Skill I and V-Trigger I), whatever look `pick` is in;
-// `pick`'s model size goes with it. Without `remembered` (the Training
-// dummy), `pick` with that fighter. Fitted as the pick screen fits a fighter
+// `pick`'s model size goes with it. Without `remembered`, `pick` with that
+// fighter. Fitted as the pick screen fits a fighter
 // (SfvCatalog's FitLookWithin): in a look this player can ready, or for a
 // fighter they cannot play, as the spec fits it.
 sf4e::selection::Pick LookFor(const sf4e::selection::Pick& pick, int fighter, bool remembered);
+// The same with the look `whose` pick last stored for the fighter (the
+// player's, or the Training dummy's own): always with memory.
+sf4e::selection::Pick LookFor(const sf4e::selection::Pick& pick, int fighter, Whose whose);
 
 // The saved memory (SfvPickStore reads it at the start): the stored pick
 // becomes the fighter last chosen in its saved look, and every fighter's
-// saved look is remembered. False, nothing changed, once a pick has been
-// stored since the start: the player's own choice wins.
+// saved look is remembered. Once a pick has been stored since the start (the
+// read came late) the stored pick stays the player's own choice, and the
+// saved memory is merged under this run's: a fighter this run stored a look
+// for keeps it, every other fighter gets its saved look, and the saved
+// fighter last chosen is kept only if this run chose none (PickMemory's
+// MergeUnder). Returns true when the saved memory is the run's memory as it
+// was read, false when it was merged, which leaves the file short of this
+// run's looks: the store writes once.
 bool RestorePickMemory(const picks::PickMemory& saved);
 // The memory to save, and `revision`, which rises each time what is saved of
 // it changes.

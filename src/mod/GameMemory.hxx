@@ -71,6 +71,22 @@ bool TryCall(T (*function)(), T* out)
 	}
 }
 
+// TryCall for a call with arguments or a result of its own: runs `call`, a
+// callable taking nothing that makes the call (a lambda capturing the
+// arguments and the place for the result), and returns false when it faulted on
+// an access. Other exceptions go on to the crash record. What the call does
+// before it faults is not undone: the caller reads a false as "nothing".
+template <typename F>
+bool TryRun(F&& call)
+{
+	__try {
+		call();
+		return true;
+	} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+		return false;
+	}
+}
+
 // MSVC std::shared_ptr, as the game stores it. The control block is
 // {vtable, long uses, long weaks}.
 struct GameSharedPtr {

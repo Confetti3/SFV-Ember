@@ -9,6 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import sfvelib as lib  # noqa: E402
+import sfvelib_pipe as pipe  # noqa: E402  (the modules that define what a check replaces)
+import sfvelib_procs as procs  # noqa: E402
 
 CHECKS: list = []
 
@@ -51,14 +53,14 @@ def with_pipe(replies: list[bytes | Exception], fn):
             raise item
         return FakePipe(writes, item)
 
-    lib.open = fake_open
+    pipe.open = fake_open
     try:
         try:
             return writes, fn()
         except lib.SfveError as e:
             return writes, e
     finally:
-        del lib.open
+        del pipe.open
 
 
 @check
@@ -135,16 +137,16 @@ def kill_all_keeps_a_survivor_in_the_registry():
     import os
     import tempfile
     folder = Path(tempfile.mkdtemp(prefix="sfvelib-selftest-"))
-    saved = (lib._registry_dir, lib.process_identity, lib._kill_tree, os.environ.get("SFVE_RUN"))
+    saved = (procs._registry_dir, procs.process_identity, procs._kill_tree, os.environ.get("SFVE_RUN"))
     alive = {(10, 1), (11, 2)}
     try:
-        lib._registry_dir = lambda: folder
-        lib.process_identity = lambda pid: next((i for i in alive if i[0] == pid), None)
+        procs._registry_dir = lambda: folder
+        procs.process_identity = lambda pid: next((i for i in alive if i[0] == pid), None)
 
         def kill_tree(roots):  # ends 10; 11 will not end
             alive.discard((10, 1))
             return [(10, 1)]
-        lib._kill_tree = kill_tree
+        procs._kill_tree = kill_tree
         os.environ["SFVE_RUN"] = "selftest"
         lib._remember(0, (10, 1), (11, 2))
         assert lib.surviving() == [(10, 1), (11, 2)] or sorted(lib.surviving()) == [(10, 1), (11, 2)]
@@ -155,7 +157,7 @@ def kill_all_keeps_a_survivor_in_the_registry():
         lib.kill_all(timeout_s=0.3)
         assert lib.surviving() == [] and not lib.registry_path().exists(), "an ended run's registry is gone"
     finally:
-        lib._registry_dir, lib.process_identity, lib._kill_tree = saved[:3]
+        procs._registry_dir, procs.process_identity, procs._kill_tree = saved[:3]
         if saved[3] is None:
             os.environ.pop("SFVE_RUN", None)
         else:
@@ -167,9 +169,9 @@ def kill_all_keeps_a_survivor_in_the_registry():
 @check
 def run_scope_ends_the_run_however_it_ends():
     calls = []
-    saved = lib.kill_all, lib.surviving
-    lib.kill_all = lambda *a, **k: calls.append("kill") or []
-    lib.surviving = lambda *a, **k: []
+    saved = procs.kill_all, procs.surviving
+    procs.kill_all = lambda *a, **k: calls.append("kill") or []
+    procs.surviving = lambda *a, **k: []
     try:
         try:
             with lib.run_scope():
@@ -184,7 +186,7 @@ def run_scope_ends_the_run_however_it_ends():
             pass
         assert calls == ["kill", "kill"], calls
     finally:
-        lib.kill_all, lib.surviving = saved
+        procs.kill_all, procs.surviving = saved
 
 
 def main() -> int:

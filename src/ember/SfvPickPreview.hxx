@@ -27,7 +27,7 @@
 // - The board's Random card: its mark, its name and what Random does, and the
 //   fighter it rolled while Random is the pick.
 // While a choice is open the pane shows the pick with the focused option in
-// it (SfvSelectionScreen's Previewed), so the player sees each costume,
+// it (SfvPickPages' Previewed), so the player sees each costume,
 // colour, part and stage before choosing it.
 //
 // Every line shows at the smallest window the shell allows (960x540): the
@@ -49,7 +49,7 @@
 
 namespace sfve::adapter {
 
-// What the pane shows, from the focused row (SfvSelectionScreen's FocusOf),
+// What the pane shows, from the focused row (SfvPickPages' FocusOf),
 // or the board's Random or Eleven card.
 enum class PreviewFocus { Look, Loadout, Stage, Random, Eleven };
 

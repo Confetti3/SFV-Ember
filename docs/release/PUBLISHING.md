@@ -85,7 +85,7 @@ Nothing is built or staged. The kit folder holds `room-build\sfve-room-host`, `r
 - The kit's commits are ancestors of the plan's commits in both repositories.
 - Nothing the two binaries are made from changed between them (`git diff`). The path lists are read from each
   commit pair:
-  - sfv-ember: `data/pick-space.json`, `scripts/build-room-host-linux.sh`, the catalog sources it names, and every
+  - sfv-ember: `data/pick-space.json`, `cmake/EmbedTextFile.cmake` (which embeds it), `scripts/build-room-host-linux.sh`, the catalog sources it names, and every
     header they include.
   - library: `server/roomhost/build-linux.sh`, `sources.txt`, the sources it lists for a data catalog, and every
     header included from `src/` or `server/roomhost/`. Also sf4-net's `Cargo.toml`, `Cargo.lock`, `build.rs`,
