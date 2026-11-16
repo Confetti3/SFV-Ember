@@ -16,7 +16,23 @@
 
 #include "mod/GameHooks.hxx"
 
+#include <string>
+#include <vector>
+
 namespace sfve::mod {
+
+// A top-level window of this process, as the choice of the game's window sees it.
+struct WindowCandidate {
+	std::wstring className;
+	bool visible = false;
+	long area = 0;
+};
+
+// The game's window among a process's top-level windows: the largest visible
+// one of the engine's window class (UnrealWindow). Not the largest of any
+// class: the engine's splash screen (SplashScreenClass) is visible and
+// can be the larger before the game window is. -1 when there is none.
+int SelectGameWindow(const std::vector<WindowCandidate>& windows);
 
 // Hooks the three window queries as one set (CommitHookSet) and starts the
 // window filter. Empty when they are in; otherwise the hook that failed, and

@@ -294,7 +294,7 @@ target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product sfve_selection_as
 # The mod's code the SFV catalog and adapter tests reach without the game,
 # compiled once for the three test programs that link it.
 add_library(sfve_ember_test_mod OBJECT
-    src/mod/AddressRanges.cxx src/mod/RuntimeModules.cxx src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/EntitlementGrant.cxx src/mod/FighterReader.cxx
+    src/mod/AddressRanges.cxx src/mod/BackgroundPlay.cxx src/mod/RuntimeModules.cxx src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/EntitlementGrant.cxx src/mod/FighterReader.cxx
     src/mod/BoothMode.cxx src/mod/GameArt.cxx src/mod/GameInput.cxx
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx src/mod/TinyFighters.cxx
@@ -351,6 +351,7 @@ add_executable(sfve_ember_tests
     tests/AddressRangesTests.cxx
     tests/RuntimeModulesTests.cxx
     tests/LogRotationTests.cxx
+    tests/BackgroundPlayTests.cxx
     tests/GameInputTests.cxx
     tests/SocketReadsTests.cxx
     tests/RngAuditTests.cxx
