@@ -108,8 +108,7 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 		if (replay_) room_.BindReplay();
 		else Log("netplay: a replay's battle loaded with no replay to play; it plays offline");
 	}
-	started_ = leaveWanted_ = leaving_ = false;
-	prepared_ = false;
+	Enter(netplay::Event::BattleBound);
 	EndStartAgreement();
 	startHash_ = 0;
 	exitAsked_ = false;
@@ -119,10 +118,20 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	pacer_.Reset();
 }
 
+void NetplayMode::Enter(netplay::Event event)
+{
+	const std::optional<netplay::Phase> next = netplay::Next(phase_, event);
+	if (!next) {
+		Log("netplay: the battle, %s, takes no \"%s\"; it stays so", netplay::Name(phase_), netplay::Name(event));
+		return;
+	}
+	phase_ = *next;
+}
+
 void NetplayMode::Frame(SfvAdapter& adapter)
 {
 	std::lock_guard lock(mutex_);
-	if (!session_) {
+	if (phase_ == netplay::Phase::Unbound) {
 		// No battle bound since the last one's session was kept for its
 		// watchers (PollBattle); the driver binds one before any frame.
 		adapter.RunOriginal();
@@ -145,20 +154,33 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		exitAsked_ = false;
 		room_.FlushHeld("the runtime ended the battle");
 		if (session_->Live()) session_->Close();
-		started_ = true;
 		Leave();
 	}
-	if (leaveWanted_) {
-		if (!leaving_) Leave();
-		// The battle stands still until the main menu replaces it; the
-		// session keeps answering meanwhile, so the other copy still gets the
-		// inputs it may be missing for the last frames, and P1's watchers
-		// theirs.
-		if (session_->Live()) session_->Poll();
-		adapter::RoomBattle::EndDroppedWatcherLinks(*session_);
-		return;
+	switch (phase_) {
+	case netplay::Phase::Unbound: return; // returned above
+	case netplay::Phase::Leaving:
+	case netplay::Phase::Left: return HoldWhileLeaving();
+	case netplay::Phase::Preparing:
+	case netplay::Phase::Agreeing:
+		if (!StartSession(adapter)) return; // the battle waits for the match
+		[[fallthrough]];                    // it plays from this frame
+	case netplay::Phase::Playing: return PlayFrame(adapter);
 	}
-	if (!started_ && !StartSession(adapter)) return; // the battle waits for the match
+}
+
+void NetplayMode::HoldWhileLeaving()
+{
+	if (phase_ == netplay::Phase::Leaving) Leave();
+	// The battle stands still until the main menu replaces it; the
+	// session keeps answering meanwhile, so the other copy still gets the
+	// inputs it may be missing for the last frames, and P1's watchers
+	// theirs.
+	if (session_->Live()) session_->Poll();
+	adapter::RoomBattle::EndDroppedWatcherLinks(*session_);
+}
+
+void NetplayMode::PlayFrame(SfvAdapter& adapter)
+{
 	if (!session_->Live()) {
 		if (room_.Active()) {
 			// A room battle with no session (it broke, or never started) has
@@ -184,30 +206,37 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 		return WatchFrames(adapter);
 	}
 	const bool frozen = dev_.Frozen(*session_);
-	if (room_.Prompting() && !frozen) {
-		// Over the WIN the battle stands still; held frames carry both
-		// fighters' answers, each stepped once its inputs are confirmed, and
-		// both copies decide on the same one (RoomBattle, EMBER_LIBRARY.md 19).
-		const PackedInput answer = room_.AnswerBits();
-		adapter::RoomBattle::Answer decided = adapter::RoomBattle::Answer::Wait;
-		last_ = session_->StepHeld(answer, [&](const FrameInputs& inputs) {
-			decided = room_.HeldFrame(inputs, session_->HeldFrames(), adapter, seed_);
-		});
-		if (last_ != RollbackSession::StepResult::Advanced) return;
-		room_.Decided(decided, *session_);
-		dev_.DumpIfRequested(session_.get(), config_.instance);
-		if (decided == adapter::RoomBattle::Answer::Rematch) {
-			startTime_ = adapter.StartTime();
-			// The restart keeps the last match decided for a few frames: the
-			// answer's button, still down, is no press to skip anything.
-			introSkip_ = {};
-		} else if (decided == adapter::RoomBattle::Answer::Leave) {
-			recording_.MarkWhole();
-			exitAsked_ = false; // a runtime's exit the WIN carried is this leave
-			Leave(); // both copies leave on this same confirmed frame
-		}
-		return;
+	if (room_.Prompting() && !frozen) return PlayHeldWin(adapter);
+	StepFight(adapter, frozen);
+}
+
+void NetplayMode::PlayHeldWin(SfvAdapter& adapter)
+{
+	// Over the WIN the battle stands still; held frames carry both
+	// fighters' answers, each stepped once its inputs are confirmed, and
+	// both copies decide on the same one (RoomBattle, EMBER_LIBRARY.md 19).
+	const PackedInput answer = room_.AnswerBits();
+	adapter::RoomBattle::Answer decided = adapter::RoomBattle::Answer::Wait;
+	last_ = session_->StepHeld(answer, [&](const FrameInputs& inputs) {
+		decided = room_.HeldFrame(inputs, session_->HeldFrames(), adapter, seed_);
+	});
+	if (last_ != RollbackSession::StepResult::Advanced) return;
+	room_.Decided(decided, *session_);
+	dev_.DumpIfRequested(session_.get(), config_.instance);
+	if (decided == adapter::RoomBattle::Answer::Rematch) {
+		startTime_ = adapter.StartTime();
+		// The restart keeps the last match decided for a few frames: the
+		// answer's button, still down, is no press to skip anything.
+		introSkip_ = {};
+	} else if (decided == adapter::RoomBattle::Answer::Leave) {
+		recording_.MarkWhole();
+		exitAsked_ = false; // a runtime's exit the WIN carried is this leave
+		Leave(); // both copies leave on this same confirmed frame
 	}
+}
+
+void NetplayMode::StepFight(SfvAdapter& adapter, bool frozen)
+{
 	// A room match that ended is decided only on a confirmed frame: nothing
 	// before the decision can be rolled back then, on either copy (MatchEnd).
 	const bool endPending = room_.EndPending();
@@ -291,7 +320,7 @@ void NetplayMode::WatchFrames(SfvAdapter& adapter)
 	// reads it; each extra frame goes through the same decisions, so a frame
 	// the fighters held is held here too.
 	const int extra = sf4e::SpectatorCatchUp::ExtraFrames(session_->WatchedBacklog());
-	for (int played = 0; played < extra && !leaveWanted_ && session_->Live(); played++) {
+	for (int played = 0; played < extra && !netplay::LeaveWanted(phase_) && session_->Live(); played++) {
 		if (!WatchFrame(adapter)) return;
 	}
 }
@@ -363,7 +392,7 @@ void NetplayMode::PlayReplay(SfvAdapter& adapter)
 		return;
 	}
 	for (unsigned played = 0; played < sf4e::replaytransport::kMostSeekFrames && session_->Frame() < turn.goal &&
-		!leaveWanted_ && session_->Live(); played++) {
+		!netplay::LeaveWanted(phase_) && session_->Live(); played++) {
 		if (!WatchFrame(adapter)) return;
 	}
 }
@@ -395,6 +424,7 @@ void NetplayMode::PollBattle()
 	const bool replayed = room_.Replaying();
 	if (room_.Close(session_.get())) {
 		drain_ = std::move(session_);
+		Enter(netplay::Event::Drained);
 		adapter::SetWatcherDrain(drain_.get());
 	}
 	if (replayed) {
@@ -402,7 +432,7 @@ void NetplayMode::PollBattle()
 		replay_.reset();
 	}
 	recording_.Finish();
-	leaveWanted_ = leaving_ = false;
+	Enter(netplay::Event::BackAtMenu);
 }
 
 void NetplayMode::ConfirmRecording()
@@ -413,11 +443,11 @@ void NetplayMode::ConfirmRecording()
 void NetplayMode::Leave()
 {
 	EndStartAgreement(); // a battle left while its copies compared start states
-	if (!leaveWanted_) SetLinkedMatchEnd(false);
-	const bool retry = leaveWanted_;
-	leaveWanted_ = true;
-	leaving_ = LeaveBattle();
-	if (!leaving_ && !retry) Log("netplay: could not leave the battle yet (no scene manager); asking again each frame");
+	const bool retry = netplay::LeaveWanted(phase_);
+	if (!retry) SetLinkedMatchEnd(false);
+	const bool taken = LeaveBattle();
+	Enter(taken ? netplay::Event::LeaveTaken : netplay::Event::LeaveRefused);
+	if (!taken && !retry) Log("netplay: could not leave the battle yet (no scene manager); asking again each frame");
 }
 
 void NetplayMode::NoteFightStart(SfvAdapter& adapter, int frame)

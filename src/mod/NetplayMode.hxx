@@ -67,6 +67,7 @@
 #include "mod/MatchRecording.hxx"
 #include "mod/ModConfig.hxx"
 #include "mod/NetplayDevCommands.hxx"
+#include "mod/NetplayPhase.hxx"
 #include "mod/SceneNotes.hxx"
 
 #include "sf4e/sf4e__RuntimeTick.hxx"
@@ -102,11 +103,26 @@ public:
 
 private:
 	void RegisterCommands();
+	// The battle's phase moved by `event` (netplay::Next); an event the phase
+	// never sees is logged and changes nothing.
+	void Enter(netplay::Event event);
+	// A frame of a battle going back to the main menu: the leave asked again
+	// until the scene manager takes it, the session still answering.
+	void HoldWhileLeaving();
+	// A frame of a Playing battle: offline, watched, replayed, the held WIN,
+	// or the fight (and the match's end) stepped.
+	void PlayFrame(SfvAdapter& adapter);
+	// Over the WIN: a held frame carrying both fighters' answers.
+	void PlayHeldWin(SfvAdapter& adapter);
+	// A fighter's frame: held for a decision on a confirmed frame (or a
+	// "freeze"), else the local input sent and one frame stepped.
+	void StepFight(SfvAdapter& adapter, bool frozen);
 	// Back to the main menu; the battle stands still meanwhile. A leave the
 	// scene manager cannot take yet is asked again on the next frame.
 	void Leave();
 	// Starts the session once the match is known and the copies agree on
-	// their start state; false while the battle waits for either.
+	// their start state (Preparing, then Agreeing); false while the battle
+	// waits for either.
 	bool StartSession(SfvAdapter& adapter);
 	// The session's settings once the match is known, the start state made
 	// (reseeded, a Practice room's gauges) and its agreement begun: Waiting
@@ -164,10 +180,11 @@ private:
 	// runtime's drain ends (adapter::SetWatcherDrain).
 	std::unique_ptr<RollbackSession> drain_;
 	adapter::RoomBattle room_; // what the room hears of its battle
-	bool started_ = false;
-	// Between PrepareStart and the session's start: its settings, and the
-	// start state's agreement with its socket on the session's local port.
-	bool prepared_ = false;
+	// Where the battle is in its life (NetplayPhase.hxx); Unbound exactly
+	// while session_ is null.
+	netplay::Phase phase_ = netplay::Phase::Unbound;
+	// While Agreeing: the session's settings, and the start state's agreement
+	// with its socket on the session's local port.
 	struct PendingStart {
 		RollbackSession::Config config;
 		uint32_t seed = 0;
@@ -181,8 +198,6 @@ private:
 	uint64_t startHash_ = 0;
 	uint32_t seed_ = kSessionSeed; // the session's: a rematch in place reseeds from it
 	uint32_t startTime_ = 0;       // the match's start time, kept the session's (Frame)
-	bool leaveWanted_ = false; // the battle goes back to the main menu
-	bool leaving_ = false;     // ...and the scene manager took the leave
 	// The runtime asked the battle to end (Retire, Abort, Fail); the next
 	// battle frame ends it.
 	std::atomic<bool> exitAsked_{false};

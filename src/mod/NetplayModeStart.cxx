@@ -38,17 +38,17 @@ namespace sfve::mod {
 
 bool NetplayMode::StartSession(SfvAdapter& adapter)
 {
-	if (!prepared_) {
+	if (phase_ == netplay::Phase::Preparing) {
 		switch (PrepareStart(adapter)) {
 		case Prepared::Waiting: return false;
-		case Prepared::NoSession: started_ = true; return true;
+		case Prepared::NoSession: Enter(netplay::Event::NoSession); return true;
 		case Prepared::Ready: break;
 		}
 	}
 	// Every copy stands still at its start state until they agree on it
 	// (core/StartAgreement.hxx); the battle waits meanwhile.
 	if (startAgreement_ && !AgreeStart(adapter)) return false;
-	started_ = true;
+	Enter(netplay::Event::SessionStarted);
 	RollbackSession::Config& c = pending_.config;
 	const bool practice = pending_.practice;
 	const uint32_t seed = pending_.seed;
@@ -133,7 +133,7 @@ NetplayMode::Prepared NetplayMode::PrepareStart(SfvAdapter& adapter)
 		c.localPort = config_.port;
 		c.remotePort = config_.peerPort;
 	}
-	prepared_ = true;
+	Enter(netplay::Event::Prepared);
 	// At least one frame: a decision held for a confirmed frame (match end)
 	// waits for the other side's input for the next frame, which it has
 	// always sent by then.
@@ -234,7 +234,6 @@ bool NetplayMode::AgreeStart(SfvAdapter& adapter)
 		adapter::ReportGameDataDiffers(report, adapter.BattleFacts(), room_.Watching(), pending_.config.inputDelay);
 		EndStartAgreement();
 		room_.FlushHeld("the copies' game data differs");
-		started_ = true;
 		Leave();
 		return false;
 	}
