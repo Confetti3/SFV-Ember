@@ -91,6 +91,17 @@ struct RollbackFacts {
 	std::uint64_t count = 0;
 	int longest = 0;
 };
+// A region whose hash differs from the other copy's at the checkpoint, as
+// the two copies' region lists pair (core/RegionExchange.hxx): the other
+// copy's hash, or `paired` false when it paired with none of the other's.
+struct DifferingRegion {
+	std::string name;
+	std::uint64_t size = 0;
+	std::uint64_t hash = 0;
+	bool paired = true;
+	std::uint64_t otherHash = 0;
+};
+
 // What a fighter plays at the checkpoint, read from the kept state
 // (ScriptsAt): the script player's script number and frame.
 struct ScriptFacts {
@@ -110,16 +121,6 @@ struct CensusObject {
 	std::string name;
 	std::uint64_t address = 0;
 	std::uint64_t extent = 0;
-};
-
-// One stale socket read that was given the live value (mod/SocketReads.hxx's
-// Miss), as the report lists it.
-struct SocketMissFacts {
-	int frame = -1;
-	int unit = -1;
-	std::uint32_t from = 0; // the call site's rva
-	std::string socket;
-	std::string reason;     // never-seen pose, other root not certifiable, rebuilding off
 };
 
 struct Facts {
@@ -154,21 +155,14 @@ struct Facts {
 	std::uint64_t rollbacks = 0;
 	int longestRollback = 0;
 	RollbackFacts recent;
-	// This battle's socket-read counts (SocketReadsSummary: recorded, served
-	// exact, rebuilt, missed with the reason, conflicting); empty when not read.
+	// This battle's socket-read counts (SocketReadsSummary: the reads given
+	// the fight's position, those at a call site not classified, the anchors
+	// unresolved); empty when not read.
 	std::string socketReads;
-	// This battle's pose holds (PoseHoldsSummary: the holds made, those whose
-	// replay was fresh, the failures by reason); empty when not read.
-	std::string poseHolds;
 	// This battle's pace so far (mod/Pace.hxx ReportText: the windows of 600
 	// updates, the slowest and the last in updates a second, how many were under
 	// 55, the controller removed / added events); empty when not read.
 	std::string pace;
-	// The latest misses (at most 64) from the kRecentFrames frames before the
-	// checkpoint, oldest first, copied on the game thread; `socketMissesKnown`
-	// false where the ring was not read.
-	std::vector<SocketMissFacts> socketMisses;
-	bool socketMissesKnown = false;
 	InputFacts inputs;
 	std::uint64_t layoutId = 0;
 	std::string matchBuild; // SfvCatalog's MatchBuildId
@@ -186,13 +180,39 @@ struct Facts {
 	// still differed. `frame` is 0, `local` this copy's hash before the repair
 	// and `remote` P1's; `regions` and the state are this copy's before it.
 	std::string startRepair;
+	// What this copy's battle computes with (core/MatchData.hxx's Text: each
+	// fighter unit's code, balance version and move data), and the other
+	// copy's where the start agreement heard it; empty when not read.
+	std::string battleData;
+	std::string otherBattleData;
+	// The paks this copy's engine mounts, judged against Steam's own
+	// (mod/PakRules.hxx's Summary); empty when not read.
+	std::string paks;
+	// This PC's Windows (WindowsVersion); empty when not read.
+	std::string os;
+	// The regions that differ from the other copy's, once its list arrived
+	// (`regionsCompared`); otherwise every region is listed (`regions`).
+	// `regionExchange` says how the lists' exchange went, in words.
+	bool regionsCompared = false;
+	std::vector<DifferingRegion> differing;
+	std::string regionExchange;
+	// Not empty: no desync but a match that never started because the
+	// copies' game data differed (StartAgreement's DataDiffers), in words
+	// (match_data::Describe). Its own Bugsink group; `frame` is 0.
+	std::string gameDataDiffers;
 };
+
+// "Windows 10.0 build 19045" (RtlGetVersion: the PC's own, whatever the
+// process's compatibility mode says); "Windows (version unavailable)".
+std::string WindowsVersion();
+
+// The differing regions in one line: "CharaUnit[0].CharaActionPart+0xD8
+// (15808 bytes)"; "not compared" when the other copy's list did not arrive.
+std::string DifferingText(const Facts& facts);
 
 // The frames a report's rollback count and its inputs cover.
 constexpr int kRecentFrames = 120;
 constexpr int kInputFrames = 180;
-// The socket-read misses a report lists (mod::socket_reads::MissRing's size).
-constexpr std::size_t kMostSocketMisses = 64;
 
 // The match key both fighters' copies share: "<room epoch>.<table>.<match
 // generation>" (16 hex digits, then decimals); empty when the room is not
@@ -307,10 +327,17 @@ std::string Title(bool watcher, std::string_view buildId, std::string_view key =
 // repaired: build <12 digits>[ match <key>]", or "SFV start state repaired
 // for a watcher: ...", its own Bugsink group.
 std::string StartRepairTitle(bool watcher, std::string_view buildId, std::string_view key = {});
+// A refused match's first line (Facts::gameDataDiffers): "SFV game data
+// differs: build <12 digits>[ match <key>]", or "... for a watcher: ...", its
+// own Bugsink group.
+std::string GameDataTitle(bool watcher, std::string_view buildId, std::string_view key = {});
 // The whole comment: the title, then the match, this copy, both picks, the
 // checkpoint and the session, at most kCommentCharacters characters.
 std::string Comment(const Facts& facts, std::string_view buildId);
-// One line per region, "desync: checkpoint F region R, N bytes, hash H".
+// One line per region that differs from the other copy's, "desync:
+// checkpoint F region R, N bytes, hash H here, H2 at the other copy", once
+// the lists were compared; else one line per region, "desync: checkpoint F
+// region R, N bytes, hash H", after a line that says why.
 std::string RegionLines(const Facts& facts);
 // What a person reading one report needs beside the comment and the region
 // lines: the pair key, both fighters' picks and scripts, the rollbacks of the

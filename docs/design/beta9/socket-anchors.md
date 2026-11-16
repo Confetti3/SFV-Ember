@@ -1,5 +1,7 @@
 # beta.9: four socket reads taken out of the pose (socket anchors, 2026-11-13)
 
+> **Superseded in beta.10.** The four sites below are no longer an exception to a record: `socket_reads::Policy` (`src/mod/SocketReads.hxx`) decides every read by its return rva. Outside a battle a session plays every read is Live (the engine's value); in one, the call sites that are not the fight's and the spawn bone resolver (rva 0x4CFC99, whose position only reaches a VfxFieldGroupUnit, drawn only) are Live, the four sites below keep their offsets, and any call site not classified is anchored with the head's offset (0.00, 1.60) and logged once a battle. The record, the rebuild, the grid and the pose holds are deleted; an unresolved anchor keeps the engine's value. `kAnchorVersion` is 2. What follows is the beta.9 design, kept as it was.
+
 ## Why
 
 The fight reads a fighter's skeletal mesh (`sfv::kSocketWorldPosition`, `src/mod/SocketReads.hxx`) at a

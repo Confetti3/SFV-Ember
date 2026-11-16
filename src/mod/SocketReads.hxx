@@ -1,118 +1,63 @@
 #pragma once
 
-// The fight's reads of a fighter's Unreal model (docs/design/beta8/desync.md,
-// its sections on the socket fix and "Beta.9: the pose record").
+// The fight's reads of a fighter's Unreal model (docs/design/beta8/desync.md;
+// docs/design/beta9/socket-anchors.md and its beta.10 note).
 //
-// Some spawns are placed at a socket of the model (sfv::kSocketWorldPosition):
-// any script's spawn whose record names a bone, and Z33's drop as its
-// V-Trigger ends. The read returns where the pose last evaluated by the engine
-// puts the socket. The engine evaluates the pose once per drawn frame, after
-// the battle's visual task has set each layer's motion and time from the
-// fight state, so the first battle update after a drawn frame (with no
-// restore before it) reads the pose of the state that update starts from,
-// on every copy. Every other update reads a stale pose: a rollback's
-// replayed frames, and the new frame a rollback is followed by.
+// Some spawns are placed at a socket of the model (sfv::kSocketWorldPosition,
+// rva 0x3919D0): the read returns where the pose last evaluated by the engine
+// puts the socket. The engine evaluates the pose once per drawn frame, so a
+// rollback's replayed frames, and the new frame a rollback is followed by,
+// read a stale pose, and two copies with different rollback histories can
+// read different values for the same state.
 //
-// So each read on a fresh pose is recorded, and a read on a stale pose takes
-// a recorded value instead of the live one. The record is keyed by what
-// decides the value: the fighter unit (its place among the battle's
-// CharaUnits, partners included), the socket, and the unit's pose key (its
-// animation state, facing and Tiny pick, MakePoseKey); within that, each
-// reading keeps the unit's root key (where it stands, MakeRootKey), the
-// model's transforms the read came from, and what the read wrote.
-//   - Exact: a reading of the same pose at the same root gives its value as
-//     it was written. That is what the straight play of that state reads.
-//   - Rebuilt: a reading of the same pose at another root, whose mesh had the
-//     same rotation and scale, gives the value the engine computes at the
-//     current root, when that value is certain (CertifiedSum, Rebuild):
-//     the engine adds the mesh's translation last, so a socket's world
-//     position is fl(r + T) with r the same for both readings; every r the
-//     recorded reading allows is tried at the new T, and the value is used
-//     only if they all give the same float. Only while the models stand
-//     where the update's state puts them (no restore since the last update).
-//   - Otherwise the read keeps the live value and is counted as missed: no
-//     value both copies would compute alike is known (the copy that guessed
-//     right reads the engine's own value for that pose, and nothing short of
-//     evaluating the pose gives it).
-// A fresh read that finds its pose and root with another value is counted as
-// conflicting (the keys would not hold all the value depends on); one whose
-// certified rebuild from another root disagrees with it marks that pose
-// never-rebuild for the battle (the arithmetic model would be wrong for it;
-// its other-root readings are dropped) and is counted too.
-// Reads the fight does not make (bone 28 every tick, the camera's, the visual
-// tasks') are left as they are.
+// So the hook decides each read by one rule, a policy of the call site (the
+// rva of its return address; Policy below):
+//   - Outside a battle a session plays (BattleLatch), every read is Live: the
+//     engine's value, as the game would have it.
+//   - In one, a read whose value never reaches fight state is Live too: the
+//     call sites that are not the fight's (the camera, the interface, the
+//     visual tasks; kNotTheFights) and the spawn bone resolver, whose value
+//     only places an effect (Site::DrawOnly).
+//   - Every other read is Anchored: it is given a value computed from fight
+//     state alone, the same on every copy: the owning fighter's fight position
+//     (CharaUnit +0x780, as the update began) plus an offset for the call site
+//     and socket, mirrored by the way the fighter faces (AnchorOffsetFor,
+//     AnchorPosition). The four call sites known to feed fight state have
+//     their own offsets; a call site no one has classified takes the head's
+//     and is logged once a battle, so a newly found site is deterministic by
+//     construction rather than a desync waiting for a report.
+// All 20 references to rva 0x3919D0 in build 13173604 are classified (19
+// calls and an unwind entry), so in practice the unknown-site rule is a net.
+// When the fighter's unit, position or facing cannot be read, an anchored read
+// keeps the engine's value, and is counted and logged.
 //
-// Refreshing the pose before a replayed tick instead was looked at and left
-// out: the pose comes from the engine's component tick (the mesh's virtual
-// +0x7D0), which in SFV's layer class advances looping layers by a fixed 1/60
-// per call and sets material parameters (rva 0xE62E70), so extra calls during
-// a rollback would change the picture after it, and the tick expects the
-// engine's tick function.
+// Beta.8 and beta.9 recorded fresh reads and served them to stale ones, and
+// held a tick for a drawn frame when no recorded value fitted (pose holds).
+// With every read that reaches fight state anchored, neither has a job, and
+// both are gone (docs/design/beta9/pose-hold.md, its beta.10 note).
 //
-// Four of the reads are not recorded and served at all, in a battle a session
-// plays (-sfve_socket_anchor, on by default). Reverse engineering classified
-// every call site by return rva; only these four feed fight state, the rest
-// are drawn only (effects, camera, interface):
-//   0x3BDB02, 0x3BDF3B  CharaUniquePart_036 and _038: the item let go as the
-//                       V-Trigger ends (Sock_Item_R or Sock_Item_L), which
-//                       becomes a projectile (script 50, kind 200)
-//   0x3BC294            CharaUniquePart_015: a dropped prop (b_C_Head), the
-//                       same kind of projectile
-//   0x3A4B79            CharaUniquePart_008: where the claw (b_R_Hand,
-//                       b_L_Hand) or the mask (b_C_Head) starts when knocked off
-// What the bone evaluation gives there can differ between the two copies on
-// a replayed frame, and the projectile keeps it in hashed state. So these
-// reads are given a value computed from fight state alone, the same on both
-// copies: the owning fighter's fight position (CharaUnit +0x780, as the
-// update began) plus an offset for the call site and socket, mirrored by the
-// way the fighter faces (AnchorOffsetFor, AnchorPosition). The item or claw
-// starts from a fixed point near the hand or head, not the hand's own place.
-// When the fighter's unit, position or facing cannot be read, the read takes
-// the record's path as before and is counted (docs/design/beta9/socket-anchors.md).
-//
-// With -sfve_socket_log=1 (development) every fight read is logged too, a
-// missed one with its call site, socket and why.
-//
-// A miss in a battle a session plays is put right by a pose hold
-// (core/PoseHold.hxx, docs/design/beta9/pose-hold.md): the update that missed
-// tells the session (GameAdapter::WantsDrawnFrame), which ends the tick at
-// that frame's start with the models placed for it; the engine draws it, and
-// the next tick plays the frame again, its read now fresh, recorded, and what
-// the copy that guessed right read. PoseFreshness below is the bookkeeping of
-// what the models show; one line is logged per hold ("socket: hold at ...")
-// and the holds are counted with the reads (PoseHoldsSummary).
+// With -sfve_socket_log=1 (development) every anchored read is logged too.
 
-#include "core/PoseHold.hxx"
 #include "mod/SfvOffsets.hxx"
 
-#include <stddef.h>
 #include <stdint.h>
 
-#include <array>
-#include <deque>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace sfve::mod {
 
 constexpr int kMostFighterUnits = (int)sfv::unit::kMostCharaUnits;
 
-namespace socket_reads {
-struct Miss;        // one stale read given the live value (below)
-struct UpdateReads; // the reads of one update (below)
-}
-
-// One fighter unit as an update begins (SfvAdapter, the game thread).
-struct UnitKeys {
+// One fighter unit as an update begins (SfvAdapter, the game thread): what an
+// anchored read of its model is given.
+struct UnitPlace {
 	const uint8_t* chara = nullptr; // the CharaUnit: its visual part's owner
 	int32_t unit = -1;              // its place among the battle's CharaUnits
 	int32_t side = -1;
-	uint64_t pose = 0; // MakePoseKey; 0 unknown
-	uint64_t root = 0; // MakeRootKey
 	// The unit's fight position (sfv::fighter::kFightPosition) and facing as
-	// the update begins, for the socket anchors; `anchorable` only when both
-	// were read and the position is finite.
+	// the update begins; `anchorable` only when both were read and the
+	// position is finite.
 	bool anchorable = false;
 	float position[4] = {};
 	bool facingLeft = false;
@@ -123,39 +68,20 @@ struct UnitKeys {
 struct SocketUpdate {
 	int32_t inputFrame = -1;
 	bool replaying = false; // a rollback's replayed frame (for the log)
-	bool fresh = false;     // the models show the state this update starts from
-	// The models stand where that state puts them: no restore since the last
-	// update, whose visual task placed them (a rebuild needs it).
-	bool placed = false;
-	UnitKeys units[kMostFighterUnits];
+	UnitPlace units[kMostFighterUnits];
 	int unitCount = 0;
 };
 void NoteSocketUpdate(const SocketUpdate& update);
-// A new battle: every recorded read and every count is forgotten (log the
-// counts first, SocketReadsSummary).
+// A new battle: every count, and what was logged once a battle, is forgotten
+// (log the counts first, SocketReadsSummary).
 void ForgetSocketReads();
 // Hooks the socket read; false when it could not be hooked (the reads then
 // stay the game's). Once, from SfveStart. `log`: -sfve_socket_log; `anchor`:
-// -sfve_socket_anchor.
+// -sfve_socket_anchor (off: every read is Live, for a test).
 bool InstallSocketReads(uintptr_t imageBase, bool log, bool anchor);
-// The battle's counts so far, for the log (SfvAdapter, with the keys' cost).
+// The battle's counts so far (socket_reads::CountsText), under the counts'
+// own lock: safe from any thread (the log, a desync report).
 std::string SocketReadsSummary();
-// The latest misses (at most socket_reads::MissRing::kMostMisses) whose frame
-// lies in [first, last], oldest first, for a desync report (copied under the
-// reads' own lock: safe from any thread).
-std::vector<socket_reads::Miss> SocketMissesBetween(int32_t first, int32_t last);
-// The fight's reads in the update just run (since the last NoteSocketUpdate):
-// SfvAdapter asks after each update whether it wants a drawn frame.
-socket_reads::UpdateReads TakeUpdateReads();
-// The battle's pose holds (SfvAdapter, from the session's events): a hold
-// made, a hold whose first update after it was the held frame's and fresh,
-// and an update that wanted a drawn frame and got none, by why.
-void CountPoseHold();
-void CountPoseHoldFresh();
-void CountPoseHoldFailed(pose_hold::Refusal why);
-// "N pose hold(s), ..." (socket_reads::HoldsText), under the reads' lock: safe
-// from any thread. Forgotten with the record (ForgetSocketReads).
-std::string PoseHoldsSummary();
 
 // The same pose on every copy, whatever its window. The engine evaluates a
 // skeletal mesh's bones at the LOD the renderer picks from its size on
@@ -164,10 +90,12 @@ std::string PoseHoldsSummary();
 // Each battle update (SfvAdapter, the game thread, before the update) gives
 // every skeletal mesh component of every fighter unit's actor (partners
 // included) LOD 0 (ForcedLodModel 1, sfv::mesh), which the engine's LOD
-// update (rva 0x1C8B830) takes over the screen size. `visualParts`: the
-// units' CharaVisualParts in the battle's order (null where there is none),
-// `count` of them. Each unit's components are logged once a battle with
-// what the engine had picked (forget with ForgetSocketReads).
+// update (rva 0x1C8B830) takes over the screen size. The anchored reads no
+// longer read the pose, but what is drawn from it (effects, the camera) is
+// then the same picture on every copy. `visualParts`: the units'
+// CharaVisualParts in the battle's order (null where there is none), `count`
+// of them. Each unit's components are logged once a battle with what the
+// engine had picked (forget with ForgetSocketReads).
 void KeepFighterMeshesAtLodZero(uint8_t* const* visualParts, int count);
 
 namespace socket_reads {
@@ -193,30 +121,8 @@ struct MeshLod {
 // with each component as found. Returns how many it wrote.
 int ForceLodZero(uint8_t* actor, std::vector<MeshLod>* seen);
 
-// A read from a call site that is not the fight's, by the rva of its return
-// address: left as it is, not logged.
-bool EveryTick(uint32_t returnRva);
-
 // A socket's name as a number (FNV-1a of its characters, at most 64).
 uint64_t NameKey(const wchar_t* name);
-
-// A run of bytes a key is made of; a null `bytes` (a part the unit lacks)
-// counts as empty, the same on every call.
-struct Run {
-	const uint8_t* bytes = nullptr;
-	size_t size = 0;
-};
-// The pose key: the unit's animation state (its CharaMotionPart's two
-// registered runs, sfv::fighter::kMotionRun and kMotionRun2), its facing
-// (sfv::fighter::kMirrored) and whether its side is drawn small. Every
-// 8-byte-aligned word of the runs that looks like an address (LooksLikeAddress)
-// is hashed as zero, as the state hashes do: a pointer to per-instance heap
-// differs between a play and its replay, and the key must not. Never 0.
-uint64_t MakePoseKey(const Run motion[2], int32_t facing, bool tiny);
-// The root key: where the unit stands (CharaUnit's kUnitRun and kPlaceRun),
-// leaving out kPlaceRun's bone 28 bytes [kPlaceBoneFrom, kPlaceBoneTo).
-// Never 0.
-uint64_t MakeRootKey(const Run& unit, const Run& place);
 
 // What the read wrote: x, y, z in the fight's units, w.
 struct Position {
@@ -224,44 +130,38 @@ struct Position {
 	bool operator==(const Position& o) const; // bitwise
 };
 
-// The mesh component's world transform as the engine keeps it (FTransform):
-// rotation quaternion, translation (cm), scale; the fourth lane of the last
-// two is not compared.
-struct ModelTransform {
-	alignas(16) float rotation[4] = {};
-	float translation[4] = {};
-	float scale[4] = {};
+// What a call site of the socket read is, by the rva of its return address
+// (call site + 5; read in IDA, build 13173604).
+enum class Site : uint8_t {
+	NotTheFights, // kNotTheFights: bone 28 for the camera, the camera's handlers, the visual tasks, the interface
+	DrawOnly,     // the spawn bone resolver (return rva 0x4CFC99): its position only places an effect
+	Known,        // one of the four that feed fight state: 0x3BDB02, 0x3BDF3B, 0x3BC294, 0x3A4B79
+	Unknown,      // any other: not classified
 };
-// The engine's reading of one socket: its mesh's world transform and the
-// socket's world translation (cm), which the read turns into `Position`.
-struct ModelReading {
-	ModelTransform mesh;
-	float socket[3] = {};
-};
-// What the game's read writes for a world translation (sfv::kSocketWorldPosition):
-// x * 0.01f, z * 0.01f, y * -0.01f, 1, each one float multiply.
-Position FightPosition(const float socket[3]);
+Site SiteOf(uint32_t returnRva);
+const char* SiteName(Site site);
 
-// The fight's reads that are given a value computed from fight state alone
-// (see the top of this file), by return rva: 0x3BDB02, 0x3BDF3B, 0x3BC294 and
-// 0x3A4B79. Never one of the reads EveryTick lists.
-bool AnchoredSite(uint32_t returnRva);
+// Version of the anchor rules below: part of the room's build
+// (LayoutRulesId). 2 from beta.10: every call site not known to stay out of
+// fight state is anchored (the head's offset for one not classified), and no
+// read is recorded, served or snapped to a grid any more, so a copy of
+// version 1 computes some reads differently and must not meet one of 2.
+constexpr int kAnchorVersion = 2;
 
-// Version of the offsets below: part of the room's build (LayoutRulesId).
-constexpr int kAnchorVersion = 1;
-
-// Where from the owner's fight position a read at an anchored site starts, in
-// the fight's units: `forward` along the way the fighter faces, `up` from the
+// Where from the owner's fight position an anchored read starts, in the
+// fight's units: `forward` along the way the fighter faces, `up` from the
 // feet.
 struct AnchorOffset {
 	float forward = 0;
 	float up = 0;
 };
+// The head's offset: the dropped prop's, the mask's, and any unknown site's.
+constexpr AnchorOffset kHeadOffset{0.00f, 1.60f};
 // The offset for a site and the socket it asked. A hand-held item
-// (0x3BDB02, 0x3BDF3B): 0.20, 1.00; the head at 0x3BC294: 0.00, 1.60; at
-// 0x3A4B79 a hand (b_R_Hand, b_L_Hand): 0.30, 1.20, the head (b_C_Head): 0.05,
-// 1.60. Any other name there takes the head's and sets `*otherName`, if given.
-// An rva that is not an anchored site gives zeros.
+// (0x3BDB02, 0x3BDF3B): 0.20, 1.00; at 0x3A4B79 a hand (b_R_Hand, b_L_Hand):
+// 0.30, 1.20, the head (b_C_Head): 0.05, 1.60, and any other name there the
+// head's too, setting `*otherName`, if given. Every other rva (the prop's at
+// 0x3BC294, an unknown site's): kHeadOffset.
 AnchorOffset AnchorOffsetFor(uint32_t returnRva, const wchar_t* socket, bool* otherName = nullptr);
 
 // What the read writes: x = base x + (-1 facing left, else 1) * forward,
@@ -269,249 +169,28 @@ AnchorOffset AnchorOffsetFor(uint32_t returnRva, const wchar_t* socket, bool* ot
 // position, four floats.
 Position AnchorPosition(const float base[4], bool facingLeft, const AnchorOffset& offset);
 
-// The grid every value a fight socket read hands the game is snapped to, per
-// component (x, y, z; w stays 1), in a battle a session plays: the fight's
-// units are 1/kGridSteps apart. Evidence (2026-11-13, two field desyncs): the
-// diverging value was one fight socket read (P1 Sock_Item_R from call site rva
-// 0x3BDB02; P1 b_C_Head from rva 0x3A4B79) whose FRESH value differed by
-// 1e-6..2e-6 (1 to 560 float ulps) between two copies with different rollback
-// histories, and the object placed from it kept that value in hashed state.
-// The engine's own evaluation is not bit-reproducible across histories (the
-// bone pose is blended and refreshed on the engine's clock), so what the game
-// is given is made reproducible instead: two copies whose raw reads differ by
-// about 1e-6 now agree, unless a grid boundary falls between them (about 1
-// read in 4,000 at a 2e-6 difference: 2e-6 * 128 = 1/3,900). A power of two, so the
-// scaling is exact. Part of the room's build (LayoutRulesId): copies with
-// another grid never meet.
-constexpr int kGridSteps = 128;
-// v snapped to the grid: floorf(v * 128 + 0.5) * (1/128), each step one single
-// precision operation (no contraction, no double). NaN and infinities (and a
-// value so large the scaling overflows) are returned as they are.
-float SnapToGrid(float v);
-// x, y and z snapped, w as it is.
-Position SnapPosition(Position p);
-// Whether a socket's name is a bone's (b_ or g_: b_L_Foot, b_C_Head,
-// g_X_Trajectory). Only a bone's world position is its transform plus the
-// parent chain's one add, which the rebuild at another root assumes; a mesh
-// socket (Sock_Item_R: GetSocketTransform, rva 0x1C80C90, adds the socket's
-// own offset after the bone's translation) is served exact or live only.
-bool RebuildableSocket(const wchar_t* name);
-// The same rotation and scale, bit for bit.
-bool SameTurnAndScale(const ModelTransform& a, const ModelTransform& b);
-// One axis of the engine's last add, fl(r + root), for every float r with
-// fl(r + recordedRoot) == recordedSum. True with `out` set when they all give
-// the same float (rounding is monotonic, so the smallest and largest such r
-// decide it); false when they do not, when no r gives recordedSum (the
-// engine did not add as assumed), or for a value that is not finite. Single
-// precision adds, round to nearest even, as the engine's SSE add.
-bool CertifiedSum(float recordedSum, float recordedRoot, float root, float* out);
-// The value the read gives at `now` for the pose of `recorded`: the same
-// rotation and scale, and CertifiedSum on each axis, then FightPosition.
-// False when either does not hold.
-bool Rebuild(const ModelReading& recorded, const ModelTransform& now, Position* out, bool grid = false);
-
-struct Key {
-	uint64_t pose = 0;   // MakePoseKey
-	uint64_t socket = 0; // NameKey
-	int32_t unit = -1;   // UnitKeys::unit
-	bool operator==(const Key& o) const { return pose == o.pose && socket == o.socket && unit == o.unit; }
+// The one rule for a read (the top of this file).
+struct ReadRule {
+	bool anchor = false; // false: Live, the engine's value
+	AnchorOffset offset; // where an anchored read starts
+	Site site = Site::Unknown;
+	bool otherName = false; // AnchorOffsetFor's: the claw's site asked a socket it has no offset for
 };
-
-struct KeyHash {
-	size_t operator()(const Key& k) const;
-};
-
-// A fresh read as recorded.
-struct Reading {
-	uint64_t root = 0; // MakeRootKey as the update began
-	Position out;      // what the read wrote
-	// `at` holds the transforms the read came from (SocketReads read them
-	// again and they give `out`); only such a reading is rebuilt from.
-	bool model = false;
-	ModelReading at;
-};
-
-enum class Recorded {
-	New,              // a pose or root not kept before
-	Again,            // the same value again
-	Conflicting,      // the same pose and root with another value (the newer is kept)
-	RebuildDisagrees, // a certified rebuild from another root gave another value: this pose is never rebuilt again
-};
-enum class Found {
-	Exact,     // the same pose and root
-	Rebuilt,   // the same pose at another root, certified
-	NoPose,    // this pose was never read fresh
-	OtherRoot, // read fresh only at other roots, and no certain rebuild
-};
-
-// Recorded reads: up to kRootsPerPose roots per (unit, socket, pose), the
-// oldest root replaced; the oldest pose dropped past `capacity` poses. Not
-// thread-safe: the hook holds a lock.
-class Cache {
-public:
-	static constexpr size_t kRootsPerPose = 4;
-	explicit Cache(size_t capacity = 8192) : capacity_(capacity) {}
-	// Whether the values compared and rebuilt are snapped to the grid
-	// (SnapPosition): the hook sets it before each call, from whether this
-	// battle is one a session plays (the readings it was given are snapped
-	// then, so a rebuild must be too). Off by default.
-	void UseGrid(bool on) { grid_ = on; }
-	Recorded Record(const Key& key, const Reading& reading);
-	// A stale read's value. `now`: the model's transform as the read found it,
-	// when the models stand where the update's state puts them (else null,
-	// and nothing is rebuilt).
-	Found Find(const Key& key, uint64_t root, const ModelTransform* now, Position* out);
-	// False once a rebuild for this pose disagreed with a fresh read, or two
-	// readings of it rebuilt to different values: that one pose (all its
-	// sockets' slots are separate) is never rebuilt again this battle (until
-	// Clear); the others still are.
-	bool Rebuilding(const Key& key) const;
-	// How many (unit, socket, pose) slots are never rebuilt.
-	size_t NeverRebuilt() const { return neverRebuilt_; }
-	void Clear();
-	size_t Size() const { return values_.size(); }
-
-private:
-	struct Slot {
-		std::array<Reading, kRootsPerPose> readings;
-		size_t count = 0;
-		size_t next = 0; // the reading replaced next once all are taken
-		bool neverRebuild = false;
-	};
-	size_t capacity_;
-	size_t neverRebuilt_ = 0;
-	bool grid_ = false;
-	std::unordered_map<Key, Slot, KeyHash> values_;
-	std::deque<Key> order_; // insertion order, for dropping the oldest
-};
-
-// Why a stale read got the live value (the counts' misses, one by one).
-enum class MissReason : uint8_t {
-	NeverSeenPose,           // this pose was never read fresh
-	OtherRootNotCertifiable, // read fresh at other roots only, and no certain rebuild (or no model, or not placed)
-	RebuildingOff,           // read fresh at other roots only, and this pose is never rebuilt
-};
-const char* MissReasonName(MissReason reason);
-
-// One miss, for the desync report: where it was and why.
-struct Miss {
-	int32_t frame = -1; // the input frame of the update that made the read
-	int32_t unit = -1;  // the fighter unit (-1: not known)
-	uint32_t from = 0;  // the call site's rva
-	MissReason reason = MissReason::NeverSeenPose;
-	char socket[32] = {};
-};
-
-// The latest misses of a battle, a ring of kMostMisses: the oldest goes. Not
-// thread-safe: the hook holds a lock.
-class MissRing {
-public:
-	static constexpr size_t kMostMisses = 64;
-	void Add(const Miss& miss);
-	// The misses whose frame lies in [first, last], oldest first.
-	std::vector<Miss> Between(int32_t first, int32_t last) const;
-	size_t Size() const { return count_; }
-	void Clear() { next_ = count_ = 0; }
-
-private:
-	std::array<Miss, kMostMisses> misses_;
-	size_t next_ = 0;
-	size_t count_ = 0;
-};
+// `sessionBattle`: the read is made in a battle a session plays, with the
+// anchors on (BattleLatch, -sfve_socket_anchor). Outside one every read is
+// Live; in one, NotTheFights and DrawOnly are Live, Known and Unknown
+// anchored.
+ReadRule Policy(uint32_t returnRva, const wchar_t* socket, bool sessionBattle);
 
 // One battle's counts.
 struct Counts {
-	uint64_t recorded = 0;     // fresh reads
-	uint64_t exact = 0;        // stale reads given a recorded value of the same pose and root
-	uint64_t rebuilt = 0;      // ...of the same pose at another root, certified
-	uint64_t noPose = 0;       // missed: the pose never read fresh
-	uint64_t otherRoot = 0;    // missed: read fresh at other roots only
-	uint64_t conflicting = 0;  // Recorded::Conflicting
-	uint64_t disagreeing = 0;  // Recorded::RebuildDisagrees
-	uint64_t unkeyed = 0;      // a unit with no keys this update
-	uint64_t anchored = 0;     // reads at an anchored site given the fight's position
-	uint64_t anchorUnresolved = 0; // reads at an anchored site whose unit, position or facing was not known: the record's path
+	uint64_t anchored = 0;         // reads given the fight's position
+	uint64_t unknownSites = 0;     // ...of them at a call site not classified (Site::Unknown)
+	uint64_t anchorUnresolved = 0; // reads to anchor whose unit, position or facing was not known: the engine's value kept
 };
-// "N fresh read(s) recorded, ..., K conflicting (D of them a rebuild's), ...,
-// A given from the fight's position, U anchor unresolved": every count, and
-// `kept`. K counts both kinds, as tools/synctest.ps1 -check fails on
-// "[1-9]... conflicting".
-std::string CountsText(const Counts& counts, size_t kept, size_t neverRebuilt);
-
-// The fight's reads in one battle update (TakeUpdateReads).
-struct UpdateReads {
-	int fresh = 0;  // fresh reads recorded
-	int misses = 0; // stale reads given the live value (Miss)
-	Miss first;     // the first miss (its frame the update's input frame)
-	int32_t side = -1; // the first miss's fighter's side (0 P1, 1 P2; -1 not known)
-};
-
-// One battle's pose holds.
-struct HoldCounts {
-	uint64_t holds = 0; // ticks that ended held for a drawn frame
-	uint64_t fresh = 0; // holds whose first update after was the held frame's and fresh
-	uint64_t failed[pose_hold::kRefusals] = {}; // updates that wanted a drawn frame and got none, by pose_hold::Refusal
-};
-// "H pose hold(s), F gave a fresh read; K failed (state not kept a, held frame
-// b, not fresh after the hold c, chain limit d, refused by GGPO e, first frame
-// f)": every count.
-std::string HoldsText(const HoldCounts& counts);
-
-// What the fighters' models show, for the socket reads (SfvAdapter, the game
-// thread). The engine evaluates the poses once a drawn frame, from what the
-// last update's visual task set; a restore changes the state but not the
-// models.
-//   - fresh: the models show the state the next update starts from: a frame
-//     was drawn since the last update, and nothing was restored since.
-//   - placed: they stand where that state puts them: the last update placed
-//     them, and nothing was restored since (a rebuild needs it).
-// After a pose hold the next update should be the held frame's, fresh; Begin
-// says how it found them, once.
-class PoseFreshness {
-public:
-	enum class AfterHold : uint8_t {
-		None,     // no hold waited for its update
-		Fresh,    // the first update after the hold is the held frame's, and fresh
-		NotFresh, // it is another frame's, or no frame was drawn, or something was restored first
-	};
-	struct Begun {
-		bool fresh = false;
-		bool placed = false;
-		AfterHold afterHold = AfterHold::None;
-	};
-	// The engine drew a frame (the battle frame's hook, once a frame).
-	void Drawn() { fresh_ = true; }
-	// A state was restored (AfterLoad).
-	void Restored() { fresh_ = placed_ = false; }
-	// A new battle: nothing is placed, no hold waits (a drawn frame still counts).
-	void Forget()
-	{
-		placed_ = false;
-		awaitingHold_ = false;
-		heldFrame_ = -1;
-	}
-	// The session ended its tick held for the update at `inputFrame`.
-	void Held(int32_t inputFrame)
-	{
-		awaitingHold_ = true;
-		heldFrame_ = inputFrame;
-	}
-	// An update begins at `inputFrame`.
-	Begun Begin(int32_t inputFrame);
-	// The update ran: its visual task placed the models for the state it left,
-	// which the engine draws next.
-	void Ran()
-	{
-		fresh_ = false;
-		placed_ = true;
-	}
-
-private:
-	bool fresh_ = false;
-	bool placed_ = false;
-	bool awaitingHold_ = false;
-	int32_t heldFrame_ = -1;
-};
+// "A given from the fight's position (N at a site not classified), U anchor
+// unresolved": every count.
+std::string CountsText(const Counts& counts);
 
 } // namespace socket_reads
 

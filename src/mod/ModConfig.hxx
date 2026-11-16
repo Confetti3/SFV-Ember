@@ -22,15 +22,11 @@
 //   -sfve_tiny=MASK      test: a launch that is no room's or replay's (the pipe's, for a
 //                        synctest) draws these sides small: 1 P1, 2 P2, 3 both
 //   -sfve_socket_log=1   diagnostics: log every read of a fighter's model socket the
-//                        fight makes (SocketReads): fresh and recorded, or stale and
-//                        given the straight read, or missed
-//   -sfve_pose_hold=0|1  test: a fight socket read that missed ends the tick held at its
-//                        frame's start, drawn, and the frame is played again (1), or keeps
-//                        the live value (0); without it, kPoseHoldByDefault (ChoosePoseHold)
-//   -sfve_socket_anchor=0|1  test: the four fight socket reads that feed fight state are
-//                        given a value from the fighter's fight position (1), or are
-//                        recorded and served like the others (0); without it,
-//                        kSocketAnchorByDefault (ChooseSocketAnchor)
+//                        fight is given from the fighter's fight position (SocketReads)
+//   -sfve_socket_anchor=0|1  test: the fight socket reads that may feed fight state are
+//                        given a value from the fighter's fight position (1), or keep
+//                        the engine's value (0); without it, kSocketAnchorByDefault
+//                        (ChooseSocketAnchor)
 //   -sfve_replay_any_build=1  diagnostics: Watch now plays a replay made with
 //                        another build (its result says nothing of this build)
 //   -sfve_rng_audit=1    diagnostics: every draw from a random generator in a battle
@@ -152,9 +148,6 @@ struct ModConfig {
 	uint32_t testTiny = 0;
 	// Log the fight's reads of a fighter's model socket (-sfve_socket_log).
 	bool socketLog = false;
-	// Pose holds as a test asks (-sfve_pose_hold): 0 off, 1 on; -1 (not
-	// given): kPoseHoldByDefault (ChoosePoseHold).
-	int poseHold = -1;
 	// Socket anchors as a test asks (-sfve_socket_anchor): 0 off, 1 on; -1
 	// (not given): kSocketAnchorByDefault (ChooseSocketAnchor).
 	int socketAnchor = -1;
@@ -348,23 +341,11 @@ constexpr bool SessionBattleSetUp(ModMode mode, bool rooms, bool launchedBattleL
 // and the game's own for any other. A player build never reads the option.
 TickTasks ChooseTickTasks(const ModConfig& config, bool sessionBattle, BuildKind kind = kBuildKind);
 
-// Pose holds (core/PoseHold.hxx, docs/design/beta9/pose-hold.md): in a battle
-// a session plays (the netplay mode's fighters and lagged replays), a fight
-// socket read that kept the live value ends the tick held at its frame's
-// start, drawn, and the frame is played again with its read fresh. A copy
-// that holds and one that does not compute such a read differently, so it is
-// part of the room's build (mod::LayoutRulesId). Off by default: a socket
-// read that feeds fight state is given the fight's position instead
-// (kSocketAnchorByDefault), so holds are for a test (-sfve_pose_hold=1).
-constexpr bool kPoseHoldByDefault = false;
-// -sfve_pose_hold where a development build was given 0 or 1, else
-// kPoseHoldByDefault. A player build never reads the option.
-bool ChoosePoseHold(const ModConfig& config, BuildKind kind = kBuildKind);
-
 // Socket anchors (mod/SocketReads.hxx, docs/design/beta9/socket-anchors.md):
-// in a battle a session plays, the four fight socket reads that feed fight
-// state are given a value computed from the fighter's fight position instead
-// of the model's. Part of the room's build (mod::LayoutRulesId).
+// in a battle a session plays, every fight socket read that may feed fight
+// state (socket_reads::Policy) is given a value computed from the fighter's
+// fight position instead of the model's. Part of the room's build
+// (mod::LayoutRulesId). Off (a test) leaves every read the engine's.
 constexpr bool kSocketAnchorByDefault = true;
 // -sfve_socket_anchor where a development build was given 0 or 1, else
 // kSocketAnchorByDefault. A player build never reads the option.

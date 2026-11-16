@@ -70,6 +70,11 @@ struct Player {
 	// The player picked Tiny (EMBER_LIBRARY.md section 59): the playback draws
 	// the side small. Written only when set; a header without it reads 0.
 	int size = 0;
+	// The fighter's balance version the battle loaded, which every copy
+	// agreed on before frame 0 (core/MatchData.hxx): the playback launches
+	// exactly it, or refuses on a copy that lacks it. -1 for a header written
+	// before it was recorded (the playback then takes its own newest).
+	int balanceVersion = -1;
 };
 
 // One game of the battle, as the game judged it on its match end's frame.

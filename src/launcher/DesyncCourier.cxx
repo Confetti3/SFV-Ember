@@ -74,17 +74,6 @@ std::string Narrow(const wchar_t* name)
 	return text;
 }
 
-std::string WindowsVersion()
-{
-	OSVERSIONINFOW version{};
-	version.dwOSVersionInfoSize = sizeof(version);
-	const auto rtl =
-		reinterpret_cast<LONG(WINAPI*)(OSVERSIONINFOW*)>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion"));
-	if (!rtl || rtl(&version) != 0) return "Windows (version unavailable)";
-	return "Windows " + std::to_string(version.dwMajorVersion) + "." + std::to_string(version.dwMinorVersion) + " build " +
-		std::to_string(version.dwBuildNumber);
-}
-
 // The intake's name for the channel this launcher updates from, as a crash
 // report sends it.
 std::string Channel()
@@ -472,7 +461,7 @@ private:
 		report.meta.channel = Channel();
 		report.meta.buildId = spooled->buildId;
 		report.meta.sourceRevision = spooled->sourceRevision;
-		report.meta.windowsVersion = WindowsVersion();
+		report.meta.windowsVersion = desync::WindowsVersion();
 		report.logs.push_back({Narrow(ember::Product().gameLog), desync::Record(spooled->comment, spooled->regionLines, tail, spooled->details)});
 		// The state beside the report (a copy's 1 MB of regions and its pointer
 		// census, deflated), unless the intake has refused one already in this

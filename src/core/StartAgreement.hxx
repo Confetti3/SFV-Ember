@@ -19,7 +19,12 @@
 // The follower asks, the reference answers; the reference keeps no state per
 // question, so a lost datagram is simply asked again:
 //   1. the reference's summary: its layout id, its peers' hash of the whole
-//      state, how many regions it lists. Equal hashes: done, nothing written.
+//      state, how many regions it lists, and what its battle computes with
+//      (core/MatchData.hxx: each fighter's balance version and move data),
+//      which the follower's question carries too. Facts that differ end the
+//      agreement on both sides (Result::DataDiffers): no repair makes two
+//      copies that compute with different data play the same match. Equal
+//      hashes: done, nothing written.
 //   2. its region list: per region an identity, the peers' hash, the size and
 //      its place in its own layout. A region is named by its owner the same
 //      way in every process, so a stable name pairs it; a name that is not
@@ -51,13 +56,16 @@
 // under the most a match's bridge carries (GgpoMaximumPacket).
 
 #include "core/GameAdapter.hxx"
+#include "core/MatchData.hxx"
 
 #include <stddef.h>
 #include <stdint.h>
 
 #include <functional>
 #include <map>
+#include <set>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -67,7 +75,7 @@ namespace sfve {
 namespace start_state {
 
 constexpr uint16_t kMagic = 0x5345;
-constexpr uint16_t kVersion = 1;
+constexpr uint16_t kVersion = 2; // 2: the summary and its question carry the match data
 // Every datagram's most bytes (the largest, a region list's or a chunk's, is
 // under it; static_asserts in the .cxx).
 constexpr size_t kMaxDatagram = 900;
@@ -145,6 +153,8 @@ struct Message {
 	// Summary
 	uint64_t layoutId = 0, hash = 0;
 	uint32_t entryCount = 0;
+	// Summary, and an Ask for it: the sender's match data.
+	match_data::Facts facts;
 	// Entries
 	uint32_t part = 0;
 	std::vector<Entry> entries;
@@ -202,6 +212,7 @@ public:
 		Differs = 3,       // differed; still differs after what could be written
 		LayoutsDiffer = 4, // another layout: nothing compared
 		TimedOut = 5,      // no answer in time (a reference: P2 never said it was done)
+		DataDiffers = 6,   // the copies compute with different game data: the match must not start
 	};
 	static const char* ResultName(Result result);
 
@@ -220,6 +231,8 @@ public:
 		size_t window = 16;
 		// A region name that names the same region in every process.
 		std::function<bool(const std::string&)> stableName;
+		// What this copy's battle computes with (core/MatchData.hxx).
+		match_data::Facts facts;
 	};
 
 	// One repaired or still differing region, for the log and the report.
@@ -243,6 +256,10 @@ public:
 		// A reference: each peer's result as it said it (Running: never said).
 		std::vector<Result> peers;
 		uint64_t elapsedMs = 0;
+		// DataDiffers: how this copy's facts part from the other's (a
+		// follower's: P1's; P1's: P2's), and the other copy's facts.
+		std::optional<match_data::Difference> dataDifference;
+		match_data::Facts otherFacts;
 	};
 
 	StartAgreement(GameAdapter& game, StartChannel& channel, Config config);
@@ -257,6 +274,8 @@ public:
 private:
 	void PumpReference(uint64_t nowMs);
 	void Answer(size_t peer, const start_state::Message& m);
+	// A peer's match data, as its question for the summary carried it.
+	void NotePeerFacts(size_t peer, const match_data::Facts& facts);
 	void PumpFollower(uint64_t nowMs);
 	void OnFollowerMessage(const start_state::Message& m, uint64_t nowMs);
 	void AskDue(uint64_t nowMs);
@@ -281,6 +300,7 @@ private:
 	// Reference.
 	uint64_t requiredDoneMs_ = 0; // when the last required peer said it was done (0: not yet)
 	std::map<uint32_t, std::vector<uint64_t>> addressUnits_; // per region asked for, of state_
+	std::set<size_t> loggedWatcherData_;                       // watchers whose differing data was logged
 
 	// Follower.
 	enum class Step { Summary, Entries, Bytes, Done };

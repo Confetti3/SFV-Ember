@@ -311,6 +311,9 @@ std::optional<mod::MatchPicks> PicksOf(const replay::Header& h)
 		picks.players[side].loadCode = p.loadCode;
 		// As the recording was drawn (Tiny fighters, EMBER_LIBRARY.md section 59).
 		picks.players[side].tiny = p.size == sfve::picks::kSizeTiny;
+		// At the recording's balance version (the launch refuses a copy that
+		// lacks it); an older header's newest here.
+		picks.players[side].balanceVersion = p.balanceVersion >= 0 ? p.balanceVersion : mod::kNewestBalanceVersion;
 	}
 	if (picks.players[0].loadCode < 0 || picks.players[1].loadCode < 0) picks.players[0].loadCode = picks.players[1].loadCode = mod::kNoLoadCode;
 	picks.rules.stage = sf4e::platform::Utf8ToWide(h.stageCode.c_str());

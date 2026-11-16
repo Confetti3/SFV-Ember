@@ -48,6 +48,7 @@
 #include "mod/NetGuard.hxx"
 #include "mod/NetplayMode.hxx"
 #include "mod/OfflineDialogs.hxx"
+#include "mod/PakList.hxx"
 #include "mod/ProjectileRelease.hxx"
 #include "mod/SdlPads.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -293,6 +294,9 @@ extern "C" int SfveStart(int beforeGameCode)
 		return 1;
 	}
 	const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+	// Every pak the engine will mount, and whether each is Steam's own
+	// (PakList): logged now, and named in every report.
+	TakePakCensus();
 	// The scene manager's tick runs the game-thread queue; without it the
 	// title cannot be moved on, so the offline notice must stay.
 	const bool scene = InstallGameScene(base);
@@ -314,9 +318,10 @@ extern "C" int SfveStart(int beforeGameCode)
 	// A Tiny fighters room's tiny sides are drawn small (EMBER_LIBRARY.md
 	// section 59); with no tiny side the hooks change nothing.
 	InstallTinyFighters(base);
-	// The fight's reads of the fighters' models take the pose a straight play
-	// of the same state shows, on replayed frames too (docs/design/beta8/
-	// desync.md); -sfve_socket_log (development) logs every one.
+	// The fight's reads of the fighters' models that may feed fight state are
+	// given a value from the fighter's fight position in a battle a session
+	// plays (docs/design/beta9/socket-anchors.md); -sfve_socket_log
+	// (development) logs every one.
 	InstallSocketReads(base, Config().socketLog, ChooseSocketAnchor(Config()));
 	// Development: every random draw a battle update makes, placed against
 	// the rollback state (RngAudit; docs/design/beta8/determinism.md).

@@ -17,6 +17,8 @@
 //     into that data object through its own setters.
 // The game then loads the stage and fighters and enters the battle itself.
 
+#include "mod/BalanceVersionRules.hxx"
+
 #include <stdint.h>
 
 #include <array>
@@ -70,6 +72,12 @@ struct FighterPick {
 	// battle draws this side small (TinyFighters). Presentation only: nothing
 	// written to the game's launch depends on it.
 	bool tiny = false;
+	// The fighter's balance version (BalanceVersionRules.hxx):
+	// kNewestBalanceVersion takes this copy's newest, which every copy of a
+	// room's match then compares before frame 0 (core/MatchData.hxx); a
+	// replay names the recorded one. The launch writes it explicitly either
+	// way, and refuses a version this copy does not have.
+	int32_t balanceVersion = kNewestBalanceVersion;
 };
 
 // The voice a launch writes for `pick`: its own where it is one of the

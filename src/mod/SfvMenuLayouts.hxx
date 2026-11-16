@@ -53,6 +53,11 @@ constexpr uint32_t kCharaSetupData = 48;
 // CostumeDatas: a TArray of FStrings (16 bytes each), its count at +88; a
 // costume number is a place in it.
 constexpr uint32_t kCharaCostumeDatas = 80;
+// The entry's loaded BattleResourceList: a KWBattleResourceListAsset that
+// the fighter table's parse (rva 0x56D050) loads by the path the embedded
+// table names (/Game/Chara/<code>/DA_<code>_BattleResourceList, through rva
+// 0x53D080). Its data comes from the paks, not the exe: namespace versions.
+constexpr uint32_t kCharaBattleResources = 128;
 constexpr uint32_t kCharaCostumeCount = 88;
 constexpr uint32_t kGameStringStride = 16;
 // PersonalData: the fighter's name (FText), as the versus screen's
@@ -60,6 +65,48 @@ constexpr uint32_t kGameStringStride = 16;
 constexpr uint32_t kPersonalName = 80;
 
 } // namespace content
+
+// A fighter's balance versions: the BattleResourceList asset (content::
+// kCharaBattleResources), a TArray of 24-byte entries, oldest first, each
+// {int version; FString path of that version's battle resources}. Read so by
+// the game's resolve (rva 0x56B2E0) and its resource lookup (rva 0x5518C0,
+// path through rva 0x553530). The resolve keeps a version the list holds and
+// any version from kAnyVersionFirst to kAnyVersionLast (development versions:
+// their path is made from the last entry's), and makes any other, and -1,
+// the last entry's. Each pak set has its own list: a pak that replaces the
+// asset (a mod, or an older file) can end it early.
+namespace versions {
+constexpr uint32_t kEntries = 40;
+constexpr uint32_t kCount = 48;
+constexpr uint32_t kEntryStride = 24;
+constexpr uint32_t kEntryVersion = 0;
+constexpr int32_t kAnyVersionFirst = 500;
+constexpr int32_t kAnyVersionLast = 599;
+// More entries than any list holds (a season's update adds one or two).
+constexpr int32_t kMostEntries = 256;
+} // namespace versions
+
+// A fighter's moves at one balance version: the KWBattleResourceDataAsset the
+// resource lookup returns (sfv::kBattleResourceLookup), and the resources it
+// lists (IDA, build 13173604). The asset keeps two TArrays of resource
+// objects (rva 0x551480): +56 (count +64) and, for the alternate set, +72
+// (count +80); a fighter's action part binds resources 0 to 3 of one of them
+// (rva 0x2F67B0, 0x2FB6F0: 2 and 3 always, 0 and 1 unless alternate), the
+// game's KWBAC, KWBCM and KWBCH classes among them. Each resource is a
+// UKWBattleResource (56 bytes, rva 0xC04960): its one property, "Data" (rva
+// 0xC72550: an array of bytes at +40), is the file the battle reads (its
+// pointer is what the action part binds), its byte count at +48.
+namespace resources {
+constexpr uint32_t kSet = 56;
+constexpr uint32_t kSetCount = 64;
+constexpr uint32_t kAlternateSet = 72;
+constexpr uint32_t kAlternateSetCount = 80;
+constexpr uint32_t kData = 40;
+constexpr uint32_t kDataCount = 48;
+// Bounds no stock resource reaches, so a misread stops the hash.
+constexpr int32_t kMostResources = 16;
+constexpr int32_t kMostBytes = 64 * 1024 * 1024;
+} // namespace resources
 
 // DA_Spec's pick-space map (EMBER_LIBRARY.md section 41). The spec's
 // post-init (rva 0x574150) parses the CharaSpec table embedded in the exe
@@ -302,6 +349,17 @@ constexpr uint32_t kSettingCodeSize = 4;
 constexpr uint32_t kSettingCostume = 176;
 constexpr uint32_t kSettingColour = 180;
 constexpr uint32_t kSettingVoice = 240; // int: kVoiceJapanese or kVoiceEnglish (rva 0x7CAA40, from a CharPkg's +61)
+// int: the fighter's balance version (KWBattlePlayerSetting's SetCharaVersion,
+// rva 0x7C6D10, writes it). The battle's resource load (rva 0x69BC20) and
+// the battle's creation (rva 0x6A45E0) resolve it first (rva 0x7B32D0,
+// sfv::kResolvePlayerVersion) against this copy's version list (namespace
+// versions): -1 and any version the list lacks become the list's last
+// entry, so a record nobody wrote keeps the previous battle's version when
+// the new fighter has it. The resolved value is written back here and, when
+// the record names a support fighter, to +172 too. No CharPkg field carries
+// it (rva 0x7CAA40 copies none to it).
+constexpr uint32_t kSettingVersion = 156;
+constexpr uint32_t kSettingSupportVersion = 172;
 // The mode data object's type for each target (the first step's mapping:
 // 0 -> 4, 2 -> 0, else 3).
 constexpr int kVersusCpuType = 4;

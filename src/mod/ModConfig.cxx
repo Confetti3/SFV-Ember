@@ -210,7 +210,6 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.script.idle = idle == 0 || idle == 1 ? (int)idle : -1;
 	c.testTiny = (uint32_t)options.Number(L"sfve_tiny", 0) & 3u;
 	c.socketLog = options.Number(L"sfve_socket_log", 0) != 0;
-	c.poseHold = (int)options.Number(L"sfve_pose_hold", -1);
 	c.socketAnchor = (int)options.Number(L"sfve_socket_anchor", -1);
 	c.replayAnyBuild = options.Number(L"sfve_replay_any_build", 0) != 0;
 	c.rngAudit = options.Number(L"sfve_rng_audit", 0) != 0;
@@ -300,12 +299,6 @@ CrtMathChoice ChooseCrtMath(const ModConfig& config, BuildKind kind)
 		return {config.crtFma3 ? CrtMath::Fma3 : CrtMath::Sse2, true};
 	}
 	return {RollsBack(config.mode) ? kRollbackCrtMath : CrtMath::AsStarted, false};
-}
-
-bool ChoosePoseHold(const ModConfig& config, BuildKind kind)
-{
-	if (kind == BuildKind::Development && (config.poseHold == 0 || config.poseHold == 1)) return config.poseHold == 1;
-	return kPoseHoldByDefault;
 }
 
 bool ChooseSocketAnchor(const ModConfig& config, BuildKind kind)
