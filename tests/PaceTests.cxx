@@ -50,6 +50,43 @@ TEST_CASE("the log texts")
 	CHECK(pace::SummaryText(summary) == "pace: battle: 2 windows, slowest 36.1 a second, 1 under 55 a second");
 }
 
+TEST_CASE("a window's time is its frames an update was due in; the frames held still are told apart")
+{
+	// A game at 60 a second: 600 updates over a WIN held for 6 s (360 frames)
+	// in the middle read 60 a second, not 37.5.
+	pace::FrameClock clock;
+	clock.Frame(1000); // the first frame: nothing before it to count
+	CHECK(clock.Read().due == 0);
+	CHECK(clock.Read().held == 0);
+	std::int64_t now = 1000;
+	const auto frames = [&](int count, bool due) {
+		for (int i = 0; i < count; i++) {
+			if (due) clock.Due();
+			now += 1000; // a 60th of a second, in ticks of 60,000 a second
+			clock.Frame(now);
+		}
+	};
+	frames(300, true);
+	frames(360, false);
+	frames(300, true);
+	CHECK(clock.Read().due == 600 * 1000);
+	CHECK(clock.Read().held == 360 * 1000);
+	pace::Window window;
+	window.updates = 600;
+	window.seconds = clock.Read().due / 60000.0;
+	window.heldSeconds = clock.Read().held / 60000.0;
+	CHECK(pace::Rate(window) == doctest::Approx(60.0));
+	CHECK_FALSE(pace::IsSlow(window));
+	CHECK(pace::WindowText(window) == "pace 600 updates in 10.0 s (60.0 a second), 6.0 s held");
+	// A frame is due once whatever marks it, and only the frame it ran in.
+	clock.Due();
+	clock.Due();
+	clock.Frame(now + 500);
+	clock.Frame(now + 700);
+	CHECK(clock.Read().due == 600 * 1000 + 500);
+	CHECK(clock.Read().held == 360 * 1000 + 200);
+}
+
 TEST_CASE("the controller events list their frames, a few at most")
 {
 	CHECK(pace::PadEventsText({}, 0) == "controller events: none");

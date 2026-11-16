@@ -100,10 +100,17 @@ bool RollbackSession::Start(const Config& config, std::string* error)
 	for (HashRecord& h : history_) h = {};
 	allHashes_.clear();
 	checkpoints_.clear();
-	for (KeptState& kept : checkpointStates_) kept.frame = -1;
+	// Every buffer of a state is made here, before frame 0, so the battle's
+	// first frames allocate none (its first checkpoints' kept states were
+	// made as they came, a state's size each: a dip in the pace line).
+	const size_t stateSize = game_->Layout().TotalSize();
+	for (KeptState& kept : checkpointStates_) {
+		kept.frame = -1;
+		kept.bytes.resize(stateSize);
+	}
 	// A watcher keeps no saves: one buffer holds the state it hashes.
 	pool_.assign(watches ? 1 : kPoolSlots, Slot{});
-	for (Slot& s : pool_) s.bytes.resize(game_->Layout().TotalSize());
+	for (Slot& s : pool_) s.bytes.resize(stateSize);
 	confirmed_ = -1;
 	rollingBack_ = false;
 	rollbackFrom_ = rollbackEnd_ = -1;
@@ -805,7 +812,7 @@ const uint8_t* RollbackSession::SavedState(int frame) const
 const std::vector<uint8_t>* RollbackSession::CheckpointState(int frame) const
 {
 	for (const KeptState& kept : checkpointStates_) {
-		if (kept.frame == frame && !kept.bytes.empty()) return &kept.bytes;
+		if (frame >= 0 && kept.frame == frame) return &kept.bytes; // -1: none kept there yet
 	}
 	return nullptr;
 }
@@ -1024,7 +1031,9 @@ void RollbackSession::RecordHash(int frame, const uint8_t* bytes, long long copy
 		allHashes_[frame] = {frame, hash};
 	}
 	if (checkpoint) {
-		layout.PeerRegionHashesSaved(bytes, checkpoints_[frame]); // a replay overwrites it
+		std::vector<RegionHash>& regions = checkpoints_[frame]; // a replay overwrites it
+		regions.reserve(layout.Regions().size());
+		layout.PeerRegionHashesSaved(bytes, regions);
 		if (config_.onCheckpoint) config_.onCheckpoint(frame, hash); // RegionHashesAt(frame) answers
 		QueryPerformanceFrequency(&perSecond);
 		const auto us = [&](long long ticks) { return ticks * 1000000 / perSecond.QuadPart; };

@@ -251,6 +251,7 @@ void NetplayMode::Frame(SfvAdapter& adapter)
 			startTime_);
 		adapter.SetStartTime(startTime_);
 	}
+	adapter.NoteUpdateDue();
 	last_ = session_->Step(local);
 	NoteScenesSkip(adapter);
 	DumpIfRequested();
@@ -385,6 +386,7 @@ bool NetplayMode::WatchFrame(SfvAdapter& adapter)
 		adapter.SetStartTime(startTime_);
 	}
 	NoteFightStart(adapter, session_->Frame());
+	adapter.NoteUpdateDue();
 	last_ = session_->Step(0);
 	NoteScenesSkip(adapter);
 	const bool advanced = last_ == RollbackSession::StepResult::Advanced;

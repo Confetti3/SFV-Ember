@@ -20,6 +20,7 @@
 #include "mod/GameHooks.hxx"
 #include "mod/GameInput.hxx"
 #include "mod/IntroSkip.hxx"
+#include "mod/Pace.hxx"
 #include "mod/RegionTable.hxx"
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvRegionNames.hxx"
@@ -226,6 +227,11 @@ public:
 		uint64_t waiting = 0;
 	};
 	void SetPaceSource(std::function<PaceCounts()> source) { paceSource_ = std::move(source); }
+	// An update is due in the frame now running: the mode steps its session
+	// (whether a frame is played or waits for the other player's inputs), so
+	// the frame's time is the pace line's. A frame Advance plays forward is
+	// due by itself; one the battle stands still in is not (pace::FrameClock).
+	void NoteUpdateDue() { paceClock_.Due(); }
 
 private:
 
@@ -298,11 +304,14 @@ private:
 		int64_t tickTicks = 0, replayedTicks = 0, callbackTicks = 0;
 	};
 	UpdateCosts costs_;
-	// The pace of the updates played forward (mod/Pace.hxx): when the window
-	// the next costs line covers began (a monotonic tick, 0 not begun), and
-	// the session's counts then.
+	// The pace of the updates played forward (mod/Pace.hxx): the battle's
+	// frames' time (QueryPerformanceCounter ticks, split by whether an update
+	// was due), whether the window the next costs line covers has begun, and
+	// the clock's and the session's counts then.
 	std::function<PaceCounts()> paceSource_;
-	int64_t paceFrom_ = 0;
+	pace::FrameClock paceClock_;
+	bool paceBegun_ = false;
+	pace::FrameClock::Totals clockAtStart_;
 	PaceCounts paceAtStart_;
 
 	// Ending the decided match's scenes (EndScenes); the game's functions
