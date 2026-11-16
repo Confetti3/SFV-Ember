@@ -114,13 +114,15 @@ LRESULT CALLBACK OverlayWndProc(HWND window, UINT message, WPARAM wParam, LPARAM
 		if (!wParam) s_inputBridge.RequestClear(); // nothing stays held while away
 	}
 	if (s_haveUi) {
+		// In the lifecycle's guard before the interface is asked anything, so
+		// a teardown waits for this message, the interface's own hook included.
+		const sf4e::ui::OverlayLifecycle::Message handling(s_lifecycle);
 		std::function<bool(unsigned, unsigned long long, long long)> takesMessage;
 		{
 			std::lock_guard lock(s_uiMutex);
 			takesMessage = s_ui.takesMessage;
 		}
 		if (takesMessage && takesMessage(message, wParam, lParam)) return 0;
-		const sf4e::ui::OverlayLifecycle::Message handling(s_lifecycle);
 		if (ImGui::GetCurrentContext() && s_r.ready) {
 			const LRESULT handled =
 				sf4e::ui::HandleOverlayMessage(window, message, wParam, lParam, s_shown && s_focused, s_available);

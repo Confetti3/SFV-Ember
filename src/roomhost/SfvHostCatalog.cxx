@@ -111,6 +111,8 @@ bool PrepareCatalog(const Config& config, std::string& reason)
 		return false;
 	}
 	s_space = std::move(space);
+	// Once per load: a second load starts the order again.
+	s_rosterOrder.clear();
 	for (int id = 0; id < (int)s_space.fighters.size(); id++) s_rosterOrder.push_back(id);
 	s_catalog.rosterOrder = s_rosterOrder.data();
 	s_catalog.costumeLimit = sfve::picks::CostumeLimit(s_space);
