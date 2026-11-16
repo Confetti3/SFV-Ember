@@ -177,7 +177,8 @@ try {
 			if (!(Status 1).shell.shown) { Press 1 'START' | Out-Null }
 			Start-Sleep 3
 			Shot $shots 'ranked-room'
-			Press 1 'B' | Out-Null
+			# The shell stays open: on the room page of a seated member B is Leave seat (Ember 1.6.0), which
+			# would unseat copy 1 before its Ready. The game's start closes the shell.
 		}
 	}
 	foreach ($i in 0, 1) { CtlOk $i "delay $delay" | Out-Null }
