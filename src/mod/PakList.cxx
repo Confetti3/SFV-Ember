@@ -6,6 +6,7 @@
 #include <windows.h>
 
 #include <stdlib.h>
+#include <wchar.h>
 
 #include <filesystem>
 #include <mutex>
