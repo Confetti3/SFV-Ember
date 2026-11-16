@@ -283,8 +283,11 @@ The development build of this branch, two copies on the laptop unless said.
    - Play it back with `-sfve_replay_lag=1..7` and `-sfve_replay_jitter=SEED`.
    - Every checkpoint equals the recording.
    - `kowait.state` changes at each KO, and no `this battle has no round's end wait unit` line appears.
-7. **Battle frame counts.** In each copy's log: `adapter: the battle frame counted N updates ... before frame 0;
-   0 on every copy`, and `ticks:` lines with the same input frames on both copies.
+7. **Battle frame counts.** In each copy's log: `adapter: the battle frame counted N updates ... before frame 0`.
+   N is that process's own (it is zeroed at frame 0), so it is not compared between copies, and neither are
+   the `ticks:` lines, which include rollback replays. What can be checked is the zeroed count: it is hashed,
+   so the copies agree on it, and a real difference shows as a checkpoint mismatch (`desync: checkpoint`).
+   A run with no mismatch is the check.
 8. **Socket policy.**
    - The 45-fighter sweep (`sfv-sweep.ps1`) with `-moves -practice -check`: no `a call site not classified`
      line.
