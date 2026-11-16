@@ -659,3 +659,67 @@ TEST_CASE("in a battle nothing loads, nothing grows, and the pictures go once it
 	CHECK(cycle.Current() >= 0);
 	CHECK(watch.DrawnLastFrame());
 }
+
+TEST_CASE("the backdrop is allowed at the main menu with no game being played, watched or replayed")
+{
+	const Surface menu{true, true, false, false, false};
+	CHECK(Allowed(menu));
+	Surface closed = menu;
+	closed.shellShown = false;
+	CHECK_FALSE(Allowed(closed));
+	Surface elsewhere = menu;
+	elsewhere.mainMenu = false; // a battle, a loading screen, the WIN
+	CHECK_FALSE(Allowed(elsewhere));
+	Surface fighting = menu;
+	fighting.fighting = true;
+	CHECK_FALSE(Allowed(fighting));
+	Surface watching = menu;
+	watching.watching = true;
+	CHECK_FALSE(Allowed(watching));
+	Surface replaying = menu;
+	replaying.replaying = true;
+	CHECK_FALSE(Allowed(replaying));
+}
+
+TEST_CASE("a room whose game is over shows the backdrop again: pictures released in the battle load once it is back")
+{
+	// The field log (beta.9): a room's match state stays PostMatch after a
+	// game until the next one starts; the shell was shown over the menu all
+	// that time and the backdrop stayed black. The shell's frame says what the
+	// room's state is as `fighting` only for a game being prepared or played.
+	Cycle cycle(8, 5, Timing{4, 0.5, 0.5, 0.5});
+	DrawWatch watch;
+	std::set<int> alive;
+	double now = 0;
+	std::uint64_t frame = 0;
+	int loads = 0;
+	const auto step = [&](const Surface& surface) {
+		watch.Presented(++frame, now += kFrame);
+		if ((cycle.Current() >= 0 || cycle.NextReady()) && watch.IdleFor(kIdleReleaseSeconds, now)) cycle.Reset();
+		for (int entry : cycle.TakeReleases()) CHECK(alive.erase(entry) == 1);
+		if (!Allowed(surface)) return;
+		if (watch.AskedWithin(kAskedSeconds, now)) {
+			if (const std::optional<int> wanted = cycle.Wanted()) {
+				cycle.Started(*wanted);
+				loads++;
+				if (cycle.Loaded(*wanted, true)) alive.insert(*wanted);
+			}
+		}
+		watch.Asked();
+		cycle.Advance(kFrame);
+		for (int entry : cycle.TakeReleases()) CHECK(alive.erase(entry) == 1);
+		if (!cycle.Shown().Empty()) watch.Drawn();
+	};
+	const Surface menu{true, true, false, false, false};
+	const Surface battle{false, false, true, false, false};
+	for (int i = 0; i < 60 * 10; i++) step(menu);
+	REQUIRE(cycle.Current() >= 0);
+	for (int i = 0; i < 60 * 30; i++) step(battle);
+	CHECK(cycle.Alive() == 0);
+	const int loadsBefore = loads;
+	// The game over: the menu again, whatever the room still remembers.
+	for (int i = 0; i < 60 * 5; i++) step(menu);
+	CHECK(loads > loadsBefore);
+	CHECK(cycle.Current() >= 0);
+	CHECK(watch.DrawnLastFrame());
+}

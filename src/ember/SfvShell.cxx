@@ -4,6 +4,7 @@
 #include "ember/RoomBattle.hxx"
 #include "ember/SfvArt.hxx"
 #include "ember/SfvBackdrop.hxx"
+#include "ember/SfvBackdropRules.hxx"
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvEleven.hxx"
 #include "ember/SfvHitboxes.hxx"
@@ -515,12 +516,13 @@ overlay::OverlayUi::Shown Draw()
 	DrawSfvTraining(*shell.frame, presentation.Visible(), shell.host.Shell().UnreadChat(), overlay::GameWindowFocused());
 	DrawReplayControls(shell, snapshot, presentation.Visible());
 	// The artwork behind the shell's pages only while it is shown over the
-	// game's main menu, with no match, watched match or replay: never over a
-	// battle, a loading screen or the WIN (SfvBackdrop).
-	const bool backdrop = presentation.Visible() && snapshot.menuContext == input::MenuContext::MainMenu &&
-		snapshot.session.match == sf4e::netplay::MatchState::None && !snapshot.watchedGame.Active() &&
-		!snapshot.replays.playback.playback;
-	BackdropFrame(backdrop, shell.host.Shell().Navigation().Screen());
+	// game's main menu, with no game being played, watched or replayed: never
+	// over a battle, a loading screen or the WIN (SfvBackdrop). A room whose
+	// last game is over is back at the menu (PostMatch lasts until the next
+	// game), so it counts.
+	const bool artwork = sfve::backdrop::Allowed({presentation.Visible(), snapshot.menuContext == input::MenuContext::MainMenu,
+		sf4e::netplay::Fighting(snapshot.session.match), snapshot.watchedGame.Active(), snapshot.replays.playback.playback});
+	BackdropFrame(artwork, shell.host.Shell().Navigation().Screen());
 	const double now = ImGui::GetTime();
 	if (presentation.Visible() != shell.wasShown) shell.changedAt = now;
 	const float fade = FadeProgress(now - shell.changedAt);

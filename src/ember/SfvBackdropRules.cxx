@@ -177,6 +177,11 @@ float ScrimAt(const Scrim& scrim, float x, float y)
 	return top + (bottom - top) * y;
 }
 
+bool Allowed(const Surface& surface)
+{
+	return surface.shellShown && surface.mainMenu && !surface.fighting && !surface.watching && !surface.replaying;
+}
+
 UvRect CoverFit(int width, int height, float targetWidth, float targetHeight, float anchorX, float anchorY)
 {
 	UvRect uv;
