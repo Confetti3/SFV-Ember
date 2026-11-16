@@ -52,6 +52,11 @@ struct FighterFrame {
 	// Training's own advantage the game keeps (kFrameAdvantage, cached): for
 	// the log beside the meter's reading only.
 	int gameAdvantage = 0;
+	// Which way the fighter faces (the action part's kMirrored, as
+	// SfvAdapter::FacingRight reads it) and where it stands along the stage
+	// (kFightPosition's x), for the Training lab's facing and its log.
+	bool facingRight = true;
+	float x = 0;
 };
 
 // One action part's boxes after a tick, as the game holds them (the hitbox

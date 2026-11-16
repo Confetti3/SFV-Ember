@@ -35,6 +35,14 @@
 
 namespace sfve::mod {
 
+class SfvAdapter;
+// What a battle of the player's own records for each slot this tick, as the
+// pads left it (input::PadSource::Pads): the Training lab's one place to put
+// its input in (SfvTrainingLab), which it does only in the Training battle.
+// One hook; null for none. Game thread, inside InputRecord.
+using TrainingPadsHook = void (*)(SfvAdapter& adapter, uint32_t* values, int slots);
+void SetTrainingPadsHook(TrainingPadsHook hook);
+
 // The bits recorded in any slot of a pad's input record ring
 // (sfv::inputunit::kRings): 0 when the battle has recorded nothing pressed
 // for that pad since its input unit was made.
@@ -65,6 +73,9 @@ public:
 	const RegionNames& Names() const { return regionNames_; }
 	// The battle's match data (rounds, results); null until bound.
 	const uint8_t* BattleData() const { return battleData_; }
+	// The same, for the one writer of Training's dummy control (SfvTrainingLab,
+	// sfv::dummy), which writes it only in the Training battle.
+	uint8_t* TrainingBattleData() const { return battleData_; }
 	// The fighter of `side` (0 P1, 1 P2) faces right: the fight does not mirror
 	// its x (sfv::fighter::kMirrored). None while the battle's fighters cannot
 	// be found or read.

@@ -92,6 +92,8 @@ bool FighterReader::ReadFighter(const Fighter& f, FighterFrame& out) const
 	const int32_t* header = nullptr;
 	int32_t hitStopElapsed = 0, hitStopTotal = 0, frame = 0, timeScale = 0, vital = 0, vitalMax = 0;
 	int16_t untilActionable = 0, posture = 0, total = 0;
+	int32_t mirrored = 0;
+	float position = 0;
 	struct Boundaries {
 		int32_t first, last, interrupt;
 	} boundaries{};
@@ -106,7 +108,8 @@ bool FighterReader::ReadFighter(const Fighter& f, FighterFrame& out) const
 		!ReadField(reinterpret_cast<const uint8_t*>(header), 0, &boundaries) ||
 		!ReadField(reinterpret_cast<const uint8_t*>(header), fighter::kHeaderTotalShort, &total) ||
 		!ReadField(reinterpret_cast<const uint8_t*>(header), fighter::kHeaderPosture, &posture) ||
-		!ReadField(f.statusPart, fighter::kVital, &vital) || !ReadField(f.statusPart, fighter::kVitalMax, &vitalMax)) {
+		!ReadField(f.statusPart, fighter::kVital, &vital) || !ReadField(f.statusPart, fighter::kVitalMax, &vitalMax) ||
+		!ReadField(f.actionPart, fighter::kMirrored, &mirrored) || !ReadField(f.unit, fighter::kFightPosition, &position)) {
 		return false;
 	}
 	out.stateKind = KindOf(state);
@@ -120,6 +123,8 @@ bool FighterReader::ReadFighter(const Fighter& f, FighterFrame& out) const
 	out.hitStop = hitStopElapsed < hitStopTotal;
 	out.vital = Fixed(vital);
 	out.vitalMax = Fixed(vitalMax);
+	out.facingRight = mirrored != 1;
+	out.x = position;
 	out.valid = true;
 	return true;
 }

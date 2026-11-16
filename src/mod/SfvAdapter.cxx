@@ -17,6 +17,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cmath>
 #include <iterator>
@@ -449,6 +450,15 @@ void SfvAdapter::CollectPostRestore(uint8_t* manager)
 	}
 }
 
+namespace {
+std::atomic<TrainingPadsHook> s_trainingPads{nullptr};
+} // namespace
+
+void SetTrainingPadsHook(TrainingPadsHook hook)
+{
+	s_trainingPads = hook;
+}
+
 void SfvAdapter::OnInputRecord(uint8_t* inputUnit)
 {
 	inputUnit_ = inputUnit;
@@ -463,6 +473,10 @@ void SfvAdapter::OnInputRecord(uint8_t* inputUnit)
 		}
 		values[p] = input::RecordedInput(padSource_, values[p], pending_.p[p], loadHeld_[p]);
 	}
+	// A battle the pads play (never a session's or a replay's, nor one still
+	// loading for them): the Training lab may put its input in.
+	if (padSource_ == input::PadSource::Pads)
+		if (const TrainingPadsHook hook = s_trainingPads.load()) hook(*this, values, kPlayers);
 }
 
 PackedInput RecordedInputBits(const uint8_t* inputUnit, int pad)
