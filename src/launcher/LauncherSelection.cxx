@@ -4,14 +4,27 @@
 // window draws Ember's own art (its ground and button prompts) and no
 // fighter. The selection files an update package may carry are the mod's
 // rules (SfvSelectionAssetPath), the same library every program links.
+// The game's roster is read from the running game (SfvCatalog), so outside it
+// the catalog is empty: no fighter is valid, and a name falls back.
 
 #include "ember/SfvSelectionAssetPath.hxx"
 
+#include "common/GameCatalog.hxx"
 #include "common/SelectionAssetPath.hxx"
 #include "ui/SelectionArt.hxx"
 #include "ui/SelectionLabels.hxx"
 
 #include <string>
+
+namespace ember {
+
+const GameCatalog& Catalog()
+{
+	static const GameCatalog none{};
+	return none;
+}
+
+} // namespace ember
 
 namespace sf4e::selection {
 
