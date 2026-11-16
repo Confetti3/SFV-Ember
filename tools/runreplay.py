@@ -429,6 +429,12 @@ def run(a) -> int:
             failure = failure or f"copy 0's replay: complete {h0['complete']}, {len(h0['games'])} game(s)"
     except lib.SfveError as e:
         failure = str(e)
+        # What copy 0 showed when it failed: its shell's status, and its window with --shots.
+        try:
+            print(f"copy 0 at the failure: shell {json.dumps(shell(0))}")
+            shot(a.shots, "failure", 0)
+        except (lib.SfveError, OSError) as more:
+            print(f"copy 0 at the failure: not read ({more})")
     for i in (0, 1):
         try:
             print(f"copy {i}: replays {json.dumps(replays(i))}")
