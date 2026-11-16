@@ -9,6 +9,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -67,15 +68,17 @@ TEST_CASE("two owners changing their own keys at once lose neither's")
 {
 	const std::filesystem::path folder = FreshFolder("threads");
 	constexpr int kRounds = 60;
-	const auto owner = [&folder](const char* key) {
+	std::atomic<int> failed{0};
+	const auto owner = [&folder, &failed](const char* key) {
 		for (int round = 1; round <= kRounds; round++) {
 			std::string error;
-			CHECK(UpdateSettingsFile(folder, kFile, [&](nlohmann::json& file) { file[key] = round; }, error));
+			if (!UpdateSettingsFile(folder, kFile, [&](nlohmann::json& file) { file[key] = round; }, error)) failed++;
 		}
 	};
 	std::thread first(owner, "backgroundArtwork"), second(owner, "screenMode");
 	first.join();
 	second.join();
+	CHECK(failed == 0);
 	std::string problem;
 	const nlohmann::json file = ReadSettingsFile(folder, kFile, problem);
 	CHECK(file["backgroundArtwork"] == kRounds);
