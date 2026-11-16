@@ -39,7 +39,7 @@ STEP_BACKDROP = False  # --step-backdrop: each shot on the backdrop's next pictu
 
 
 def status(index: int) -> dict:
-    return json.loads(lib.request(index, "status")[3:])
+    return json.loads(lib.request(index, "status", idempotent=True)[3:])
 
 
 def shell(index: int) -> dict:

@@ -299,7 +299,7 @@ class Copy:
     def status(self) -> dict:
         if self.stop.is_set():
             raise Stopped()
-        reply = lib.request(self.index, "status")
+        reply = lib.request(self.index, "status", idempotent=True)
         if not reply.startswith("ok "):
             raise CaptureError(f"status: {reply}")
         return json.loads(reply[3:])

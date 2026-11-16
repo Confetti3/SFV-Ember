@@ -105,7 +105,7 @@ def main(argv: list[str]) -> int:
         # play (an unfocused SFV draws nothing and never leaves its title).
         inst = lib.launch(0, "netplay", ["-sfve_pads=0", "-sfve_background=1", "-sfve_crash_command=1"])
         lib.boot_to_menu(0, shot_on_timeout=Path(r"D:\sfv-re\shots\runcrash-boot.png"), bring_to_front=False)
-        status = json.loads(lib.request(0, "status")[3:])
+        status = json.loads(lib.request(0, "status", idempotent=True)[3:])
         print(f"crash record before: {json.dumps(status.get('crashRecord'))}")
         record_state = status.get("crashRecord") or {}
         if not record_state.get("dumpWriterHooked"):

@@ -33,7 +33,7 @@ _CHECKPOINT = re.compile(r"checkpoint: frame (\d+) hash ([0-9a-f]+)")
 
 
 def netplay_status(index: int) -> dict:
-    return json.loads(lib.request(index, "status")[3:])["battle"]["mode"]
+    return json.loads(lib.request(index, "status", idempotent=True)[3:])["battle"]["mode"]
 
 
 def logged_checkpoints(index: int) -> dict[int, str]:

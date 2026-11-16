@@ -37,7 +37,7 @@ CLOSE_LIMIT_S = 5.0
 
 
 def status(index: int) -> dict:
-    return json.loads(lib.request(index, "status")[3:])
+    return json.loads(lib.request(index, "status", idempotent=True)[3:])
 
 
 def ctl(index: int, line: str) -> str:
