@@ -10,6 +10,7 @@
 #include "ember/SfvSelection.hxx"
 #include "mod/Log.hxx"
 
+#include "platform/Utf8.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "ui/AppearanceGrid.hxx"
@@ -889,7 +890,7 @@ void SfvSelectionScreen::LinkRandom(std::vector<MenuEntry>& rows, const grid::Se
 	const auto card = [&table](grid::Cell cell) {
 		const std::optional<std::string> code = grid::CodeAt(table, cell);
 		if (!code || *code == grid::kRandomCellCode) return std::string();
-		const std::optional<int> id = FighterId(std::wstring(code->begin(), code->end()));
+		const std::optional<int> id = FighterId(sf4e::platform::Utf8ToWide(code->c_str()));
 		return id ? CardId(kFighterCard, *id) : std::string();
 	};
 	const auto link = [&rows](const std::string& id, std::string MenuEntry::*side) {

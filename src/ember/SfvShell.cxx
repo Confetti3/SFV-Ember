@@ -22,6 +22,7 @@
 #include "mod/Log.hxx"
 #include "overlay/Overlay.hxx"
 
+#include "platform/Utf8.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "common/MenuInputCapture.hxx"
@@ -178,7 +179,7 @@ public:
 	{
 		const PlayerPick player = CurrentPick();
 		const std::string stage = OfflineStageCode(player.stage);
-		LaunchTraining(FighterPickOf(player.pick), FighterPickOf(CurrentDummy().pick), std::wstring(stage.begin(), stage.end()),
+		LaunchTraining(FighterPickOf(player.pick), FighterPickOf(CurrentDummy().pick), sf4e::platform::Utf8ToWide(stage.c_str()),
 			"Training select's Start", "home.training_unavailable");
 		// Training plays the fighter in hand: a Random pick rolls again.
 		if (PickRandom()) RandomFighterPlayed();

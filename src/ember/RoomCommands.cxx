@@ -9,6 +9,7 @@
 #include "mod/Log.hxx"
 #include "mod/VersusLaunch.hxx"
 
+#include "platform/Utf8.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/NativeMenuLock.hxx"
 #include "ember/RoomBattle.hxx"
@@ -73,7 +74,7 @@ std::optional<std::vector<std::int64_t>> BannedStagesOf(const std::string& text)
 	std::istringstream in(text);
 	std::string code;
 	while (std::getline(in, code, ',')) {
-		const std::optional<int> id = StageId(std::wstring(code.begin(), code.end()));
+		const std::optional<int> id = StageId(sf4e::platform::Utf8ToWide(code.c_str()));
 		if (!id) return std::nullopt;
 		ids.push_back(*id);
 	}

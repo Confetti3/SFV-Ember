@@ -6,6 +6,7 @@
 #include "mod/SfvLayoutRules.hxx"
 #include "mod/SfvOffsets.hxx"
 
+#include "platform/Utf8.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
 #include "common/StageCatalog.hxx"
@@ -302,12 +303,6 @@ void FillLimits()
 const mod::StageContent* StageAt(std::int64_t stage)
 {
 	return stage >= 0 && stage < (std::int64_t)s_lists.stages.size() ? &s_lists.stages[(size_t)stage] : nullptr;
-}
-
-// The game's codes are ASCII capitals and digits.
-std::wstring WideCode(const std::string& code)
-{
-	return std::wstring(code.begin(), code.end());
 }
 
 // What the spec lists for ELEVEN, once, so a run's log says which look Eleven
@@ -649,7 +644,7 @@ std::string ElevenName()
 mod::FighterPick FighterPickOf(const sf4e::selection::Pick& pick)
 {
 	const picks::Loadout loadout = picks::LoadoutOf(pick);
-	return {WideCode(FighterCode(pick.fighter)), pick.costume, pick.color, loadout.choice[picks::VSkill],
+	return {sf4e::platform::Utf8ToWide(FighterCode(pick.fighter).c_str()), pick.costume, pick.color, loadout.choice[picks::VSkill],
 		loadout.choice[picks::VTrigger], picks::VoiceIn(pick).value_or(mod::kVoiceOfOptions)};
 }
 
@@ -681,7 +676,7 @@ int OwnVoice(std::int64_t fighter)
 std::optional<int> FighterId(const std::wstring& code)
 {
 	for (size_t id = 0; id < s_lists.fighters.size(); id++) {
-		if (WideCode(s_lists.fighters[id].code) == code) return (int)id;
+		if (sf4e::platform::Utf8ToWide(s_lists.fighters[id].code.c_str()) == code) return (int)id;
 	}
 	return std::nullopt;
 }
@@ -689,7 +684,7 @@ std::optional<int> FighterId(const std::wstring& code)
 std::optional<int> StageId(const std::wstring& code)
 {
 	for (size_t id = 0; id < s_lists.stages.size(); id++) {
-		if (WideCode(s_lists.stages[id].code) == code) return (int)id;
+		if (sf4e::platform::Utf8ToWide(s_lists.stages[id].code.c_str()) == code) return (int)id;
 	}
 	return std::nullopt;
 }
@@ -747,7 +742,7 @@ MatchLaunch LaunchPicks(const RoomMatch& match)
 		picks.players[side].loadCode =
 			codes[0] && codes[1] ? (std::int64_t)sfve::picks::LoadCodeButtons(*codes[side]) : mod::kNoLoadCode;
 	}
-	picks.rules.stage = WideCode(StageCode(match.stage));
+	picks.rules.stage = sf4e::platform::Utf8ToWide(StageCode(match.stage).c_str());
 	picks.rules.rounds = match.rounds;
 	picks.rules.timeFrames = *mod::RoomClockFrames(match.roundSeconds);
 	picks.practice = match.practice;

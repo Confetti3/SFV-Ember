@@ -12,6 +12,7 @@
 #include "overlay/FrameGrab.hxx"
 
 #include "netplay/SettingsStore.hxx"
+#include "platform/Utf8.hxx"
 #include "ui/GameMenu.hxx"
 #include "ui/Theme.hxx"
 
@@ -528,9 +529,7 @@ std::string StartReport(const std::string& args)
 		if (rest.empty()) return "error usage: backdrop report [sheets|plain] <folder>";
 		std::lock_guard lock(s_reportMutex);
 		if (s_report.running) return "error a report is running";
-		std::wstring wide((size_t)MultiByteToWideChar(CP_UTF8, 0, rest.data(), (int)rest.size(), nullptr, 0), L'\0');
-		MultiByteToWideChar(CP_UTF8, 0, rest.data(), (int)rest.size(), wide.data(), (int)wide.size());
-		const std::filesystem::path folder(wide);
+		const std::filesystem::path folder(sf4e::platform::Utf8ToWide(rest.c_str()));
 		std::error_code error;
 		std::filesystem::create_directories(folder, error);
 		Report fresh;
