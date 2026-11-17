@@ -122,12 +122,18 @@ $discordCompanion = [bool](Select-String -LiteralPath (Join-Path $BuildDir 'CMak
 # loads and the record of what it was built with.
 $binaryNames = @('Launcher.exe', 'Updater.exe', 'sfv_ember.dll') +
 	@(if ($discordCompanion) { 'ember-discord.exe', 'discord_partner_sdk.dll', 'discord-build.json' })
+# SFVE_VERSION as CMakeLists.txt makes it: the project's version, with the
+# suffix a beta adds ("${PROJECT_VERSION}-beta.N"); a final has none.
+$cmakeText = Get-Content -LiteralPath (Join-Path $repo 'CMakeLists.txt') -Raw
+if ($cmakeText -cnotmatch '(?m)^project\(sfv_ember VERSION ([0-9.]+)') { throw 'CMakeLists.txt names no sfv_ember version.' }
+$sfveVersion = $Matches[1]
+if ($cmakeText -cmatch '(?m)^set\(SFVE_VERSION "\$\{PROJECT_VERSION\}-([^"]+)"\)') { $sfveVersion = "$sfveVersion-$($Matches[1])" }
+elseif ($cmakeText -cnotmatch '(?m)^set\(SFVE_VERSION "\$\{PROJECT_VERSION\}"\)') { throw 'CMakeLists.txt sets SFVE_VERSION in a form this script does not read.' }
 $receipt = [ordered]@{
 	schema = 1
 	product = 'SFV Ember'
-	# SFVE_VERSION as CMakeLists.txt makes it: the project's version and its suffix.
-	version = '{0}-{1}' -f (Select-String -LiteralPath (Join-Path $repo 'CMakeLists.txt') -Pattern '^project\(sfv_ember VERSION ([0-9.]+)').Matches[0].Groups[1].Value,
-		(Select-String -LiteralPath (Join-Path $repo 'CMakeLists.txt') -Pattern '^set\(SFVE_VERSION "\$\{PROJECT_VERSION\}-([^"]+)"\)').Matches[0].Groups[1].Value
+	# SFVE_VERSION as CMakeLists.txt makes it (above).
+	version = $sfveVersion
 	sourceRoot = $repo
 	sourceRevision = $sourceRevision
 	sourceFingerprint = $sourceFingerprint
