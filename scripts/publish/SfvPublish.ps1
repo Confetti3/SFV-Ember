@@ -140,8 +140,10 @@ function Read-PubRules([string[]]$Paths, [string[]]$MachineNames = @()) {
     }
     if (!$rules.Count) { throw 'The rules files hold no rule.' }
     # The scanning machine's own names (its user, profile folder and computer), read at run time.
+    # A name as a word of its own (a path's folder, a user field), not inside another word: a user named Ann is in
+    # C:\Users\Ann\ but not in "Annual" (a time-zone table's city names hold such words).
     foreach ($name in @($MachineNames | Where-Object { $_ -and $_.Length -ge 3 } | Sort-Object -Unique)) {
-        $rules.Add([pscustomobject]@{id = 'machine-name'; regex = [regex]::new([regex]::Escape($name), 'CultureInvariant, IgnoreCase')})
+        $rules.Add([pscustomobject]@{id = 'machine-name'; regex = [regex]::new("(?<![A-Za-z0-9])$([regex]::Escape($name))(?![A-Za-z0-9])", 'CultureInvariant, IgnoreCase')})
     }
     $rules
 }

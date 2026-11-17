@@ -29,6 +29,10 @@ try {
     try { Assert-PubNoHits (Find-PubHits $rules ([Text.Encoding]::UTF8.GetBytes('SecretWord')) 'where') 'Text'; throw 'no refusal' }
     catch { Check ($_.Exception.Message -like '*rules.txt#2*' -and $_.Exception.Message -notlike '*SecretWord*') 'a hit names the rule, never its text' }
     Reject { Read-PubRules @() } 'Pass the rules file*'
+    $named = Read-PubRules @("$($x.F)\rules.txt") @('Ann')
+    Check (@(Find-PubHits $named ([Text.Encoding]::UTF8.GetBytes('C:\Users\Ann\Desktop')) 't').Count -ge 1) 'a machine name in a path'
+    Check (@(Find-PubHits $named ([Text.Encoding]::Unicode.GetBytes('c:/users/ann/x')) 't').Count -ge 1) 'a machine name in UTF-16, any case'
+    Check (@(Find-PubHits $named ([Text.Encoding]::UTF8.GetBytes('Annual Standard Time')) 't').Count -eq 0) 'a machine name inside another word is no hit'
     Pass 'rules: regex and literal lines, raw and UTF-16 at both alignments; a refusal never repeats the forbidden text'
 
     # --- plan ------------------------------------------------------------------------------------------------------
