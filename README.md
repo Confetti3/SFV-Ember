@@ -33,7 +33,7 @@ Ember release.
 - Replays and the Discord companion from Ember.
 - In-app updates from this repository's releases.
 
-This is a beta. Known limits: Ember's menus and its battles follow the pad in
+Known limits: Ember's menus and its battles follow the pad in
 the game's first slot; the frame meter is in Training only; non-English
 translations are drafts.
 

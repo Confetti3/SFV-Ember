@@ -16,9 +16,14 @@ try {
     # --- labels, tags, rules -------------------------------------------------------------------------------------
     $l = ConvertFrom-PubLabel '0.1.0-beta.9'
     Check ($l.tag -ceq 'v0.1.0-beta.9' -and $l.releaseBranch -ceq 'release/beta.9' -and $l.title -ceq 'SFV Ember 0.1.0 Beta 9' -and $l.zip -ceq 'sfv-ember-0.1.0-beta.9.zip') 'label'
-    Reject { ConvertFrom-PubLabel '0.1.0-rc1' } 'Not a beta label*'
+    $f = ConvertFrom-PubLabel '0.1.0'
+    Check ($f.tag -ceq 'v0.1.0' -and $f.releaseBranch -ceq 'release/0.1.0' -and $f.title -ceq 'SFV Ember 0.1.0' -and $f.zip -ceq 'sfv-ember-0.1.0.zip' -and !$f.prerelease -and $l.prerelease) 'final label'
+    Reject { ConvertFrom-PubLabel '0.1.0-rc1' } 'Not a release label*'
+    Reject { ConvertFrom-PubLabel '0.1.0-beta.0' } 'Not a release label*'
+    $cmakeHead = "project(sfv_ember VERSION 0.1.0 LANGUAGES CXX)`n"
+    Check ((Get-PubCmakeVersion ($cmakeHead + "set(SFVE_VERSION `"`${PROJECT_VERSION}-beta.10`")`n")) -ceq '0.1.0-beta.10' -and (Get-PubCmakeVersion ($cmakeHead + "set(SFVE_VERSION `"`${PROJECT_VERSION}`")`n")) -ceq '0.1.0' -and (Get-PubCmakeVersion $cmakeHead) -ceq '') 'CMake version'
     Check ((Compare-PubTag 'v0.1.0-beta.10' 'v0.1.0-beta.9') -eq 1 -and (Compare-PubTag 'v0.1.0' 'v0.1.0-beta.9') -eq 1 -and (Compare-PubTag 'v0.1.0-beta.8' 'v0.1.0-beta.8') -eq 0) 'tag order'
-    Pass 'labels and tag order (beta.10 after beta.9, the final after its betas)'
+    Pass 'labels and tag order (beta.10 after beta.9, the final after its betas); a final label and the version CMake makes'
 
     $x = Fresh
     $rules = Read-PubRules @("$($x.F)\rules.txt")
@@ -259,6 +264,20 @@ try {
     Invoke-Quiet { Invoke-PubPromote $x.Ctx $x.P }
     Check ($x.World.Pushes.Count -eq $pushes) 'a finished promote does nothing again'
     Pass 'promote: library, private release branch and public main pushed as fast-forwards, the draft published by id at the commit, the zip downloaded and compared'
+
+    # A final after its betas: the same stages, a draft that is not a pre-release, published as the latest release.
+    $z = Fresh
+    Write-File "$($z.Sfv)\CMakeLists.txt" "project(sfv_ember VERSION 0.1.0 LANGUAGES CXX)`nset(SFVE_VERSION `"`${PROJECT_VERSION}`")`n"
+    $z.C1 = Commit $z.Sfv '0.1.0'
+    $z.Ctx.Label = '0.1.0'; $z.Ctx.Root = "$($z.F)\state\0.1.0"; New-Item -ItemType Directory -Path $z.Ctx.Root -Force | Out-Null
+    Through $z 'draft'
+    $finalDraft = Get-FakeRelease $z.World (Read-PubJson "$($z.Ctx.Root)\draft\evidence.json").facts.releaseId
+    Check ($finalDraft.draft -and !$finalDraft.prerelease -and $finalDraft.name -ceq 'SFV Ember 0.1.0' -and $finalDraft.tag_name -ceq 'v0.1.0') 'final draft shape'
+    Invoke-Quiet { Invoke-PubPromote $z.Ctx $z.P }
+    $finalDraft = Get-FakeRelease $z.World $finalDraft.id
+    Check (!$finalDraft.draft -and !$finalDraft.prerelease -and $finalDraft.target_commitish -ceq $z.C1) 'final published, not a pre-release'
+    Check ((G "$($z.F)\origin.git" @('rev-parse', 'release/0.1.0')) -ceq $z.C1 -and (G "$($z.F)\public.git" @('rev-parse', 'refs/tags/v0.1.0')) -ceq $z.C1) 'final tag and release branch'
+    Pass 'a final label: drafted and published as a release, not a pre-release; release/0.1.0 on origin, v0.1.0 on public'
 
     # interrupted at publish: the re-run resumes without pushing again
     $y = Fresh; Through $y 'draft'; $y.World.FailPatch = $true

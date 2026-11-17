@@ -8,6 +8,7 @@
 #   scripts\publish.ps1 -Stage draft   -Label 0.1.0-beta.9
 #   scripts\publish.ps1 -Stage promote -Label 0.1.0-beta.9 [-RoomsConfirmed]
 #   scripts\publish.ps1 -Stage status  -Label 0.1.0-beta.9
+# A final takes its plain version as the label (-Label 0.1.0): a release, not a pre-release, and the latest.
 #
 # Every stage takes -DryRun (every check, no change anywhere), -Rules <file>[,<file>] (else the config's), and is
 # safe to run again: a finished stage is checked and left alone, an unfinished one resumes. -Redo supersedes a stage

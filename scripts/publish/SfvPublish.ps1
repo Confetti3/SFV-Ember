@@ -53,15 +53,26 @@ function Write-PubLog([object]$Ctx, [string]$Text) {
 }
 function ConvertTo-PubText([object]$Result) { [Text.UTF8Encoding]::new($false).GetString([byte[]]$Result.bytes) }
 
-# The label: 0.1.0-beta.9 and what follows from it.
+# The label and what follows from it: a beta (0.1.0-beta.9) is published as a pre-release, a final (0.1.0) as the
+# repository's latest release.
 function ConvertFrom-PubLabel([string]$Label) {
-    if ($Label -cnotmatch '^([0-9]{1,4})\.([0-9]{1,4})\.([0-9]{1,4})-beta\.([1-9][0-9]{0,3})$') { throw "Not a beta label (0.1.0-beta.9): $Label" }
+    if ($Label -cnotmatch '^([0-9]{1,4})\.([0-9]{1,4})\.([0-9]{1,4})(?:-beta\.([1-9][0-9]{0,3}))?$') { throw "Not a release label (0.1.0-beta.9 or 0.1.0): $Label" }
     $version = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+    $beta = if ($Matches[4]) { [int]$Matches[4] } else { 0 }
     [pscustomobject]@{
-        label = $Label; tag = "v$Label"; version = $version; beta = [int]$Matches[4]
-        releaseBranch = "release/beta.$($Matches[4])"; title = "SFV Ember $version Beta $($Matches[4])"
+        label = $Label; tag = "v$Label"; version = $version; beta = $beta; prerelease = $beta -gt 0
+        releaseBranch = $(if ($beta) { "release/beta.$beta" } else { "release/$version" })
+        title = $(if ($beta) { "SFV Ember $version Beta $beta" } else { "SFV Ember $version" })
         zip = "sfv-ember-$Label.zip"; folder = "sfv-ember-$Label"
     }
+}
+# The version CMakeLists.txt makes: PROJECT_VERSION, with SFVE_VERSION's suffix when it has one; '' when it makes none.
+function Get-PubCmakeVersion([string]$Cmake) {
+    if ($Cmake -cnotmatch '(?m)^project\(sfv_ember VERSION ([0-9.]+)') { return '' }
+    $project = $Matches[1]
+    if ($Cmake -cmatch '(?m)^set\(SFVE_VERSION "\$\{PROJECT_VERSION\}-([^"]+)"\)') { return "$project-$($Matches[1])" }
+    if ($Cmake -cmatch '(?m)^set\(SFVE_VERSION "\$\{PROJECT_VERSION\}"\)') { return $project }
+    ''
 }
 # Orders release tags (v0.1.0-beta.8, v0.1.0): version, then a beta before the final. Returns -1, 0 or 1.
 function Compare-PubTag([string]$Left, [string]$Right) {
@@ -434,9 +445,8 @@ function Invoke-PubPlan([object]$Ctx, [hashtable]$P) {
 
     # The version the build will report, the room build and the library the README pins.
     $cmake = Get-PubShow $Ctx $repo $commit 'CMakeLists.txt'
-    $projectVersion = if ($cmake -cmatch '(?m)^project\(sfv_ember VERSION ([0-9.]+)') { $Matches[1] } else { '' }
-    $suffix = if ($cmake -cmatch '(?m)^set\(SFVE_VERSION "\$\{PROJECT_VERSION\}-([^"]+)"\)') { $Matches[1] } else { '' }
-    if ("$projectVersion-$suffix" -cne $label.label) { throw "CMakeLists.txt at $commit makes version $projectVersion-$suffix, not $($label.label)." }
+    $made = Get-PubCmakeVersion $cmake
+    if ($made -cne $label.label) { throw "CMakeLists.txt at $commit makes version '$made', not $($label.label)." }
     $space = Get-PubShow $Ctx $repo $commit 'data/pick-space.json' | ConvertFrom-Json
     if ([string]$space.build -cnotmatch $PubRoomBuildPattern) { throw "data/pick-space.json names no SFV room build: $($space.build)" }
     $roomBuild = [pscustomobject]@{id = [string]$space.build; matchLine = $Matches[1]; pickHash = $Matches[2]; layoutId = $Matches[3]}

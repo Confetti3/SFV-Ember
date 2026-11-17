@@ -107,6 +107,7 @@ function Invoke-FakeGh([object]$World, [string]$PublicBare, [string[]]$A) {
         if ($LASTEXITCODE) { return ConvertTo-FakeResult '' 1 'gh: Validation Failed (HTTP 422) target_commitish' }
         & git -C $PublicBare update-ref "refs/tags/$($release.tag_name)" $request.target_commitish
         $release.draft = $false; $release.target_commitish = $request.target_commitish; $release.published_at = $World.Clock.ToString('o')
+        if ($null -ne $request.prerelease) { $release.prerelease = [bool]$request.prerelease }
         if ($World.PatchThenFail) { return ConvertTo-FakeResult '' 1 'gh: connection reset after the request was applied' }
         return ConvertTo-FakeResult ($release | ConvertTo-Json -Depth 5)
     }

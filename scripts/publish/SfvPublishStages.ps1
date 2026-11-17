@@ -418,11 +418,12 @@ function Get-PubReleaseAssets([object]$Ctx, [object]$Plan) {
 }
 function Get-PubNotesText([object]$Ctx) { [IO.File]::ReadAllText((Join-Path $Ctx.Root 'notes.md')).Replace("`r`n", "`n").TrimEnd() }
 
-# A release read back by id is exactly this plan's draft: tag, title, pre-release, notes and assets by digest.
+# A release read back by id is exactly this plan's draft: tag, title, pre-release or not, notes and assets by digest.
 function Assert-PubDraftRelease([object]$Ctx, [object]$Plan, [object]$Release, [object[]]$Assets, [switch]$Published) {
     if ($Release.tag_name -cne $Plan.tag) { throw "Release $($Release.id) is $($Release.tag_name), not $($Plan.tag)." }
     if ($Release.name -cne $Plan.title) { throw "Release $($Release.id) is titled '$($Release.name)', not '$($Plan.title)'." }
-    if ($Release.prerelease -ne $true) { throw "Release $($Release.id) is not a pre-release." }
+    $prerelease = (ConvertFrom-PubLabel $Plan.label).prerelease
+    if ([bool]$Release.prerelease -ne $prerelease) { throw "Release $($Release.id) is $(if ($prerelease) { 'not ' })a pre-release, as $($Plan.label) $(if ($prerelease) { 'is' } else { 'is not' })." }
     if ($Published) { if ($Release.draft -ne $false) { throw "Release $($Release.id) is still a draft." } }
     elseif ($Release.draft -ne $true) { throw "Release $($Release.id) is not a draft any more." }
     if (([string]$Release.body).Replace("`r`n", "`n").TrimEnd() -cne (Get-PubNotesText $Ctx)) { throw "Release $($Release.id)'s notes are not the planned notes." }
@@ -458,14 +459,15 @@ function Invoke-PubDraft([object]$Ctx, [hashtable]$P) {
     if ($newer.Count) { throw "A release as new or newer is published already: $(@($newer.tag_name) -join ', ')." }
     if (Get-PubRemoteRef $Ctx $Ctx.Repo $Ctx.Config.publicRemote "refs/tags/$($plan.tag)") { throw "The public repository has the tag $($plan.tag) already." }
     $notesPath = Join-Path $Ctx.Root 'notes.md'
-    $outcome = Invoke-PubOutward $Ctx 'draft' "draft pre-release $($plan.tag) on $repo with $(@($assets.name) -join ', ')" {
+    $prerelease = (ConvertFrom-PubLabel $plan.label).prerelease
+    $outcome = Invoke-PubOutward $Ctx 'draft' "draft $(if ($prerelease) { 'pre-release' } else { 'release' }) $($plan.tag) on $repo with $(@($assets.name) -join ', ')" {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
         if (!$ours) {
             # Target: the default branch for now; promote names the commit when it publishes (the commit reaches the
             # public repository only when main is fast-forwarded, just before).
             $request = Join-Path $dir 'create-request.json'
             Write-PubText $request (ConvertTo-PubJsonText ([ordered]@{tag_name = $plan.tag; target_commitish = 'main'; name = $plan.title
-                body = (Get-PubNotesText $Ctx); draft = $true; prerelease = $true}))
+                body = (Get-PubNotesText $Ctx); draft = $true; prerelease = $prerelease}))
             $created = ConvertTo-PubText (Invoke-PubGh $Ctx @('api', '-X', 'POST', "repos/$repo/releases", '--input', $request)) | ConvertFrom-Json
             if ([string]$created.id -cnotmatch '^[1-9][0-9]*$' -or $created.draft -ne $true) { throw 'GitHub did not return a draft with an id.' }
             Write-PubText $statePath (ConvertTo-PubJsonText ([ordered]@{releaseId = [string]$created.id; createdAt = Get-PubNow $Ctx; planSha256 = $planRead.sha256}))
@@ -654,7 +656,11 @@ function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
         }
         $outcome = Invoke-PubOutward $Ctx 'publish' "publish release $id ($($plan.tag)) at $($plan.source.commit.Substring(0, 12))" {
             $request = Join-Path $dir 'publish-request.json'
-            Write-PubText $request (ConvertTo-PubJsonText ([ordered]@{draft = $false; prerelease = $true; target_commitish = $plan.source.commit; tag_name = $plan.tag}))
+            # A final becomes the repository's latest release; a beta stays a pre-release, which GitHub never marks latest.
+            $prerelease = (ConvertFrom-PubLabel $plan.label).prerelease
+            $body = [ordered]@{draft = $false; prerelease = $prerelease; target_commitish = $plan.source.commit; tag_name = $plan.tag}
+            if (!$prerelease) { $body.make_latest = 'true' }
+            Write-PubText $request (ConvertTo-PubJsonText $body)
             Invoke-PubGh $Ctx @('api', '-X', 'PATCH', "repos/$repo/releases/$id", '--input', $request) | Out-Null
             'published'
         }
