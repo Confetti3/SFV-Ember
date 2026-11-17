@@ -116,6 +116,15 @@ compares the installed files with these hashes, as for a built pair.
 }
 ```
 
+### The build PC
+
+`laptop.host` names the Windows build PC by its SSH alias. `"local"` makes it this PC: the agent's phases run in a
+local PowerShell and its copies are file copies (SfvPublishOperations.ps1), with every check unchanged. A local
+build PC needs, in its `interactive` folder, `scripts\publish\local-queue.ps1` copied as `sfv-start.ps1` and a file
+`local-queue` holding the Discord SDK archive's path. The queue starts each job detached at below-normal priority
+and holds `D:\sf4-build\heavy-build.lock`, which the desktop's other builds take too, so it waits while another
+heavy build runs. Its checkouts may be this PC's own worktrees at the plan's commits; they must be clean.
+
 The rules file is the forbidden-string list kept outside the repository (git filter-repo's replace-text format).
 It has to be the same file at every stage: the plan pins its SHA-256.
 

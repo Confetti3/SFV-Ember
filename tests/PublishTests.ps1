@@ -371,6 +371,25 @@ try {
     $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
     Check (!$result.ok -and $result.error -like '*not behind*') 'a diverged checkout is refused'
     Pass 'build PC agent: fetches the bundles, fast-forwards both checkouts to the plan''s commits, writes the job; refuses a used folder, a dirty or a diverged checkout'
+    # the desktop as its own build PC: local operations and the local queue
+    $ops = New-PubOperations
+    $ran = & $ops.Ssh 'local' "Write-Output 'local ok'" $null 60
+    Check ($ran.exitCode -eq 0 -and ([Text.Encoding]::UTF8.GetString($ran.bytes)) -match 'local ok') 'a local command runs here'
+    Write-File "$($y.F)\copy-from.txt" 'copied'
+    Check ((& $ops.Scp "$($y.F)\copy-from.txt" "local:$($y.F.Replace('\', '/'))/sub/copy-to.txt" 60).exitCode -eq 0) 'a copy to local'
+    Check ((Get-Content "$($y.F)\sub\copy-to.txt" -Raw).Trim() -ceq 'copied') 'the copy arrived'
+    Check ((& $ops.Scp "local:$($y.F)\missing.txt" "$($y.F)\x2.txt" 60).exitCode -ne 0) 'a missing local file fails the copy'
+    $queue = "$($y.F)\interactive"
+    $status = { ((pwsh -NoProfile -File $agent -Phase status -Work $work -Interactive $queue | Select-Object -Last 1) -replace '^RESULT ', '') | ConvertFrom-Json }
+    Write-File "$queue\local-queue" "$($y.F)\copy-from.txt"
+    Check ((& $status).task -ceq 'Ready') 'a local queue with no job is Ready'
+    Set-Content -LiteralPath "$queue\local-queue.pid" -Value $PID -NoNewline
+    Check ((& $status).task -ceq 'Running') 'a local queue whose job runs is Running'
+    Copy-Item (Join-Path $scripts 'local-queue.ps1') "$queue\sfv-start.ps1"
+    Check (((pwsh -NoProfile -File "$queue\sfv-start.ps1" -Job t-job) -join "`n") -match '^WAIT') 'the queue waits while a job runs'
+    Remove-Item "$queue\local-queue.pid"
+    Check (((pwsh -NoProfile -File "$queue\sfv-start.ps1" -Job nothing) -join "`n") -match '^ERROR no job') 'an unknown job is refused'
+    Pass 'local build PC: commands and copies run here; the queue reports Ready or Running from its job, waits while one runs, refuses an unknown job'
 
     Write-Host ''
     Write-Host "All $script:passed publish tests passed."

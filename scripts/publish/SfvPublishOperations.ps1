@@ -42,12 +42,23 @@ function New-PubOperations {
             Invoke-PubProcess 'git' (@('-C', $Repo, 'push', '--porcelain', '--no-follow-tags') + @(if ($DryRun) { '--dry-run' }) + @($Remote, "${Commit}:$Ref")) $null 600
         }
         Gh = { param([string[]]$Arguments) Invoke-PubProcess 'gh' $Arguments $null 1800 }
+        # The build PC 'local' is this PC (docs/release/PUBLISHING.md, "The build PC"): its commands run in a local
+        # PowerShell and its copies are file copies, so every stage reads the same either way.
         Ssh = {
             param([string]$HostAlias, [string]$Command, [byte[]]$Stdin, [int]$TimeoutSeconds)
+            if ($HostAlias -ceq 'local') { return Invoke-PubProcess "$env:ProgramFiles\PowerShell\7\pwsh.exe" @('-NoProfile', '-Command', $Command) $Stdin $TimeoutSeconds }
             Invoke-PubProcess 'ssh' @('-o', 'ConnectTimeout=15', '-o', 'BatchMode=yes', '-o', 'ServerAliveInterval=30', $HostAlias, $Command) $Stdin $TimeoutSeconds
         }
         Scp = {
             param([string]$From, [string]$To, [int]$TimeoutSeconds)
+            if ($From.StartsWith('local:') -or $To.StartsWith('local:')) {
+                try {
+                    $source = $From -creplace '^local:', ''; $target = $To -creplace '^local:', ''
+                    New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+                    Copy-Item -LiteralPath $source -Destination $target -Force
+                    return [pscustomobject]@{exitCode = 0; bytes = [byte[]]@(); stderr = ''}
+                } catch { return [pscustomobject]@{exitCode = 1; bytes = [byte[]]@(); stderr = $_.Exception.Message} }
+            }
             Invoke-PubProcess 'scp' @('-q', '-o', 'ConnectTimeout=15', '-o', 'BatchMode=yes', $From, $To) $null $TimeoutSeconds
         }
         Tar = { param([string]$Parent, [string]$Name, [string]$Out) Invoke-PubProcess 'tar' @('-cf', $Out, '-C', $Parent, $Name) $null 300 }

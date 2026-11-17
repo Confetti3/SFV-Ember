@@ -81,7 +81,12 @@ New-Item -ItemType Directory -Path $Work -Force | Out-Null
 function Assert-FreshWork { foreach ($name in 'out', 'result.json', 'started.json', 'job.json', 'checkout.json') { if (Test-Path -LiteralPath (Join-Path $Work $name)) { throw "$Work was used by an earlier job ($name); each attempt needs a new folder." } } }
 switch ($Phase) {
     'status' {
-        $task = ((schtasks /query /tn 'Ember Interactive' /fo LIST | Select-String 'Status:').ToString() -replace '^Status:\s*', '').Trim()
+        # A build PC that is the desktop itself runs jobs through local-queue.ps1 (its sfv-start.ps1), not a task.
+        $local = Join-Path $Interactive 'local-queue.pid'
+        $task = if (Test-Path -LiteralPath (Join-Path $Interactive 'local-queue')) {
+            $queued = if (Test-Path -LiteralPath $local) { Get-Process -Id ([int](Get-Content -LiteralPath $local -Raw)) -ErrorAction SilentlyContinue }
+            if ($queued) { 'Running' } else { 'Ready' }
+        } else { ((schtasks /query /tn 'Ember Interactive' /fo LIST | Select-String 'Status:').ToString() -replace '^Status:\s*', '').Trim() }
         $jobFile = Join-Path $Interactive 'job.cmd'
         $job = if (Test-Path -LiteralPath $jobFile) { (Get-Content -LiteralPath $jobFile -TotalCount 1) } else { '' }
         $game = @(Get-Process | Where-Object { $_.ProcessName -like 'StreetFighterV*' } | ForEach-Object ProcessName | Sort-Object -Unique)
