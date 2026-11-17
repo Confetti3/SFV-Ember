@@ -56,6 +56,7 @@
 #include "mod/SyncTestMode.hxx"
 #include "mod/VersusLaunch.hxx"
 #include "mod/VirtualPads.hxx"
+#include "mod/WineMemory.hxx"
 #include "mod/XInputHooks.hxx"
 #include "overlay/BorderlessWindow.hxx"
 #include "overlay/Overlay.hxx"
@@ -209,6 +210,10 @@ extern "C" int SfveStart(int beforeGameCode)
 		sfve::BuildKindName(sfve::kBuildKind), exe, Config().instance, ModeName(Config().mode));
 	Log("loaded from %ls, started by the %s", claim.module.c_str(), loader);
 	if (claim.error) Log("could not claim the process for this copy (Win32 %lu): a second copy would not be refused", claim.error);
+	// Under Wine, the game's heap above 1 TB as on Windows, before the game
+	// allocates any of it (mod/WineMemory.hxx). Not a refusal when it cannot:
+	// the low-heap rule then serves, as before.
+	InstallWineMemory();
 	if (const char* ignored = IgnoredSetting()) Log("config: %s", ignored);
 	SetCrtMath(ChooseCrtMath(Config()), Config().mode);
 	if (!PlayerBuildIgnored().empty()) Log("config: a player build takes no test options; ignored %s", PlayerBuildIgnored().c_str());

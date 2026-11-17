@@ -1,5 +1,8 @@
 #include "mod/AddressRanges.hxx"
 #include "mod/GameMemory.hxx"
+#include "mod/WineMemory.hxx"
+
+#include <windows.h>
 
 #include <doctest/doctest.h>
 
@@ -130,4 +133,66 @@ TEST_CASE("a copy whose heap lies low publishes its arenas and says so, and the 
 	CHECK(sfve::mod::ChooseAddressRule({0x00000204F5F98000ull}) == AddressRule::Value);
 	CHECK(sfve::mod::PublishedProcessRanges()->Ranges().empty());
 	CHECK(sfve::mod::CurrentAddressRule() == AddressRule::Value);
+}
+
+TEST_CASE("the start ranges are the low heaps and images made before the game ran, nothing else")
+{
+	using sfve::mod::Reservation;
+	const uint64_t mb = 1ull << 20;
+	const std::vector<Reservation> reservations = {
+		{0x20 * mb, 0x21 * mb, false},                          // a thread's stack, or a TEB: private, no heap in it
+		{0xEE0000, 0xEE0000 + 0x190000 + 0x10000, false},       // the process heap (Wine puts it at 0xEE0000)
+		{0x140000000ull, 0x140000000ull + 0x7000000ull, true},  // the game's exe at its preferred base
+		{0x00007FFB12340000ull, 0x00007FFB12400000ull, true},    // an image above 1 TB: the value rule has it
+		{0x00000204F0000000ull, 0x00000204F1000000ull, false},  // a heap above 1 TB, likewise
+	};
+	const AddressRanges start = sfve::mod::StartRanges(reservations, {0xEE0000, 0x00000204F0000000ull});
+	REQUIRE(start.Ranges().size() == 2);
+	CHECK(start.Contains(0xEE0000 + 0x190000)); // a block of the heap
+	CHECK(start.Contains(0x140001000ull));      // a vtable in the exe
+	CHECK_FALSE(start.Contains(0x20 * mb + 0x100));
+	CHECK_FALSE(start.Contains(0x00007FFB12340000ull));
+	CHECK(sfve::mod::StartRanges(reservations, {}).Ranges().size() == 1); // no heap: the exe alone
+}
+
+TEST_CASE("this process's reservations hold its heap and its code")
+{
+	const auto heap = std::make_unique<int[]>(16);
+	const uint64_t own = reinterpret_cast<uint64_t>(heap.get());
+	const uint64_t code = reinterpret_cast<uint64_t>(&sfve::mod::ReadReservations);
+	bool heapSeen = false, codeImage = false;
+	for (const sfve::mod::Reservation& r : sfve::mod::ReadReservations()) {
+		CHECK(r.begin < r.end);
+		heapSeen = heapSeen || (own >= r.begin && own < r.end);
+		codeImage = codeImage || (code >= r.begin && code < r.end && r.image);
+	}
+	CHECK(heapSeen);
+	CHECK(codeImage);
+}
+
+TEST_CASE("start ranges are addresses under either rule, and the arenas come on top of them")
+{
+	sfve::mod::SetStartRanges(AddressRanges::Joined({{0x140000000ull, 0x147000000ull}}, 0));
+	CHECK(sfve::mod::ChooseAddressRule({0x00000204F5F98000ull}) == AddressRule::Value);
+	CHECK(LooksLikeAddress(0x140001000ull));
+	CHECK_FALSE(LooksLikeAddress(0x02A41F10ull));
+	CHECK(sfve::mod::AddressRuleText() == "value (words above 1 TB, and in 1 start range(s) (heaps and images made before the game ran))");
+	CHECK(sfve::mod::ChooseAddressRule({0x02A41F10ull}) == AddressRule::LowHeap);
+	CHECK(LooksLikeAddress(0x140001000ull));
+	sfve::mod::SetStartRanges({});
+	CHECK(sfve::mod::ChooseAddressRule({0x00000204F5F98000ull}) == AddressRule::Value);
+	CHECK_FALSE(LooksLikeAddress(0x140001000ull));
+	CHECK(sfve::mod::AddressRuleText() == "value (words above 1 TB)");
+}
+
+TEST_CASE("under Wine only an allocation for this process at no fixed address and no zero-bits limit goes top down")
+{
+	using sfve::mod::TopDownFits;
+	CHECK(TopDownFits(true, false, 0, MEM_RESERVE));
+	CHECK(TopDownFits(true, false, 0, MEM_RESERVE | MEM_COMMIT));
+	CHECK(TopDownFits(true, false, 0, MEM_COMMIT));
+	CHECK_FALSE(TopDownFits(true, true, 0, MEM_COMMIT));     // committing inside a reservation
+	CHECK_FALSE(TopDownFits(false, false, 0, MEM_RESERVE));  // another process's memory
+	CHECK_FALSE(TopDownFits(true, false, 31, MEM_RESERVE));  // asked to lie low
+	CHECK_FALSE(TopDownFits(true, false, 0, MEM_RESET));
 }

@@ -312,7 +312,7 @@ target_link_libraries(sfve_ember PUBLIC sfve_core sfve_product sfve_selection_as
 set(SFVE_MOD_SHARED_SOURCES
     src/mod/BalanceVersionRules.cxx src/mod/BalanceVersions.cxx src/mod/FighterData.cxx src/mod/PakList.cxx src/mod/PakRules.cxx
     src/mod/TickCounts.cxx
-    src/mod/AddressRanges.cxx src/mod/BackgroundPlay.cxx src/mod/RuntimeModules.cxx src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/EntitlementGrant.cxx src/mod/FighterReader.cxx
+    src/mod/AddressRanges.cxx src/mod/WineMemory.cxx src/mod/BackgroundPlay.cxx src/mod/RuntimeModules.cxx src/mod/ContentRules.cxx src/mod/ControlPipe.cxx src/mod/CrashRecord.cxx src/mod/EntitlementGrant.cxx src/mod/FighterReader.cxx
     src/mod/BoothMode.cxx src/mod/GameArt.cxx src/mod/GameInput.cxx
     src/mod/GameContent.cxx src/mod/GameExit.cxx src/mod/GameHooks.cxx src/mod/GameScene.cxx src/mod/GameThread.cxx
     src/mod/HudText.cxx src/mod/Log.cxx src/mod/MatchEnd.cxx src/mod/MatchResult.cxx src/mod/TinyFighters.cxx

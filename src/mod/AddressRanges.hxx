@@ -22,6 +22,17 @@
 //   with a guard page), images and mapped views are never part of one, and
 //   no arena is joined across them.
 //
+// Under Wine and Proton the heap lies low because Wine places memory bottom
+// up with no randomization. There the mod asks for every later allocation
+// top down (mod/WineMemory.hxx), which puts the game's heap above 1 TB as on
+// Windows, so the value rule applies and a Linux copy decides as a Windows
+// one does. What was there before the game ran stays low: the heaps then
+// made and the images Wine loads at their preferred bases (the game's exe at
+// 0x140000000). Their reservations are the start ranges (SetStartRanges),
+// which every rule also takes as addresses, and which are empty on Windows.
+// The two arena rules below then only serve a low heap the top-down
+// allocations did not lift.
+//
 // What remains unsafe: a low-heap copy against a normal one can still part on
 // an integer that falls inside the low copy's arenas (a count of 0x02A41F10
 // is a number to the normal copy and an address to the low one), and two
@@ -91,14 +102,36 @@ AddressRanges ArenasHolding(std::vector<QueriedRegion> committed, const std::vec
 // This process's committed regions (VirtualQuery over user space).
 std::vector<QueriedRegion> ReadCommittedRegions();
 
+// One allocation as VirtualQuery reports it: from its AllocationBase to the
+// end of its last region, reserved or committed.
+struct Reservation {
+	uint64_t begin = 0;
+	uint64_t end = 0;
+	bool image = false; // MEM_IMAGE: a loaded exe or DLL
+};
+
+// The start ranges (see the top): of `reservations`, those lying wholly below
+// 1 TB that are an image or hold one of `heaps` (GetProcessHeaps' handles).
+// Pure.
+AddressRanges StartRanges(const std::vector<Reservation>& reservations, const std::vector<uint64_t>& heaps);
+
+// This process's allocations (VirtualQuery over user space, one entry per
+// AllocationBase).
+std::vector<Reservation> ReadReservations();
+
+// The start ranges, set once before any battle (mod/WineMemory.hxx); every
+// rule's published set holds them. Empty unless set.
+void SetStartRanges(AddressRanges ranges);
+const AddressRanges& CurrentStartRanges();
+
 // What LooksLikeAddress consults besides the value rule; none until the first
 // publish. Safe to call from any thread: a published set is never freed.
 void PublishProcessRanges(AddressRanges ranges);
 const AddressRanges* PublishedProcessRanges();
 
 // At the battle's bind, with the game's own heap objects (its units and its
-// rollback regions): chooses the rule (RuleForGameHeap), publishes the
-// arenas for the low-heap rule and an empty set for the value rule, and logs
+// rollback regions): chooses the rule (RuleForGameHeap), publishes the start
+// ranges with the arenas for the low-heap rule and alone for the value rule, and logs
 // which ("address test:"). Game thread.
 AddressRule ChooseAddressRule(const std::vector<uint64_t>& gameHeap);
 // The rule last chosen (Value before any); any thread.

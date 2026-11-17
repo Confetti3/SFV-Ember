@@ -17,6 +17,15 @@ namespace {
 
 std::atomic<const AddressRanges*> s_published{nullptr};
 std::atomic<AddressRule> s_rule{AddressRule::Value};
+AddressRanges s_start; // set before any battle, then only read
+
+// `a` and `b` as one set.
+AddressRanges Union(const AddressRanges& a, const AddressRanges& b)
+{
+	std::vector<AddressRange> all = a.Ranges();
+	all.insert(all.end(), b.Ranges().begin(), b.Ranges().end());
+	return AddressRanges::Joined(std::move(all), 0);
+}
 
 } // namespace
 
@@ -118,6 +127,55 @@ std::vector<QueriedRegion> ReadCommittedRegions()
 	return committed;
 }
 
+AddressRanges StartRanges(const std::vector<Reservation>& reservations, const std::vector<uint64_t>& heaps)
+{
+	std::vector<AddressRange> kept;
+	for (const Reservation& r : reservations) {
+		if (r.end <= r.begin || r.end > kHighAddresses) continue;
+		bool keep = r.image;
+		for (const uint64_t heap : heaps) keep = keep || (heap >= r.begin && heap < r.end);
+		if (keep) kept.push_back({r.begin, r.end});
+	}
+	return AddressRanges::Joined(std::move(kept), 0);
+}
+
+std::vector<Reservation> ReadReservations()
+{
+	SYSTEM_INFO system;
+	GetSystemInfo(&system);
+	std::vector<Reservation> reservations;
+	const uint64_t last = reinterpret_cast<uint64_t>(system.lpMaximumApplicationAddress);
+	uint64_t at = reinterpret_cast<uint64_t>(system.lpMinimumApplicationAddress);
+	while (at < last) {
+		MEMORY_BASIC_INFORMATION info;
+		if (!VirtualQuery(reinterpret_cast<void*>(at), &info, sizeof(info))) break;
+		const uint64_t begin = reinterpret_cast<uint64_t>(info.BaseAddress);
+		const uint64_t end = begin + info.RegionSize;
+		if (info.State != MEM_FREE) {
+			const uint64_t base = reinterpret_cast<uint64_t>(info.AllocationBase);
+			// An allocation's regions come in order, so its entry is the last one.
+			if (!reservations.empty() && reservations.back().begin == base) {
+				reservations.back().end = end;
+			} else {
+				reservations.push_back({base, end, info.Type == MEM_IMAGE});
+			}
+		}
+		if (end <= at) break;
+		at = end;
+	}
+	return reservations;
+}
+
+void SetStartRanges(AddressRanges ranges)
+{
+	s_start = std::move(ranges);
+}
+
+const AddressRanges& CurrentStartRanges()
+{
+	return s_start;
+}
+
 void PublishProcessRanges(AddressRanges ranges)
 {
 	// A reader on another thread may still hold the set it fetched, so a
@@ -139,9 +197,9 @@ AddressRule ChooseAddressRule(const std::vector<uint64_t>& gameHeap)
 	}
 	if (gameHeap.empty()) lowest = 0;
 	const AddressRule rule = RuleForGameHeap(gameHeap);
-	// The ranges first, then the rule: the value rule's empty set drops the
-	// last battle's arenas.
-	PublishProcessRanges(rule == AddressRule::LowHeap ? ArenasHolding(ReadCommittedRegions(), gameHeap, kJoinGap) : AddressRanges());
+	// The ranges first, then the rule: the value rule's set (the start ranges
+	// alone) drops the last battle's arenas.
+	PublishProcessRanges(rule == AddressRule::LowHeap ? Union(s_start, ArenasHolding(ReadCommittedRegions(), gameHeap, kJoinGap)) : s_start);
 	s_rule.store(rule, std::memory_order_release);
 	if (rule == AddressRule::Value) {
 		Log("address test: %s; the game's heap objects lie from 0x%llX to 0x%llX%s", AddressRuleText().c_str(),
@@ -162,16 +220,24 @@ AddressRule CurrentAddressRule()
 
 std::string AddressRuleText()
 {
-	if (CurrentAddressRule() == AddressRule::Value) return "value (words above 1 TB)";
-	const AddressRanges* arenas = PublishedProcessRanges();
-	if (!arenas || arenas->Ranges().empty()) return "low heap (words above 1 TB; no arena found)";
-	const std::vector<AddressRange>& list = arenas->Ranges();
+	// The published set holds the start ranges too; the arenas are the rest.
+	char start[96] = "";
+	if (!s_start.Ranges().empty()) {
+		snprintf(start, sizeof(start), ", and in %zu start range(s) (heaps and images made before the game ran)", s_start.Ranges().size());
+	}
+	if (CurrentAddressRule() == AddressRule::Value) return std::string("value (words above 1 TB") + start + ")";
+	const AddressRanges* published = PublishedProcessRanges();
+	std::vector<AddressRange> arenas;
+	for (const AddressRange& r : published ? published->Ranges() : std::vector<AddressRange>()) {
+		if (!s_start.Contains(r.begin)) arenas.push_back(r);
+	}
+	if (arenas.empty()) return std::string("low heap (words above 1 TB") + start + "; no arena found)";
 	uint64_t bytes = 0;
-	for (const AddressRange& r : list) bytes += r.end - r.begin;
+	for (const AddressRange& r : arenas) bytes += r.end - r.begin;
 	char text[160];
-	snprintf(text, sizeof(text), "low heap (words above 1 TB, and in %zu arena(s) from 0x%llX to 0x%llX, %llu MB)", list.size(),
-		(unsigned long long)list.front().begin, (unsigned long long)list.back().end, (unsigned long long)(bytes >> 20));
-	return text;
+	snprintf(text, sizeof(text), "low heap (words above 1 TB, and in %zu arena(s) from 0x%llX to 0x%llX, %llu MB", arenas.size(),
+		(unsigned long long)arenas.front().begin, (unsigned long long)arenas.back().end, (unsigned long long)(bytes >> 20));
+	return std::string(text) + start + ")";
 }
 
 } // namespace sfve::mod
