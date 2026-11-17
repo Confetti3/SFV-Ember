@@ -64,6 +64,11 @@ bool TrainingPaused();
 // asked. Game thread.
 bool LeaveTrainingToRoom();
 
+// That return reaching the main menu: true once per LeaveTrainingToRoom, for
+// the shell, which then shows the room (Play) rather than the page it last
+// had, such as Training select. Render thread, once Ember can show.
+bool TakeTrainingRoomReturn();
+
 // Training select asked for by Home's Training row (Training::Request at the
 // idle main menu): true once per request, for the shell, which then shows its
 // Training select. Render thread.

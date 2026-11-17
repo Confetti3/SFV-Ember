@@ -40,6 +40,7 @@ sf4e::training::CallControl s_call; // the room's call owner's, as last set (Set
 TrainingView s_view;                 // as Follow last published it
 bool s_paused = false;
 std::atomic<bool> s_selectRequested{false};
+std::atomic<bool> s_roomReturn{false}; // the player left Training for their room (LeaveTrainingToRoom)
 
 // Game thread only: the Training battle followed, and its countdown.
 std::uint64_t s_battle = 0;
@@ -152,7 +153,14 @@ SfvTraining s_training;
 
 bool LeaveTrainingToRoom()
 {
-	return s_battle != 0 && !s_leaving && s_countdown.LeaveNow();
+	if (s_battle == 0 || s_leaving || !s_countdown.LeaveNow()) return false;
+	s_roomReturn = true;
+	return true;
+}
+
+bool TakeTrainingRoomReturn()
+{
+	return s_roomReturn.exchange(false);
 }
 
 ember::game::Training& SfvTrainingService()

@@ -448,6 +448,13 @@ void BeginFrame()
 		presentation.Open("Training select");
 		shell.host.Shell().ShowTraining();
 	}
+	// Back to room from Training (F10, or the controls' row): the main menu
+	// opens Ember on the room, not on the Training select it was left at, as
+	// SF4's overlay reopens it (OverlayPresentation's reopen after a game).
+	if (presentation.Available() && TakeTrainingRoomReturn()) {
+		presentation.Open("back to the room");
+		shell.host.Shell().ShowPlay();
+	}
 	shell.openRequest = s_menuPads.Take();
 	if (shell.openRequest.kind == sf4e::ui::MenuPads::Kind::Controls) {
 		switch (input::AnswerStart(presentation.Visible(), snapshot.menuContext, shell.host.Shell().TextEntryOpen())) {
