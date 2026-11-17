@@ -412,9 +412,10 @@ try {
     Set-Content -LiteralPath "$queue\local-queue.pid" -Value $PID -NoNewline
     Check ((& $status).task -ceq 'Running') 'a local queue whose job runs is Running'
     Copy-Item (Join-Path $scripts 'local-queue.ps1') "$queue\sfv-start.ps1"
-    Check (((pwsh -NoProfile -File "$queue\sfv-start.ps1" -Job t-job) -join "`n") -match '^WAIT') 'the queue waits while a job runs'
+    # Windows PowerShell, as the pipeline starts it (Wait-PubLaptopJob)
+    Check (((powershell -NoProfile -ExecutionPolicy Bypass -File "$queue\sfv-start.ps1" -Job t-job) -join "`n") -match '^WAIT') 'the queue waits while a job runs'
     Remove-Item "$queue\local-queue.pid"
-    Check (((pwsh -NoProfile -File "$queue\sfv-start.ps1" -Job nothing) -join "`n") -match '^ERROR no job') 'an unknown job is refused'
+    Check (((powershell -NoProfile -ExecutionPolicy Bypass -File "$queue\sfv-start.ps1" -Job nothing) -join "`n") -match '^ERROR no job') 'an unknown job is refused'
     Pass 'local build PC: commands and copies run here; the queue reports Ready or Running from its job, waits while one runs, refuses an unknown job'
 
     Write-Host ''

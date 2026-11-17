@@ -1,5 +1,4 @@
-#Requires -Version 7
-# The build PC's job queue when the build PC is the desktop itself (docs/release/PUBLISHING.md, "The build PC").
+# Windows PowerShell 5.1 runs it (the pipeline starts the queue with powershell). The build PC's job queue when the build PC is the desktop itself (docs/release/PUBLISHING.md, "The build PC").
 # Copied into the config's interactive folder as sfv-start.ps1, beside a file named local-queue that holds the
 # Discord SDK archive's path (SF4E_DISCORD_SDK_ARCHIVE, which the player build needs); the
 # pipeline calls it as it called the laptop's: `sfv-start.ps1 -Job <name>` starts <name>.cmd and prints STARTED,
