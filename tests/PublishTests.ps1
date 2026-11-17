@@ -74,10 +74,18 @@ try {
     G $y.Lib @('checkout', '-q', '-b', 'release', $y.L1) | Out-Null; Write-File "$($y.Lib)\src\public.txt" 'ForbiddenName, published long ago'
     $published = Commit $y.Lib 'public elsewhere'; G $y.Lib @('update-ref', 'refs/remotes/origin/release', $published) | Out-Null # as a fetch leaves it
     G $y.Lib @('checkout', '-q', 'feat/ember-library') | Out-Null; G $y.Lib @('-c', 'commit.gpgsign=false', 'merge', '-q', '--no-edit', 'release') | Out-Null
-    $l3 = G $y.Lib @('rev-parse', 'HEAD')
+    # the library line's own version of that file keeps its public line and adds one of its own
+    Write-File "$($y.Lib)\src\public.txt" "ForbiddenName, published long ago`nthe library line's own change"; $l3 = Commit $y.Lib 'library version'
     Write-File "$($y.Sfv)\README.md" "This release builds against library commit ``$($l3.Substring(0, 9))``.`n"; $null = Commit $y.Sfv 'pin'
     $null = Plan $y
-    Check ((Read-PubPlan $y.Ctx).plan.library.commit -ceq $l3) 'a library line holding public commits plans'
+    Check ((Read-PubPlan $y.Ctx).plan.library.commit -ceq $l3) 'a library line holding public commits and lines plans'
+    $y = Fresh
+    G $y.Lib @('checkout', '-q', '-b', 'release', $y.L1) | Out-Null; Write-File "$($y.Lib)\src\public.txt" 'ForbiddenName, published long ago'
+    $published = Commit $y.Lib 'public elsewhere'; G $y.Lib @('update-ref', 'refs/remotes/origin/release', $published) | Out-Null
+    G $y.Lib @('checkout', '-q', 'feat/ember-library') | Out-Null; G $y.Lib @('-c', 'commit.gpgsign=false', 'merge', '-q', '--no-edit', 'release') | Out-Null
+    Write-File "$($y.Lib)\src\public.txt" "ForbiddenName, published long ago`nand ForbiddenName in a new line"; $l3 = Commit $y.Lib 'new line'
+    Write-File "$($y.Sfv)\README.md" "This release builds against library commit ``$($l3.Substring(0, 9))``.`n"; $null = Commit $y.Sfv 'pin'
+    Reject { Plan $y } '*library commits being pushed carries forbidden strings*'
     $y = Fresh
     G $y.Lib @('checkout', '-q', '-b', 'private', $y.L1) | Out-Null; Write-File "$($y.Lib)\src\private.txt" 'ForbiddenName, never published'
     $null = Commit $y.Lib 'not public'
@@ -85,7 +93,7 @@ try {
     $l3 = G $y.Lib @('rev-parse', 'HEAD')
     Write-File "$($y.Sfv)\README.md" "This release builds against library commit ``$($l3.Substring(0, 9))``.`n"; $null = Commit $y.Sfv 'pin'
     Reject { Plan $y } '*library commits being pushed carries forbidden strings*'
-    Pass 'plan: library commits a public branch already holds are not scanned again; one only the private line holds still is'
+    Pass 'plan: library commits and lines a public branch already holds are not scanned again; a commit or line only the private line holds still is'
 
     $y = Fresh; Write-File "$($y.Sfv)\src\feature.txt" 'dirty'
     Reject { Plan $y } '*has uncommitted changes*'

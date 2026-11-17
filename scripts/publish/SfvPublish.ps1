@@ -203,7 +203,17 @@ function Get-PubRangeScan([object]$Ctx, [string]$Repo, [string]$Commit, [string]
         $position = $end + 1 + $size + 1
         # Objects are named by their id only: a path may be the very text a rule forbids.
         $where = "$Name $type $sha"
-        foreach ($hit in (Find-PubHits $Rules $content $where)) { $hits.Add($hit) }
+        $found = @(Find-PubHits $Rules $content $where)
+        # A new version of a file the public repository has: only its lines that no public version of that path
+        # holds are new, so only they are scanned (a merge of public commits makes such versions).
+        if ($found.Count -and $PublicRemote -and $type -ceq 'blob' -and $objects[$sha]) {
+            $public = Get-PubPublicLines $Ctx $Repo $PublicRemote $objects[$sha]
+            if ($public.Count) {
+                $fresh = @([Text.UTF8Encoding]::new($false).GetString($content) -split "`r?`n" | Where-Object { !$public.Contains($_) }) -join "`n"
+                $found = @(Find-PubHits $Rules ([Text.UTF8Encoding]::new($false).GetBytes($fresh)) "$where (lines no public version has)")
+            }
+        }
+        foreach ($hit in $found) { $hits.Add($hit) }
         if ($objects[$sha]) { foreach ($hit in (Find-PubHits $Rules ([Text.UTF8Encoding]::new($false).GetBytes($objects[$sha])) "$Name path of object $sha")) { $hits.Add($hit) } }
         if ($type -ceq 'commit') {
             $text = [Text.UTF8Encoding]::new($false).GetString($content)
@@ -215,6 +225,26 @@ function Get-PubRangeScan([object]$Ctx, [string]$Repo, [string]$Commit, [string]
         }
     }
     @{ commits = @($commits); objects = $objects.Count; hits = @($hits) }
+}
+
+# Every line of $Path in any branch of $Remote (its remote-tracking refs, as last fetched): what is public already.
+function Get-PubPublicLines([object]$Ctx, [string]$Repo, [string]$Remote, [string]$Path) {
+    $lines = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $refs = @((Get-PubGitText $Ctx $Repo @('for-each-ref', '--format=%(refname)', "refs/remotes/$Remote")) -split "`n" | Where-Object { $_ -and $_ -cnotmatch '/HEAD$' })
+    if (!$refs.Count) { return , $lines }
+    $batch = Invoke-PubGit $Ctx $Repo @('cat-file', '--batch') ([Text.Encoding]::UTF8.GetBytes((@($refs | ForEach-Object { "${_}:$Path" }) -join "`n") + "`n"))
+    $bytes = [byte[]]$batch.bytes
+    $position = 0
+    while ($position -lt $bytes.Length) {
+        $end = [Array]::IndexOf($bytes, [byte]10, $position)
+        if ($end -lt 0) { break }
+        $header = [Text.Encoding]::UTF8.GetString($bytes, $position, $end - $position)
+        if ($header -cnotmatch '^[0-9a-f]{40} blob ([0-9]+)$') { $position = $end + 1; continue } # missing there, or not a file
+        $size = [int]$Matches[1]
+        foreach ($line in ([Text.UTF8Encoding]::new($false).GetString($bytes, $end + 1, $size) -split "`r?`n")) { $null = $lines.Add($line) }
+        $position = $end + 1 + $size + 1
+    }
+    , $lines # one set, not its lines
 }
 
 # Commit messages may carry no trailer of the "<Something>-by:" kind (authorship and tool lines), and every author
