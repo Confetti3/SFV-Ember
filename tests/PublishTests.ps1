@@ -69,6 +69,24 @@ try {
     Reject { Plan $y } '*identity that is not the release identity*'
     Pass 'plan: refuses a forbidden string in a commit message, a blob (UTF-16 too) or a path, a trailer line, a foreign identity'
 
+    # the library line takes in commits its public repository has on another branch: those are not scanned again
+    $y = Fresh
+    G $y.Lib @('checkout', '-q', '-b', 'release', $y.L1) | Out-Null; Write-File "$($y.Lib)\src\public.txt" 'ForbiddenName, published long ago'
+    $published = Commit $y.Lib 'public elsewhere'; G $y.Lib @('update-ref', 'refs/remotes/origin/release', $published) | Out-Null # as a fetch leaves it
+    G $y.Lib @('checkout', '-q', 'feat/ember-library') | Out-Null; G $y.Lib @('-c', 'commit.gpgsign=false', 'merge', '-q', '--no-edit', 'release') | Out-Null
+    $l3 = G $y.Lib @('rev-parse', 'HEAD')
+    Write-File "$($y.Sfv)\README.md" "This release builds against library commit ``$($l3.Substring(0, 9))``.`n"; $null = Commit $y.Sfv 'pin'
+    $null = Plan $y
+    Check ((Read-PubPlan $y.Ctx).plan.library.commit -ceq $l3) 'a library line holding public commits plans'
+    $y = Fresh
+    G $y.Lib @('checkout', '-q', '-b', 'private', $y.L1) | Out-Null; Write-File "$($y.Lib)\src\private.txt" 'ForbiddenName, never published'
+    $null = Commit $y.Lib 'not public'
+    G $y.Lib @('checkout', '-q', 'feat/ember-library') | Out-Null; G $y.Lib @('-c', 'commit.gpgsign=false', 'merge', '-q', '--no-edit', 'private') | Out-Null
+    $l3 = G $y.Lib @('rev-parse', 'HEAD')
+    Write-File "$($y.Sfv)\README.md" "This release builds against library commit ``$($l3.Substring(0, 9))``.`n"; $null = Commit $y.Sfv 'pin'
+    Reject { Plan $y } '*library commits being pushed carries forbidden strings*'
+    Pass 'plan: library commits a public branch already holds are not scanned again; one only the private line holds still is'
+
     $y = Fresh; Write-File "$($y.Sfv)\src\feature.txt" 'dirty'
     Reject { Plan $y } '*has uncommitted changes*'
     $y = Fresh; Write-File "$($y.Sfv)\CMakeLists.txt" "project(sfv_ember VERSION 0.1.0 LANGUAGES CXX)`nset(SFVE_VERSION `"`${PROJECT_VERSION}-beta.10`")`n"; $null = Commit $y.Sfv 'v'

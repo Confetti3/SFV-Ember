@@ -173,8 +173,10 @@ function Assert-PubNoHits([object[]]$Hits, [string]$What, [string[]]$Allowed = @
 
 # Every object of a range of commits (each commit, tree and blob reachable from $Commit and not from $Exclude), and
 # every blob of $Commit's tree (not with -NoTree: the library's tree is public already, only its new commits are scanned). Returns @{ commits = [{sha, author, committer, message}]; objects = n; hits = [...] }.
-function Get-PubRangeScan([object]$Ctx, [string]$Repo, [string]$Commit, [string]$Exclude, [object[]]$Rules, [string]$Name, [switch]$NoTree) {
-    $revArgs = @('rev-list', '--objects', $Commit) + @(if ($Exclude) { "^$Exclude" })
+function Get-PubRangeScan([object]$Ctx, [string]$Repo, [string]$Commit, [string]$Exclude, [object[]]$Rules, [string]$Name, [switch]$NoTree, [string]$PublicRemote = '') {
+    # -PublicRemote: also leave out what any branch of that public remote holds (as last fetched). Those objects are
+    # public already, and the library line carries commits the public repository has on other branches.
+    $revArgs = @('rev-list', '--objects', $Commit) + @(if ($Exclude) { "^$Exclude" }) + @(if ($PublicRemote) { '--not', "--remotes=$PublicRemote" })
     $listed = @((ConvertTo-PubText (Invoke-PubGit $Ctx $Repo $revArgs)) -split "`n" | Where-Object { $_.Trim() })
     $objects = [Collections.Generic.Dictionary[string, string]]::new()
     foreach ($line in $listed) {
@@ -442,7 +444,7 @@ function Invoke-PubPlan([object]$Ctx, [hashtable]$P) {
     Assert-PubCommits $releasedCommits $allowed 'sfv-ember'
     $libraryScan = @{commits = @(); objects = 0; hits = @()}
     if ($libraryPush) {
-        $libraryScan = Get-PubRangeScan $Ctx $libRepo $library $libraryTip $rules 'library' -NoTree
+        $libraryScan = Get-PubRangeScan $Ctx $libRepo $library $libraryTip $rules 'library' -NoTree -PublicRemote $cfg.libraryRemote
         Assert-PubNoHits $libraryScan.hits 'The library commits being pushed'
         Assert-PubCommits $libraryScan.commits $allowed 'library'
     }
