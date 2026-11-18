@@ -94,3 +94,42 @@ TEST_CASE("this PC's own name may be looked up, other names still not")
 	CHECK(policy.AllowsHostNameW(L"DESKTOP-TEST"));
 	CHECK_FALSE(policy.AllowsHostName("desktop-test.example.com"));
 }
+
+TEST_CASE("an Ember service is reachable by its name and its learned addresses on 443 only")
+{
+	NetPolicy policy;
+	policy.AllowService("intake.example");
+	CHECK(policy.IsServiceName("INTAKE.example"));
+	CHECK(policy.AllowsHostName("intake.example"));
+	CHECK(policy.AllowsHostNameW(L"Intake.Example"));
+	CHECK_FALSE(policy.AllowsHostName("www.intake.example"));
+	CHECK_FALSE(policy.AllowsHostName("intake.example.evil.test"));
+	CHECK_FALSE(policy.AllowsHostName("capcom.example"));
+
+	// Nothing is reachable until the name's addresses are learned.
+	auto a = V4("203.0.113.20"), other = V4("203.0.113.21");
+	a.sin_port = htons(NetPolicy::kServicePort);
+	other.sin_port = htons(NetPolicy::kServicePort);
+	CHECK_FALSE(policy.AllowsAddress((sockaddr*)&a, sizeof(a)));
+	Address learned;
+	REQUIRE(ParseNumeric("203.0.113.20", &learned));
+	policy.AllowServiceAddress(learned);
+	CHECK(policy.AllowsAddress((sockaddr*)&a, sizeof(a)));
+	CHECK_FALSE(policy.AllowsAddress((sockaddr*)&other, sizeof(other)));
+	auto mapped = V6("::ffff:203.0.113.20");
+	mapped.sin6_port = htons(NetPolicy::kServicePort);
+	CHECK(policy.AllowsAddress((sockaddr*)&mapped, sizeof(mapped)));
+
+	// Only the HTTPS port, and a numeric lookup of the address stays refused.
+	a.sin_port = htons(80);
+	CHECK_FALSE(policy.AllowsAddress((sockaddr*)&a, sizeof(a)));
+	CHECK_FALSE(policy.AllowsHostName("203.0.113.20"));
+}
+
+TEST_CASE("without a service the policy refuses every name but localhost, as before")
+{
+	NetPolicy policy;
+	CHECK_FALSE(policy.IsServiceName("embernetplay.link"));
+	CHECK_FALSE(policy.AllowsHostName("embernetplay.link"));
+	CHECK_FALSE(policy.IsServiceName(nullptr));
+}
