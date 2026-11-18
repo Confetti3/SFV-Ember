@@ -881,7 +881,7 @@ Ember's shell (the library's `ApplicationShell`, through its neutral `ember::She
 
 **SFV Ember's words.** `SfvProduct` now has an English locale overlay for the shared strings that named SF4 Ember on the screens SFV shows: header subtitle, Home title, "Return to SFV", About, the shortcut hint and the build checks. English replaces each translation of those (Localization.cxx).
 
-**Native menu lock** (section 12 review item). While a room is joined or a game is on its way, the shell keeps the pads from SFV's main menu whether it is shown or not (`NativeMenuLockFor`), so the only way on is Ember's. In a room, Back on Home does not hide the shell (the library's rule).
+**Native menu lock** (section 12 review item). While a room is joined or a game is on its way, the shell keeps the pads from SFV's main menu whether it is shown or not (`NativeMenuLockFor`), so the only way on is Ember's. The keyboard's presses too (`KeepsKeyFromGame`, 2026-11-18): hidden with F10, the shell had left SFV's menu to a keyboard player's arrows and Enter, so SFV's own modes could be started from a room. In a room, Back on Home does not hide the shell (the library's rule).
 
 **Evidence** (`D:\sfv-re\shots\shell\`)
 - `1-menu.png`: Home over SFV.

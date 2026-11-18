@@ -624,6 +624,18 @@ bool TakesPad(unsigned long slot, unsigned short buttons)
 	return s_menuPads.Holds() || NativeMenuLocked(*snapshot);
 }
 
+// The window's thread, for each key message after ImGui has seen it: who
+// keeps it from the game now (KeepsKeyFromGame).
+bool TakesKey(unsigned message, unsigned key)
+{
+	KeyboardHolders holders;
+	holders.playback = PlaybackRunning();
+	if (EmberRuntimeRunning()) {
+		if (const auto snapshot = facade::GetRuntimeSnapshotShared()) holders.menuLocked = NativeMenuLocked(*snapshot);
+	}
+	return KeepsKeyFromGame(holders, message, key);
+}
+
 // Game thread, for each message to the game's window: go now's Enter on
 // Training's call, while the window has the focus and neither Ember's menu
 // nor the game's pause menu has the keys (the library's GoNowKey decides).
@@ -676,6 +688,13 @@ bool ShellTakesPads()
 	return s_menuPads.Takes();
 }
 
+bool KeepsKeyFromGame(const KeyboardHolders& holders, unsigned message, unsigned key)
+{
+	if (holders.menuLocked && message == WM_KEYDOWN) return true;
+	return holders.playback && (message == WM_KEYDOWN || message == WM_KEYUP) &&
+		((key >= VK_F1 && key <= VK_F4) || key == VK_ESCAPE || sf4e::replaytransport::SeekKey(key));
+}
+
 void InstallEmberShell()
 {
 	InstallSfvArt();
@@ -699,11 +718,9 @@ void InstallEmberShell()
 	ui.takesPad = TakesPad;
 	// During a replay's playback its keys are Ember's (F1 to F4, Esc, and the
 	// seeks': comma, Left, Right, Home, L), kept from the game as SF4's window
-	// procedure keeps them (KeepsKey).
-	ui.takesKey = [](unsigned message, unsigned key) {
-		return PlaybackRunning() && (message == WM_KEYDOWN || message == WM_KEYUP) &&
-			((key >= VK_F1 && key <= VK_F4) || key == VK_ESCAPE || sf4e::replaytransport::SeekKey(key));
-	};
+	// procedure keeps them (KeepsKey); in a room the game's main menu gets no
+	// key press, as it gets no pad.
+	ui.takesKey = TakesKey;
 	ui.takesMessage = TakesMessage;
 	ui.windowFound = WindowFound;
 	overlay::SetOverlayUi(std::move(ui));

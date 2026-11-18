@@ -12,7 +12,10 @@
 //   - who has the pads (ui::MenuPads): the shell while it is shown, and
 //     while a room is joined at the main menu even when it is hidden (the
 //     game's own menu takes no input in a room: input::NativeMenuLockFor), so
-//     the game's menu never sees a press meant for Ember.
+//     the game's menu never sees a press meant for Ember;
+//   - who has the keyboard: the shell while it is shown with the focus (the
+//     overlay's capture), and otherwise the same as the pads
+//     (KeepsKeyFromGame).
 //
 // The pads reach the shell the way they reach SF4's: the runtime samples the
 // gameplay pad (SfvInput::ReadController, from VirtualPads' record of each
@@ -35,5 +38,18 @@ void InstallEmberShell();
 // The shell holds the pads now, or takes them where Start opens it
 // (Input::MenuTakesPads). Any thread.
 bool ShellTakesPads();
+
+// Who keeps the keyboard from the game while the shell is hidden.
+struct KeyboardHolders {
+	bool playback = false;   // a replay plays: its controls are Ember's
+	bool menuLocked = false; // SFV's own main menu while a room is joined (input::NativeMenuLockFor)
+};
+
+// Whether a key message (WM_KEYDOWN, WM_KEYUP) is kept from the game, as the
+// pads are: a replay's controls (F1 to F4, Esc and the seeks' keys), pressed
+// and released, while it plays; and every key press at a locked main menu, so
+// a keyboard player can no more start SFV's own modes from a room than a pad
+// player can. A release there still reaches the game: its key went down for it.
+bool KeepsKeyFromGame(const KeyboardHolders& holders, unsigned message, unsigned key);
 
 } // namespace sfve::adapter
