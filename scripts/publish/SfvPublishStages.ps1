@@ -140,7 +140,10 @@ function Invoke-PubBuild([object]$Ctx, [hashtable]$P) {
     # Bring back what the build made; the desktop checks everything itself.
     $fetch = Join-Path $dir 'files'
     if (Test-Path -LiteralPath $fetch) { Remove-Item -LiteralPath $fetch -Recurse -Force }
-    foreach ($name in @('result.json', 'checkout.json', 'job.log', 'receipt-development.json', 'receipt-player.json', 'helper.provenance.json', 'build-provenance.json', $plan.zip, "$($plan.zip).sha256")) {
+    # result.json first: it names the colour pack the package step made.
+    Copy-PubFromLaptop $Ctx "$($attempt.work)\out\result.json" (Join-Path $fetch 'result.json')
+    $colourPack = Get-PubColourPackName (Read-PubJson (Join-Path $fetch 'result.json'))
+    foreach ($name in @('checkout.json', 'job.log', 'receipt-development.json', 'receipt-player.json', 'helper.provenance.json', 'build-provenance.json', $plan.zip, "$($plan.zip).sha256", $colourPack)) {
         Copy-PubFromLaptop $Ctx "$($attempt.work)\out\$name" (Join-Path $fetch $name)
     }
     $facts = Assert-PubBuildFiles $Ctx $planRead $fetch $rules
@@ -215,25 +218,18 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
         $dll = [Text.Encoding]::Latin1.GetString([byte[]](& $read 'sfv_ember.dll'))
         if (!$dll.Contains($plan.roomBuild.id)) { throw "sfv_ember.dll does not carry the plan's room build $($plan.roomBuild.id)." }
         if (!$dll.Contains($plan.roomBuild.matchLine)) { throw "sfv_ember.dll does not carry the match line $($plan.roomBuild.matchLine)." }
+        # The colour pack the zip's descriptor names, beside it (SfvPublishColours.ps1).
+        $colourPack = Assert-PubColourPack $Ctx $Folder $result ([byte[]](& $read 'colour-pack.json')) $packaged $Rules
         # Every file and file name of the package, raw and UTF-16.
-        $hits = [Collections.Generic.List[object]]::new()
-        $count = 0
-        # An entry is named by its index and the SHA-256 of its name: the name may be the very text a rule forbids.
-        foreach ($entry in $entries) {
-            $stream = $entry.Open(); $memory = [IO.MemoryStream]::new(); try { $stream.CopyTo($memory) } finally { $stream.Dispose() }
-            $nameBytes = [Text.UTF8Encoding]::new($false).GetBytes($entry.FullName)
-            $label = "package entry #$count (name sha256 $((Get-PubBytesSha256 $nameBytes).Substring(0, 16)))"
-            foreach ($hit in (Find-PubHits $Rules $memory.ToArray() $label)) { $hits.Add($hit) }
-            foreach ($hit in (Find-PubHits $Rules $nameBytes "$label, its name")) { $hits.Add($hit) }
-            $count++
-        }
-        Assert-PubNoHits @($hits) 'The package'
+        $scan = Find-PubArchiveHits $entries $Rules 'package'
+        $count = $scan.count
+        Assert-PubNoHits $scan.hits 'The package'
         if (@($result.machineScan | Where-Object { [int]$_.hits -ne 0 }).Count) { throw "The laptop's own names appear in the package: $(@($result.machineScan | Where-Object { [int]$_.hits -ne 0 } | ForEach-Object { $_.file }) -join ', ')" }
     } finally {
         $archive.Dispose()
         if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force }
     }
-    @{zip = $plan.zip; zipSha256 = $zipSha; zipSize = (Get-Item -LiteralPath $zip).Length; packageFiles = $count; tests = $tests.Count
+    @{zip = $plan.zip; zipSha256 = $zipSha; zipSize = (Get-Item -LiteralPath $zip).Length; packageFiles = $count; tests = $tests.Count; colourPack = $colourPack
       sourceFingerprint = $checkout.source.fingerprint; libraryFingerprint = $checkout.library.fingerprint; roomBuild = $plan.roomBuild.id}
 }
 
@@ -635,6 +631,13 @@ function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
         Set-PubPhase $Ctx $state 'server' 'done' $server
     }
 
+    # colours: the release's colour pack on the public repository's colour-packs release, before anything is pushed.
+    if (!(Test-PubPhaseDone $state 'colours')) {
+        $outcome = Publish-PubColourPack $Ctx (Join-Path (Get-PubStageDir $Ctx 'build') "files\$($facts.colourPack.name)") $facts.colourPack
+        if ($outcome -cin @('uploaded', 'there')) { Set-PubPhase $Ctx $state 'colours' 'done' "$outcome $($facts.colourPack.name)" }
+        elseif ($outcome -ceq 'skipped') { Set-PubPhase $Ctx $state 'colours' 'skipped' }
+    }
+
     # The pushes: the library the README pins, the private release branch, the public main.
     foreach ($phase in @('push-library', 'push-origin', 'push-public')) {
         if (Test-PubPhaseDone $state $phase) { continue }
@@ -686,9 +689,11 @@ function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
         foreach ($asset in $assets) {
             if ((Get-PubSha256 (Join-Path $download $asset.name)) -cne $asset.sha256) { throw "The published $($asset.name) is not the checked file." }
         }
-        Set-PubPhase $Ctx $state 'confirm' 'done' "downloaded $($plan.zip) $($facts.zipSha256)"
+        # The pack the release's launcher downloads, as GitHub serves it.
+        Confirm-PubColourPack $Ctx $download $facts.colourPack
+        Set-PubPhase $Ctx $state 'confirm' 'done' "downloaded $($plan.zip) $($facts.zipSha256) and $($facts.colourPack.name)"
         $skipped = @($PubPromotePhases | Where-Object { $state.phases.$_ -and $state.phases.$_.status -ceq 'skipped' })
-        $files = @(@('state.json') + @($assets | ForEach-Object { "downloaded\$($_.name)" }) | ForEach-Object { Get-PubFileRecord $dir $_ })
+        $files = @(@('state.json') + @($assets | ForEach-Object { "downloaded\$($_.name)" }) + @("downloaded\$($facts.colourPack.name)") | ForEach-Object { Get-PubFileRecord $dir $_ })
         $null = Write-PubEvidence $Ctx 'promote' (New-PubEvidence $Ctx 'promote' $planRead $files @{releaseId = $id; url = $live.html_url; tag = $plan.tag
             publishedAt = $live.published_at; zipSha256 = $facts.zipSha256; skipped = $skipped})
         Write-PubLog $Ctx "PUBLISHED $($plan.tag): $($live.html_url) (zip $($facts.zipSha256), downloaded again and compared)."

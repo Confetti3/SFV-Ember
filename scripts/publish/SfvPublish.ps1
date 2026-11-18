@@ -12,7 +12,7 @@
 #     starts: a file replaced after its stage finished no longer matches the ledger or its successor.
 #   - Doing a stage again (-Redo) moves that stage and every stage after it to superseded\<time>\ and says so in the
 #     ledger; nothing is ever overwritten in place.
-#   - Outward steps (VPS staging, the draft, pushes, publishing) go through Invoke-PubOutward: each is named, can be
+#   - Outward steps (VPS staging, the draft, the colour pack's upload, pushes, publishing) go through Invoke-PubOutward: each is named, can be
 #     skipped (-Skip), is logged in outward.log, and does nothing in a dry run.
 
 $ErrorActionPreference = 'Stop'
@@ -22,8 +22,8 @@ $PubEvidenceSchema = 'sfv-publish-evidence/1'
 $PubStages = @('plan', 'build', 'rooms', 'draft', 'promote')
 # What each stage relies on (its evidence names these by SHA-256).
 $PubInputs = @{ build = @(); rooms = @(); draft = @('build', 'rooms'); promote = @('build', 'rooms', 'draft') }
-$PubPromotePhases = @('verify', 'server', 'push-library', 'push-origin', 'push-public', 'publish', 'confirm')
-$PubOutwardPromote = @('push-library', 'push-origin', 'push-public', 'publish')
+$PubPromotePhases = @('verify', 'server', 'colours', 'push-library', 'push-origin', 'push-public', 'publish', 'confirm')
+$PubOutwardPromote = @('colours', 'push-library', 'push-origin', 'push-public', 'publish')
 $PubRoomBuildPattern = '^(sfv-ember/[0-9]+/[0-9]+\.[0-9]+)/([0-9a-f]{16})/layout-([0-9a-f]{16})$'
 # A release's pictures cover every colour of every costume the pick space offers, bar the looks the render
 # manifest lists as exceptions: package.ps1 -MinColourCoverage refuses less, and the build's receipt must say so.
@@ -178,6 +178,21 @@ function Find-PubHits([object[]]$Rules, [byte[]]$Bytes, [string]$Where) {
         }
     }
     @($hits)
+}
+# Hits of the rules in every entry of an archive (ZipArchiveEntry) and in its name. An entry is named by $What, its
+# index and the SHA-256 of its name: the name may be the very text a rule forbids. Returns {hits, count}.
+function Find-PubArchiveHits([object[]]$Entries, [object[]]$Rules, [string]$What) {
+    $hits = [Collections.Generic.List[object]]::new()
+    $count = 0
+    foreach ($entry in $Entries) {
+        $stream = $entry.Open(); $memory = [IO.MemoryStream]::new(); try { $stream.CopyTo($memory) } finally { $stream.Dispose() }
+        $nameBytes = [Text.UTF8Encoding]::new($false).GetBytes($entry.FullName)
+        $label = "$What entry #$count (name sha256 $((Get-PubBytesSha256 $nameBytes).Substring(0, 16)))"
+        foreach ($hit in (Find-PubHits $Rules $memory.ToArray() $label)) { $hits.Add($hit) }
+        foreach ($hit in (Find-PubHits $Rules $nameBytes "$label, its name")) { $hits.Add($hit) }
+        $count++
+    }
+    [pscustomobject]@{hits = @($hits); count = $count}
 }
 function Assert-PubNoHits([object[]]$Hits, [string]$What, [string[]]$Allowed = @()) {
     $left = @($Hits | Where-Object { $_ -and "$($_.where)|$($_.rule)" -cnotin $Allowed })
@@ -697,3 +712,4 @@ function Get-PubReleaseById([object]$Ctx, [string]$Id, [switch]$AllowMissing) {
 }
 
 . (Join-Path $PSScriptRoot 'SfvPublishStages.ps1')
+. (Join-Path $PSScriptRoot 'SfvPublishColours.ps1')

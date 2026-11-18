@@ -154,10 +154,18 @@ switch ($Phase) {
             Copy-Item -LiteralPath (Join-Path $folder 'build-provenance.json') (Join-Path $out 'build-provenance.json')
             Copy-Item -LiteralPath "$folder.zip" (Join-Path $out "sfv-ember-$($job.label).zip")
             Copy-Item -LiteralPath "$folder.zip.sha256" (Join-Path $out "sfv-ember-$($job.label).zip.sha256")
+            # The colour pack package.ps1 wrote beside the zip, under its own name (docs/design/COLOUR_PACK.md).
+            $packs = @(Get-ChildItem -LiteralPath $job.dist -File -Filter 'sfve-colours-*.zip')
+            if ($packs.Count -ne 1) { throw "The package step left $($packs.Count) colour packs in $($job.dist), not one." }
+            $pack = Join-Path $out $packs[0].Name
+            Copy-Item -LiteralPath $packs[0].FullName $pack
             Copy-Item -LiteralPath (Join-Path $Work 'checkout.json') (Join-Path $out 'checkout.json')
             $result.ctest = @{development = (Get-CTest (Join-Path $Work 'build-development.log')); player = (Get-CTest (Join-Path $Work 'build-player.log'))}
             $result.zipSha256 = Sha (Join-Path $out "sfv-ember-$($job.label).zip")
-            $result.machineScan = @(Get-ChildItem -LiteralPath $folder -Recurse -File | ForEach-Object { @{file = $_.FullName.Substring($folder.Length + 1); hits = (Get-MachineHits $_.FullName)} } | Where-Object { $_.hits })
+            $result.colourPack = @{name = $packs[0].Name; sha256 = (Sha $pack)}
+            # The pack's entries are stored, so its names and manifest are scanned as they are in the file.
+            $result.machineScan = @(@(Get-ChildItem -LiteralPath $folder -Recurse -File | ForEach-Object { @{file = $_.FullName.Substring($folder.Length + 1); hits = (Get-MachineHits $_.FullName)} }) +
+                @(@{file = $packs[0].Name; hits = (Get-MachineHits $pack)}) | Where-Object { $_.hits })
             $result.source = @{fingerprint = (Get-Fingerprint $job.library $checkout.source.checkout)}
             $result.library = @{fingerprint = (Get-Fingerprint $job.library $checkout.library.checkout)}
             $result.ok = $true

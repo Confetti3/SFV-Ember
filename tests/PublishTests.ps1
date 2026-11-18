@@ -156,6 +156,12 @@ try {
         @({ param($f) $f.packagedOverride = { param($r) $r.renders.colourCoverage = 0.98 } }, '*a release ships every colour*'),
         @({ param($f) $f.packagedOverride = { param($r) $r.renders.minColourCoverage = 0 } }, '*a release ships every colour*'),
         @({ param($f) $f.packagedOverride = { param($r) $r.renders = @{included = $false} } }, '*a release ships every colour*'),
+        @({ param($f) $f.packNameOverride = 'colours.zip' }, '*names no colour pack*'),
+        @({ param($f) $f.descriptorOverride = { param($d) $d.sha256 = 'f' * 64 } }, '*colour-pack.json does not name the colour pack*'),
+        @({ param($f) $f.descriptorOverride = { param($d) $d.bytes = $d.bytes + 1 } }, '*colour-pack.json does not name the colour pack*'),
+        @({ param($f) $f.packRepo = 'Someone/Else' }, '*colour-pack.json does not name the colour pack*'),
+        @({ param($f) $f.packagedOverride = { param($r) $r.renders.colourPack = @{name = 'sfve-colours-0000000000000000.zip'} } }, '*receipt names another colour pack*'),
+        @({ param($f) $f.packPicture = 'thanks to ForbiddenName' }, '*colour pack carries forbidden strings*'),
         @({ param($f) $f.version = '0.1.0-beta.8' }, '*is not SFV Ember 0.1.0-beta.9*')
     )
     foreach ($case in $cases) {
@@ -163,7 +169,7 @@ try {
         Reject { Invoke-PubBuild $y.Ctx $y.P } $case[1]
         Check (!(Test-Path "$($y.Ctx.Root)\build\evidence.json")) 'no evidence after a refusal'
     }
-    Pass "build: refuses $($cases.Count) kinds of wrong result (other commit or fingerprint, failed tests, sidecar, zip, room build, forbidden or machine names in the package, receipt, colour coverage, version)"
+    Pass "build: refuses $($cases.Count) kinds of wrong result (other commit or fingerprint, failed tests, sidecar, zip, room build, forbidden or machine names in the package, receipt, colour coverage, colour pack, version)"
     $y = Fresh; $null = Plan $y; $y.World.LaptopBusy = 'sfv-b9-roomhost'
     Reject { Invoke-PubBuild $y.Ctx $y.P } '*one heavy build at a time*'
     $y = Fresh; $null = Plan $y; $y.World.JobFails = $true
@@ -272,10 +278,36 @@ try {
     Check ((G "$($x.F)\lib-origin.git" @('rev-parse', 'feat/ember-library')) -ceq $x.L2) 'library pushed'
     Check (($x.World.Pushes -join ';') -match '^origin refs/heads/feat/ember-library.*;origin refs/heads/release/beta.9.*;public refs/heads/main') 'push order: library, origin, public'
     Check ($promote.facts.zipSha256 -ceq $build.facts.zipSha256) 'downloaded zip compared'
+    # The colour pack: on a colour-packs release made for it, a pre-release that is no version, downloaded and compared.
+    $store = @($x.World.Releases | Where-Object { $_.tag_name -ceq 'colour-packs' })
+    $pack = $build.facts.colourPack
+    Check ($store.Count -eq 1 -and !$store[0].draft -and $store[0].prerelease) 'the colour-packs release'
+    Check (@($store[0].assets | Where-Object { $_.name -ceq $pack.name -and $_.digest -ceq "sha256:$($pack.sha256)" }).Count -eq 1) 'the pack uploaded to it'
+    Check (@($promote.files | Where-Object { $_.name -ceq "downloaded/$($pack.name)" -and $_.sha256 -ceq $pack.sha256 }).Count -eq 1) 'the pack downloaded and compared'
+    Check ((Read-PubJson "$($x.Ctx.Root)\promote\state.json").phases.colours.status -ceq 'done') 'colours phase'
     $pushes = $x.World.Pushes.Count
     Invoke-Quiet { Invoke-PubPromote $x.Ctx $x.P }
     Check ($x.World.Pushes.Count -eq $pushes) 'a finished promote does nothing again'
-    Pass 'promote: library, private release branch and public main pushed as fast-forwards, the draft published by id at the commit, the zip downloaded and compared'
+    Pass 'promote: the colour pack uploaded first; library, private release branch and public main pushed as fast-forwards, the draft published by id at the commit, the zip and the pack downloaded and compared'
+
+    # A release whose pack the colour-packs release has already: nothing uploaded, the asset checked.
+    $y = Fresh; Through $y 'draft'
+    $pack = (Read-PubEvidence $y.Ctx 'build' (Read-PubPlan $y.Ctx)).facts.colourPack
+    $store = Add-FakeRelease $y.World 'colour-packs' $false 'Colour packs'
+    Add-FakeAsset $y.World $store "$($y.Ctx.Root)\build\files\$($pack.name)" $pack.name
+    Invoke-Quiet { Invoke-PubPromote $y.Ctx $y.P }
+    Check (!@($y.World.Commands | Where-Object { $_ -like "*releases/$($store.id)/assets*" }).Count -and $store.assets.Count -eq 1) 'nothing uploaded again'
+    Check ((Read-PubJson "$($y.Ctx.Root)\promote\state.json").phases.colours.note -like 'there *') 'the pack found there'
+    # One of that name that is not the pack, or a colour-packs release nobody can download from, stops it before any push.
+    $y = Fresh; Through $y 'draft'
+    $pack = (Read-PubEvidence $y.Ctx 'build' (Read-PubPlan $y.Ctx)).facts.colourPack
+    $store = Add-FakeRelease $y.World 'colour-packs' $false
+    Add-FakeAsset $y.World $store "$($y.Ctx.Root)\notes.md" $pack.name
+    Reject { Invoke-PubPromote $y.Ctx $y.P 6>$null } '*is not the checked pack*'
+    Check (!$y.World.Pushes.Count) 'nothing pushed'
+    $y = Fresh; Through $y 'draft'; $null = Add-FakeRelease $y.World 'colour-packs' $true
+    Reject { Invoke-PubPromote $y.Ctx $y.P 6>$null } '*is a draft*'
+    Pass 'promote: a pack the colour-packs release has is not uploaded again; another file of its name, or a draft colour-packs release, stops promote before any push'
 
     # A final after its betas: the same stages, a draft that is not a pre-release, published as the latest release.
     $z = Fresh

@@ -31,6 +31,14 @@ function Add-FakeRelease([object]$World, [string]$Tag, [bool]$Draft, [string]$Na
     $World.Releases.Add($release)
     $release
 }
+# A file as an asset of a release, as GitHub keeps it: its bytes in the fixture, its size, state and digest.
+function Add-FakeAsset([object]$World, [object]$Release, [string]$Path, [string]$Name) {
+    $store = Join-Path $World.Fixture "github\$($Release.id)"
+    New-Item -ItemType Directory -Path $store -Force | Out-Null
+    Copy-Item -LiteralPath $Path -Destination (Join-Path $store $Name) -Force
+    $Release.assets.Add([pscustomobject]@{name = $Name; size = (Get-Item -LiteralPath $Path).Length; state = 'uploaded'
+        digest = "sha256:$((Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant())"})
+}
 
 # Each fixture's operations read their own world from $script:FakeWorlds by the fixture's key (the scriptblocks are
 # made from text with the key in them, so several fixtures live side by side in one test run).
@@ -89,13 +97,8 @@ function Invoke-FakeGh([object]$World, [string]$PublicBare, [string[]]$A) {
         return ConvertTo-FakeResult ($release | ConvertTo-Json -Depth 5)
     }
     if ($joined -cmatch '^api -X POST https://uploads\.github\.com/repos/[^/]+/[^/]+/releases/([0-9]+)/assets\?name=([^ ]+)') {
-        $release = Get-FakeRelease $World $Matches[1]
-        $name = [uri]::UnescapeDataString($Matches[2])
-        $store = Join-Path $World.Fixture "github\$($release.id)"
-        New-Item -ItemType Directory -Path $store -Force | Out-Null
-        Copy-Item -LiteralPath $inputFile -Destination (Join-Path $store $name) -Force
-        $release.assets.Add([pscustomobject]@{name = $name; size = (Get-Item -LiteralPath $inputFile).Length; state = 'uploaded'
-            digest = "sha256:$((Get-FileHash -LiteralPath $inputFile -Algorithm SHA256).Hash.ToLowerInvariant())"})
+        $id = $Matches[1]; $name = [uri]::UnescapeDataString($Matches[2])
+        Add-FakeAsset $World (Get-FakeRelease $World $id) $inputFile $name
         return ConvertTo-FakeResult '{}'
     }
     if ($joined -cmatch '^api -X PATCH repos/[^/]+/[^/]+/releases/([0-9]+) --input') {
@@ -200,6 +203,7 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
         sourceFingerprint = $World.Fingerprints.source; emberFingerprint = $World.Fingerprints.library
         tests = @('RoomBuild', 'Picks', 'Render'); ctestTotal = 3; ctestFailed = 0; version = $plan.version; label = $label
         resultFingerprint = $World.Fingerprints.source; machineScan = @(); sidecarSha = $null; zipShaOverride = $null; packagedOverride = $null
+        packPicture = 'a colour of a costume'; packRepo = 'Owner/SFV-Ember'; descriptorOverride = $null; packNameOverride = $null
     }
     if ($World.BuildTweak) { & $World.BuildTweak $f }
     [IO.File]::WriteAllText((Join-Path $staging 'sfv_ember.dll'), $f.dll, [Text.Encoding]::Latin1)
@@ -211,9 +215,22 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
     Save-FakeJson (Join-Path $out 'receipt-development.json') (& $receipt 'development')
     Save-FakeJson (Join-Path $out 'receipt-player.json') (& $receipt 'player')
     Save-FakeJson (Join-Path $out 'helper.provenance.json') @{emberRevision = $f.emberRevision; emberFingerprint = $f.emberFingerprint; sha256 = ('C' * 64)}
+    # The colour pack beside the zip, named by its SHA-256, and the descriptor in the package that names it.
+    $packFolder = Join-Path $Work 'pkg\pack'
+    New-Item -ItemType Directory -Path "$packFolder\assets\selection\RYU\costume-0" -Force | Out-Null
+    [IO.File]::WriteAllText("$packFolder\assets\selection\RYU\costume-0\color-1-cutout.png", $f.packPicture)
+    Compress-Archive -Path "$packFolder\*" -DestinationPath "$Work\pkg\pack.zip"
+    $packSha = (Get-FileHash -LiteralPath "$Work\pkg\pack.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+    $packName = "sfve-colours-$($packSha.Substring(0, 16)).zip"
+    Move-Item -LiteralPath "$Work\pkg\pack.zip" (Join-Path $out $packName)
+    $descriptor = [ordered]@{format = 1; id = $packSha.Substring(0, 16); bytes = (Get-Item -LiteralPath (Join-Path $out $packName)).Length; sha256 = $packSha
+        url = "https://github.com/$($f.packRepo)/releases/download/colour-packs/$packName"}
+    if ($f.descriptorOverride) { & $f.descriptorOverride $descriptor }
+    Save-FakeJson (Join-Path $staging 'colour-pack.json') $descriptor
     $packaged = & $receipt 'player'
     $packaged.package = @{label = $f.label}
-    $packaged.renders = [ordered]@{included = $true; colourCoverage = 1; minColourCoverage = 1}
+    $packaged.renders = [ordered]@{included = $true; colourCoverage = 1; minColourCoverage = 1
+        colourPack = [ordered]@{id = $descriptor.id; name = $packName; bytes = $descriptor.bytes; sha256 = $packSha; url = $descriptor.url; cutouts = 1}}
     if ($f.packagedOverride) { & $f.packagedOverride $packaged }
     Save-FakeJson (Join-Path $staging 'build-provenance.json') $packaged
     Copy-Item -LiteralPath (Join-Path $staging 'build-provenance.json') (Join-Path $out 'build-provenance.json')
@@ -226,6 +243,7 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
     Save-FakeJson (Join-Path $out 'result.json') @{ok = $true; steps = @(@{name = 'build-development'; exit = 0}, @{name = 'package'; exit = 0})
         ctest = @{development = @{passed = $f.ctestTotal - $f.ctestFailed; failed = $f.ctestFailed; total = $f.ctestTotal}; player = @{passed = $f.ctestTotal - $f.ctestFailed; failed = $f.ctestFailed; total = $f.ctestTotal}}
         zipSha256 = $(if ($f.zipShaOverride) { $f.zipShaOverride } else { $sha }); machineScan = $f.machineScan
+        colourPack = @{name = $(if ($f.packNameOverride) { $f.packNameOverride } else { $packName }); sha256 = $packSha}
         source = @{fingerprint = $f.resultFingerprint}; library = @{fingerprint = $World.Fingerprints.library}}
     Set-Content -LiteralPath (Join-Path $out 'job.log') -Value 'fake job'
 }
