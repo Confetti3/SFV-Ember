@@ -23,12 +23,14 @@
 #include <windows.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -254,8 +256,13 @@ TEST_CASE("a colour pack with one entry outside its folder is refused whole")
 		std::string error;
 		CHECK_FALSE(sfve::launcher::InstallPack(data, pack, error, kGoOn));
 		CHECK_MESSAGE(error.find("unsafe entry name") != std::string::npos, (std::string(unsafe) + ": " + error));
-		// Nothing of it stays: not the entry that came before, not the download.
+		// Nothing of it is extracted, not the entry that came before. The
+		// download is the pack the package names (its SHA-256 matched), so
+		// it stays, as a download that failed later on does.
 		CHECK(!fs::exists(sfve::colours::PackFolder(data, pack)));
+		CHECK(!fs::exists(sfve::colours::PacksFolder(data) / (pack.id + ".incoming")));
+		CHECK(fs::exists(sfve::launcher::PackDownload(data, pack)));
+		fs::remove(sfve::launcher::PackDownload(data, pack));
 		CHECK(fs::is_empty(sfve::colours::PacksFolder(data)));
 	}
 	CHECK(!fs::exists(data / "escape.png"));
@@ -271,17 +278,100 @@ TEST_CASE("the packs folder keeps only the pack the package names")
 	const fs::path packs = sfve::colours::PacksFolder(data);
 	Write(sfve::colours::PackFolder(data, pack) / "manifest.json", "{}");
 	Write(packs / "0123456789abcdef" / "manifest.json", "{}");               // an older pack
-	Write(packs / (pack.id + ".download"), "half");                          // an interrupted download
-	Write(packs / (pack.id + ".incoming") / "assets" / "x.png", "partial");  // and extraction
+	Write(packs / "0123456789abcdef.download", "old");                      // and its download
+	Write(packs / (pack.id + ".download"), "kept");                          // a download, checked again before it is used
+	Write(packs / (pack.id + ".incoming") / "assets" / "x.png", "partial");  // an interrupted extraction
 	const sfve::launcher::Pruned pruned = sfve::launcher::PruneOtherPacks(data, pack);
 	CHECK(pruned.removed.size() == 3);
 	CHECK(pruned.left.empty());
 	CHECK(fs::exists(sfve::colours::PackFolder(data, pack) / "manifest.json"));
-	CHECK(std::distance(fs::directory_iterator(packs), fs::directory_iterator()) == 1);
+	CHECK(fs::exists(sfve::launcher::PackDownload(data, pack)));
+	CHECK(std::distance(fs::directory_iterator(packs), fs::directory_iterator()) == 2);
 	// No packs folder yet: nothing to do.
 	fs::remove_all(packs);
 	CHECK(sfve::launcher::PruneOtherPacks(data, pack).removed.empty());
 	fs::remove_all(data);
+}
+
+TEST_CASE("one fetch at a time works in the packs folder, and pruning leaves its lock")
+{
+	const fs::path data = FreshFolder("lock");
+	const std::string sha(64, 'f');
+	const Pack pack{sha.substr(0, 16), 10, sha, Url(sha.substr(0, 16))};
+	{
+		const sfve::launcher::PacksLock first(data);
+		REQUIRE(first.Held());
+		// A second launcher's fetch, while the first's runs: it leaves everything to the first.
+		const sfve::launcher::PacksLock second(data);
+		CHECK_FALSE(second.Held());
+		const sfve::launcher::Pruned pruned = sfve::launcher::PruneOtherPacks(data, pack);
+		CHECK(pruned.removed.empty());
+		CHECK(pruned.left.empty());
+	}
+	{
+		// The first let go: the next fetch takes it.
+		const sfve::launcher::PacksLock next(data);
+		CHECK(next.Held());
+	}
+	fs::remove_all(data);
+}
+
+TEST_CASE("a checked download that cannot be put in place is kept, and the next start installs it without downloading")
+{
+	const fs::path data = FreshFolder("kept");
+	const Pack pack = Downloaded(data, StoredZip({{"assets/selection/RYU/costume-0/color-1-cutout.png", "pixels"}}));
+	const fs::path folder = sfve::colours::PackFolder(data, pack);
+	// Something in the pack folder's way for longer than the rename is tried.
+	Write(folder, "in the way");
+	std::string error;
+	CHECK_FALSE(sfve::launcher::InstallPack(data, pack, error, kGoOn));
+	CHECK_MESSAGE(error.find("could not move the pack into place") != std::string::npos, error);
+	CHECK(fs::exists(sfve::launcher::PackDownload(data, pack)));
+	CHECK(!fs::exists(sfve::colours::PacksFolder(data) / (pack.id + ".incoming")));
+	fs::remove(folder);
+	// The next start keeps it, and installs it, checking it again.
+	CHECK(sfve::launcher::PruneOtherPacks(data, pack).removed.empty());
+	REQUIRE(sfve::launcher::InstallPack(data, pack, error, kGoOn));
+	CHECK(fs::exists(folder / L"assets\\selection\\RYU\\costume-0\\color-1-cutout.png"));
+	CHECK(!fs::exists(sfve::launcher::PackDownload(data, pack)));
+	fs::remove_all(data);
+}
+
+TEST_CASE("the final rename is tried again while another program holds it up")
+{
+	const fs::path data = FreshFolder("rename");
+	const Pack pack = Downloaded(data, StoredZip({{"assets/selection/RYU/costume-0/color-1-cutout.png", "pixels"}}));
+	const fs::path folder = sfve::colours::PackFolder(data, pack);
+	Write(folder, "in the way");
+	std::thread other([&] {
+		std::this_thread::sleep_for(std::chrono::milliseconds(400));
+		fs::remove(folder);
+	});
+	std::string error;
+	const bool installed = sfve::launcher::InstallPack(data, pack, error, kGoOn);
+	other.join();
+	CHECK_MESSAGE(installed, error);
+	CHECK(fs::exists(folder / L"assets\\selection\\RYU\\costume-0\\color-1-cutout.png"));
+	fs::remove_all(data);
+}
+
+TEST_CASE("a package that carries every colour shows each colour's own picture without a pack")
+{
+	sfve::catalog_fixture::FillTestCatalog();
+	const fs::path root = FreshFolder("every");
+	const fs::path package = root / "package", data = root / "data";
+	std::string problem;
+	// No descriptor: the package is the only source.
+	const PictureSources sources = sfve::colours::InstalledSources(package, data, problem);
+	CHECK(problem.empty());
+	// RYU's costume 4: colours 0, 1, 100 and 101, every one in the package.
+	for (const int colour : {0, 1, 100, 101}) {
+		const fs::path own = package / (L"assets\\selection\\RYU\\costume-4\\color-" + std::to_wstring(colour) + L"-cutout.png");
+		Write(own, "colour " + std::to_string(colour));
+		CHECK(Shown(sfve::adapter::AppearanceFiles(sources, 0, 4, colour)) == own);
+		CHECK(Shown(sfve::adapter::CharacterFiles(sources, 0, 4, colour)) == own);
+	}
+	fs::remove_all(root);
 }
 
 TEST_CASE("the game reads a look from the colour pack first, then the package, then the costume's first colour")

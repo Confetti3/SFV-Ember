@@ -80,6 +80,11 @@ private:
 			spdlog::warn("Colour pack {}: no data folder to keep it in; the game shows each costume's first colour", pack->id);
 			return;
 		}
+		const PacksLock lock(data);
+		if (!lock.Held()) {
+			spdlog::info("Colour pack {}: another launcher is fetching it", pack->id);
+			return;
+		}
 		const Pruned pruned = PruneOtherPacks(data, *pack);
 		for (const std::wstring& name : pruned.removed) spdlog::info("Colour pack: removed {}", sf4e::platform::WideToUtf8(name));
 		for (const std::wstring& name : pruned.left) {
@@ -90,7 +95,10 @@ private:
 			return;
 		}
 		const auto started = std::chrono::steady_clock::now();
-		if (!Download(data, *pack)) return;
+		// A download an earlier start checked and could not put in place is
+		// installed again, checked again, without downloading it.
+		if (fs::exists(PackDownload(data, *pack))) spdlog::info("Colour pack {}: installing the download kept from an earlier start", pack->id);
+		else if (!Download(data, *pack)) return;
 		std::string error;
 		if (!InstallPack(data, *pack, error, cancel_)) {
 			spdlog::warn("Colour pack {}: not installed ({}); tried again at the next start", pack->id, error);
@@ -104,8 +112,6 @@ private:
 	// behind, when it did not come whole.
 	bool Download(const fs::path& data, const colours::Pack& pack)
 	{
-		std::error_code ec;
-		fs::create_directories(colours::PacksFolder(data), ec);
 		const fs::path file = PackDownload(data, pack);
 		spdlog::info("Colour pack {}: downloading {} from {}", pack.id, Megabytes(pack.bytes), pack.url);
 		std::uint64_t lines = 0;
@@ -125,6 +131,7 @@ private:
 		};
 		sf4e::HttpRequestResult result;
 		if (sf4e::HttpDownloadUrlUtf8(pack.url.c_str(), file.c_str(), kStepTimeoutMs, kHeaders, &result, received)) return true;
+		std::error_code ec;
 		fs::remove(file, ec);
 		const std::string why = cancel_ ? std::string("the launcher closed") :
 			oversized ? "more than " + std::to_string(pack.bytes) + " bytes came" :

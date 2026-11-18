@@ -8,16 +8,20 @@
 //
 // One thread, started as the launcher prepares the first start, so the
 // download overlaps the game's own start-up. It reads the descriptor beside
-// Launcher.exe (colours::PackagePack; none: nothing to do), leaves only that
-// pack in the player's data folder (PruneOtherPacks), and when the pack is
-// not there downloads it with the updater's HTTP download (redirects
-// followed, stopped past the descriptor's size) and installs it
-// (InstallPack: size, SHA-256, the updater's zip reader, one rename). A log
+// Launcher.exe (colours::PackagePack; none: nothing to do), takes the packs
+// folder's lock (PacksLock; another launcher's fetch holds it: nothing to
+// do), leaves only that pack in the player's data folder (PruneOtherPacks),
+// and when the pack is not there downloads it with the updater's HTTP
+// download (redirects followed, stopped past the descriptor's size), unless
+// an earlier start kept a checked download, and installs it (InstallPack:
+// size, SHA-256, the updater's zip reader, one rename). A log
 // line at each quarter of the download and for the outcome; no window (the
 // launcher shows none while the game runs). Anything that fails, offline
 // included, is a log line and is tried again at the next start: the game
 // never waits for the pack, and shows each costume's first colour until it is
-// there. Closing the launcher cancels a fetch under way.
+// there. Closing the launcher cancels a fetch under way after the read in
+// progress: a step still waiting on the network ends only at its 20 s
+// timeout, and the launcher's process stays until then, holding the lock.
 
 namespace sfve::launcher {
 
