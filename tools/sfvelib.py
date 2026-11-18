@@ -62,6 +62,8 @@ from sfvelib_config import (  # noqa: F401
     GAME_DIR,
     BUILD_DIR,
     GAME_EXE,
+    LAUNCH_LOCK,
+    LOCK_STALE_S,
     MOD_FILES,
     ASSETS,
     GUARD_TIMEOUT_S,
@@ -144,6 +146,8 @@ from sfvelib_procs import (  # noqa: F401
     run_scope,
 )
 from sfvelib_launch import (  # noqa: F401
+    take_launch_lock,
+    release_launch_lock,
     _sha256,
     _deployed_files,
     _installed,

@@ -10,12 +10,48 @@ import subprocess
 import time
 from pathlib import Path
 
-from sfvelib_config import (ASSETS, BUILD_DIR, GAME_DIR, GAME_EXE, GUARD_TIMEOUT_S, LAUNCHER_FILES, LAUNCHER_PREP_TIMEOUT_S,
-                            LOG_DIR, MANIFEST, MOD_FILES, PACKAGE_DIR, STEAM_APP_ID, VIA, SfveError)
+from sfvelib_config import (ASSETS, BUILD_DIR, GAME_DIR, GAME_EXE, GUARD_TIMEOUT_S, LAUNCH_LOCK, LAUNCHER_FILES,
+                            LAUNCHER_PREP_TIMEOUT_S, LOCK_STALE_S, LOG_DIR, MANIFEST, MOD_FILES, PACKAGE_DIR, STEAM_APP_ID, VIA, SfveError)
 from sfvelib_logs import log_path, set_aside
 from sfvelib_pipe import _reply_pid, request
 from sfvelib_procs import (Identity, Instance, _kill_tree, _process_table, _process_tree, _remember, process_identity, registry_path,
                            running_pids)
+
+
+def take_launch_lock(owner: str) -> None:
+    """Waits until no other runner holds the launch lock (LAUNCH_LOCK), then takes it for `owner`.
+    The file is created exclusively, so two runners starting together cannot both take it. A lock
+    older than LOCK_STALE_S, or one held while no game runs, is taken over. A lock that cannot
+    be written (no folder, no rights) is said and does not stop the run."""
+    while True:
+        try:
+            LAUNCH_LOCK.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(LAUNCH_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                if time.time() - LAUNCH_LOCK.stat().st_mtime > LOCK_STALE_S or not running_pids():
+                    LAUNCH_LOCK.unlink(missing_ok=True)
+                    continue
+                print(f"waiting for the launch lock: {LAUNCH_LOCK.read_text(errors='replace').strip()}", flush=True)
+            except OSError:
+                continue  # it went away between the check and the read
+            time.sleep(30)
+        except OSError as e:
+            print(f"note: launch lock not written ({e})", flush=True)
+            return
+        else:
+            with os.fdopen(fd, "w") as lock:
+                lock.write(f"{owner}, {time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
+            return
+
+
+def release_launch_lock(owner: str) -> None:
+    """Gives the launch lock back, if `owner` still holds it."""
+    try:
+        if LAUNCH_LOCK.read_text(errors="replace").startswith(owner):
+            LAUNCH_LOCK.unlink()
+    except OSError:
+        pass
 
 
 def _sha256(path: Path) -> str:

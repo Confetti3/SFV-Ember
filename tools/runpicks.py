@@ -231,7 +231,7 @@ def main(argv: list[str]) -> int:
     fighters = space()
     with lib.run_scope():
         try:
-            tr.take_launch_lock()
+            lib.take_launch_lock(tr.LOCK_OWNER)
             launch_copy()
             to_look_page()
             first = ensure_suitable_fighter(fighters)
@@ -315,8 +315,8 @@ def main(argv: list[str]) -> int:
                 raise lib.SfveError(f"after the close settings.json says {final}")
             if (lib.LOG_DIR / "sfv_ember.old1.log").exists():
                 print("   (the next start rotates the run's log to sfv_ember.old1.log)")
-            tr.release_launch_lock()
-            tr.take_launch_lock()
+            lib.release_launch_lock(tr.LOCK_OWNER)
+            lib.take_launch_lock(tr.LOCK_OWNER)
             launch_copy()
             sh.wait_for("the stored pick to be read", 60, lambda: sh.status(0)["room"]["pick"].startswith(A.code + " "))
             restored = room_pick()
@@ -347,7 +347,7 @@ def main(argv: list[str]) -> int:
             except (lib.SfveError, OSError):
                 pass
         finally:
-            tr.release_launch_lock()
+            lib.release_launch_lock(tr.LOCK_OWNER)
     if not a.keep_settings:
         lib.kill_all()
         time.sleep(2)

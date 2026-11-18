@@ -159,7 +159,7 @@ def main() -> int:
         args.shots.mkdir(parents=True, exist_ok=True)
     lib.begin_run()
     failures: list[str] = []
-    training.take_launch_lock()
+    lib.take_launch_lock(training.LOCK_OWNER)
     try:
         run(args.shots, failures)
     except lib.SfveError as e:
@@ -167,7 +167,7 @@ def main() -> int:
     finally:
         if not args.keep:
             lib.kill_all()
-            training.release_launch_lock()
+            lib.release_launch_lock(training.LOCK_OWNER)
     return lib.verdict(failures)
 
 

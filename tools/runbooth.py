@@ -41,8 +41,6 @@ except ImportError as e:  # pragma: no cover
     sys.exit(f"runbooth needs Pillow and numpy ({e}): python -m pip install -r tools/booth-requirements.txt (in a venv)")
 
 VERSION = bp.VERSION
-LAUNCH_LOCK = Path(os.environ.get("SFVE_LAUNCH_LOCK", r"D:\sfv-re\sfv-launch.lock"))
-LOCK_STALE_S = 45 * 60
 LOCK_OWNER = "sfv booth capture (runbooth.py)"
 LOADOUT_FRAMES = Path(__file__).resolve().parent / "booth" / "loadout-frames.json"
 MAIN_MENU_SCENE = lib.MAIN_MENU_SCENE
@@ -215,27 +213,6 @@ def default_after_press(cfg: dict, prefix: str) -> int:
 
 
 # --- locks, copies ----------------------------------------------------------------------------------
-
-def take_launch_lock() -> None:
-    while LAUNCH_LOCK.exists():
-        age = time.time() - LAUNCH_LOCK.stat().st_mtime
-        if age > LOCK_STALE_S or not lib.running_pids():
-            break
-        print(f"waiting for the launch lock: {LAUNCH_LOCK.read_text(errors='replace').strip()}", flush=True)
-        time.sleep(30)
-    try:
-        LAUNCH_LOCK.parent.mkdir(parents=True, exist_ok=True)
-        LAUNCH_LOCK.write_text(f"{LOCK_OWNER}, {time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
-    except OSError as e:
-        print(f"note: launch lock not written ({e})", flush=True)
-
-
-def release_launch_lock() -> None:
-    try:
-        if LAUNCH_LOCK.read_text(errors="replace").startswith(LOCK_OWNER):
-            LAUNCH_LOCK.unlink()
-    except OSError:
-        pass
 
 
 def kill_copy(index: int) -> None:
@@ -872,7 +849,7 @@ def main(argv: list[str]) -> int:
         return 0
     os.environ.setdefault("SFVE_RES", "1920x1080")  # the grabs are 1920x1080 whatever the window says
     lib.begin_run()
-    take_launch_lock()
+    lib.take_launch_lock(LOCK_OWNER)
     log = Log(store / "capture-log.jsonl")
     stop = threading.Event()
     post = ThreadPoolExecutor(max_workers=max(2, args.copies))
@@ -899,7 +876,7 @@ def main(argv: list[str]) -> int:
         stop.set()
         post.shutdown(wait=True)
         lib.kill_all()
-        release_launch_lock()
+        lib.release_launch_lock(LOCK_OWNER)
     done = sum(c.done for c in copies)
     failed = sum(c.failed for c in copies)
     log.say(f"finished in {(time.monotonic() - started) / 60:.1f} min: {done} loads captured, {failed} failures "

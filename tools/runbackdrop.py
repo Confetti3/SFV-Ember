@@ -298,7 +298,7 @@ def main(argv: list[str]) -> int:
     a.out = a.out.resolve()
     a.out.mkdir(parents=True, exist_ok=True)
     lib.begin_run()
-    training_steps.take_launch_lock()
+    lib.take_launch_lock(training_steps.LOCK_OWNER)
     failure = ""
     try:
         lib.kill_all()
@@ -324,7 +324,7 @@ def main(argv: list[str]) -> int:
             pass
         if not a.keep:
             lib.kill_all()
-            training_steps.release_launch_lock()
+            lib.release_launch_lock(training_steps.LOCK_OWNER)
     return lib.verdict(failure)
 
 

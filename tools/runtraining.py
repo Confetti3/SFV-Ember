@@ -57,8 +57,7 @@ import runshell as shell_steps  # noqa: E402
 import sfvelib as lib  # noqa: E402
 import traininglab  # noqa: E402
 
-LAUNCH_LOCK = Path(r"D:\sfv-re\sfv-launch.lock")
-LOCK_STALE_S = 45 * 60
+LOCK_OWNER = "sfv-training agent (runtraining.py)"
 TRAINING_SCENE = "0x2DA8B70"  # SfvOffsets: kTrainingBattleVtable
 MAIN_MENU_SCENE = "0x2D98660"  # kMainMenuVtable
 
@@ -71,24 +70,6 @@ seek = shell_steps.seek
 pick_place = shell_steps.pick_place
 expect_pick = shell_steps.expect_pick
 seek_pick = shell_steps.seek_pick
-
-
-def take_launch_lock() -> None:
-    while LAUNCH_LOCK.exists():
-        age = time.time() - LAUNCH_LOCK.stat().st_mtime
-        if age > LOCK_STALE_S or not lib.running_pids():
-            break
-        print(f"waiting for the launch lock: {LAUNCH_LOCK.read_text(errors='replace').strip()}")
-        time.sleep(30)
-    LAUNCH_LOCK.write_text(f"sfv-training agent (runtraining.py), {time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
-
-
-def release_launch_lock() -> None:
-    try:
-        if LAUNCH_LOCK.read_text(errors="replace").startswith("sfv-training agent"):
-            LAUNCH_LOCK.unlink()
-    except OSError:
-        pass
 
 
 def training(index: int) -> dict:
@@ -515,7 +496,7 @@ def main(argv: list[str]) -> int:
     lib.begin_run()
     if a.shots:
         a.shots.mkdir(parents=True, exist_ok=True)
-    take_launch_lock()
+    lib.take_launch_lock(LOCK_OWNER)
     failure = ""
     try:
         # Stopped before anything is installed. Launcher mode (SFVE_VIA=launcher) runs the
@@ -541,7 +522,7 @@ def main(argv: list[str]) -> int:
                 pass
         if not a.keep:
             lib.kill_all()
-            release_launch_lock()
+            lib.release_launch_lock(LOCK_OWNER)
     return lib.verdict(failure)
 
 
