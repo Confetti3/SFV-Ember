@@ -29,6 +29,8 @@
 
 #include "ui/Win32Input.hxx"
 
+#include <imgui.h>
+
 #include <functional>
 
 namespace sfve::overlay {
@@ -78,6 +80,12 @@ void SetOverlayUi(OverlayUi ui);
 
 // The game's window has the focus (WM_ACTIVATEAPP). Any thread.
 bool GameWindowFocused();
+
+// Render thread, inside OverlayUi::draw: the frame being presented as it was
+// before Ember drew on it, at `width` x `height` and opaque: the watched
+// game's picture (overlay/WatchedFrame.hxx). Empty with no swap chain to draw
+// on, or when it cannot be taken.
+ImTextureID WatchedPicture(unsigned width, unsigned height);
 
 // A function called on the render thread for every real Present (not
 // DXGI_PRESENT_TEST) of any swap chain the hook sees, before the overlay draws

@@ -183,7 +183,8 @@ add_library(sfve_ember STATIC
     src/overlay/BorderlessWindow.cxx
     src/overlay/FrameGrab.cxx
     src/overlay/Overlay.cxx
-    src/overlay/TextureUploaderD3D11.cxx)
+    src/overlay/TextureUploaderD3D11.cxx
+    src/overlay/WatchedFrame.cxx)
 # SFV Ember's source revision, which a desync's report names
 # (src/ember/DesyncReporter.cxx): refreshed on every build by the library's
 # script, as the library's own BuildIdentity.hxx is.
@@ -350,6 +351,7 @@ add_executable(sfve_ember_tests
     tests/SfvSelectGridTests.cxx
     tests/LoadoutNotesTests.cxx
     tests/PhotoBoothTests.cxx
+    tests/WatchedFrameTests.cxx
     tests/FaceCropTests.cxx
     tests/SfvPictureSpecTests.cxx
     tests/SfvBackdropTests.cxx

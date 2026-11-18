@@ -148,6 +148,10 @@ public:
 		view.screenMode = static_cast<int>(SfvScreenMode());
 	}
 
+	// The watched game's picture: the overlay's copy of the frame it is about
+	// to present, before Ember draws on it (docs/design/WATCH_PICTURE.md).
+	ImTextureID WatchedPicture(unsigned width, unsigned height) override { return overlay::WatchedPicture(width, height); }
+
 	// Training select's Hitboxes row: the lab's switch, saved.
 	bool ShowHitboxes(bool shown) override { return ChooseTrainingHitboxes(shown); }
 
