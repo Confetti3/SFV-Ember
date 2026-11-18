@@ -16,7 +16,8 @@
 // package's captured renders (beta.8: assets/selection/<CODE>/costume-<N>/
 // color-<M>-cutout.png) and, for a V-Skill or V-Trigger, its captured
 // loadout pictures (<CODE>/vs<k>.png, vt<k>.png), loaded as SF4's are
-// (Request over PackagedFiles) and missing where the package has none. The
+// (Request) from the colour pack the launcher downloads, then the package
+// (PictureSources, SfvColourPack.hxx), and missing where neither has one. The
 // pick pane falls back to the game's own large figure, then its banner.
 // There are no ranking emblems of SF4's, and no one picture of a V-Skill and
 // V-Trigger together (the pane draws their marks itself). Where a shared
@@ -25,9 +26,11 @@
 
 #include "ember/SfvArt.hxx"
 #include "ember/SfvCatalog.hxx"
+#include "ember/SfvColourPack.hxx"
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvSelectionAssetPath.hxx"
 #include "ember/SfvSelection.hxx"
+#include "mod/Log.hxx"
 
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
@@ -91,42 +94,35 @@ SelectionImage Missing()
 	image.missing = true;
 	return image;
 }
+
+// Where the captured pictures are read from: the colour pack the package
+// names, then the package (SfvColourPack.hxx). Made on first use, on the
+// drawing thread.
+const sfve::colours::PictureSources& Sources()
+{
+	static const sfve::colours::PictureSources sources = [] {
+		std::string problem;
+		sfve::colours::PictureSources installed =
+			sfve::colours::InstalledSources(sfve::mod::ModuleFolder(), sfve::mod::DataFolder(), problem);
+		if (!problem.empty()) sfve::mod::Log("art: %s; the pictures are the package's alone", problem.c_str());
+		return installed;
+	}();
+	return sources;
+}
 } // namespace
 
 SelectionImage SelectionArt::Portrait(int fighter, bool) { return sfve::adapter::FighterImage(fighter, sfve::adapter::FighterPicture::Face); }
-// The fighter's whole figure in a costume and colour: the look's captured
-// cutout, then the costume's first colour, then the fighter's first costume in
-// its first colour (the catalog's numbers and order), cropped to the figure.
-// A look the catalog does not have is not asked for. Missing for a fighter
-// the catalog does not have, or one with no costume; where the package has
-// none of the files the pane falls back to the game's own figure and banner,
-// so an absent file is not reported.
+// The fighter's whole figure in a costume and colour (CharacterFiles), cropped
+// to the figure. Missing for a fighter the catalog does not have, or one with
+// no costume; where neither the pack nor the package has any of the files the
+// pane falls back to the game's own figure and banner, so an absent file is
+// not reported.
 SelectionImage SelectionArt::Character(int fighter, int costume, int colour, bool large)
 {
 	const std::string code = sfve::adapter::FighterCode(fighter);
 	if (code.empty()) return Missing();
 	if (costume < 0 || colour < 0) costume = colour = -1;
-	const auto files = [&] {
-		std::vector<std::pair<int, int>> looks;
-		const auto add = [&](int outfit, int palette) {
-			const std::pair<int, int> look{outfit, palette};
-			if (std::find(looks.begin(), looks.end(), look) == looks.end()) looks.push_back(look);
-		};
-		const std::vector<int> costumes = sfve::adapter::CostumeIds(fighter, false);
-		const std::vector<int> own = sfve::adapter::ColourIds(fighter, costume);
-		if (std::find(own.begin(), own.end(), colour) != own.end()) add(costume, colour);
-		if (!own.empty()) add(costume, own.front());
-		if (!costumes.empty()) {
-			const std::vector<int> first = sfve::adapter::ColourIds(fighter, costumes.front());
-			if (!first.empty()) add(costumes.front(), first.front());
-		}
-		std::vector<std::wstring> list;
-		for (const auto& [outfit, palette] : looks) {
-			const auto more = PackagedFiles(code + "/costume-" + std::to_string(outfit) + "/color-" + std::to_string(palette));
-			list.insert(list.end(), more.begin(), more.end());
-		}
-		return list;
-	};
+	const auto files = [&] { return sfve::adapter::CharacterFiles(Sources(), fighter, costume, colour); };
 	Policy figure;
 	figure.cropToContent = true;
 	const std::string& key = requestKey_.assign(code)
@@ -135,9 +131,10 @@ SelectionImage SelectionArt::Character(int fighter, int costume, int colour, boo
 		.append(large ? "/figure-large" : "/figure-thumb");
 	return Request(key, files, large ? MaximumImageSide : ThumbnailSide, figure);
 }
-// The exact look's captured cutout and nothing else: a costume or colour the
-// catalog does not have, or no capture of it, is missing, and the pane falls
-// back to the fighter's figure (Character) and then the banner.
+// The exact look's captured cutout, the pack's then the package's, and nothing
+// else: a costume or colour the catalog does not have, or no capture of it, is
+// missing, and the pane falls back to the fighter's figure (Character) and
+// then the banner.
 SelectionImage SelectionArt::Appearance(int fighter, int costume, int colour)
 {
 	const std::string code = sfve::adapter::FighterCode(fighter);
@@ -147,12 +144,12 @@ SelectionImage SelectionArt::Appearance(int fighter, int costume, int colour)
 	const std::string& key = imageKey_.assign(code)
 		.append("/costume-").append(std::to_string(costume))
 		.append("/color-").append(std::to_string(colour));
-	return Request(key, [&] { return PackagedFiles(key); }, MaximumImageSide);
+	return Request(key, [&] { return Sources().Cutout(code, costume, colour); }, MaximumImageSide);
 }
 // A loadout picture (SfvSelection.hxx's LoadoutPicture): `ultra` is part * 2 +
-// choice, 0 to 3, and the picture is <CODE>/vs<k>.png or vt<k>.png of the
-// package (k is choice + 1). Missing for a number outside 0 to 3 and for a
-// choice the fighter lacks.
+// choice, 0 to 3, and the picture is <CODE>/vs<k>.png or vt<k>.png (k is
+// choice + 1), from the same sources as a cutout. Missing for a number
+// outside 0 to 3 and for a choice the fighter lacks.
 SelectionImage SelectionArt::Ultra(int fighter, int ultra)
 {
 	const std::string code = sfve::adapter::FighterCode(fighter);
@@ -162,7 +159,7 @@ SelectionImage SelectionArt::Ultra(int fighter, int ultra)
 	if (choice >= sfve::adapter::PartChoices(fighter, part)) return Missing();
 	const std::string& key =
 		imageKey_.assign(code).append(part == sfve::picks::LoadoutPart::VSkill ? "/vs" : "/vt").append(std::to_string(choice + 1));
-	return Request(key, [&] { return PackagedFiles(key); }, MaximumImageSide);
+	return Request(key, [&] { return Sources().Loadout(code, part, choice); }, MaximumImageSide);
 }
 SelectionImage SelectionArt::UltraIcon(int) { return Missing(); }
 SelectionImage SelectionArt::Stage(int stage) { return sfve::adapter::StageImage(stage); }
@@ -176,6 +173,31 @@ SelectionArt::GameSheet SelectionArt::LetterFiles() const { return {}; }
 } // namespace sf4e::ui
 
 namespace sfve::adapter {
+
+std::vector<std::wstring> CharacterFiles(const colours::PictureSources& sources, int fighter, int costume, int colour)
+{
+	const std::string code = FighterCode(fighter);
+	if (code.empty()) return {};
+	std::vector<std::pair<int, int>> looks;
+	const auto add = [&](int outfit, int palette) {
+		const std::pair<int, int> look{outfit, palette};
+		if (std::find(looks.begin(), looks.end(), look) == looks.end()) looks.push_back(look);
+	};
+	const std::vector<int> costumes = CostumeIds(fighter, false);
+	const std::vector<int> own = ColourIds(fighter, costume);
+	if (std::find(own.begin(), own.end(), colour) != own.end()) add(costume, colour);
+	if (!own.empty()) add(costume, own.front());
+	if (!costumes.empty()) {
+		const std::vector<int> first = ColourIds(fighter, costumes.front());
+		if (!first.empty()) add(costumes.front(), first.front());
+	}
+	std::vector<std::wstring> files;
+	for (const auto& [outfit, palette] : looks) {
+		const std::vector<std::wstring> more = sources.Cutout(code, outfit, palette);
+		files.insert(files.end(), more.begin(), more.end());
+	}
+	return files;
+}
 
 sf4e::ui::SelectionImage LoadoutPicture(sf4e::ui::SelectionArt* art, int fighter, picks::LoadoutPart part, int choice)
 {

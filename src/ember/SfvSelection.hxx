@@ -14,11 +14,23 @@
 // (SfvSelectionAssetPath.hxx). LoadoutPicture is the one typed way for the
 // screens to ask.
 
+#include "ember/SfvColourPack.hxx"
 #include "ember/SfvPickSpace.hxx"
 
 #include "ui/SelectionArt.hxx"
 
+#include <string>
+#include <vector>
+
 namespace sfve::adapter {
+
+// Render thread. The files SelectionArt::Character reads a fighter's
+// (the catalog's id) figure from, first first: the look's cutout, then that
+// costume's first colour, then the fighter's first costume in its first
+// colour (the catalog's numbers and order), each from every one of `sources`
+// in order (the colour pack's, then the package's). A look the catalog does
+// not have is not asked for; a fighter it does not have has none.
+std::vector<std::wstring> CharacterFiles(const colours::PictureSources& sources, int fighter, int costume, int colour);
 
 // The number SelectionArt::Ultra is asked with for a part's choice: part * 2 +
 // choice (0 to 3); -1 for a part or choice outside the loadout's.

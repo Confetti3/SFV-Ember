@@ -34,11 +34,13 @@ The beta.7 updater does not know these names; it takes them only because the pac
 
 ## Loading (`SfvSelection.cxx`)
 
-Pictures load as SF4's do: `Request(key, files, side, policy)` over
-`PackagedFiles(key)`, from `<mod folder>\assets\selection` (the root `Overlay.cxx` already
-passes). `PackagedFiles` tries `<key>-cutout.png`, `<key>.png`, `<key>.jpg`; only the form the
-package ships exists. Costume and colour numbers come from the catalog (`CostumeIds`,
-`ColourIds`: the game's numbers and order, the same as the pick space's).
+Pictures load as SF4's do, through `Request(key, files, side, policy)`. Since 0.1.1 the files
+are `PictureSources`' (`SfvColourPack.hxx`, `docs/design/COLOUR_PACK.md`): the picture's one
+path (`SfvSelectionAssetPath`'s builders) under the colour pack's folder in the player's data folder, then
+under the package folder; a file that is not there is skipped. Before 0.1.1 they were the
+library's `PackagedFiles(key)` under `<mod folder>\assets\selection`. Costume and colour
+numbers come from the catalog (`CostumeIds`, `ColourIds`: the game's numbers and order, the
+same as the pick space's).
 
 - `Character(fighter, costume, colour, large)`: the look's cutout, then that costume's first
   colour, then the fighter's first costume in its first colour; cropped to content; 512 px
