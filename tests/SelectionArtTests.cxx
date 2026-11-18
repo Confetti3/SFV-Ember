@@ -129,7 +129,7 @@ TEST_CASE("the game's pictures are its fighters' faces and its stages', and the 
 	// swatches once the game thread has read them (none runs in a test).
 	const CostumePalette palette = CostumeSwatches(0, 4);
 	CHECK_FALSE(palette.read);
-	CHECK(palette.colours == std::vector<StripColour>{{0, true, std::nullopt}, {1, true, std::nullopt},
+	CHECK(palette.colours == std::vector<PaletteColour>{{0, true, std::nullopt}, {1, true, std::nullopt},
 		{100, false, std::nullopt}, {101, false, std::nullopt}});
 	CHECK(CostumeSwatches(5, 0).colours.empty()); // not a fighter of the catalog
 	// The pick screen pane's pictures wait for the game too, and a costume

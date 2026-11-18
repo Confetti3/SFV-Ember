@@ -29,7 +29,7 @@
 // both are kept for the session.
 
 #include "ember/SfvPickSpace.hxx"
-#include "ember/SfvSwatchStrip.hxx"
+#include "ember/SfvSwatch.hxx"
 
 #include "ui/SelectionArt.hxx"
 
@@ -75,7 +75,7 @@ sf4e::ui::SelectionImage CostumeImage(int fighter, int costume);
 // ranks', so nothing else is ever loaded by this path.
 sf4e::ui::SelectionImage LeagueImage(const std::string& name);
 
-// A costume's colours as the pick screen's strip shows them (SfvSwatchStrip),
+// A costume's colours as the pick screen's swatches take them (SfvSwatch),
 // one entry each, made once when the costume is first asked for: every
 // colour in the game's order, whether this player can ready it (SfvCatalog's
 // pickable ColourIds), and its two swatch colours once the game thread has
@@ -83,7 +83,7 @@ sf4e::ui::SelectionImage LeagueImage(const std::string& name);
 // has no swatch then either.
 struct CostumePalette {
 	bool read = false;
-	std::vector<StripColour> colours;
+	std::vector<PaletteColour> colours;
 };
 // Any thread: the costume's palette, asked for once and then read; empty for
 // a costume the catalog does not have, and, without being kept, while the

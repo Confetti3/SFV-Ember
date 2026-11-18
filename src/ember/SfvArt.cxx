@@ -274,7 +274,7 @@ void PumpSwatches()
 		palette = s_swatches[costume];
 	}
 	const std::string code = FighterCode(costume.first);
-	for (StripColour& colour : palette.colours) colour.swatch = mod::ColourSwatch(code, costume.second, colour.colour);
+	for (PaletteColour& colour : palette.colours) colour.swatch = mod::ColourSwatch(code, costume.second, colour.colour);
 	palette.read = true;
 	std::lock_guard lock(s_mutex);
 	s_swatches[costume] = std::move(palette);

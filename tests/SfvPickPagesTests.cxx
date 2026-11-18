@@ -18,6 +18,7 @@
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPick.hxx"
 #include "ember/SfvPickPages.hxx"
+#include "ember/SfvPickPreview.hxx"
 #include "ember/SfvPickSpace.hxx"
 #include "ember/SfvRandomFighter.hxx"
 #include "ember/SfvSelectGrid.hxx"
@@ -732,4 +733,23 @@ TEST_CASE("an edit of the stored pick is one step: it reads the pick as it is, m
 	CHECK(edited.pick.fighter == kBsn);
 	CHECK(SameLook(CurrentPick().pick, edited.pick));
 	ForgetPickMemoryForTest();
+}
+
+TEST_CASE("at the smallest window the pane's picture gives way, so every line of the look and the loadout shows")
+{
+	// The pane at 960x540 and the default interface size: 346 tall inside its
+	// padding, the banner 236 tall at the pane's width, a gap of 10, and 130
+	// for the words the pane measures under it (the fighter's and the
+	// costume's names, the colour's line and the two loadout lines, lines 26
+	// apart).
+	const float room = 346, natural = 236, gap = 10, words = 130;
+	const float picture = (std::min)(natural, PictureRoom(room, words, gap));
+	CHECK(picture == 206);
+	CHECK(picture + gap + words <= room);
+	// Another line of words: the picture gives way again.
+	CHECK(PictureRoom(room, words + 26, gap) == 180);
+	// Where the pane is taller than it needs: the banner at its size.
+	CHECK(PictureRoom(532, words, gap) >= natural);
+	// Words that fill the pane leave no room for a picture, never less.
+	CHECK(PictureRoom(100, 200, gap) == 0);
 }

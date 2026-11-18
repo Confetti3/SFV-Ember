@@ -225,10 +225,10 @@ void SfvSelectionScreen::Draw(bool editable, bool stageEditable, const std::stri
 			};
 		} else {
 			// Each colour as the costume cards show a costume: its own
-			// picture, on a thin strip of its swatch; its swatch chip where
-			// it has no picture yet (DrawColourCard). One this player cannot
-			// ready is dimmed, its chip struck through as the pane's chips
-			// are. The pane beside the cards shows the focused colour.
+			// picture alone; its swatch chip only where it has no picture yet
+			// (DrawColourCard). One this player cannot ready is dimmed, its
+			// chip struck through. The pane beside the cards shows the
+			// focused colour.
 			cards.picture = [&pick, costume](ImDrawList* draw, const MenuEntry& e, v2::Box box, float alpha) {
 				if (!sf4e::ui::HasPrefix(e.id, kColourCard)) return;
 				sf4e::selection::Pick look = pick.pick;

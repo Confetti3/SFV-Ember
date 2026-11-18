@@ -4,7 +4,7 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvLoadoutText.hxx"
 #include "ember/SfvPictureSpec.hxx"
-#include "ember/SfvSwatchStrip.hxx"
+#include "ember/SfvSwatch.hxx"
 
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
@@ -46,8 +46,6 @@ constexpr float kFigureShape = 384.f / 256.f;
 // A swatch chip: its first colour fills this much of it from the top, the
 // second the rest, as the game's costume menu splits its swatch.
 constexpr float kSwatchSplit = .6f;
-// A colour card's swatch strip under its picture: this tall (unscaled).
-constexpr float kColourCardStrip = 8;
 // The V marks' frame: as wide as this many line heights, so a mark, Ember's
 // plate or nothing (while the mark loads) all leave the words in one place.
 constexpr float kMarkWidth = 1.5f;
@@ -171,71 +169,10 @@ float DrawLookPicture(ImDrawList* draw, const PlayerPick& shown, ImVec2 at, floa
 	return height;
 }
 
-// The game's EX colours' prefix ("EX01"), as ColourName writes it.
-constexpr const char* kExCaption = "EX";
-
-// The costume's colours as chips (SfvSwatchStrip) at the pane's width, with
-// the sizes they are laid out by. No chips where the game has no swatch for
-// any of its colours.
-struct Strip {
-	StripMetrics metrics;
-	StripLayout layout;
-	float barGap = 0, bar = 0; // the chosen chip's gold bar: its distance under the chip, and its height
-};
-
-Strip LayOutStrip(const PlayerPick& shown, float width)
-{
-	const float s = sf4e::ui::Scale();
-	Strip strip;
-	const CostumePalette palette = CostumeSwatches(shown.pick.fighter, shown.pick.costume);
-	const bool anySwatch = std::any_of(palette.colours.begin(), palette.colours.end(),
-		[](const StripColour& colour) { return colour.swatch.has_value(); });
-	if (palette.read && !anySwatch) return strip;
-	StripMetrics& metrics = strip.metrics;
-	metrics.width = width;
-	metrics.chip = Whole(ImGui::GetTextLineHeight());
-	metrics.gap = Whole(4 * s);
-	strip.barGap = (std::max)(1.f, Whole(2 * s));
-	strip.bar = (std::max)(1.f, Whole(2 * s));
-	metrics.pitch = metrics.chip + strip.barGap + strip.bar + metrics.gap;
-	metrics.exIndent = Whole(ImGui::CalcTextSize(kExCaption).x) + 2 * metrics.gap;
-	strip.layout = LayOutSwatchStrip(palette.colours, shown.pick.color, metrics);
-	return strip;
-}
-
-void DrawStrip(ImDrawList* draw, const Strip& strip, ImVec2 at)
-{
-	const auto& colors = v2::Colors();
-	const float s = sf4e::ui::Scale();
-	const StripMetrics& metrics = strip.metrics;
-	if (strip.layout.exRow >= 0) {
-		const float y = at.y + strip.layout.exRow + (metrics.chip - ImGui::GetTextLineHeight()) * .5f;
-		draw->AddText(ImVec2(at.x, y), colors.muted, kExCaption);
-	}
-	for (const Chip& chip : strip.layout.chips) {
-		const float alpha = chip.dimmed ? kLocked : 1.f;
-		const ImVec2 min(at.x + chip.x, at.y + chip.y), max(min.x + metrics.chip, min.y + metrics.chip);
-		// While the swatches load, the chip is its edge alone.
-		if (chip.swatch) {
-			const float split = Whole(min.y + metrics.chip * kSwatchSplit);
-			draw->AddRectFilled(min, ImVec2(max.x, split), Rgb(chip.swatch->first, alpha));
-			draw->AddRectFilled(ImVec2(min.x, split), max, Rgb(chip.swatch->second, alpha));
-		}
-		draw->AddRect(min, max, chip.chosen ? colors.text : v2::color::Alpha(colors.border, alpha), 0, 0, s);
-		// Not this player's to ready: struck through, corner to corner.
-		if (chip.dimmed) draw->AddLine(ImVec2(min.x + s, max.y - s), ImVec2(max.x - s, min.y + s), colors.muted, s);
-		// The chosen colour: Band's focus mark, a gold bar, under it.
-		if (chip.chosen) {
-			const float top = max.y + strip.barGap;
-			draw->AddRectFilled(ImVec2(min.x, top), ImVec2(max.x, top + strip.bar), colors.accent);
-		}
-	}
-}
-
 // The look's words under its picture: the fighter's and the costume's names,
-// the colour chips (`strip`) and the colour's label. With no draw list it
+// and the colour's label. With no draw list it
 // only measures, as v2::Paragraph does. The height it takes.
-float DrawLookWords(ImDrawList* draw, const PlayerPick& shown, const Strip& strip, ImVec2 at)
+float DrawLookWords(ImDrawList* draw, const PlayerPick& shown, ImVec2 at)
 {
 	const auto& colors = v2::Colors();
 	const float line = ImGui::GetTextLineHeightWithSpacing(), top = at.y;
@@ -246,8 +183,6 @@ float DrawLookWords(ImDrawList* draw, const PlayerPick& shown, const Strip& stri
 	};
 	text(colors.text, ember::Catalog().fighterName(fighter));
 	text(colors.muted, CostumeName(fighter, shown.pick.costume));
-	if (draw) DrawStrip(draw, strip, at);
-	at.y += strip.layout.height;
 	text(colors.muted, std::string(loc::T("selection.color_row")) + " " + ColourName(shown.pick.color));
 	return at.y - top;
 }
@@ -405,7 +340,7 @@ bool DrawSwatch(ImDrawList* draw, int fighter, int costume, int colour, v2::Box 
 	const CostumePalette palette = CostumeSwatches(fighter, costume);
 	if (!palette.read) return false;
 	const auto entry = std::find_if(palette.colours.begin(), palette.colours.end(),
-		[colour](const StripColour& candidate) { return candidate.colour == colour; });
+		[colour](const PaletteColour& candidate) { return candidate.colour == colour; });
 	if (entry == palette.colours.end() || !entry->swatch) return false;
 	const float split = Whole(box.min.y + box.H() * kSwatchSplit);
 	draw->AddRectFilled(box.min, ImVec2(box.max.x, split), Rgb(entry->swatch->first, alpha));
@@ -425,9 +360,7 @@ void DrawColourCard(ImDrawList* draw, const sf4e::selection::Pick& look, v2::Box
 	sf4e::ui::SelectionArt* art = sf4e::ui::MenuArt();
 	const SelectionImage own = art ? art->Appearance(look.fighter, look.costume, look.color) : Missing();
 	if (ChooseColourCardFace(own) == ColourCardFace::Picture) {
-		const v2::Box strip{ImVec2(box.min.x, box.max.y - Whole(kColourCardStrip * s)), box.max};
-		FitIn(draw, own, {box.min, ImVec2(box.max.x, strip.min.y)}, alpha, true);
-		DrawSwatch(draw, look.fighter, look.costume, look.color, strip, alpha);
+		FitIn(draw, own, box, alpha, true);
 		return;
 	}
 	const float side = std::floor((std::min)(box.W(), box.H()) * .8f);
@@ -493,10 +426,9 @@ v2::Box DrawPickPreviewIn(const PickPreview& preview, v2::Box box)
 	// Every line under the picture keeps its room: the look's words and the
 	// loadout's lines are measured as they are drawn (no draw list), and the
 	// picture takes what is left, as the stage's card does.
-	const Strip strip = LayOutStrip(shown, width);
-	const float words = DrawLookWords(nullptr, shown, strip, at) + DrawLoadout(nullptr, shown, focused, at);
+	const float words = DrawLookWords(nullptr, shown, at) + DrawLoadout(nullptr, shown, focused, at);
 	at.y += DrawLookPicture(draw, shown, at, width, PictureRoom(bottom - at.y, words, gap)) + gap;
-	at.y += DrawLookWords(draw, shown, strip, at);
+	at.y += DrawLookWords(draw, shown, at);
 	DrawLoadout(draw, shown, focused, at);
 	return {};
 }

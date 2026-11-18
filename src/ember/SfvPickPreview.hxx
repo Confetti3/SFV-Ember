@@ -13,10 +13,8 @@
 //   it. A picture that is not of the look's own colour carries the colour's
 //   tag (its swatch chip and number) at its foot, so it never passes for that
 //   colour (ChooseLookPicture); the
-//   fighter's and the costume's names; every colour of the costume as
-//   two-tone chips (SfvSwatchStrip), EX colours on their own row, the chosen
-//   one with the gold bar under it; and the colour's label. A look this
-//   player cannot ready (NOT OWNED) is dimmed, its chips struck through.
+//   fighter's and the costume's names and the colour's label. A look this
+//   player cannot ready (NOT OWNED) is dimmed.
 // - The loadout (the V-Skill and V-Trigger rows, and under the look): one
 //   line per part, the game's I or II mark (Ember's own plate where the mark
 //   does not load), the part's label and the choice in the game's words, the
@@ -80,7 +78,7 @@ sf4e::ui::v2::Box DrawPickPreviewIn(const PickPreview& preview, sf4e::ui::v2::Bo
 // The pane's arithmetic, in its pixels, apart from ImGui so that the tests
 // check it at the smallest window. The tallest a picture may be drawn with
 // `room` left in the pane, `words` under it (measured by drawing them with no
-// draw list: the look's lines and chips and the loadout's lines, or the
+// draw list: the look's lines and the loadout's lines, or the
 // stage's name and sentence) and `gap` between the two: what is left once the
 // words have theirs, and none when nothing is.
 float PictureRoom(float room, float words, float gap);
@@ -132,9 +130,9 @@ bool DrawSwatch(ImDrawList* draw, int fighter, int costume, int colour, sf4e::ui
 enum class ColourCardFace { Picture, Swatch };
 ColourCardFace ChooseColourCardFace(const sf4e::ui::SelectionImage& own);
 // A colour card's picture in `box`, as ChooseColourCardFace picks it: the
-// colour's own picture standing on a thin strip of its swatch, or its swatch
-// chip as large a square as the box holds (its edge alone while the swatches
-// load), struck through with `struck` (a colour this player cannot ready).
+// colour's own picture alone, or its swatch chip (as large a square as the box
+// holds; its edge alone while the swatches load), struck through with `struck`
+// (a colour this player cannot ready).
 void DrawColourCard(ImDrawList* draw, const sf4e::selection::Pick& look, sf4e::ui::v2::Box box, float alpha, bool struck);
 // The game's mark for the part's choice in `box`: the mark fitted on whole
 // pixels, never larger than it is; Ember's plate with the numeral where the

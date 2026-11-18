@@ -175,7 +175,6 @@ add_library(sfve_ember STATIC
     src/ember/SfvPickPages.cxx
     src/ember/SfvSelectionScreen.cxx
     src/ember/SfvShell.cxx
-    src/ember/SfvSwatchStrip.cxx
     src/ember/SfvTraining.cxx
     src/ember/SfvTrainingHost.cxx
     src/ember/SfvTrainingLab.cxx
@@ -361,7 +360,6 @@ add_executable(sfve_ember_tests
     tests/SfvBackdropTests.cxx
     tests/ScreenModeTests.cxx
     tests/SfvSettingsFileTests.cxx
-    tests/SwatchStripTests.cxx
     tests/SfvVerificationTests.cxx
     tests/DesyncReportTests.cxx
     tests/PaceTests.cxx

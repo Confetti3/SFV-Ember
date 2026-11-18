@@ -157,7 +157,7 @@ game's cursor), the gold foot under the stored one.
 ## The art pane and pictures
 
 The package holds each costume in its **first colour only** (the owner's call for beta.8),
-plus the V-Skill and V-Trigger pictures; colours are chosen with the game's swatch chips.
+plus the V-Skill and V-Trigger pictures; colours are chosen on the colour gallery's pictures (0.1.1; the game's swatch chips before).
 
 The board's pane, the look page's pane and the card pages' panes are one drawing
 (`DrawPickPreviewIn` in `SfvPickPreview.cxx`), on the detail pane's panel ground:
@@ -169,7 +169,7 @@ The board's pane, the look page's pane and the card pages' panes are one drawing
   of the look's own colour carries the colour's tag at its foot: the colour's swatch chip and
   its number ("05", "EX01") on a dark plate, so a costume picture never passes for another
   colour. The costume's first colour itself is shown untagged (its picture is that colour).
-- The fighter's name, costume name, the colour chips and the colour's label, then the loadout
+- The fighter's name, costume name and the colour's label (no row of palette chips), then the loadout
   lines; the note (why it cannot be chosen) first, in the danger tone.
 - Random's card: a question mark on a banner-shaped plate (gold while Random is the pick),
   `selection.random_card`, the rolled fighter, and `selection.random_card.detail`.
@@ -178,10 +178,10 @@ The board's pane, the look page's pane and the card pages' panes are one drawing
 
 Cards: costume cards show each costume in its picture's colour (its first), labelled with the
 costume's name; colour cards (0.1.1, the colour pack) are cut as the costume cards are, each
-the colour's own picture (`SelectionArt::Appearance`, never the costume's first colour) on a
-thin strip of its swatch, and the colour's swatch chip (the game's two colours, square, as large
-as the card holds) while that picture loads or where there is none (no pack yet, a colour without
-a cutout; `ChooseColourCardFace`, `DrawColourCard`); one this player cannot ready dimmed, its
+the colour's own picture (`SelectionArt::Appearance`, never the costume's first colour) alone,
+with no palette beside or under it; the colour's swatch chip (the game's two colours, square, as
+large as the card holds) stands in only while that picture loads or where there is none (no pack
+yet, a colour without a cutout; `ChooseColourCardFace`, `DrawColourCard`); one this player cannot ready dimmed, its
 chip struck through; the pane beside them shows the focused colour. A card grid draws only the
 cards in view, so only their pictures are asked for; stage cards
 `StageSelectIcon_l`; loadout cards the captured move picture (`LoadoutPicture`, `vs<k>.png` / `vt<k>.png`), else the
