@@ -13,9 +13,11 @@
 #include "ember/SfvReplays.hxx"
 #include "ember/SfvTraining.hxx"
 
+#include "common/InputDelay.hxx"
 #include "common/RoomRules.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
 
+#include <initializer_list>
 #include <string>
 
 using namespace sfve;
@@ -103,6 +105,29 @@ TEST_CASE("the game offers watching, replays and Training, and answers as no bat
 	CHECK_FALSE(game.training.MatchPracticeActive());
 	CHECK_FALSE(ReadTrainingView().available);
 	CHECK_FALSE(TrainingPaused());
+}
+
+TEST_CASE("Auto delay recommends with SFV's own bands, SF4's left as they were")
+{
+	// EMBER_LIBRARY.md section 66: one frame through 100 ms, then one more per 33 ms.
+	const sf4e::InputDelayBands bands = ember::game::Game().delayBands;
+	CHECK(bands.firstBandMs == 100);
+	CHECK(bands.bandStepMs == 33);
+	struct Edge { int rttMs, delay; };
+	for (const Edge edge : {Edge{0, 1}, Edge{100, 1}, Edge{101, 2}, Edge{133, 2}, Edge{134, 3}, Edge{166, 3}, Edge{167, 4},
+		Edge{199, 4}, Edge{200, 5}, Edge{1000, 5}})
+		CHECK(sf4e::InputDelayBand(bands, edge.rttMs) == edge.delay);
+	// The field match (Brazil to NA, ~150 ms): SFV readies Balanced at 3 frames,
+	// where SF4's bands, unchanged, still give 2; Smooth 4.
+	const sf4e::RoundTrip field{150, 160};
+	CHECK(sf4e::RecommendedInputDelay(bands, field) == 3);
+	CHECK(sf4e::RecommendedInputDelay(sf4e::Sf4InputDelayBands, field) == 2);
+	CHECK(sf4e::AutoInputDelay(sf4e::RecommendedInputDelay(bands, field), sf4e::AutoDelayStyle::Smooth) == 4);
+	// A tail one band worse is tolerated; two bands worse raises it.
+	CHECK(sf4e::RecommendedInputDelay(bands, sf4e::RoundTrip{120, 166}) == 2);
+	CHECK(sf4e::RecommendedInputDelay(bands, sf4e::RoundTrip{120, 167}) == 3);
+	// Balanced holds at its 3 frames past 166 ms; a chosen delay goes higher.
+	CHECK(sf4e::AutoInputDelay(sf4e::RecommendedInputDelay(bands, sf4e::RoundTrip{190, 190})) == sf4e::AutoInputDelayMaximum);
 }
 
 TEST_CASE("P1's session kept for its watchers is the battle's until the runtime's drain ends")
