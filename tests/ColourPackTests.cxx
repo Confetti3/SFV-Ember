@@ -30,6 +30,7 @@
 #include <iterator>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -321,14 +322,16 @@ TEST_CASE("a checked download that cannot be put in place is kept, and the next 
 	const fs::path data = FreshFolder("kept");
 	const Pack pack = Downloaded(data, StoredZip({{"assets/selection/RYU/costume-0/color-1-cutout.png", "pixels"}}));
 	const fs::path folder = sfve::colours::PackFolder(data, pack);
-	// Something in the pack folder's way for longer than the rename is tried.
-	Write(folder, "in the way");
+	// Something in the pack folder's way for longer than the rename is tried
+	// (a folder with a file in it: renaming onto it fails, as renaming a
+	// folder with a file open in it does).
+	Write(folder / "in-the-way", "x");
 	std::string error;
 	CHECK_FALSE(sfve::launcher::InstallPack(data, pack, error, kGoOn));
 	CHECK_MESSAGE(error.find("could not move the pack into place") != std::string::npos, error);
 	CHECK(fs::exists(sfve::launcher::PackDownload(data, pack)));
 	CHECK(!fs::exists(sfve::colours::PacksFolder(data) / (pack.id + ".incoming")));
-	fs::remove(folder);
+	fs::remove_all(folder);
 	// The next start keeps it, and installs it, checking it again.
 	CHECK(sfve::launcher::PruneOtherPacks(data, pack).removed.empty());
 	REQUIRE(sfve::launcher::InstallPack(data, pack, error, kGoOn));
@@ -342,10 +345,11 @@ TEST_CASE("the final rename is tried again while another program holds it up")
 	const fs::path data = FreshFolder("rename");
 	const Pack pack = Downloaded(data, StoredZip({{"assets/selection/RYU/costume-0/color-1-cutout.png", "pixels"}}));
 	const fs::path folder = sfve::colours::PackFolder(data, pack);
-	Write(folder, "in the way");
+	Write(folder / "in-the-way", "x");
 	std::thread other([&] {
 		std::this_thread::sleep_for(std::chrono::milliseconds(400));
-		fs::remove(folder);
+		std::error_code ignored;
+		fs::remove_all(folder, ignored);
 	});
 	std::string error;
 	const bool installed = sfve::launcher::InstallPack(data, pack, error, kGoOn);
