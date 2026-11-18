@@ -62,7 +62,8 @@ void DrawBoard(const std::vector<sf4e::ui::MenuEntry>& entries, sf4e::ui::MenuNa
 // A grid of picture cards (the library's FitGallery, as SF4 Ember's
 // galleries lay theirs out) in a scrolling child of its own, the pane beside
 // it: each card its picture over its name, the saved one with the gold rule,
-// one that cannot be chosen dimmed and its name muted.
+// one that cannot be chosen dimmed and its name muted. Only the cards in view
+// are drawn, so only their pictures are asked for.
 struct CardGrid {
 	const char* page; // the scrolling child's name: each page keeps its own scroll
 	sf4e::ui::CardShape shape;

@@ -95,6 +95,9 @@ void DrawCardGrid(const std::vector<MenuEntry>& entries, MenuNavigation& nav, Me
 		const sf4e::ui::GalleryGrid::Offset at = grid.Cell(i, width, gap);
 		const v2::Box b{ImVec2(top.x + at.x, top.y + at.y), ImVec2(top.x + at.x + grid.width, top.y + at.y + grid.height)};
 		const bool hovered = sf4e::ui::PressEntry(nav, entries, e, b, action, changed).hovered, focused = e.id == nav.Focus();
+		// A card scrolled out of the area is placed for the pad and the
+		// pointer, but not drawn: its picture is asked for once it shows.
+		if (!ImGui::IsRectVisible(b.min, b.max)) continue;
 		const bool saved = cards.saved(e);
 		v2::CardGround(draw, b, focused, hovered, saved);
 		cards.picture(draw, e, {ImVec2(b.min.x + 3 * s, b.min.y + 3 * s), ImVec2(b.max.x - 3 * s, b.max.y - caption)},
