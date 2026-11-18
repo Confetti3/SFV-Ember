@@ -2,7 +2,10 @@
 # Read-RenderStore) on small stores made here: a costume the pick space marks
 # "unshipped" needs no picture and no manifest exception (one listed is
 # accepted), a picture of it is refused, and an offered costume without its
-# first colour still fails.
+# first colour still fails. Then the split between the zip and the colour pack
+# (scripts\ColourPack.ps1): the first colours and loadout pictures stay in the
+# zip, the other colours make one archive whose bytes depend on its pictures
+# alone, and the descriptor names it.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tests\RenderStoreTests.ps1
 #
@@ -11,6 +14,7 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Off
 . (Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts\RenderStore.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts\ColourPack.ps1')
 
 $root = Join-Path ([IO.Path]::GetTempPath()) ('sfve-render-store-tests-' + [Guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $root
@@ -61,6 +65,11 @@ $cutout = @{ Path = 'assets/selection/AAA/costume-0/color-0-cutout.png'; Look = 
 $skill = @{ Path = 'assets/selection/AAA/vs1.png'; Look = @{ fighter = 'AAA'; part = 'vskill'; choice = 1 } }
 $trigger = @{ Path = 'assets/selection/AAA/vt1.png'; Look = @{ fighter = 'AAA'; part = 'vtrigger'; choice = 1 } }
 $grey = @{ Path = 'assets/selection/AAA/costume-3/color-0-cutout.png'; Look = @{ fighter = 'AAA'; costume = 3; colour = 0 } }
+$second = @{ Path = 'assets/selection/AAA/costume-0/color-1-cutout.png'; Look = @{ fighter = 'AAA'; costume = 0; colour = 1 } }
+
+function Expect([bool]$Condition, [string]$Failure) { if (!$Condition) { $failures.Add($Failure) } }
+# The paths a manifest's bytes list.
+function Get-ListedPaths([byte[]]$Bytes) { @(([Text.Encoding]::UTF8.GetString($Bytes) | ConvertFrom-Json).files | ForEach-Object { $_.path }) }
 
 # The checks' answers are the functions' only output; their lines go to the host.
 function Expect-Pass([string]$Case, [scriptblock]$Check) {
@@ -112,6 +121,58 @@ try {
 	# Unless it is a listed exception.
 	$store = New-Store 'missing-excepted' @($skill, $trigger) @(@{ fighter = 'AAA'; costume = 0; reason = 'not captured' })
 	$null = Expect-Pass 'an offered costume listed as an exception passes' { Read-RenderStore $store 0.0 $spacePath }
+
+	# A store of first colours only leaves nothing for a colour pack.
+	$read = Read-RenderStore (New-Store 'first-only' @($cutout, $skill, $trigger) @()) 0.0 $spacePath
+	$split = Split-RenderFiles $read
+	Expect ($split.Zip.Count -eq 3 -and $split.Pack.Count -eq 0) "a first-colour store splits $($split.Zip.Count)/$($split.Pack.Count), not 3/0"
+
+	# Every colour: the zip keeps the first colour and the loadout pictures, the pack takes the other colour.
+	$read = Expect-Pass 'a store of every colour reaches full coverage' { Read-RenderStore (New-Store 'every' @($cutout, $second, $skill, $trigger) @()) 1.0 $spacePath }
+	if ($read) {
+		$split = Split-RenderFiles $read
+		$zipPaths = @($split.Zip | ForEach-Object { $_.Path } | Sort-Object)
+		Expect (($zipPaths -join ',') -ceq (@($cutout.Path, $skill.Path, $trigger.Path | Sort-Object) -join ',')) "the zip holds $($zipPaths -join ', ')"
+		Expect ($split.Pack.Count -eq 1 -and $split.Pack[0].Path -ceq $second.Path) 'the pack holds the second colour alone'
+		# Each carries the store's manifest with its own files listed.
+		$listed = Get-ListedPaths (Get-RenderManifestBytes $read.Manifest $split.Zip)
+		Expect ((@($listed | Sort-Object) -join ',') -ceq ($zipPaths -join ',')) "the zip's manifest lists $($listed -join ', ')"
+
+		$first = New-Item -ItemType Directory -Path (Join-Path $root 'out-1')
+		$again = New-Item -ItemType Directory -Path (Join-Path $root 'out-2')
+		$pack = Expect-Pass 'the colour pack is written' { New-ColourPack $read $split.Pack $first.FullName 'Owner/Repo' }
+		$other = New-ColourPack $read $split.Pack $again.FullName 'Owner/Repo'
+		if ($pack) {
+			$sha = (Get-FileHash -LiteralPath $pack.Path -Algorithm SHA256).Hash.ToLowerInvariant()
+			Expect ($pack.Sha256 -ceq $sha -and $pack.Id -ceq $sha.Substring(0, 16)) 'the pack id is the start of its SHA-256'
+			Expect ($other.Sha256 -ceq $pack.Sha256) 'the same pictures make the same pack'
+			Expect ($pack.Name -ceq "sfve-colours-$($pack.Id).zip" -and (Split-Path -Leaf $pack.Path) -ceq $pack.Name) "the pack is named $($pack.Name)"
+			Expect (!$pack.Name.StartsWith('sfv-ember-')) 'the pack never has the package''s prefix'
+			Expect ($pack.Url -ceq "https://github.com/Owner/Repo/releases/download/colour-packs/$($pack.Name)") "the pack's URL is $($pack.Url)"
+			Expect ($pack.Bytes -eq (Get-Item -LiteralPath $pack.Path).Length -and $pack.Cutouts -eq 1) 'the pack''s size and count'
+			Expect (@(Get-ChildItem -LiteralPath $first.FullName).Count -eq 1) 'nothing but the pack is left in the folder'
+			Add-Type -AssemblyName System.IO.Compression.FileSystem
+			$archive = [IO.Compression.ZipFile]::OpenRead($pack.Path)
+			try {
+				$names = @($archive.Entries | ForEach-Object { $_.FullName })
+				Expect (($names -join ',') -ceq "manifest.json,$($second.Path)") "the pack's entries are $($names -join ', ')"
+				Expect (@($archive.Entries | Where-Object { $_.CompressedLength -ne $_.Length }).Count -eq 0) 'the pack''s entries are stored'
+				Expect (@($archive.Entries | Where-Object { $_.LastWriteTime.Year -ne 1980 }).Count -eq 0) 'the pack''s entries carry no time of their own'
+				$stream = $archive.GetEntry('manifest.json').Open(); $memory = [IO.MemoryStream]::new()
+				try { $stream.CopyTo($memory) } finally { $stream.Dispose() }
+				$listed = Get-ListedPaths $memory.ToArray()
+				Expect (($listed -join ',') -ceq $second.Path) "the pack's manifest lists $($listed -join ', ')"
+			} finally { $archive.Dispose() }
+			# The descriptor the launcher and the game read.
+			$descriptorPath = Join-Path $root 'colour-pack.json'
+			Write-ColourPackDescriptor $pack $descriptorPath
+			$descriptor = Get-Content -LiteralPath $descriptorPath -Raw | ConvertFrom-Json
+			Expect ($descriptor.format -eq 1 -and $descriptor.id -ceq $pack.Id -and $descriptor.bytes -eq $pack.Bytes -and
+				$descriptor.sha256 -ceq $pack.Sha256 -and $descriptor.url -ceq $pack.Url) 'the descriptor names the pack'
+		}
+		Expect-Throw 'a pack of nothing is refused' 'at least one picture' { New-ColourPack $read @() $first.FullName 'Owner/Repo' }
+		Expect-Throw 'a pack for no repository is refused' 'Not a GitHub repository' { New-ColourPack $read $split.Pack $first.FullName 'not a repo' }
+	}
 } finally {
 	Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }

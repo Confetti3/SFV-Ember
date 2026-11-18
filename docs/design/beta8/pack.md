@@ -83,15 +83,20 @@ scripts\package.ps1 -RenderStore D:\sfv-ember-renders [-MinColourCoverage 0]
    always reported in the receipt); every loadout picture of the pick space (180 now: each fighter's V-Skill and
    V-Trigger choices) has a file or a listed exception, else the package is refused; the file count and bytes fit the updater's zip reader (no zip64,
    16-bit entry count: under 59,800 files and 3 GB).
-3. Stage each render under `assets\selection\<CODE>\...` and the manifest as
-   `assets\selection\manifest.json`.
+3. Split the store (`scripts/ColourPack.ps1`, `docs/design/COLOUR_PACK.md`): each offered costume's
+   first colour and every loadout picture are staged under `assets\selection\<CODE>\...`, with the
+   store's manifest listing only them as `assets\selection\manifest.json`; every other colour goes
+   into the colour pack `sfve-colours-<id>.zip` beside the zip, and `colour-pack.json` in the
+   package names it (none when nothing is left over, as with a first-colour store).
 4. Generate the package's `PackageInventory.inc`: the repo's file unchanged plus
    `SF4E_PACKAGE_OPTIONAL("assets\\selection\\...")` lines (doubled backslashes, the
-   library's syntax) for the manifest and every render, sorted, CRLF, no BOM.
+   library's syntax) for the manifest and every render the zip ships, sorted, CRLF, no BOM.
 5. Provenance receipt `build-provenance.json` gains `renders`: `included`, `manifestSha256`,
    `pipeline`, `captureGameBuild`, `captureModRevision`, `files`, `cutouts`, `loadoutPictures`,
    `loadoutPicturesPossible`, `looks`, `looksExcepted`, `bytes`, `colourCoverage`,
-   `minColourCoverage`. `BUILD_INFO.txt` repeats the counts, manifest hash and pipeline.
+   `minColourCoverage` (all of the whole store), `shipped` (the zip's `files`, `cutouts`,
+   `loadoutPictures`) and `colourPack` (`id`, `name`, `bytes`, `sha256`, `url`, `cutouts`, or null).
+   `BUILD_INFO.txt` repeats the counts, manifest hash, pipeline and the pack.
 6. Validation: this build's `sfve_package_check.exe --validate`, then, with `-OldPackageCheck`,
    the kept earlier beta's copy on the same folder (its compiled rules plus the package's
    inventory), then the zip download check, as before.

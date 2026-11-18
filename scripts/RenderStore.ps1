@@ -34,6 +34,7 @@ function Read-RenderStore([string]$Store, [double]$MinCoverage, [string]$SpacePa
 	# Every path a pick space allows, and every offered costume's first colour.
 	$allowed = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
 	$firstColours = [Collections.Generic.List[object]]::new()
+	$firstKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 	$unshipped = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 	$lookCount = 0
 	foreach ($fighter in $space.fighters) {
@@ -47,6 +48,7 @@ function Read-RenderStore([string]$Store, [double]$MinCoverage, [string]$SpacePa
 				$lookCount++
 			}
 			$firstColours.Add([pscustomobject]@{ Fighter = $fighter.code; Costume = [int]$costume.id; Colour = [int]$costume.colours[0] })
+			$null = $firstKeys.Add("$($fighter.code) $($costume.id) $($costume.colours[0])")
 		}
 		for ($choice = 1; $choice -le $fighter.v_skills; $choice++) { $allowed["assets/selection/$($fighter.code)/vs${choice}.png"] = "loadout $($fighter.code) vskill $choice" }
 		for ($choice = 1; $choice -le $fighter.v_triggers; $choice++) { $allowed["assets/selection/$($fighter.code)/vt${choice}.png"] = "loadout $($fighter.code) vtrigger $choice" }
@@ -91,7 +93,9 @@ function Read-RenderStore([string]$Store, [double]$MinCoverage, [string]$SpacePa
 		if ((Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash -ne $entry.sha256.ToUpperInvariant()) { throw "Render file does not match its manifest hash: $path" }
 		$totalBytes += $item.Length
 		if ($part[0] -eq 'cutout') { $null = $present.Add("$($part[1]) $($part[2]) $($part[3])") } else { $null = $loadoutPresent.Add("$($part[1]) $($part[2]) $($part[3])") }
-		$files.Add([pscustomobject]@{ Path = $path; Native = $native; Relative = ($path -replace '/', '\') })
+		# What the file is, for the split between the zip and the colour pack (ColourPack.ps1).
+		$kind = if ($part[0] -ne 'cutout') { 'loadout' } elseif ($firstKeys.Contains("$($part[1]) $($part[2]) $($part[3])")) { 'first' } else { 'colour' }
+		$files.Add([pscustomobject]@{ Path = $path; Native = $native; Relative = ($path -replace '/', '\'); Kind = $kind })
 	}
 	# Nothing in the pack the manifest does not vouch for.
 	$root = Join-Path $pack 'assets\selection'

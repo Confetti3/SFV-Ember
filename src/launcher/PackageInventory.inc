@@ -29,3 +29,7 @@ SF4E_PACKAGE_REQUIRED("START_HERE.md")
 SF4E_PACKAGE_REQUIRED("MANIFEST.txt")
 SF4E_PACKAGE_REQUIRED("BUILD_INFO.txt")
 SF4E_PACKAGE_REQUIRED("build-provenance.json")
+// The colour pack the launcher downloads (docs/design/COLOUR_PACK.md): a
+// package whose renders leave colours for the pack names it; a development
+// package has none.
+SF4E_PACKAGE_OPTIONAL("colour-pack.json")
