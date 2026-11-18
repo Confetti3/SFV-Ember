@@ -352,3 +352,44 @@ TEST_CASE("list entries that are no record of their block, other shapes, empty r
 	AppendBoxes(crowded, kRectShape, out, tally);
 	CHECK(tally.drawn + tally.stray == 16);
 }
+
+TEST_CASE("every attack record a list holds is noted with its type, flags and size, drawn or not")
+{
+	// A throw's box, and a strike whose rectangle has no width and whose
+	// flags say the hit is not tested against the body boxes' rectangles.
+	RecordedPart grab{0, false, 0x25A35B84000, 2, 0, {}, {}};
+	grab.attack.push_back({6, 0, 0, 0, {0x3F800000, 0x00000000, 0x3FC00000, 0x3F800000}, 6, 0});
+	grab.attack.push_back({0, 0, 0, 1, {0x3F800000, 0x00000000, 0x00000000, 0x3F800000}, 0, 0});
+	BoxBlocks blocks = Blocks(grab);
+	const uint32_t flags = boxes::kHitsWithoutOverlap;
+	Put(blocks.attack, boxes::kRecords + boxes::kRecordSize + boxes::kRecordFlags, &flags, 4);
+	std::vector<training::Box> out;
+	BoxTally tally;
+	AppendBoxes(blocks, kRectShape, out, tally);
+	REQUIRE(tally.attacks.size() == 2u);
+	// The lists are walked by type: the strike's first.
+	CHECK(tally.attacks[0].type == 0);
+	CHECK(tally.attacks[0].flags == boxes::kHitsWithoutOverlap);
+	CHECK_FALSE(tally.attacks[0].drawn);
+	CHECK(tally.attacks[0].width == 0.0f);
+	CHECK(tally.attacks[1].type == 6);
+	CHECK(tally.attacks[1].flags == 0u);
+	CHECK(tally.attacks[1].drawn);
+	CHECK(tally.attacks[1].width == 1.5f);
+	CHECK(tally.attacks[1].side == 0);
+	CHECK_FALSE(tally.attacks[1].projectile);
+	CHECK(out.size() == 1u);
+	CHECK(tally.empty == 1);
+	// An undrawn type is noted too, and a projectile's records say so.
+	RecordedPart catcher{1, true, 0x259FC9EC000, 1, 0, {}, {}};
+	catcher.attack.push_back({5, 0, 0, 0, {0, 0, 0x3F800000, 0x3F800000}, 5, 0});
+	tally = {};
+	out.clear();
+	AppendBoxes(Blocks(catcher), kRectShape, out, tally);
+	REQUIRE(tally.attacks.size() == 1u);
+	CHECK(tally.attacks[0].type == 5);
+	CHECK_FALSE(tally.attacks[0].drawn);
+	CHECK(tally.attacks[0].projectile);
+	CHECK(tally.attacks[0].side == 1);
+	CHECK(out.empty());
+}

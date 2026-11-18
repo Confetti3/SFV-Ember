@@ -21,8 +21,11 @@
 //      player saw no crash window until they closed that box.
 // Threads the game did not start (the mod's own among them) are not guarded
 // by its reporter: the mod's unhandled-exception filter records a fault
-// there and chains to the filter it replaced. It is set at the start and
-// taken back at the game's first frame, in case the engine set its own.
+// there and chains to the filter it replaced. It is set at the start, and
+// SetUnhandledExceptionFilter is hooked so a filter another module sets
+// later (the engine's, the Steam overlay's) becomes the one ours chains to
+// and ours stays first; it is also taken back at the game's first frame, for
+// where that hook did not go in.
 // Heap corruption ends the process without reaching any filter; ntdll raises
 // it once, so a vectored handler asks the launcher first, then records it.
 // The mod's own C runtime faults (a pure call, an invalid parameter,
@@ -60,6 +63,21 @@ struct CrashRecordState {
 // Once, after the log is open and MinHook is initialized (the network guard).
 // A second call returns the first's state.
 CrashRecordState InstallCrashRecord(const CrashRecordSetup& setup);
+
+// The exit code the game ends with after a crash: 0 when the fault came once
+// the graceful exit was done (GracefulExitDone: everything Ember keeps is
+// saved, and the engine was tearing itself down, where 0.1.0 players' AMD
+// driver and the engine's own teardown faulted after the window had closed),
+// so the launcher shows no crash for something the player never saw; else the
+// fault's code when the launcher reads it as a crash, or 3 (an abort's).
+unsigned EndingCode(unsigned long faultCode, bool afterGracefulExit);
+
+// True when `address` is code of the game's own exe. Only the game's reporter
+// (its guarded loop and threads, which end in MiniDumpWriteDump) is taken for
+// the game ending: another module that dumps (a second mod's vectored handler
+// dumps every first-chance fault it sees, among them ones a __try inside the
+// game or this mod swallows) is not, and the hook leaves its call alone.
+bool IsInGameExe(const void* address);
 
 // Records a crash, kind as CrashReport.hxx names them, and takes its dump:
 // the hook's path, callable on its own (tests). Once per process; later

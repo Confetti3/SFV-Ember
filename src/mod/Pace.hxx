@@ -49,16 +49,19 @@ public:
 	struct Totals {
 		std::int64_t due = 0, held = 0;
 	};
-	// A rendered frame starts.
-	void Frame(std::int64_t now)
+	// A rendered frame starts. Returns the previous frame's length in ticks (0 for the first).
+	std::int64_t Frame(std::int64_t now)
 	{
-		if (started_) (due_ ? totals_.due : totals_.held) += now - last_;
+		const std::int64_t length = started_ ? now - last_ : 0;
+		if (started_) (due_ ? totals_.due : totals_.held) += length;
 		started_ = true;
 		last_ = now;
 		due_ = false;
+		return length;
 	}
 	// An update is due in the frame now running.
 	void Due() { due_ = true; }
+	bool IsDue() const { return due_; }
 	const Totals& Read() const { return totals_; }
 
 private:

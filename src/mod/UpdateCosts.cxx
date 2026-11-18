@@ -12,6 +12,9 @@ namespace {
 // updates played forward (rollbacks' replays not counted).
 constexpr uint64_t kCostAdvances = 600;
 
+// A rendered frame longer than this many milliseconds is logged (FrameEnded).
+constexpr int64_t kHitchMs = 120;
+
 } // namespace
 
 int64_t UpdateCosts::Now()
@@ -19,6 +22,19 @@ int64_t UpdateCosts::Now()
 	LARGE_INTEGER t;
 	QueryPerformanceCounter(&t);
 	return t.QuadPart;
+}
+
+void UpdateCosts::FrameEnded()
+{
+	const bool due = paceClock_.IsDue();
+	const int64_t length = paceClock_.Frame(Now());
+	LARGE_INTEGER frequency{};
+	QueryPerformanceFrequency(&frequency);
+	if (!frequency.QuadPart || length * 1000 < kHitchMs * frequency.QuadPart) return;
+	const PaceCounts counts = paceSource_ ? paceSource_() : PaceCounts{};
+	Log("pace: a frame took %.0f ms (%s; session frame %d, rollbacks so far %llu, waiting steps %llu)",
+		1000.0 * (double)length / (double)frequency.QuadPart, due ? "an update was due" : "the battle stood still", counts.frame,
+		(unsigned long long)counts.rollbacks, (unsigned long long)counts.waiting);
 }
 
 void UpdateCosts::EndBattle()

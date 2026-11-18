@@ -1,6 +1,7 @@
 #include "mod/CrashRecord.hxx"
 
 #include "mod/ControlPipe.hxx"
+#include "mod/GameExit.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
@@ -22,6 +23,8 @@
 #include <atomic>
 #include <exception>
 
+#include <intrin.h>
+
 namespace sfve::mod {
 
 namespace {
@@ -30,7 +33,10 @@ using DumpWriter = sf4e::crash::DumpWriter;
 
 CrashRecordState s_state;
 DumpWriter s_originalWriter = nullptr; // MinHook's trampoline once hooked
-LPTOP_LEVEL_EXCEPTION_FILTER s_previousFilter = nullptr;
+// The filter ours chains to: the engine's, or whichever another module set.
+std::atomic<LPTOP_LEVEL_EXCEPTION_FILTER> s_previousFilter(nullptr);
+using SetFilterFn = LPTOP_LEVEL_EXCEPTION_FILTER(WINAPI*)(LPTOP_LEVEL_EXCEPTION_FILTER);
+SetFilterFn s_originalSetFilter = nullptr; // MinHook's trampoline once hooked
 sf4e::crash::DumpClient s_dumpClient;
 // The thread recording the process's one crash, 0 until one does: claimed
 // once, so a fault on that same thread (inside the record) returns at once
@@ -140,19 +146,36 @@ BOOL WINAPI OnMiniDumpWriteDump(HANDLE process, DWORD processId, HANDLE file, MI
 {
 	const DWORD code = processId == GetCurrentProcessId() ? FatalCode(exception) : 0;
 	if (!code) return s_originalWriter(process, processId, file, type, exception, user, callback);
+	// Not the game's reporter: a module that dumps first-chance faults (0.1.0
+	// field crashes EMBER-123 and EMBER-120: Polarity's vectored handler,
+	// dumping an access violation a __try then swallowed) is no crash, and
+	// ending the game for it killed a healthy one. Its dump goes on as asked.
+	if (!IsInGameExe(_ReturnAddress())) {
+		static std::atomic<bool> declined(false);
+		if (!declined.exchange(true)) {
+			ModuleBaseOf(reinterpret_cast<uintptr_t>(_ReturnAddress()));
+			char note[200];
+			snprintf(note, sizeof(note), "crash: a dump of fault 0x%08X asked by %s, not the game's reporter; not a crash, left alone", code,
+				s_module[0] ? s_module : "an unknown module");
+			TryLogLine(note);
+		}
+		return s_originalWriter(process, processId, file, type, exception, user, callback);
+	}
 	RecordCrash("unhandled_exception", exception->ExceptionPointers, "the game's crash reporter", exception->ThreadId);
 	const BOOL written = s_originalWriter(process, processId, file, type, exception, user, callback);
 	// Without a launcher (the proxy's starts) nothing else would show the
-	// crash: the reporter's own handling goes on.
-	if (!s_state.launcherChannel) return written;
+	// crash: the reporter's own handling goes on, unless the game was already
+	// leaving (nothing to show then).
+	const bool leaving = GracefulExitDone();
+	if (!s_state.launcherChannel && !leaving) return written;
 	// After its dump the reporter waits on an error box of its own, and the
 	// launcher, which has the dump already, waits on the game. End it here so
 	// the launcher sees the crash at once and offers its report: with the
 	// fault's code when the launcher reads that as a crash, else with 3 (an
 	// abort's).
-	const UINT exitCode = sf4e::crash::IsCrashExit(code) ? code : 3;
-	snprintf(s_line, sizeof(s_line), "crash: the game's own dump %s; ending the game with code 0x%08X",
-		written ? "written" : "not written", exitCode);
+	const UINT exitCode = EndingCode(code, leaving);
+	snprintf(s_line, sizeof(s_line), "crash: the game's own dump %s; ending the game with code 0x%08X%s",
+		written ? "written" : "not written", exitCode, leaving ? " (the graceful exit was done: its teardown, not a crash)" : "");
 	TryLogLine(s_line);
 	TerminateProcess(GetCurrentProcess(), exitCode);
 	return written;
@@ -168,7 +191,15 @@ LONG WINAPI OnUnhandledException(EXCEPTION_POINTERS* pointers)
 	if (inside) return EXCEPTION_CONTINUE_SEARCH;
 	inside = true;
 	RecordCrash("unhandled_exception", pointers, nullptr, GetCurrentThreadId());
-	const LONG result = s_previousFilter ? s_previousFilter(pointers) : EXCEPTION_CONTINUE_SEARCH;
+	if (GracefulExitDone()) {
+		// A fault in the engine's or a driver's teardown, after the room was
+		// left and the saves done: the record and dump are kept, and the game
+		// ends as a clean exit instead of offering the player a crash report.
+		TryLogLine("crash: after the graceful exit was done: its teardown, not a crash; ending the game with code 0");
+		TerminateProcess(GetCurrentProcess(), EndingCode(0, true));
+	}
+	const LPTOP_LEVEL_EXCEPTION_FILTER previous = s_previousFilter;
+	const LONG result = previous ? previous(pointers) : EXCEPTION_CONTINUE_SEARCH;
 	inside = false;
 	return result;
 }
@@ -182,6 +213,33 @@ void TakeFilter(const char* when)
 	if (current == &OnUnhandledException) return;
 	if (current) s_previousFilter = current;
 	Log("crash record: the unhandled-exception filter %s%s", when, current ? ", chaining to the one that was set" : "");
+}
+
+// Whoever sets the process's filter after ours (the engine's start-up, the Steam
+// overlay, a second mod) would take the record's place, and a crash would
+// reach no record and no dump (0.1.0: crashes with the launcher's "the game
+// did not ask for one" and no record). Its filter is kept as the one ours
+// chains to instead, and ours stays on top; the caller is told what it would
+// have been (the filter it replaces), so it can put that back.
+LPTOP_LEVEL_EXCEPTION_FILTER WINAPI OnSetUnhandledExceptionFilter(LPTOP_LEVEL_EXCEPTION_FILTER filter)
+{
+	if (filter == &OnUnhandledException) return s_originalSetFilter(filter);
+	static std::atomic<bool> logged(false);
+	if (!logged.exchange(true)) Log("crash record: another module set the unhandled-exception filter; kept after ours, which stays first");
+	return s_previousFilter.exchange(filter);
+}
+
+// kernelbase's function (kernel32's forwards to it, here and under Wine), so
+// every caller is covered. Not hooked, the filter is taken back at the game's
+// first frame only (TakeFilter).
+void HookFilterSetter()
+{
+	const HMODULE kernelbase = GetModuleHandleW(L"kernelbase");
+	HookTransaction hook;
+	hook.Add("SetUnhandledExceptionFilter", kernelbase ? (void*)GetProcAddress(kernelbase, "SetUnhandledExceptionFilter") : nullptr,
+		reinterpret_cast<void*>(&OnSetUnhandledExceptionFilter), reinterpret_cast<void**>(&s_originalSetFilter));
+	if (CommitHookSet(hook, "crash record filter"))
+		Log("crash record: SetUnhandledExceptionFilter not hooked; the filter is only taken back at the game's first frame");
 }
 
 // Heap corruption ends the process without reaching the reporter; ntdll
@@ -266,6 +324,20 @@ DWORD WINAPI FaultThread(void*)
 
 } // namespace
 
+unsigned EndingCode(unsigned long faultCode, bool afterGracefulExit)
+{
+	if (afterGracefulExit) return 0;
+	return sf4e::crash::IsCrashExit(static_cast<uint32_t>(faultCode)) ? static_cast<unsigned>(faultCode) : 3;
+}
+
+bool IsInGameExe(const void* address)
+{
+	HMODULE module = nullptr;
+	return GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+			   static_cast<LPCWSTR>(address), &module) &&
+		module == GetModuleHandleW(nullptr);
+}
+
 void RecordCrash(const char* kind, EXCEPTION_POINTERS* pointers, const char* message, DWORD threadId)
 {
 	const DWORD self = GetCurrentThreadId();
@@ -346,6 +418,7 @@ CrashRecordState InstallCrashRecord(const CrashRecordSetup& setup)
 		ULONG reserve = 16 * 1024;
 		SetThreadStackGuarantee(&reserve);
 		AddVectoredExceptionHandler(1, OnVectoredException);
+		HookFilterSetter();
 		TakeFilter("is set at the start");
 		RunOnGameThread([] { TakeFilter("is taken back at the game's first frame"); });
 		std::set_terminate(OnTerminate);

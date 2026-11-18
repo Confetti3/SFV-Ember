@@ -71,11 +71,13 @@ uint8_t* LoadTexture(const std::wstring& path)
 	return loaded;
 }
 
-std::optional<GameTexture> TakeGameTexture(uint8_t* texture, bool* pending, std::string* failure)
+std::optional<GameTexture> TakeGameTexture(const std::wstring& path, bool* pending, std::string* failure)
 {
 	*pending = false;
 	const void* vtable = TextureVtable();
 	if (!vtable) return *failure = "no Direct3D 11 texture to compare with", std::nullopt;
+	uint8_t* texture = LoadTexture(path);
+	if (!texture) return *failure = "the game no longer has it", std::nullopt;
 	uint8_t* resource = PointerAt(texture, sfv::texture::kResource);
 	uint8_t* rhi = PointerAt(resource, sfv::texture::kTextureRhi);
 	if (!resource || !rhi) return *pending = true, std::nullopt; // the render thread has not made it yet

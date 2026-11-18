@@ -9,7 +9,9 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
+#include <tuple>
 
 namespace sfve::adapter {
 
@@ -36,10 +38,26 @@ void Show(std::shared_ptr<const training::BoxView> view)
 // Game thread only: what the log has said of this battle, so a run can tell
 // what the viewer met without a line per tick.
 struct BattleNotes {
-	bool first = true, readFailed = false, noCamera = false, stray = false, otherShapes = false;
+	bool first = true, readFailed = false, noCamera = false, stray = false, otherShapes = false, empty = false;
 	unsigned undrawnTypes = 0;
+	// The attack records seen, by type, flags and whether a box was made.
+	std::set<std::tuple<int, uint32_t, bool>> attacks;
 };
 BattleNotes s_notes;
+
+// Each kind of attack record once a battle: its type, its flags, the size of
+// its rectangle, and the scripts both fighters played when it was first met.
+// A box that never shows (a command grab's, in the 0.1.0 field reports) shows
+// here as a record of some type and flags that was or was not drawn, or not at
+// all, and the next run says which.
+void NoteAttackRecords(const BoxTally& tally, const std::array<mod::FighterFrame, 2>& fighters)
+{
+	for (const AttackRecord& record : tally.attacks)
+		if (s_notes.attacks.emplace(record.type, record.flags, record.drawn).second)
+			mod::Log("hitboxes: P%d's %s attack record, type %d, flags 0x%08X, %.2f x %.2f, %s (scripts: P1 %d, P2 %d)", record.side + 1,
+				record.projectile ? "projectile's" : "own", record.type, record.flags, record.width, record.height,
+				record.drawn ? "drawn" : "not drawn", fighters[0].script, fighters[1].script);
+}
 
 void Note(const mod::BoxFrame& frame, const training::BoxView& view, const BoxTally& tally)
 {
@@ -74,11 +92,15 @@ void Note(const mod::BoxFrame& frame, const training::BoxView& view, const BoxTa
 		s_notes.otherShapes = true;
 		mod::Log("hitboxes: %d listed records are not rectangles (left out)", tally.otherShapes);
 	}
+	if (tally.empty && !s_notes.empty) {
+		s_notes.empty = true;
+		mod::Log("hitboxes: %d listed records have no area or no number (left out)", tally.empty);
+	}
 }
 
 } // namespace
 
-void ReadSfvHitboxes(const mod::FighterReader& reader)
+void ReadSfvHitboxes(const mod::FighterReader& reader, const std::array<mod::FighterFrame, 2>& fighters)
 {
 	if (!SfvHitboxesShown()) {
 		Show(nullptr);
@@ -94,6 +116,7 @@ void ReadSfvHitboxes(const mod::FighterReader& reader)
 	BoxTally tally;
 	auto view = std::make_shared<training::BoxView>(SfvBoxView(frame, tally));
 	Note(frame, *view, tally);
+	NoteAttackRecords(tally, fighters);
 	Show(std::move(view));
 }
 

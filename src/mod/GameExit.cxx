@@ -7,6 +7,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <utility>
 #include <vector>
 
@@ -22,6 +23,7 @@ constexpr DWORD kStepMs = 16;
 RequestExitFn o_requestExit;
 std::vector<ExitWork> s_work; // game thread only
 bool s_ran = false;           // game thread only
+std::atomic<bool> s_graceful(false); // the leave finished in time (GracefulExitDone)
 
 // Every work's step once; true when all are done.
 bool StepAll()
@@ -48,6 +50,7 @@ void RunWork(bool force)
 	for (ExitWork& work : s_work) {
 		if (work.finish) work.finish();
 	}
+	s_graceful = done;
 	Log("exit: %s; the engine exits after %llu ms", done ? "the graceful leave is done" : "the graceful leave ran out of time",
 		GetTickCount64() - started);
 }
@@ -75,6 +78,11 @@ bool InstallGameExit(uintptr_t imageBase)
 	const bool hooked = HookCodeSite(imageBase, sfv::kRequestExit, (void*)&h_RequestExit, (void**)&o_requestExit);
 	Log("exit: %s", hooked ? "the engine's exit request is hooked" : "could not hook the engine's exit request");
 	return hooked;
+}
+
+bool GracefulExitDone()
+{
+	return s_graceful;
 }
 
 void OnGameExit(ExitWork work)
