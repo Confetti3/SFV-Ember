@@ -12,6 +12,9 @@
 #include "ember/SfvGame.hxx"
 #include "ember/SfvReplays.hxx"
 #include "ember/SfvTraining.hxx"
+#include "mod/GameInput.hxx"
+#include "mod/SfvAdapter.hxx"
+#include "mod/SfvBattleLayouts.hxx"
 
 #include "common/RoomRules.hxx"
 #include "sf4e/sf4e__GameAdapter.hxx"
@@ -148,6 +151,37 @@ TEST_CASE("the keyboard plays when no pad 0 is there, and pad 0 when it is")
 	unsigned held = 1;
 	CHECK_FALSE(input.ReadController(sf4e::input::PadKeyboard, 0, held, nullptr));
 	CHECK(held == 0u);
+}
+
+TEST_CASE("the keyboard plays pad 0's input on whichever side its player sits")
+{
+	namespace iu = mod::sfv::inputunit;
+	// SFV maps the keyboard into its pad 0, after its own key settings: the
+	// battle's tick records that as pad 0's value, and pad 1's is another
+	// player's (a second pad's, or Training's dummy's).
+	mod::SfvAdapter battle;
+	alignas(8) uint8_t unit[iu::kPadValues + sizeof(uint32_t) * sfve::kPlayers] = {};
+	auto* values = reinterpret_cast<uint32_t*>(unit + iu::kPadValues);
+	values[0] = mod::input::kRight | mod::input::kHP;
+	values[1] = mod::input::kLK;
+	battle.OnInputRecord(unit);
+	BattleInPlay play;
+	play.game = &battle;
+	SetBattleInPlay(play);
+	sf4e::input::Device keyboard;
+	keyboard.type = sf4e::input::PadKeyboard;
+	keyboard.index = 0;
+	keyboard.name = "Keyboard";
+	keyboard.connected = true;
+	ember::game::Input& input = ember::game::Game().input;
+	for (const int side : {0, 1}) {
+		CAPTURE(side);
+		unsigned mapped = 0, raw = 0;
+		CHECK(input.ReadAssignedInput(keyboard, side, mapped, raw));
+		CHECK(mapped == (mod::input::kRight | mod::input::kHP));
+		CHECK(raw == mapped);
+	}
+	SetBattleInPlay({});
 }
 
 TEST_CASE("P1's session kept for its watchers is the battle's until the runtime's drain ends")

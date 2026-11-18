@@ -309,9 +309,11 @@ public:
 constexpr int kGameplaySlot = 0;
 
 // The keyboard as the devices list it, as SF4's lists it: always there. SFV
-// reads the keyboard for player 1 itself, after its own key settings, so the
-// battle's input record for player 1, which the battle plays as this copy's
-// pad 0 (SfvAdapter::Sampled), carries what it plays.
+// maps the keyboard into its own pad 0, after the game's key settings (its
+// Options, kept by the game), and the battle's tick takes pad 0's value from
+// that (SfvAdapter::Sampled(0)). A room's session plays that value for this
+// copy's player on whichever side they sit (NetplayMode::LocalInput), so the
+// keyboard plays either side as pad 0 does.
 bool GameplayKeyboard(const sf4e::input::Device& device)
 {
 	return device.type == sf4e::input::PadKeyboard && device.index == 0;
@@ -376,7 +378,8 @@ public:
 			((device.type == sf4e::input::PadXInput && device.index == kGameplaySlot) || GameplayKeyboard(device));
 	}
 	void ReleaseFromSide(int) override {}
-	// The bound battle's input from this copy's pad, in GameInput's bits.
+	// The bound battle's input from this copy's pad 0 (the keyboard's keys
+	// with it), in GameInput's bits, for either side.
 	bool ReadAssignedInput(const sf4e::input::Device&, int, unsigned& mapped, unsigned& raw) override
 	{
 		mapped = raw = s_battle.game ? s_battle.game->Sampled(0) : 0;

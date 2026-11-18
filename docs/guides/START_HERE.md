@@ -41,8 +41,14 @@ Ember: a pad keeps the slot it was given, and an Xbox pad plugged in while the
 game runs takes the first slot.
 
 To turn the layer off, set `"controllerLayer": false` in
-`%APPDATA%\SFVEmber\settings.json` and start SFV Ember again. The keyboard
-cannot move around SFV Ember's menus yet (F10 still opens and closes them).
+`%APPDATA%\SFVEmber\settings.json` and start SFV Ember again.
+
+## Keyboard
+
+You can play without a controller. SFV Ember's menus move with the arrows,
+Enter and Escape, and F10 opens and closes them. In a match, on either side,
+and in Training the keyboard plays with the keys set in Street Fighter V's own
+Options (Controller Settings); the game keeps them.
 
 If Steam is running, its desktop configuration may also turn a PlayStation pad
 into a keyboard and mouse while SFV is in front, so SFV's own menus may take a
