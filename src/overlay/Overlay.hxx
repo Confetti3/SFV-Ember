@@ -8,9 +8,12 @@
 // Drawing: SFV renders with Direct3D 11. The host hooks
 // IDXGISwapChain::Present and ResizeBuffers (their code is shared by every
 // swap chain, found through a throwaway one) and draws on the swap chain
-// whose window is the game's, on the thread that presents. Once an interface
-// is set, every presented frame is an ImGui frame: the interface runs its
-// hidden work then too, and says whether it is shown.
+// whose window is the game's, on the thread that presents. Once it draws, the
+// game's swap chain's own vtable slot for Present leads to the overlay first,
+// so a capture that hooks Present later (OBS) still sees Ember in the
+// picture, as SF4 Ember's overlay is part of the game's frame. Once an
+// interface is set, every presented frame is an ImGui frame: the interface
+// runs its hidden work then too, and says whether it is shown.
 //
 // Threads: the game's window procedure and pad polling run on the game
 // thread, Present on the engine's render thread. Window messages reach ImGui

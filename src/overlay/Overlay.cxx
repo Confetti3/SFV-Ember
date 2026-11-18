@@ -46,6 +46,16 @@ constexpr int kResizeBuffersSlot = 13;
 
 PresentFn o_present;
 ResizeBuffersFn o_resizeBuffers;
+// Present's code, which the code hook is on, and, once the game's swap
+// chain's vtable slot leads to the overlay first (PutOverlayFirst), that
+// vtable and what its slot held.
+void* s_presentCode = nullptr;
+void** s_firstVtable = nullptr; // render thread
+PresentFn o_presentSlot;
+HRESULT WINAPI h_PresentFirst(IDXGISwapChain* swap, UINT syncInterval, UINT flags);
+// This thread is inside a Present the overlay has drawn on: a hook further
+// down the same call passes it on.
+thread_local bool t_presenting = false;
 
 std::mutex s_uiMutex;
 OverlayUi s_ui;              // as set; copied to the render thread under the mutex
@@ -164,6 +174,42 @@ void FollowRenderSize(const DXGI_SWAP_CHAIN_DESC& desc)
 	ImGui_ImplWin32_SetRenderSize((float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height);
 }
 
+// SF4 Ember draws inside the game's own frame, before Present, so whatever
+// captures the picture at Present has Ember in it. Here Ember draws at
+// Present, and a hook on Present's code made after this one runs before it:
+// OBS's game capture hooks as it starts capturing and takes the picture
+// before passing the call on, so the stream showed the game without Ember.
+// The game calls Present through its swap chain's vtable, so the slot is
+// moved to the overlay, which draws and then calls the code the slot held:
+// every hook on it, then Present itself. Only where the slot leads to the
+// hooked code: a swap chain of another class (another tool's wrapper) keeps
+// the code hook alone, as before. The slot stays moved for the process's
+// life, as the code hook does; one vtable is moved, the game's.
+void PutOverlayFirst(IDXGISwapChain* swap)
+{
+	if (s_firstVtable) return;
+	void** vtable = *reinterpret_cast<void***>(swap);
+	if (vtable[kPresentSlot] != s_presentCode) {
+		Log("overlay: the game's swap chain presents through another function (%p); a later Present hook draws over Ember",
+			vtable[kPresentSlot]);
+		s_firstVtable = vtable; // asked once
+		return;
+	}
+	void** slot = &vtable[kPresentSlot];
+	DWORD protection = 0;
+	if (!VirtualProtect(slot, sizeof(void*), PAGE_READWRITE, &protection)) {
+		Log("overlay: the swap chain's Present slot cannot be written (%lu); a later Present hook draws over Ember", GetLastError());
+		s_firstVtable = vtable;
+		return;
+	}
+	// Set before the slot is: another thread may present through it at once.
+	o_presentSlot = reinterpret_cast<PresentFn>(*slot);
+	InterlockedExchangePointer(slot, reinterpret_cast<void*>(&h_PresentFirst));
+	VirtualProtect(slot, sizeof(void*), protection, &protection);
+	s_firstVtable = vtable;
+	Log("overlay: the swap chain's Present slot leads to the overlay first, so captures at Present see Ember");
+}
+
 // Takes the game's swap chain: ImGui's backends on its window and device,
 // and Ember's pictures on that device.
 bool Attach(IDXGISwapChain* swap, const DXGI_SWAP_CHAIN_DESC& desc)
@@ -192,6 +238,7 @@ bool Attach(IDXGISwapChain* swap, const DXGI_SWAP_CHAIN_DESC& desc)
 	s_r.swap = swap;
 	s_r.ready = true;
 	s_window = window;
+	PutOverlayFirst(swap);
 	if (!s_gameWndProc) {
 		// Stored before the switch: the game thread may call OverlayWndProc
 		// as soon as it is in place.
@@ -303,20 +350,35 @@ void Draw(IDXGISwapChain* swap)
 	if (data->CmdListsCount) Render(data);
 }
 
+// One Present: the tap and the overlay once, at whichever hook the call meets
+// first (the vtable's slot, or the code's where the slot was not moved), then
+// the rest of the chain from `next`.
+HRESULT PresentThrough(PresentFn next, IDXGISwapChain* swap, UINT syncInterval, UINT flags)
+{
+	if (t_presenting || (flags & DXGI_PRESENT_TEST)) return next(swap, syncInterval, flags);
+	t_presenting = true;
+	if (s_haveTap) {
+		PresentTap tap;
+		{
+			std::lock_guard lock(s_tapMutex);
+			tap = s_tap;
+		}
+		if (tap) tap(swap);
+	}
+	Draw(swap);
+	const HRESULT result = next(swap, syncInterval, flags);
+	t_presenting = false;
+	return result;
+}
+
 HRESULT WINAPI h_Present(IDXGISwapChain* swap, UINT syncInterval, UINT flags)
 {
-	if (!(flags & DXGI_PRESENT_TEST)) {
-		if (s_haveTap) {
-			PresentTap tap;
-			{
-				std::lock_guard lock(s_tapMutex);
-				tap = s_tap;
-			}
-			if (tap) tap(swap);
-		}
-		Draw(swap);
-	}
-	return o_present(swap, syncInterval, flags);
+	return PresentThrough(o_present, swap, syncInterval, flags);
+}
+
+HRESULT WINAPI h_PresentFirst(IDXGISwapChain* swap, UINT syncInterval, UINT flags)
+{
+	return PresentThrough(o_presentSlot, swap, syncInterval, flags);
 }
 
 // The back buffers can only be resized once nothing refers to them.
@@ -390,6 +452,7 @@ bool InstallOverlay()
 		Log("overlay: could not hook the swap chain; no overlay");
 		return false;
 	}
+	s_presentCode = present;
 	Log("overlay: swap chain hooked");
 	return true;
 }
