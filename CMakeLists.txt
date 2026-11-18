@@ -285,10 +285,12 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedTextFile.cmake")
 # the pick space the game exported (data/pick-space.json, embedded as bytes), in
 # a library of its own so the mod, the launcher, the updater and the package
 # check all judge a path alike. It also holds SfvPickSpace.cxx, which reads
-# the embedded pick space.
+# the embedded pick space, and SfvColourPack.cxx, the colour pack's descriptor
+# and folders, which the launcher and the mod both read.
 sfve_embed_text_file("${CMAKE_CURRENT_SOURCE_DIR}/data/pick-space.json"
     "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedPickSpace.cxx" "sfve::assets" kEmbeddedPickSpaceJson)
 add_library(sfve_selection_assets STATIC
+    src/ember/SfvColourPack.cxx
     src/ember/SfvPickSpace.cxx
     src/ember/SfvSelectionAssetPath.cxx
     "${CMAKE_BINARY_DIR}/generated/SfvEmbeddedPickSpace.cxx")
@@ -347,6 +349,8 @@ add_executable(sfve_ember_tests
     tests/GameLocatorTests.cxx
     tests/SelectionArtTests.cxx
     tests/SelectionAssetPathTests.cxx
+    tests/ColourPackTests.cxx
+    src/launcher/ColourPackStore.cxx
     tests/SfvSelectGridTests.cxx
     tests/LoadoutNotesTests.cxx
     tests/PhotoBoothTests.cxx
@@ -478,6 +482,8 @@ function(sfve_program_resources target description file_name)
 endfunction()
 add_executable(Launcher WIN32
     src/launcher/SfvLaunch.cxx
+    src/launcher/ColourPackFetch.cxx
+    src/launcher/ColourPackStore.cxx
     src/launcher/DesyncCourier.cxx
     src/launcher/ReportsDefault.cxx
     src/ember/DesyncReport.cxx

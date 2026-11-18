@@ -8,8 +8,9 @@
 // SFV Ember has no replays, no Discord companion and no game language of its
 // own yet, so those steps do nothing. The mod starts Ember's networking
 // helper itself (ember/EmberHost.cxx), so the launcher hands it none. It
-// hands it the crash dump channel (InheritedDumpChannel below), and sends
-// the desync reports the game writes down (DesyncCourier).
+// hands it the crash dump channel (InheritedDumpChannel below), sends the
+// desync reports the game writes down (DesyncCourier) and downloads the
+// colour pack the package names (ColourPackFetch).
 //
 // Test copies, in a development build only (mod/BuildKind.hxx): --instance
 // N (1-3) starts copy N of a two-copy test, with its own launcher log
@@ -31,6 +32,7 @@
 // interface.json; ember/SfvScreenMode.hxx) decides the game's window options
 // at each start, and the launcher's log names the mode and what it passed.
 
+#include "launcher/ColourPackFetch.hxx"
 #include "launcher/DesyncCourier.hxx"
 #include "launcher/ReportsDefault.hxx"
 #include "netplay/SettingsStore.hxx"
@@ -216,6 +218,9 @@ void Prepare(sf4e::launcher::PersistedSettings& settings, bool showConsole)
 		settings.displayName[0] = '\0';
 	}
 	sf4e::launcher::EnsureUniqueDisplayName(settings);
+	// The colour pack downloads while the game starts (ColourPackFetch.hxx). A
+	// test's copies share the player's data folder: the player's copy fetches.
+	if (s_instance == 0) sfve::launcher::StartColourPackFetch();
 }
 
 std::string GameLanguage(const std::wstring&) { return {}; }
