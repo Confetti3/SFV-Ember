@@ -97,11 +97,40 @@ struct Depth {
 	~Depth() { t_hookDepth--; }
 };
 
-// The slot's answer from a virtual test pad, then from the controller layer;
-// false when neither holds it, so XInput answers.
-bool FillFromSources(DWORD user, XINPUT_STATE* state, bool ex)
+// Who answered a slot's read.
+enum class Source { XInput, VirtualPad, Layer };
+
+const char* SourceName(Source source)
 {
-	return FillVirtualPad((int)user, state) || layer::FillState((int)user, state, ex);
+	switch (source) {
+	case Source::VirtualPad: return "a virtual test pad";
+	case Source::Layer: return "the controller layer";
+	case Source::XInput: break;
+	}
+	return "XInput";
+}
+
+// The slot's answer from a virtual test pad, then from the controller layer;
+// XInput when neither holds it, and the caller asks XInput.
+Source FillFromSources(DWORD user, XINPUT_STATE* state, bool ex)
+{
+	if (FillVirtualPad((int)user, state)) return Source::VirtualPad;
+	if (layer::FillState((int)user, state, ex)) return Source::Layer;
+	return Source::XInput;
+}
+
+// A slot the game finds connected or gone, and who answered: the log's
+// record of which pads the game itself reads. The first few changes of each
+// slot only, so a pad that comes and goes on every read cannot flood it.
+void NoteConnection(DWORD user, bool connected, Source source, DWORD result)
+{
+	static std::atomic<uint32_t> s_noted[kPadSlots];
+	constexpr uint32_t kMostNoted = 16;
+	const uint32_t noted = s_noted[user]++;
+	if (noted >= kMostNoted) return;
+	if (connected) Log("pads: the game reads slot %lu: connected, from %s", user, SourceName(source));
+	else Log("pads: the game reads slot %lu: not connected (%s answered %lu)", user, SourceName(source), result);
+	if (noted + 1 == kMostNoted) Log("pads: slot %lu changed %u times; no more of its changes are logged", user, kMostNoted);
 }
 
 template <int M, bool Ex>
@@ -114,11 +143,14 @@ DWORD WINAPI HookedGetState(DWORD user, XINPUT_STATE* state)
 		return original(user, state);
 	}
 	Depth depth;
-	const DWORD result = FillFromSources(user, state, Ex) ? ERROR_SUCCESS : original(user, state);
+	const Source source = FillFromSources(user, state, Ex);
+	const DWORD result = source != Source::XInput ? ERROR_SUCCESS : original(user, state);
 	if (user < kPadSlots) {
 		s_reads[user]++;
 		const uint32_t seen = result == ERROR_SUCCESS && state ? Seen(state->Gamepad) : 0;
-		if (s_seen[user].exchange(seen) != seen) s_seenChanges[user]++;
+		const uint32_t was = s_seen[user].exchange(seen);
+		if (was != seen) s_seenChanges[user]++;
+		if ((was ^ seen) & kSeenConnected) NoteConnection(user, (seen & kSeenConnected) != 0, source, result);
 	}
 	if (result == ERROR_SUCCESS && state) {
 		if (const PadFilter filter = s_padFilter) filter(user, state);

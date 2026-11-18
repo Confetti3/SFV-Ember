@@ -164,6 +164,15 @@ TEST_CASE("a save no load can reach keeps no copy, and no load ever reaches one"
 	CHECK(sa.savesSkipped > 0);
 	CHECK(sb.savesSkipped > 0);
 	CHECK(sa.rollbacks + sb.rollbacks > 0);
+	// The totals the runtime logs at the match's end are the session's own
+	// counts: every restore and every game frame replayed after one.
+	for (const RollbackSession* side : {&pair.a, &pair.b}) {
+		const sf4e::RollbackHud::Totals totals = side->RollbackTotals();
+		CHECK(totals.rollbacks == side->GetStats().rollbacks);
+		CHECK(totals.frames == side->GetStats().resimulatedFrames);
+		CHECK((int)totals.deepest <= side->GetStats().longestRollback);
+		CHECK((totals.rollbacks == 0 || totals.deepest > 0));
+	}
 	CHECK(sa.savesSkipped == lossy.skippedA.size());
 	CHECK(sb.savesSkipped == lossy.skippedB.size());
 	// No load reached a save that kept no copy: the session would have failed

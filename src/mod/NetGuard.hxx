@@ -1,7 +1,7 @@
 #pragma once
 
-// Keeps Street Fighter V off the network except for loopback and the peers a
-// session allows (core/NetPolicy.hxx).
+// Keeps Street Fighter V off the network except for loopback, the peers a
+// session allows and Ember's report intake (core/NetPolicy.hxx).
 //
 // Installed before any game code runs (the proxy starts the mod from the
 // exe's entry point). Every route a Windows program has out of the process is

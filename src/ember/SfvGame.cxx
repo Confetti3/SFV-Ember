@@ -36,6 +36,8 @@
 #include <windows.h>
 #include <bcrypt.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -249,10 +251,16 @@ public:
 		const RollbackSession* session = LiveSession();
 		return session ? session->RecentRollbackFrames() : 0;
 	}
-	// The pings are kept (s_telemetry) but not handed on: Auto delay's record
-	// of the games played stays off for SFV until it is reviewed for SFV's
-	// session, which only reads its delay at the start.
-	sf4e::GamePing::Summary PingSummary() const override { return {}; }
+	// The battle's pings and rollbacks, as SF4's adapter hands its own: the
+	// runtime reads them as the match ends (RoomBattle::Close's NotifyMatchEnded),
+	// before SetBattleInPlay resets the telemetry and before the next Start
+	// resets the session's totals. Auto follows the ping for the next Ready;
+	// the session reads its delay only at its start.
+	sf4e::GamePing::Summary PingSummary() const override { return s_telemetry.pings.Summarize(); }
+	sf4e::RollbackHud::Totals RollbackTotals() const override
+	{
+		return s_battle.session ? s_battle.session->RollbackTotals() : sf4e::RollbackHud::Totals{};
+	}
 	void PollTelemetry() override
 	{
 		const RollbackSession* session = LiveSession();
@@ -306,10 +314,20 @@ public:
 // whichever side it fights on (NetplayMode).
 constexpr int kGameplaySlot = 0;
 
+// The keyboard as the devices list it, as SF4's lists it: always there. SFV
+// reads the keyboard for player 1 itself, after its own key settings, so the
+// battle's input record for player 1, which the battle plays as this copy's
+// pad 0 (SfvAdapter::Sampled), carries what it plays.
+bool GameplayKeyboard(const sf4e::input::Device& device)
+{
+	return device.type == sf4e::input::PadKeyboard && device.index == 0;
+}
+
 // SFV's pads are XInput pads (mod/XInputHooks hooks XInputGetState). The devices
-// are the slots as the game last read them; the game's pad 0 is the gameplay
-// device and fights for either side. No SFV module sets pads up or lays out
-// their buttons yet: those answer as a game with no pad layer would.
+// are the slots as the game last read them, then the keyboard; the game's pad
+// 0 is the gameplay device and fights for either side, and with no pad 0 the
+// keyboard is. No SFV module sets pads up or lays out their buttons yet: those
+// answer as a game with no pad layer would.
 class SfvInput final : public Input {
 public:
 	std::vector<sf4e::input::Device> ReadDevices(bool) override
@@ -326,27 +344,42 @@ public:
 			device.buttons = seen.buttons;
 			devices.push_back(device);
 		}
+		sf4e::input::Device keyboard;
+		keyboard.type = sf4e::input::PadKeyboard;
+		keyboard.index = 0;
+		keyboard.name = "Keyboard";
+		keyboard.connected = true;
+		devices.push_back(keyboard);
 		return devices;
 	}
-	// SFV Ember lists no keyboard device yet.
+	// Nothing captures a device in SFV (Capabilities::gameplayDeviceChoice is
+	// off), so no key's held bit is read.
 	void ScanKeyboard(std::vector<sf4e::input::Device>&) override {}
+	// Pad 0 while one is there, else the keyboard: a player without a pad
+	// plays with it, and plugging one in hands it the game.
 	sf4e::input::Device MenuDevice(const std::vector<sf4e::input::Device>& devices) override
 	{
+		const sf4e::input::Device* keyboard = nullptr;
 		for (const sf4e::input::Device& device : devices) {
-			if (device.index == kGameplaySlot) return device;
+			if (device.type == sf4e::input::PadXInput && device.index == kGameplaySlot) return device;
+			if (GameplayKeyboard(device)) keyboard = &device;
 		}
-		return {};
+		return keyboard ? *keyboard : sf4e::input::Device{};
 	}
 	void LogInventory(const std::vector<sf4e::input::Device>& devices) override
 	{
-		if (devices.size() == loggedDevices_) return;
-		loggedDevices_ = devices.size();
-		mod::Log("ember: %zu pad(s) connected", devices.size());
+		const std::size_t pads = static_cast<std::size_t>(std::count_if(devices.begin(), devices.end(),
+			[](const sf4e::input::Device& device) { return device.type == sf4e::input::PadXInput; }));
+		if (pads == loggedPads_) return;
+		loggedPads_ = pads;
+		mod::Log("ember: %zu pad(s) connected", pads);
 	}
-	// The game's pad 0 plays either side; another pad cannot (the battle reads pad 0).
+	// The game's pad 0, or the keyboard, plays either side; another pad cannot
+	// (the battle reads pad 0).
 	bool AssignToSide(const sf4e::input::Device& device, int, bool) override
 	{
-		return device.connected && device.type == sf4e::input::PadXInput && device.index == kGameplaySlot;
+		return device.connected &&
+			((device.type == sf4e::input::PadXInput && device.index == kGameplaySlot) || GameplayKeyboard(device));
 	}
 	void ReleaseFromSide(int) override {}
 	// The bound battle's input from this copy's pad, in GameInput's bits.
@@ -386,7 +419,7 @@ public:
 	std::optional<std::string> SaveSetup() override { return std::nullopt; }
 
 private:
-	std::size_t loggedDevices_ = ~std::size_t{0};
+	std::size_t loggedPads_ = ~std::size_t{0};
 };
 
 // The player's settings go to the library's settings store, in SFV Ember's
@@ -500,8 +533,24 @@ Capabilities SfvCapabilities()
 	caps.settingsFeatures.shortcutHint = true;
 	return caps;
 }
+// Auto delay's bands for SFV (EMBER_LIBRARY.md section 66): one frame through
+// 100 ms of round trip, then one more per 33 ms. GGPO at 60 fps (16.7 ms a
+// frame) rolls a side back by about the frames its opponent's input spent on
+// the way, less the delay: per side, one way in frames - delay, and over both
+// sides the round trip in frames - 2 x delay, split by time sync with one
+// side a frame worse (a Brazil to NA match at ~150 ms, delay 2: 9 frames - 4
+// = 5, played as 2 and 3). Holding the worse side to 2 frames, which SFV
+// shows as a visible snap, takes round trip frames - 2 x delay <= 4, so a
+// delay of d covers a round trip up to (d + 2) x 33.3 ms: 100, 133, 167,
+// 200 ms. Jitter is the p95's: a tail one band worse is tolerated (one frame
+// more at the tail), a worse one raises the delay. SF4's bands (80 ms, then
+// 70) leave 2.5 to 3.6 frames at their edges, which its fighters hide better.
+// Auto's styles hold this alike for both games: Balanced reaches its 3 frames
+// at 134 ms and holds 2 frames of rollback to ~167 ms; past that, Smooth (to 4
+// frames, ~200 ms) or a chosen delay does.
+constexpr sf4e::InputDelayBands kSfvDelayBands = {100, 33};
 NoThemes s_themes;
-const Adapter s_game = {SfvCapabilities(), s_state, s_battleSide, s_input, s_preferences, s_services,
+const Adapter s_game = {SfvCapabilities(), kSfvDelayBands, s_state, s_battleSide, s_input, s_preferences, s_services,
 	SfvTrainingService(), SfvReplays(), s_themes};
 
 } // namespace
