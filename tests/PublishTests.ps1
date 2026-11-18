@@ -112,6 +112,8 @@ try {
     Reject { Plan $y } '*kMatchBuild is not*'
     $y = Fresh; Write-File "$($y.Sfv)\src\mod\ProjectileRelease.cxx" "// released at died only`n"; $null = Commit $y.Sfv 'rule'
     Reject { Plan $y } '*src/mod/ProjectileRelease.cxx changed since the last release, but kRollbackCodeRules*is still 1: move it.'
+    $y = Fresh; Write-File "$($y.Sfv)\src\mod\SocketReads.cxx" "// reads anchored to the head`n"; $null = Commit $y.Sfv 'anchor rule'
+    Reject { Plan $y } '*src/mod/SocketReads.cxx changed since the last release, but kRollbackCodeRules*is still 1: move it.'
     $y = Fresh; Write-File "$($y.Sfv)\src\mod\GameHooks.cxx" "// allocations left as the heap left them`n"; Write-CodeRules $y.Sfv 2; $null = Commit $y.Sfv 'rule, moved'
     $null = Plan $y
     Check ((Read-PubPlan $y.Ctx).plan.source.commit -ceq (G $y.Sfv @('rev-parse', 'HEAD'))) 'a code rule change with the version moved plans'

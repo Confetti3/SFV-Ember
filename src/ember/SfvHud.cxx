@@ -9,6 +9,7 @@
 #include "platform/Utf8.hxx"
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
+#include "common/MenuInputCapture.hxx"
 #include "common/NativeMenuLock.hxx"
 #include "common/PadKind.hxx"
 #include "common/ProductIdentity.hxx"
@@ -17,6 +18,7 @@
 #include "session/RoomQueries.hxx"
 #include "ui/GameMenu.hxx"
 #include "ui/MenuGlyphs.hxx"
+#include "ui/OverlayPresentation.hxx"
 #include "ui/Theme.hxx"
 #include "ui/TrainingInRoom.hxx"
 #include "ui/V2.hxx"
@@ -171,6 +173,22 @@ void DrawChallengerBand(const sf4e::ui::ChallengerCall& call)
 	}
 }
 
+// What a fight's keys are, said under the HUD as SF4 Ember's overlay says
+// them: to a Practice room's fighter how the game ends (it has no KO and no
+// clock; SFV has no shared save or reset to say anything of, EMBER_LIBRARY.md
+// section 27), and to a watcher, for the watched game's first 10 s, how to
+// leave it. Null when neither. Asked every frame, so each watched game is
+// told from its start; on the process clock, as the open hint is.
+const char* MatchKeysHint(const facade::PresentationSnapshot& frame)
+{
+	const auto& snapshot = *frame.runtime;
+	static sf4e::ui::TimedHint watching(10);
+	const bool watchingDue =
+		watching.Due(snapshot.menuContext == sf4e::input::MenuContext::WatchedMatch, GetTickCount64() / 1000.0);
+	if (frame.localFighter && snapshot.practiceMatch) return "training.match.end_hint";
+	return watchingDue ? "runtime.watching_hint" : nullptr;
+}
+
 } // namespace
 
 sf4e::ui::TrainingRoomStatus DrawSfvTraining(const facade::PresentationSnapshot& frame, bool shellShown, unsigned unread,
@@ -221,6 +239,7 @@ void DrawSfvMatchHud(const facade::PresentationSnapshot& frame, bool shellShown)
 	if (!frame.runtime) return;
 	const auto& snapshot = *frame.runtime;
 	const auto& status = frame.netplay;
+	const char* const keysHint = MatchKeysHint(frame);
 	if (!frame.ggpoSessionActive) return;
 	// As SF4 Ember's overlay fills it (sf4e__Overlay.cxx). The names are on
 	// SFV's own plates; the HUD draws each one's marks beside them.
@@ -255,11 +274,7 @@ void DrawSfvMatchHud(const facade::PresentationSnapshot& frame, bool shellShown)
 	// notice that explains a stalled or ending fight.
 	if (!shellShown && snapshot.preferences.showMatchHud) {
 		sf4e::ui::DrawMatchStrip(strip);
-		// A Practice room's fighter is told how the game ends (it has no KO
-		// and no clock), as SF4's overlay tells them; SFV has no shared
-		// save or reset to say anything of (EMBER_LIBRARY.md section 27).
-		if (frame.localFighter && snapshot.practiceMatch && strip.notice.empty())
-			sf4e::ui::DrawMatchNotice(sf4e::loc::T("training.match.end_hint"), 0);
+		if (keysHint && strip.notice.empty()) sf4e::ui::DrawMatchNotice(sf4e::loc::T(keysHint), 0);
 		return;
 	}
 	if (!shellShown || (strip.noticeSeverity >= 2 && !strip.notice.empty()) || strip.predictionStalled ||

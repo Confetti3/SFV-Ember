@@ -51,6 +51,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -85,6 +86,10 @@ constexpr unsigned short kXInputView = 0x0020;
 // Go now's Enter on Training's call, taken where the key arrives (the game
 // thread's window procedure), as SF4 Ember's overlay takes it.
 sf4e::ui::GoNowKey s_goNowKey;
+
+// This copy watches a room's game, as the render thread last saw it: the
+// window procedure keeps Alt+Enter from the game then (TakesMessage).
+std::atomic<bool> s_watching{false};
 
 // "RYU / DEFAULT / Color 01", as the room's pick is summed up (FillView).
 std::string Summary(const PlayerPick& pick)
@@ -147,6 +152,10 @@ public:
 		view.offersScreenMode = true;
 		view.screenMode = static_cast<int>(SfvScreenMode());
 	}
+
+	// The watched game's picture: the overlay's copy of the frame it is about
+	// to present, before Ember draws on it (docs/design/WATCH_PICTURE.md).
+	ImTextureID WatchedPicture(unsigned width, unsigned height) override { return overlay::WatchedPicture(width, height); }
 
 	// Training select's Hitboxes row: the lab's switch, saved.
 	bool ShowHitboxes(bool shown) override { return ChooseTrainingHitboxes(shown); }
@@ -522,6 +531,7 @@ void DrawOpenHint(const Snapshot& snapshot, const sf4e::ui::OverlayPresentation&
 overlay::OverlayUi::Shown Draw()
 {
 	Shell& shell = TheShell();
+	s_watching = shell.frame && shell.frame->runtime->watchedGame.Active();
 	if (!shell.frame) return {};
 	const Snapshot& snapshot = *shell.frame->runtime;
 	auto& presentation = shell.presentation;
@@ -654,6 +664,11 @@ bool TakesMessage(unsigned message, unsigned long long w, long long l)
 		facade::HandReplayFiles(sf4e::platform::ReadDroppedFiles(reinterpret_cast<void*>(w)));
 		return true;
 	}
+	// Alt+Enter, the switch to and from exclusive full screen, stalls the
+	// game's loop; while this copy watches a stream it would fall behind P1's
+	// backlog limit and be dropped, so the game never sees it then, as SF4's
+	// window procedure keeps it (ui::KeepsAltEnter).
+	if (sf4e::ui::KeepsAltEnter(message, static_cast<WPARAM>(w), static_cast<LPARAM>(l), s_watching)) return true;
 	const bool free = overlay::GameWindowFocused() && !s_menuPads.Holds() && !TrainingPaused();
 	const bool taken = s_goNowKey.Take(message, static_cast<WPARAM>(w), static_cast<LPARAM>(l), input::TrainingGoNow(), free);
 	if (taken && message == WM_KEYDOWN) mod::Log("shell: go now on the Training call (Enter)");

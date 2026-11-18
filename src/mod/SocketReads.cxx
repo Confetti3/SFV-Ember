@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <charconv>
 #include <iterator>
 #include <mutex>
 
@@ -335,12 +336,14 @@ std::string AnchorRulesText()
 		snprintf(text, sizeof(text), "0x%X", site);
 		return std::string(text);
 	};
-	const auto offset = [](const AnchorOffset& o) {
-		char text[40];
-		snprintf(text, sizeof(text), "%.9g,%.9g", o.forward, o.up);
-		return std::string(text);
+	// std::to_chars, not printf: the C runtime's locale must not turn a decimal point into a comma, or two
+	// copies of one build would hash different rules.
+	const auto number = [](float value) {
+		char text[32];
+		return std::string(text, std::to_chars(text, text + sizeof(text), value).ptr);
 	};
-	std::string text = std::to_string(kAnchorVersion) + "; not the fight's";
+	const auto offset = [&](const AnchorOffset& o) { return number(o.forward) + "," + number(o.up); };
+	std::string text = "not the fight's";
 	for (const uint32_t site : kNotTheFights) text += " " + rva(site);
 	text += "; drawn only " + rva(kSpawnBoneResolver) + "; known";
 	for (const uint32_t site : kKnownSites) {

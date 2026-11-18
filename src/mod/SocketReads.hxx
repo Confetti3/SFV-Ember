@@ -141,15 +141,6 @@ enum class Site : uint8_t {
 Site SiteOf(uint32_t returnRva);
 const char* SiteName(Site site);
 
-// Version of the anchor rules below: part of the room's build
-// (LayoutRulesId, with the sites and offsets themselves: AnchorRulesText).
-// It moves with the rules' code (Policy, AnchorPosition), which no table
-// shows. 2 from beta.10: every call site not known to stay out of fight
-// state is anchored (the head's offset for one not classified), and no read
-// is recorded, served or snapped to a grid any more, so a copy of version 1
-// computes some reads differently and must not meet one of 2.
-constexpr int kAnchorVersion = 2;
-
 // Where from the owner's fight position an anchored read starts, in the
 // fight's units: `forward` along the way the fighter faces, `up` from the
 // feet.
@@ -166,7 +157,7 @@ constexpr AnchorOffset kHeadOffset{0.00f, 1.60f};
 // 0x3BC294, an unknown site's): kHeadOffset.
 AnchorOffset AnchorOffsetFor(uint32_t returnRva, const wchar_t* socket, bool* otherName = nullptr);
 
-// The anchor rules as text: kAnchorVersion; every call site's class
+// The anchor rules as text: every call site's class
 // (kNotTheFights, the spawn bone resolver, the four known sites); the offset
 // AnchorOffsetFor gives each known site for each socket name it tells apart
 // and for any other; and the head's (kHeadOffset). Part of the rollback

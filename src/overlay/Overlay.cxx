@@ -5,6 +5,7 @@
 #include "mod/WindowState.hxx"
 #include "overlay/BorderlessWindow.hxx"
 #include "overlay/TextureUploaderD3D11.hxx"
+#include "overlay/WatchedFrame.hxx"
 
 #include "platform/GameWindowSection.hxx"
 
@@ -86,6 +87,7 @@ struct Renderer {
 	ID3D11DeviceContext* context = nullptr;
 	ID3D11RenderTargetView* target = nullptr;
 	std::unique_ptr<sf4e::ui::SelectionArt> art;
+	WatchedFrame picture; // the watched game's, while the shell asks for it
 	bool ready = false;
 };
 Renderer s_r;
@@ -264,6 +266,7 @@ void Detach()
 {
 	const sf4e::ui::OverlayLifecycle::Change change(s_lifecycle);
 	Release(s_r.target);
+	s_r.picture.Release();
 	sf4e::ui::SetMenuArt(nullptr);
 	s_r.art.reset();
 	if (s_r.ready) {
@@ -276,11 +279,12 @@ void Detach()
 	s_shown = false;
 }
 
-// Draws the frame's ImGui over the picture, leaving the engine's pipeline
-// as it was. ImGui's backend restores the state it changes, except the
-// render targets and the hull, domain and compute shaders it unbinds (the
-// engine's state cache would otherwise think them still bound).
-void Render(ImDrawData* data)
+// Draws ImGui's data into `target` (the back buffer for Ember's frame, the
+// watched game's picture for its copy), leaving the engine's pipeline as it
+// was. ImGui's backend restores the state it changes, except the render
+// targets and the hull, domain and compute shaders it unbinds (the engine's
+// state cache would otherwise think them still bound).
+void Render(ImDrawData* data, ID3D11RenderTargetView* target)
 {
 	ID3D11RenderTargetView* targets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
 	ID3D11DepthStencilView* depth = nullptr;
@@ -291,7 +295,7 @@ void Render(ImDrawData* data)
 	s_r.context->HSGetShader(&hull.shader, hull.instances, &hull.count);
 	s_r.context->DSGetShader(&domain.shader, domain.instances, &domain.count);
 	s_r.context->CSGetShader(&compute.shader, compute.instances, &compute.count);
-	s_r.context->OMSetRenderTargets(1, &s_r.target, nullptr);
+	s_r.context->OMSetRenderTargets(1, &target, nullptr);
 	ImGui_ImplDX11_RenderDrawData(data);
 	s_r.context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, targets, depth);
 	s_r.context->HSSetShader(hull.shader, hull.instances, hull.count);
@@ -370,7 +374,7 @@ void Draw(IDXGISwapChain* swap)
 	s_f10 = shown.f10;
 	ImGui::Render();
 	ImDrawData* data = ImGui::GetDrawData();
-	if (data->CmdListsCount) Render(data);
+	if (data->CmdListsCount) Render(data, s_r.target);
 }
 
 // One Present: the tap and the overlay once, at whichever hook the call meets
@@ -497,6 +501,12 @@ void SetPresentTap(PresentTap tap)
 bool GameWindowFocused()
 {
 	return s_focused;
+}
+
+ImTextureID WatchedPicture(unsigned width, unsigned height)
+{
+	if (!s_r.ready) return {};
+	return s_r.picture.Take(s_r.swap, s_r.device, s_r.context, width, height, Render);
 }
 
 void FilterGamePad(unsigned long user, void* xinputState)
