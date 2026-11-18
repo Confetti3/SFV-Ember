@@ -1268,7 +1268,7 @@ Five small gaps: section 18's strip never showed a delay or a rollback; the Memb
 | recent rollback | `RollbackHud`: the deepest replay of the last second (a burst per state load, counted per replayed frame) | the same `RollbackHud`: `Begin` in the load callback, `Replayed` after each replayed game frame (a replayed held frame does not count: the game does not advance on it) |
 
 - The link warnings SF4 raises (its GGPO event handler's notices) come from `RoomBattle::NoteLink`, each frame the battle plays and once more when its session is gone: "connection unstable" (a warning) as an interruption starts, "connection restored" when GGPO resumes it, and "opponent disconnected" (an error) when GGPO drops the peer. As in SF4, none once the game's result is taken: the other copy may leave the WIN first.
-- `PingSummary` stays empty: Auto delay's record of the games played is SF4's, and turning it on for SFV is a change of its own (the pings are collected for it).
+- `PingSummary` stays empty: Auto delay's record of the games played is SF4's, and turning it on for SFV is a change of its own (the pings are collected for it). (Turned on in 0.1.1: section 66.)
 - The battle status has `link` (`warning`, `stalled`, `countdownMs`, `delay`, `recentRollback`, `peerDropped`).
 
 **2. The room's faces.** In `merged\5-room-seated.png` both Members rows showed RYU, though SFV 2 had picked KEN.
@@ -3030,3 +3030,31 @@ player played her.
 **Left.** A Proton watcher of a Windows match still hashes by its own ranges too (a watcher's diagnostic only). The
 desync of match 0.9 (JRI v Z39, checkpoint 5160, ProjectileUnit[47].ProjectileActionPart+0xD8, three copies three
 hashes) is not this; the next such report's word lines show its words.
+
+## 66. Auto input delay with SFV's own bands; the match's round trip in the log (0.1.1, 2026-11-18)
+
+**Why.** A Brazil to NA match on 0.1.0 (field triage 2026-11-18, N9) played direct at ~150 ms with Auto's 2 frames and
+rolled back 2 to 3 frames some 600 times, 4 to 9 a second: the opponent "teleported". Nothing was broken; Auto used
+SF4's bands (one frame through 80 ms, one more per 70 ms), and 150 ms is the edge of their 2 frames. The round trip and
+Auto's choice were in no log, and `PingSummary` was empty, so "Auto delay: game 1 ping median=0 ms samples=0" was all.
+
+**What changed** (library `s011/lib-field-delay`, SFV `s011/field-delay`).
+- The game adapter hands its bands (`Adapter::delayBands`, `InputDelay.hxx`); SF4's are unchanged. The game makes the
+  connection check's recommendation from the median and p95 the helper reports, and a played game's from its pings,
+  both with its own bands. The helper and its wire are unchanged.
+- SFV's bands: one frame through 100 ms, one more per 33 ms (`kSfvDelayBands`, SfvGame.cxx). GGPO at 60 fps rolls a
+  side back by about the opponent input's frames on the way less the delay; over both sides, round trip frames less
+  twice the delay, split by time sync with one side a frame worse (the field match: 9 - 4 = 5, played as 2 and 3).
+  Holding the worse side to 2 frames takes round trip frames - 2 x delay <= 4: delay d covers (d + 2) x 33.3 ms, so
+  100, 133, 167 and 200 ms. Jitter is the p95's: a tail one band worse is tolerated, more raises the delay. The field
+  match now readies at 3 (rollbacks of 1 and 2), Smooth at 4.
+- Auto's styles are both games' (Balanced 1 to 3, Responsive 0 to 2, Smooth 1 to 4, and the choice up to 5):
+  Balanced meets 2 frames of rollback to ~167 ms, Smooth to ~200 ms. Raising SFV's Balanced cap would need per-game
+  style ranges and every language's style text; not done.
+- `PingSummary` hands the battle's pings (`s_telemetry`, the same `MatchTelemetry` as SF4's): Auto follows a played
+  game's ping for the next Ready, as SF4's does. `RollbackTotals` hands the session's rollbacks
+  (`RollbackSession::RollbackTotals`, `RollbackHud::Session`).
+- The game log: "Match delay" once per fighter's game as its session starts (the delay played, both seats' Ready
+  delays, and why: chosen, or Auto's style with the median, p95, recommendation and bands); "Auto delay: connection
+  check" when Auto takes a check (route, median, p95, p99, jitter, replies, recommendation); "Match end" (ping, rollback
+  count, mean and deepest depth, Auto's next delay).

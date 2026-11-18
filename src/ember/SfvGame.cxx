@@ -249,10 +249,16 @@ public:
 		const RollbackSession* session = LiveSession();
 		return session ? session->RecentRollbackFrames() : 0;
 	}
-	// The pings are kept (s_telemetry) but not handed on: Auto delay's record
-	// of the games played stays off for SFV until it is reviewed for SFV's
-	// session, which only reads its delay at the start.
-	sf4e::GamePing::Summary PingSummary() const override { return {}; }
+	// The battle's pings and rollbacks, as SF4's adapter hands its own: the
+	// runtime reads them as the match ends (RoomBattle::Close's NotifyMatchEnded),
+	// before SetBattleInPlay resets the telemetry and before the next Start
+	// resets the session's totals. Auto follows the ping for the next Ready;
+	// the session reads its delay only at its start.
+	sf4e::GamePing::Summary PingSummary() const override { return s_telemetry.pings.Summarize(); }
+	sf4e::RollbackHud::Totals RollbackTotals() const override
+	{
+		return s_battle.session ? s_battle.session->RollbackTotals() : sf4e::RollbackHud::Totals{};
+	}
 	void PollTelemetry() override
 	{
 		const RollbackSession* session = LiveSession();

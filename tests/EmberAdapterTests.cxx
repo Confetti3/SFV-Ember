@@ -89,6 +89,10 @@ TEST_CASE("the game offers watching, replays and Training, and answers as no bat
 	CHECK_FALSE(game.battle.FightRunning(frame));
 	CHECK(frame == -1);
 	CHECK(game.battle.Sample().pingMs == -1);
+	// No battle's pings or rollbacks to hand on.
+	CHECK(game.battle.PingSummary().samples == 0u);
+	CHECK(game.battle.RollbackTotals().rollbacks == 0u);
+	CHECK(game.battle.RollbackTotals().frames == 0u);
 	unsigned mapped = 1, raw = 1;
 	CHECK_FALSE(game.input.ReadAssignedInput({}, 0, mapped, raw));
 	CHECK(mapped == 0u);

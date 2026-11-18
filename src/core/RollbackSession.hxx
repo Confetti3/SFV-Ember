@@ -320,6 +320,9 @@ public:
 	int DisconnectCountdownMs() const;
 	int AppliedDelay() const { return session_ ? appliedDelay_ : -1; }
 	unsigned RecentRollbackFrames() const;
+	// The session's rollbacks (sf4e::RollbackHud::Session): kept after it
+	// closes, until the next Start.
+	sf4e::RollbackHud::Totals RollbackTotals() const { return rollbackHud_.Session(); }
 	// GGPO dropped the peer: the session failed for it (FailureReason says so),
 	// and stays so until the next Start.
 	bool PeerDisconnected() const { return peerDisconnected_; }
