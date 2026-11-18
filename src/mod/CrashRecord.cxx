@@ -22,6 +22,8 @@
 #include <atomic>
 #include <exception>
 
+#include <intrin.h>
+
 namespace sfve::mod {
 
 namespace {
@@ -140,6 +142,21 @@ BOOL WINAPI OnMiniDumpWriteDump(HANDLE process, DWORD processId, HANDLE file, MI
 {
 	const DWORD code = processId == GetCurrentProcessId() ? FatalCode(exception) : 0;
 	if (!code) return s_originalWriter(process, processId, file, type, exception, user, callback);
+	// Not the game's reporter: a module that dumps first-chance faults (0.1.0
+	// field crashes EMBER-123 and EMBER-120: Polarity's vectored handler,
+	// dumping an access violation a __try then swallowed) is no crash, and
+	// ending the game for it killed a healthy one. Its dump goes on as asked.
+	if (!IsInGameExe(_ReturnAddress())) {
+		static std::atomic<bool> declined(false);
+		if (!declined.exchange(true)) {
+			ModuleBaseOf(reinterpret_cast<uintptr_t>(_ReturnAddress()));
+			char note[200];
+			snprintf(note, sizeof(note), "crash: a dump of fault 0x%08X asked by %s, not the game's reporter; not a crash, left alone", code,
+				s_module[0] ? s_module : "an unknown module");
+			TryLogLine(note);
+		}
+		return s_originalWriter(process, processId, file, type, exception, user, callback);
+	}
 	RecordCrash("unhandled_exception", exception->ExceptionPointers, "the game's crash reporter", exception->ThreadId);
 	const BOOL written = s_originalWriter(process, processId, file, type, exception, user, callback);
 	// Without a launcher (the proxy's starts) nothing else would show the
@@ -265,6 +282,14 @@ DWORD WINAPI FaultThread(void*)
 }
 
 } // namespace
+
+bool IsInGameExe(const void* address)
+{
+	HMODULE module = nullptr;
+	return GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+			   static_cast<LPCWSTR>(address), &module) &&
+		module == GetModuleHandleW(nullptr);
+}
 
 void RecordCrash(const char* kind, EXCEPTION_POINTERS* pointers, const char* message, DWORD threadId)
 {

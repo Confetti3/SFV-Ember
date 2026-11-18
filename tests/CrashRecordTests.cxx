@@ -73,6 +73,17 @@ TEST_CASE("the launcher's dump channel reaches the mod as three hex handle value
 	LoadConfigFromCommandLine(L"");
 }
 
+TEST_CASE("only code of the game's own exe is the game's crash reporter")
+{
+	// The test exe stands in for the game's; a dump asked from another module
+	// (a second mod's handler) is not the game ending.
+	CHECK(sfve::mod::IsInGameExe(reinterpret_cast<const void*>(&Fault)));
+	const FARPROC other = GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetTickCount");
+	REQUIRE(other != nullptr);
+	CHECK_FALSE(sfve::mod::IsInGameExe(reinterpret_cast<const void*>(other)));
+	CHECK_FALSE(sfve::mod::IsInGameExe(nullptr));
+}
+
 TEST_CASE("a crash leaves the record and the dump the launcher wrote for it")
 {
 	wchar_t temp[MAX_PATH] = {};

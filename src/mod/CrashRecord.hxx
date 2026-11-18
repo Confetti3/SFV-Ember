@@ -61,6 +61,13 @@ struct CrashRecordState {
 // A second call returns the first's state.
 CrashRecordState InstallCrashRecord(const CrashRecordSetup& setup);
 
+// True when `address` is code of the game's own exe. Only the game's reporter
+// (its guarded loop and threads, which end in MiniDumpWriteDump) is taken for
+// the game ending: another module that dumps (a second mod's vectored handler
+// dumps every first-chance fault it sees, among them ones a __try inside the
+// game or this mod swallows) is not, and the hook leaves its call alone.
+bool IsInGameExe(const void* address);
+
 // Records a crash, kind as CrashReport.hxx names them, and takes its dump:
 // the hook's path, callable on its own (tests). Once per process; later
 // calls return at once. `pointers` may be null (a CRT fault: no dump).
