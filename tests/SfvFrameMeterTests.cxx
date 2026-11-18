@@ -406,3 +406,55 @@ TEST_CASE("a fighter that did not read is unknown, and its move is forgotten")
 	CHECK(move.action == -1);
 	CHECK_FALSE(move.attacked);
 }
+
+TEST_CASE("the guard pose before a hit is the meter's proximity, and blockstun stays the block")
+{
+	MeterMove move;
+	FighterFrame defender;
+	defender.valid = true;
+	defender.posture = 1;
+	defender.timeScale = 1.0f;
+	// Kind 12, the pose the game takes as an attack comes near, standing or crouching.
+	defender.stateKind = StateKind::Guard;
+	const auto pose = MeterSample(defender, move);
+	CHECK(pose.proximity);
+	CHECK(pose.status == ActorStatus::GuardCrouch);
+	CHECK(training::ClassifyMeter(pose) == training::MeterKind::Proximity);
+	// Kind 23, blockstun: guarding, with no mark, so the bars draw the block.
+	defender.stateKind = StateKind::GuardHit;
+	const auto stun = MeterSample(defender, move);
+	CHECK_FALSE(stun.proximity);
+	CHECK(stun.status == ActorStatus::DamageGuard);
+	CHECK(training::ClassifyMeter(stun) == training::MeterKind::Guard);
+	// No other state carries it, and a missing fighter none.
+	for (const StateKind kind : {StateKind::Stand, StateKind::Crouch, StateKind::Hit, StateKind::Attack}) {
+		defender.stateKind = kind;
+		CHECK_FALSE(MeterSample(defender, move).proximity);
+	}
+	CHECK_FALSE(MeterSample(FighterFrame{}, move).proximity);
+}
+
+TEST_CASE("a crouching dummy that keeps the guard pose does not hold the bars open")
+{
+	// P1's cr.LP (script 30 here), which P2 guards crouching: the pose from
+	// the first frame, the blockstun for a few, then the pose again while P1
+	// stands free. The exchange ends and the bars are held once both are quiet,
+	// whether the pose is drawn or not.
+	for (const bool shown : {true, false}) {
+		training::FrameMeter meter;
+		meter.SetProximityGuard(shown);
+		MeterFeed feed;
+		const auto observe = [&](int p1Kind, int p1Script, float p1Frame, int p2Kind) {
+			std::array<FighterFrame, 2> fighters;
+			fighters[0] = Frame({p1Kind, p1Script, p1Frame, {-1, -1, -1, 20}, p1Kind == 2 ? 1 : 0, 1.0f, p1Script, 0, false, 1025, 1025, false});
+			fighters[1] = Frame({p2Kind, p2Kind == 12 ? 90 : p2Kind == 23 ? 91 : 0, 1.0f, {-1, -1, -1, 20}, 1, 1.0f, 0, 0, false, 1025, 1025, false});
+			feed.Feed(meter, fighters, 1);
+		};
+		observe(2, 0, 1, 2);
+		for (int frame = 1; frame <= 6; ++frame) observe(19, 30, static_cast<float>(frame), 12);
+		for (int frame = 1; frame <= 4; ++frame) observe(19, 30, static_cast<float>(6 + frame), 23);
+		for (int frame = 0; frame < 8; ++frame) observe(2, 0, 1, 12);
+		CHECK(meter.View().frozen);
+		CHECK_FALSE(meter.View().frames.empty());
+	}
+}

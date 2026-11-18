@@ -45,6 +45,22 @@ std::vector<uint64_t> Entries(const std::array<uint8_t, N>& block, uint32_t list
 	return entries;
 }
 
+// The log's note of an attack record: whose, its type as the list says, its
+// flags and the size of its rectangle (not a number or no number: zero).
+AttackRecord NoteOf(const mod::BoxBlocks& part, uint32_t index, int type)
+{
+	const size_t record = boxes::kRecords + size_t(index) * boxes::kRecordSize;
+	AttackRecord note;
+	note.side = part.side;
+	note.projectile = part.projectile;
+	note.type = type;
+	note.flags = At<uint32_t>(part.attack, record + boxes::kRecordFlags);
+	const float w = At<float>(part.attack, record + boxes::kRecordRect + 8), h = At<float>(part.attack, record + boxes::kRecordRect + 12);
+	note.width = std::isfinite(w) ? w : 0;
+	note.height = std::isfinite(h) ? h : 0;
+	return note;
+}
+
 // A record's rectangle as a box: left, bottom, width, height in fight units,
 // its corners top left, top right, bottom right, bottom left (as SF4's).
 template <size_t N>
@@ -120,15 +136,16 @@ void AppendBoxes(const mod::BoxBlocks& part, uintptr_t rectShape, std::vector<tr
 				tally.stray++;
 				continue;
 			}
+			AttackRecord note = NoteOf(part, *index, type);
 			if (!kind) {
 				tally.undrawn++;
 				tally.undrawnTypes |= 1u << type;
-				continue;
-			}
-			if (RecordBox(part.attack, *index, rectShape, *kind, part.side, box, tally)) {
+			} else if (RecordBox(part.attack, *index, rectShape, *kind, part.side, box, tally)) {
 				out.push_back(box);
 				tally.drawn++;
+				note.drawn = true;
 			}
+			tally.attacks.push_back(note);
 		}
 	}
 	// The body lists, by group and by the attacks that may strike them: a

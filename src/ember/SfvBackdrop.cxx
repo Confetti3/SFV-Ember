@@ -82,7 +82,7 @@ void LoadChoiceLocked()
 
 struct Picture {
 	enum class State { Loading, Taken, Ready } state = State::Loading;
-	uint8_t* object = nullptr; // the game's texture, until its Direct3D texture is taken
+	std::wstring path;         // the game's texture, by path, until its Direct3D texture is taken (TakeGameTexture)
 	int frames = 0;
 	mod::GameTexture texture;                 // Taken and Ready: with our reference
 	ID3D11ShaderResourceView* view = nullptr; // Ready: made on the render thread
@@ -245,8 +245,8 @@ struct Report {
 	std::vector<backdrop::ListedPath> paths;
 	size_t next = 0;
 	int done = 0, loaded = 0, fullSize = 0, gap = 0;
-	// The picture loading, until its texture is taken (game thread).
-	uint8_t* object = nullptr;
+	// The picture loading, by path, until its texture is taken (game thread).
+	std::wstring loading;
 	int frames = 0;
 	ReportRow row;
 	// A texture for the render thread to sample into the sheet, and its row.
@@ -423,12 +423,12 @@ void PumpReport(bool gameLoading)
 	{
 		std::lock_guard lock(s_reportMutex);
 		if (!s_report.running || s_report.tile || s_report.loadingNow) return;
-		if (s_report.object) {
+		if (!s_report.loading.empty()) {
 			bool pending = false;
 			std::string why;
-			const std::optional<mod::GameTexture> texture = mod::TakeGameTexture(s_report.object, &pending, &why);
+			const std::optional<mod::GameTexture> texture = mod::TakeGameTexture(s_report.loading, &pending, &why);
 			if (!texture && pending && ++s_report.frames < textures::kResourceFrames) return;
-			s_report.object = nullptr;
+			s_report.loading.clear();
 			ReportRow& row = s_report.row;
 			if (!texture) {
 				row.result = pending ? "its resource never came" : why;
@@ -471,7 +471,7 @@ void PumpReport(bool gameLoading)
 		FinishRowLocked(s_report.row);
 		return;
 	}
-	s_report.object = object;
+	s_report.loading = path;
 	s_report.frames = 0;
 }
 
@@ -541,8 +541,8 @@ void DropLoading()
 		}
 	}
 	std::lock_guard lock(s_reportMutex);
-	if (s_report.running && s_report.object) {
-		s_report.object = nullptr;
+	if (s_report.running && !s_report.loading.empty()) {
+		s_report.loading.clear();
 		s_report.row.result = "dropped: the main menu was left while it loaded";
 		FinishRowLocked(s_report.row);
 	}
@@ -566,15 +566,22 @@ void Pump()
 				++at;
 				continue;
 			}
+			// The take finds the game's object again (a load, if the game
+			// collected it): never while the game loads.
+			if (gameLoading) {
+				inFlight = true;
+				++at;
+				continue;
+			}
 			bool pending = false;
 			std::string why;
-			const std::optional<mod::GameTexture> texture = mod::TakeGameTexture(picture.object, &pending, &why);
+			const std::optional<mod::GameTexture> texture = mod::TakeGameTexture(picture.path, &pending, &why);
 			if (!texture && pending && ++picture.frames < textures::kResourceFrames) {
 				inFlight = true;
 				++at;
 				continue;
 			}
-			picture.object = nullptr;
+			picture.path.clear();
 			if (texture && (texture->width < kLeastWidth || texture->height < kLeastHeight)) {
 				why = "only " + std::to_string(texture->width) + "x" + std::to_string(texture->height);
 				texture->texture->Release(); // never drawn: let go here
@@ -621,7 +628,7 @@ void Pump()
 	mod::Log("backdrop: %s: loaded in %.1f ms", PathOf(entry).c_str(), ms);
 	Picture& picture = s_pictures[entry];
 	picture = {};
-	picture.object = object;
+	picture.path = path;
 }
 
 // --- The pipe ---

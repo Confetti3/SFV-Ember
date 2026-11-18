@@ -20,10 +20,11 @@ namespace sfve::adapter {
 // netplay mode's Install, with rooms on.
 void InstallSfvFrameMeter();
 
-// How many frames the meter keeps and whether an exchange after a pause goes
-// on after the last (MeterOptions::history, continuous), as the lab's Meter
-// settings page chose; the HUD draws the meter as the lab publishes it
-// (SfvTrainingLab, SfvTrainingHost). Any thread.
-void SetSfvMeterHistory(int frames, bool continuous);
+// The options of the meter's own measuring, as the lab's Meter settings page
+// chose them: how many frames it keeps, whether an exchange after a pause goes
+// on after the last, and whether the guard pose before a hit is a cell of its
+// own (MeterOptions::history, continuous, proximityGuard). The HUD draws the
+// meter as the lab publishes it (SfvTrainingLab, SfvTrainingHost). Any thread.
+void SetSfvMeterOptions(const sf4e::training::MeterOptions& options);
 
 } // namespace sfve::adapter

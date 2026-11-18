@@ -80,6 +80,9 @@ FighterSample MeterSample(const mod::FighterFrame& fighter, MeterMove& move)
 	sample.action = fighter.script;
 	sample.actionFrame = fighter.scriptFrame;
 	sample.posture = fighter.posture;
+	// The guard state is the pose the game takes as an attack comes near; the
+	// blockstun after a hit is its own state (GuardHit), which stays the block.
+	sample.proximity = fighter.stateKind == StateKind::Guard;
 	sample.timeScale = fighter.timeScale;
 	// The game's own count, and its "cannot time it" as the meter's.
 	sample.untilActionable = fighter.untilActionable >= mod::sfv::fighter::kUntimed ? training::UntimedFrames : fighter.untilActionable;

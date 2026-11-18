@@ -494,6 +494,9 @@ Capabilities SfvCapabilities()
 	// Data panel, the hitboxes' parts or the pad's own lab buttons.
 	caps.trainingFeatures.inputHistory = true;
 	caps.trainingFeatures.classicInputs = true;
+	// The guard pose before a hit, drawn apart from blockstun, and its row on
+	// the Meter page (SfvMeterSample: the guard state, not the blockstun one).
+	caps.trainingFeatures.proximityGuard = true;
 	caps.settingsFeatures.shortcutHint = true;
 	return caps;
 }

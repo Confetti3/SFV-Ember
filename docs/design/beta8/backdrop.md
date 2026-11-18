@@ -105,10 +105,15 @@ load on the game thread while the player is moving through the board.
   until it has (`Cycle::Alive` counts it).
 - **Garbage collection.** As SfvArt does: the game's `UTexture2D` is used only until its Direct3D 11
   texture is taken (`mod::TakeGameTexture`, which checks the resource is the texture's own, the
-  vtable is Direct3D 11's and the whole picture is resident) with an `AddRef` of ours; the pointer to
-  the game's object is then dropped. Nothing roots the object, so the game's collector takes it at
-  its next pass; the pixels stay alive through our reference until we release it (view, then
-  texture). The window between the load and the take (a frame or two, at most 120) is SfvArt's too.
+  vtable is Direct3D 11's and the whole picture is resident) with an `AddRef` of ours; the game's
+  object is then forgotten. Nothing roots the object, so the game's collector takes it at its next
+  pass; the pixels stay alive through our reference until we release it (view, then texture).
+  The window between the load and the take (a frame or two, at most 120) is SfvArt's too, and the
+  collector runs in it as the game comes back from a battle (0.1.0 field crash, EMBER-123: a held
+  pointer read memory the collector had freed and reused). So no pointer is held across frames:
+  a loading picture keeps its path, and each take finds the object again with `LoadTexture` (a
+  lookup while it is resident, a load if it was collected, never while the game loads) and reads it
+  within that one game-thread call.
 - **Skipped.** A path the game has no texture for, one whose resource never comes, one smaller than
   640x360 or whose view cannot be made: skipped for the session, the next tried after 1 s. If none
   loads, the page is plain, as before.
