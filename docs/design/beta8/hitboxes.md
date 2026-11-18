@@ -127,6 +127,39 @@ shapes, empty rectangles, undrawn types, a list's count past 16), `EmberAdapterT
 the SFV build must use the library at `b8/lib-hitboxes` (it needs `ui/HitboxOverlay` and the
 new `Capabilities`/`ShellView` fields).
 
+## 0.1.0 field report: command grabs without a box (2026-11-17)
+
+Players report that no command grab's box shows for Birdie, Zangief, R. Mika, Alex, Laura and
+Seth's Gief install, while E. Honda's and Abigail's do. What the code says (database of
+2026-11-17, rvas as above):
+
+- The viewer draws every attack record in the seven type lists: types 0 to 2 as hits, 4 as the
+  proximity box, 6 as the throw. Left out are types 3 and 5, records whose shape is not the
+  rectangle, and rectangles with no width or height. A throw of type 6 is tested against the
+  other side's body list 0 only (order table entry (0, 6); `sub_140344A00` skips the
+  "can attack" test for it), so a command grab that is a type 6 record is drawn like a normal
+  throw. Honda's and Abigail's are presumably those.
+- Type 5 is not a grab: rva 0x34ED80 meets a fighter's type 5 records (part + 0x1F0 + 4680)
+  against a projectile's type 0 and type 1 lists, a box that catches fireballs.
+- Attack detection (rva 0x34D310) has a second branch for a record whose flags (+32) have
+  0x100000: it never runs the overlap test of the record's rectangle against the body boxes
+  (rva 0x4CCEC0). It asks the state test (rva 0x3518E0) of the target and of each body record
+  and, if none was found, puts the hit's point at the record's own centre. A record like that
+  is a hit whose reach the game decides elsewhere, so its rectangle need not be the reach, or
+  anywhere near the fighters. Whether the missing grabs are such records is the working
+  hypothesis; it is not confirmed.
+- The controller (part + 0xC0) holds two more blocks the viewer does not read: 72-byte
+  records with a rectangle at controller + 12376 (32 of them, count at +14688; no lists, no
+  group: probably the fighter's push box) and 16-byte records at +14768. Neither is touched by
+  attack detection.
+
+What changed: `SfvBoxes` keeps a note of every attack record it reads (type, flags, size,
+whether a box was made) and `SfvHitboxes` logs each distinct one once a battle,
+`hitboxes: P1's own attack record, type 0, flags 0x00100000, 0.00 x 1.00, not drawn (scripts: P1
+..., P2 ...)`, with the scripts both fighters were in, and says so when records have no area.
+A Training run of Zangief's SPD, Birdie's, Laura's, Mika's and Alex's grabs with Hitboxes on, then
+the log, names the record each one is.
+
 ## Not verified
 
 - The type meanings marked so above: 2 (never seen), 3 and 5 (not drawn), and 4 as the

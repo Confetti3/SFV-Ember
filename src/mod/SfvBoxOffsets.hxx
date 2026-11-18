@@ -93,6 +93,18 @@ static_assert(kBodySubLists * kListSize == kBodyGroupSize, "a group is four list
 // shape's vtable and the world rectangle PlaceAttackBoxes and PlaceBodyBoxes
 // write (fight units: left, bottom, width, height).
 constexpr uint32_t kRecordType = 48;
+// A record's flags (+32). Bit 0x100000 on an attack record: the hit is not
+// tested against the body boxes' rectangles at all. Attack detection (rva
+// 0x34D310) takes one of two branches on it: without the bit the record's
+// rectangle must overlap a body box (the overlap test, rva 0x4CCEC0); with it
+// the branch asks only the state test (rva 0x3518E0) of each body record and
+// of the target, and a hit that found no box to average puts its point at the
+// record's own centre. A record with the bit is a hit whose reach the game
+// decides elsewhere (the script's own conditions), so its rectangle need not
+// be one a player can read as the reach. Read for the viewer's log; found
+// reading rva 0x34D310 in the 2026-11-17 database, not yet seen on a record.
+constexpr uint32_t kRecordFlags = 32;
+constexpr uint32_t kHitsWithoutOverlap = 0x100000;
 constexpr uint32_t kRecordGroup = 52;
 constexpr uint32_t kRecordShape = 88;
 constexpr uint32_t kRecordRect = 96;

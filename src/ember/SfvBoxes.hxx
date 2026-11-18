@@ -35,6 +35,18 @@ namespace sfve::adapter {
 // types that are no attack's reach (3, never found tested, and 5, a catch).
 std::optional<sf4e::training::BoxKind> AttackBoxKind(int type);
 
+// An attack record as the conversion met it: whose, from a projectile or the
+// fighter, its type (+48), its flags (+32), its rectangle's size and whether a
+// box was made of it.
+struct AttackRecord {
+	int side = 0;
+	bool projectile = false;
+	int type = 0;
+	uint32_t flags = 0;
+	float width = 0, height = 0;
+	bool drawn = false;
+};
+
 // What the conversion met, for the log: the boxes made, listed records of a
 // type not drawn (and those types, one bit each), list entries that point at
 // no record of their block, records whose shape is not the rectangle, and
@@ -42,6 +54,10 @@ std::optional<sf4e::training::BoxKind> AttackBoxKind(int type);
 struct BoxTally {
 	int drawn = 0, undrawn = 0, stray = 0, otherShapes = 0, empty = 0;
 	unsigned undrawnTypes = 0;
+	// Every attack record a list held, drawn or not, as the log tells them
+	// apart (SfvHitboxes): a move whose box never shows is named by its type,
+	// its flags and its rectangle here.
+	std::vector<AttackRecord> attacks;
 };
 
 // The boxes a part's blocks list this tick, appended to `out` in the game's
