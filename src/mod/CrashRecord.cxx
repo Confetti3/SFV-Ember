@@ -32,7 +32,10 @@ using DumpWriter = sf4e::crash::DumpWriter;
 
 CrashRecordState s_state;
 DumpWriter s_originalWriter = nullptr; // MinHook's trampoline once hooked
-LPTOP_LEVEL_EXCEPTION_FILTER s_previousFilter = nullptr;
+// The filter ours chains to: the engine's, or whichever another module set.
+std::atomic<LPTOP_LEVEL_EXCEPTION_FILTER> s_previousFilter(nullptr);
+using SetFilterFn = LPTOP_LEVEL_EXCEPTION_FILTER(WINAPI*)(LPTOP_LEVEL_EXCEPTION_FILTER);
+SetFilterFn s_originalSetFilter = nullptr; // MinHook's trampoline once hooked
 sf4e::crash::DumpClient s_dumpClient;
 // The thread recording the process's one crash, 0 until one does: claimed
 // once, so a fault on that same thread (inside the record) returns at once
@@ -185,7 +188,8 @@ LONG WINAPI OnUnhandledException(EXCEPTION_POINTERS* pointers)
 	if (inside) return EXCEPTION_CONTINUE_SEARCH;
 	inside = true;
 	RecordCrash("unhandled_exception", pointers, nullptr, GetCurrentThreadId());
-	const LONG result = s_previousFilter ? s_previousFilter(pointers) : EXCEPTION_CONTINUE_SEARCH;
+	const LPTOP_LEVEL_EXCEPTION_FILTER previous = s_previousFilter;
+	const LONG result = previous ? previous(pointers) : EXCEPTION_CONTINUE_SEARCH;
 	inside = false;
 	return result;
 }
@@ -199,6 +203,33 @@ void TakeFilter(const char* when)
 	if (current == &OnUnhandledException) return;
 	if (current) s_previousFilter = current;
 	Log("crash record: the unhandled-exception filter %s%s", when, current ? ", chaining to the one that was set" : "");
+}
+
+// Whoever sets the process's filter after ours (the engine's start-up, the Steam
+// overlay, a second mod) would take the record's place, and a crash would
+// reach no record and no dump (0.1.0: crashes with the launcher's "the game
+// did not ask for one" and no record). Its filter is kept as the one ours
+// chains to instead, and ours stays on top; the caller is told what it would
+// have been (the filter it replaces), so it can put that back.
+LPTOP_LEVEL_EXCEPTION_FILTER WINAPI OnSetUnhandledExceptionFilter(LPTOP_LEVEL_EXCEPTION_FILTER filter)
+{
+	if (filter == &OnUnhandledException) return s_originalSetFilter(filter);
+	static std::atomic<bool> logged(false);
+	if (!logged.exchange(true)) Log("crash record: another module set the unhandled-exception filter; kept after ours, which stays first");
+	return s_previousFilter.exchange(filter);
+}
+
+// kernelbase's function (kernel32's forwards to it, here and under Wine), so
+// every caller is covered. Not hooked, the filter is taken back at the game's
+// first frame only (TakeFilter).
+void HookFilterSetter()
+{
+	const HMODULE kernelbase = GetModuleHandleW(L"kernelbase");
+	HookTransaction hook;
+	hook.Add("SetUnhandledExceptionFilter", kernelbase ? (void*)GetProcAddress(kernelbase, "SetUnhandledExceptionFilter") : nullptr,
+		reinterpret_cast<void*>(&OnSetUnhandledExceptionFilter), reinterpret_cast<void**>(&s_originalSetFilter));
+	if (CommitHookSet(hook, "crash record filter"))
+		Log("crash record: SetUnhandledExceptionFilter not hooked; the filter is only taken back at the game's first frame");
 }
 
 // Heap corruption ends the process without reaching the reporter; ntdll
@@ -371,6 +402,7 @@ CrashRecordState InstallCrashRecord(const CrashRecordSetup& setup)
 		ULONG reserve = 16 * 1024;
 		SetThreadStackGuarantee(&reserve);
 		AddVectoredExceptionHandler(1, OnVectoredException);
+		HookFilterSetter();
 		TakeFilter("is set at the start");
 		RunOnGameThread([] { TakeFilter("is taken back at the game's first frame"); });
 		std::set_terminate(OnTerminate);

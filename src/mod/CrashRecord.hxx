@@ -21,8 +21,11 @@
 //      player saw no crash window until they closed that box.
 // Threads the game did not start (the mod's own among them) are not guarded
 // by its reporter: the mod's unhandled-exception filter records a fault
-// there and chains to the filter it replaced. It is set at the start and
-// taken back at the game's first frame, in case the engine set its own.
+// there and chains to the filter it replaced. It is set at the start, and
+// SetUnhandledExceptionFilter is hooked so a filter another module sets
+// later (the engine's, the Steam overlay's) becomes the one ours chains to
+// and ours stays first; it is also taken back at the game's first frame, for
+// where that hook did not go in.
 // Heap corruption ends the process without reaching any filter; ntdll raises
 // it once, so a vectored handler asks the launcher first, then records it.
 // The mod's own C runtime faults (a pure call, an invalid parameter,
