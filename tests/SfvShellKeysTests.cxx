@@ -8,6 +8,8 @@
 
 #include <windows.h>
 
+#include <initializer_list>
+
 using sfve::adapter::KeepsKeyFromGame;
 using sfve::adapter::KeyboardHolders;
 
