@@ -56,7 +56,6 @@ using pictures::PixelRect;
 
 struct Picture {
 	enum class State { Queued, WaitingForResource, Ready, Missing } state = State::Queued;
-	uint8_t* object = nullptr; // the game's texture, until its Direct3D texture is taken
 	int frames = 0;
 	RetryGate retry;                           // after a texture that was not usable yet
 	mod::GameTexture texture;                  // Ready: the game's texture, with our reference
@@ -206,7 +205,6 @@ void DropWaiting()
 	std::lock_guard lock(s_mutex);
 	for (auto& [spec, picture] : s_pictures) {
 		if (picture.state != Picture::State::WaitingForResource) continue;
-		picture.object = nullptr;
 		picture.frames = 0;
 		picture.state = Picture::State::Queued;
 		s_queue.push_back(spec);
@@ -224,7 +222,7 @@ void PumpPictures()
 			if (picture.state != Picture::State::WaitingForResource) continue;
 			bool pending = false;
 			std::string why;
-			if (const std::optional<mod::GameTexture> texture = mod::TakeGameTexture(picture.object, &pending, &why)) {
+			if (const std::optional<mod::GameTexture> texture = mod::TakeGameTexture(spec.path, &pending, &why)) {
 				picture.texture = *texture;
 				picture.state = Picture::State::Ready;
 				picture.retry.Reset(Now());
@@ -239,7 +237,6 @@ void PumpPictures()
 				picture.state = Picture::State::Queued;
 				s_queue.push_back(spec);
 			}
-			if (picture.state != Picture::State::WaitingForResource) picture.object = nullptr;
 		}
 		// A picture waiting out its retry delay keeps its place at the back.
 		const double now = Now();
@@ -258,7 +255,6 @@ void PumpPictures()
 		uint8_t* object = mod::LoadTexture(spec.path);
 		std::lock_guard lock(s_mutex);
 		Picture& picture = s_pictures[spec];
-		picture.object = object;
 		picture.state = object ? Picture::State::WaitingForResource : Picture::State::Missing;
 		if (!object) mod::Log("art: %ls: the game has no texture there", spec.path.c_str());
 	}

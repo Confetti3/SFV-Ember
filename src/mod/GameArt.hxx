@@ -27,12 +27,21 @@ uint8_t* LoadTexture(const std::wstring& path);
 // so until then the result is empty with `pending` true; empty with `pending`
 // false (and why in `failure`) when what the texture holds is not a whole
 // Direct3D 11 texture of the texture's own size, which is never drawn.
+//
+// The texture is named by its path, not by the pointer LoadTexture gave: the
+// wait for the render thread spans frames, nothing roots the game's object,
+// and its garbage collector (which runs as the game leaves a battle for the
+// menu, just when the pictures load) may free it in between, leaving a
+// pointer into memory that holds something else by then. Each call finds the
+// object again (a lookup while it is resident, a load if it was collected)
+// and reads it within the one game-thread call, which the collector does not
+// interrupt.
 struct GameTexture {
 	ID3D11Texture2D* texture = nullptr; // AddRef'd for the caller
 	int width = 0, height = 0;
 	unsigned format = 0; // DXGI_FORMAT
 };
-std::optional<GameTexture> TakeGameTexture(uint8_t* texture, bool* pending, std::string* failure);
+std::optional<GameTexture> TakeGameTexture(const std::wstring& path, bool* pending, std::string* failure);
 
 // The two colours (0xRRGGBB) the costume settings menu shows for a colour
 // of a fighter's costume; empty when the game has no preview data for that
