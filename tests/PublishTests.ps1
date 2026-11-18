@@ -158,6 +158,10 @@ try {
         @({ param($f) $f.packagedOverride = { param($r) $r.renders.colourCoverage = 0.98 } }, '*a release ships every colour*'),
         @({ param($f) $f.packagedOverride = { param($r) $r.renders.minColourCoverage = 0 } }, '*a release ships every colour*'),
         @({ param($f) $f.packagedOverride = { param($r) $r.renders = @{included = $false} } }, '*a release ships every colour*'),
+        @({ param($f) $f.version = '0.1.0-beta.8' }, '*is not SFV Ember 0.1.0-beta.9*')
+    )
+    # With the colourPack setting on: the pack and everything that names it.
+    $packCases = @(
         @({ param($f) $f.packNameOverride = 'colours.zip' }, '*names no colour pack*'),
         @({ param($f) $f.descriptorOverride = { param($d) $d.sha256 = 'f' * 64 } }, '*colour-pack.json does not name the colour pack*'),
         @({ param($f) $f.descriptorOverride = { param($d) $d.bytes = $d.bytes + 1 } }, '*colour-pack.json does not name the colour pack*'),
@@ -165,14 +169,17 @@ try {
         @({ param($f) $f.packagedOverride = { param($r) $r.renders.colourPack = @{name = 'sfve-colours-0000000000000000.zip'} } }, '*receipt names another colour pack*'),
         @({ param($f) $f.packPicture = 'thanks to ForbiddenName' }, '*colour pack carries forbidden strings*'),
         @({ param($f) $f.packagedOverride = { param($r) $r.renders.colourPack = $null } }, '*do not agree on a colour pack*'),
-        @({ param($f) $f.launcher = 'MZ launcher; releases of Owner/sfv-ember' }, '*Launcher.exe does not name Owner/SFV-Ember*'),
-        @({ param($f) $f.version = '0.1.0-beta.8' }, '*is not SFV Ember 0.1.0-beta.9*')
+        @({ param($f) $f.launcher = 'MZ launcher; releases of Owner/sfv-ember' }, '*Launcher.exe does not name Owner/SFV-Ember*')
     )
-    foreach ($case in $cases) {
-        $y = Fresh; $null = Plan $y; $y.World.BuildTweak = $case[0]
-        Reject { Invoke-PubBuild $y.Ctx $y.P } $case[1]
-        Check (!(Test-Path "$($y.Ctx.Root)\build\evidence.json")) 'no evidence after a refusal'
+    foreach ($set in @(@($cases, $false), @($packCases, $true))) {
+        $withPack = $set[1]
+        foreach ($case in $set[0]) {
+            $y = Fresh -ColourPack:$withPack; $null = Plan $y; $y.World.BuildTweak = $case[0]
+            Reject { Invoke-PubBuild $y.Ctx $y.P } $case[1]
+            Check (!(Test-Path "$($y.Ctx.Root)\build\evidence.json")) 'no evidence after a refusal'
+        }
     }
+    $cases += $packCases
     Pass "build: refuses $($cases.Count) kinds of wrong result (other commit or fingerprint, failed tests, sidecar, zip, room build, forbidden or machine names in the package, receipt, colour coverage, colour pack, version)"
     $y = Fresh; $null = Plan $y; $y.World.LaptopBusy = 'sfv-b9-roomhost'
     Reject { Invoke-PubBuild $y.Ctx $y.P } '*one heavy build at a time*'
@@ -282,20 +289,26 @@ try {
     Check ((G "$($x.F)\lib-origin.git" @('rev-parse', 'feat/ember-library')) -ceq $x.L2) 'library pushed'
     Check (($x.World.Pushes -join ';') -match '^origin refs/heads/feat/ember-library.*;origin refs/heads/release/beta.9.*;public refs/heads/main') 'push order: library, origin, public'
     Check ($promote.facts.zipSha256 -ceq $build.facts.zipSha256) 'downloaded zip compared'
-    # The colour pack: on a colour-packs release made for it, a pre-release that is no version, downloaded and compared.
-    $store = @($x.World.Releases | Where-Object { $_.tag_name -ceq 'colour-packs' })
-    $pack = $build.facts.colourPack
-    Check ($store.Count -eq 1 -and !$store[0].draft -and $store[0].prerelease) 'the colour-packs release'
-    Check (@($store[0].assets | Where-Object { $_.name -ceq $pack.name -and $_.digest -ceq "sha256:$($pack.sha256)" }).Count -eq 1) 'the pack uploaded to it'
-    Check (@($promote.files | Where-Object { $_.name -ceq "downloaded/$($pack.name)" -and $_.sha256 -ceq $pack.sha256 }).Count -eq 1) 'the pack downloaded and compared'
-    Check ((Read-PubJson "$($x.Ctx.Root)\promote\state.json").phases.colours.status -ceq 'done') 'colours phase'
+    Check ((Read-PubJson "$($x.Ctx.Root)\promote\state.json").phases.colours.note -like 'no colour pack*') 'colours: nothing to host'
     $pushes = $x.World.Pushes.Count
     Invoke-Quiet { Invoke-PubPromote $x.Ctx $x.P }
     Check ($x.World.Pushes.Count -eq $pushes) 'a finished promote does nothing again'
-    Pass 'promote: the colour pack uploaded first; library, private release branch and public main pushed as fast-forwards, the draft published by id at the commit, the zip and the pack downloaded and compared'
+    Pass 'promote: library, private release branch and public main pushed as fast-forwards, the draft published by id at the commit, the zip downloaded and compared'
+
+    # With config colourPack on: the pack on a colour-packs release made for it, a pre-release that is no version,
+    # downloaded and compared.
+    $k = Fresh -ColourPack; Through $k 'promote'
+    $kPromote = Read-PubEvidence $k.Ctx 'promote' (Read-PubPlan $k.Ctx)
+    $store = @($k.World.Releases | Where-Object { $_.tag_name -ceq 'colour-packs' })
+    $pack = (Read-PubEvidence $k.Ctx 'build' (Read-PubPlan $k.Ctx)).facts.colourPack
+    Check ($store.Count -eq 1 -and !$store[0].draft -and $store[0].prerelease) 'the colour-packs release'
+    Check (@($store[0].assets | Where-Object { $_.name -ceq $pack.name -and $_.digest -ceq "sha256:$($pack.sha256)" }).Count -eq 1) 'the pack uploaded to it'
+    Check (@($kPromote.files | Where-Object { $_.name -ceq "downloaded/$($pack.name)" -and $_.sha256 -ceq $pack.sha256 }).Count -eq 1) 'the pack downloaded and compared'
+    Check ((Read-PubJson "$($k.Ctx.Root)\promote\state.json").phases.colours.status -ceq 'done') 'colours phase'
+    Pass 'promote with a colour pack: the pack uploaded first, then the pushes and the publish, the zip and the pack downloaded and compared'
 
     # A release whose pack the colour-packs release has already: nothing uploaded, the asset checked.
-    $y = Fresh; Through $y 'draft'
+    $y = Fresh -ColourPack; Through $y 'draft'
     $pack = (Read-PubEvidence $y.Ctx 'build' (Read-PubPlan $y.Ctx)).facts.colourPack
     $store = Add-FakeRelease $y.World 'colour-packs' $false 'Colour packs'
     Add-FakeAsset $y.World $store "$($y.Ctx.Root)\build\files\$($pack.name)" $pack.name
@@ -303,18 +316,18 @@ try {
     Check (!@($y.World.Commands | Where-Object { $_ -like "*releases/$($store.id)/assets*" }).Count -and $store.assets.Count -eq 1) 'nothing uploaded again'
     Check ((Read-PubJson "$($y.Ctx.Root)\promote\state.json").phases.colours.note -like 'there *') 'the pack found there'
     # One of that name that is not the pack, or a colour-packs release nobody can download from, stops it before any push.
-    $y = Fresh; Through $y 'draft'
+    $y = Fresh -ColourPack; Through $y 'draft'
     $pack = (Read-PubEvidence $y.Ctx 'build' (Read-PubPlan $y.Ctx)).facts.colourPack
     $store = Add-FakeRelease $y.World 'colour-packs' $false
     Add-FakeAsset $y.World $store "$($y.Ctx.Root)\notes.md" $pack.name
     Reject { Invoke-PubPromote $y.Ctx $y.P 6>$null } '*is not the checked pack*'
     Check (!$y.World.Pushes.Count) 'nothing pushed'
-    $y = Fresh; Through $y 'draft'; $null = Add-FakeRelease $y.World 'colour-packs' $true
+    $y = Fresh -ColourPack; Through $y 'draft'; $null = Add-FakeRelease $y.World 'colour-packs' $true
     Reject { Invoke-PubPromote $y.Ctx $y.P 6>$null } '*is a draft*'
     Pass 'promote: a pack the colour-packs release has is not uploaded again; another file of its name, or a draft colour-packs release, stops promote before any push'
 
     # A skipped colours phase never lets a release go public naming a pack that is not hosted.
-    $y = Fresh; Through $y 'draft'; $y.Ctx.Skip = @('colours')
+    $y = Fresh -ColourPack; Through $y 'draft'; $y.Ctx.Skip = @('colours')
     Reject { Invoke-PubPromote $y.Ctx $y.P 6>$null } '*is not on the colour-packs release*'
     Check ((Get-FakeRelease $y.World (Read-PubJson "$($y.Ctx.Root)\draft\evidence.json").facts.releaseId).draft) 'the draft stays a draft'
     Check ((Read-PubJson "$($y.Ctx.Root)\promote\state.json").phases.colours.status -ceq 'skipped') 'colours recorded as skipped'
@@ -323,14 +336,23 @@ try {
     Pass 'promote: with colours skipped, publish refuses; a later run hosts the pack and publishes'
 
     # The default package: every colour in the zip, no pack, nothing for the colours phase to host.
-    $y = Fresh; $y.World.BuildTweak = { param($f) $f.colourPack = $false }; Through $y 'promote'
+    # Its dry run first: no pack to upload, nothing saved, nothing thrown.
+    $y = Fresh; Through $y 'draft'; $y.Ctx.DryRun = $true
+    Invoke-Quiet { Invoke-PubPromote $y.Ctx $y.P }; $y.Ctx.DryRun = $false
+    Check (!$y.World.Pushes.Count -and !(Test-Path "$($y.Ctx.Root)\promote\state.json")) 'a dry run of the default promote pushes and saves nothing'
+    Invoke-Quiet { Invoke-PubPromote $y.Ctx $y.P }
     Check ($null -eq (Read-PubEvidence $y.Ctx 'build' (Read-PubPlan $y.Ctx)).facts.colourPack) 'the build names no pack'
     Check ((Read-PubJson "$($y.Ctx.Root)\promote\state.json").phases.colours.note -like 'no colour pack*') 'colours: nothing to host'
     Check (!@($y.World.Releases | Where-Object { $_.tag_name -ceq 'colour-packs' }).Count) 'no colour-packs release made'
     Check (Test-Path "$($y.Ctx.Root)\promote\evidence.json") 'published'
-    $y = Fresh; $null = Plan $y; $y.World.BuildTweak = { param($f) $f.colourPack = $false; $f.packagedOverride = { param($r) $r.renders.colourPack = @{name = 'sfve-colours-0000000000000000.zip'} } }
+    $y = Fresh; $null = Plan $y; $y.World.BuildTweak = { param($f) $f.packagedOverride = { param($r) $r.renders.colourPack = @{name = 'sfve-colours-0000000000000000.zip'} } }
     Reject { Invoke-PubBuild $y.Ctx $y.P } '*do not agree on a colour pack*'
-    Pass 'build and promote: a zip with every colour names no pack and publishes without one; a receipt naming a pack the zip lacks is refused'
+    # The setting decides: a job that made a pack while the config has none, or none while the config wants one.
+    $y = Fresh; $null = Plan $y; $y.World.BuildTweak = { param($f) $f.colourPack = $true }
+    Reject { Invoke-PubBuild $y.Ctx $y.P } '*config colourPack: off*'
+    $y = Fresh -ColourPack; $null = Plan $y; $y.World.BuildTweak = { param($f) $f.colourPack = $false }
+    Reject { Invoke-PubBuild $y.Ctx $y.P } '*config colourPack: on*'
+    Pass 'build and promote: a zip with every colour names no pack and publishes without one, dry run included; a receipt or job disagreeing with the colourPack setting is refused'
 
     # A final after its betas: the same stages, a draft that is not a pre-release, published as the latest release.
     $z = Fresh
@@ -469,14 +491,15 @@ try {
     $agent = Join-Path $scripts 'laptop-agent.ps1'
     $sync = { pwsh -NoProfile -File $agent -Phase sync -Work $work -Label t -Source $y.C1 -SourceTree (G $y.Sfv @('rev-parse', "$($y.C1)^{tree}")) -Library $l3 `
         -LibraryTree (G $y.Lib @('rev-parse', "$l3^{tree}")) -SourceCheckout "$($y.F)\sfv-laptop" -LibraryCheckout "$($y.F)\lib-laptop" -BuildDev D:\x -BuildPlayer D:\y `
-        -VcpkgRoot D:\v -RenderStore D:\r -MinColourCoverage $coverage -Dist D:\d -Interactive "$($y.F)\interactive" -JobName t-job | Select-Object -Last 1 }
-    $coverage = ''
+        -VcpkgRoot D:\v -RenderStore D:\r -MinColourCoverage $coverage -Dist D:\d -Interactive "$($y.F)\interactive" -JobName t-job @packArgs | Select-Object -Last 1 }
+    $packArgs = @(); $coverage = ''
     $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
     Check (!$result.ok -and $result.error -like '*No colour coverage*' -and !(Test-Path "$work\job.json")) 'a sync without the colour coverage is refused'
     $coverage = '1'
     $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
     Check ($result.ok -and $result.sourceFingerprint -ceq ('F' * 64)) "agent sync: $($result.error)"
     Check ((Get-Content "$work\job.json" -Raw | ConvertFrom-Json).minColourCoverage -ceq '1') 'the job packages with the colour coverage it was given'
+    Check (!(Get-Content "$work\job.json" -Raw | ConvertFrom-Json).colourPackRepo) 'the job makes no colour pack unless asked'
     Check ((G "$($y.F)\sfv-laptop" @('rev-parse', 'HEAD')) -ceq $y.C1 -and (G "$($y.F)\lib-laptop" @('rev-parse', 'HEAD')) -ceq $l3) 'checkouts fast-forwarded'
     Check ((Get-Content "$($y.F)\interactive\t-job.cmd" -Raw) -match '-Phase job') 'job file written'
     $poll = ((pwsh -NoProfile -File $agent -Phase poll -Work $work -Interactive "$($y.F)\interactive" | Select-Object -Last 1) -replace '^RESULT ', '') | ConvertFrom-Json

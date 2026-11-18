@@ -16,7 +16,7 @@ param([Parameter(Mandatory = $true)][ValidateSet('status', 'sync', 'job', 'rooms
       [Parameter(Mandatory = $true)][string]$Work,
       [string]$Label = '', [string]$Source = '', [string]$SourceTree = '', [string]$Library = '', [string]$LibraryTree = '',
       [string]$SourceCheckout = '', [string]$LibraryCheckout = '', [string]$BuildDev = '', [string]$BuildPlayer = '',
-      [string]$VcpkgRoot = '', [string]$RenderStore = '', [string]$MinColourCoverage = '', [string]$OldPackageCheck = '', [string]$Dist = '',
+      [string]$VcpkgRoot = '', [string]$RenderStore = '', [string]$MinColourCoverage = '', [string]$OldPackageCheck = '', [string]$Dist = '', [string]$ColourPackRepo = '',
       [string]$Interactive = 'D:\sf4\interactive', [string]$JobName = '', [string]$BuildId = '', [string]$SfvTar = '', [string]$LibraryTar = '', [ValidateSet('build', 'check')][string]$Mode = 'build')
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
@@ -120,7 +120,8 @@ switch ($Phase) {
             }
             Save-Json (Join-Path $Work 'checkout.json') $checkout
             Save-Json (Join-Path $Work 'job.json') ([ordered]@{label = $Label; source = $SourceCheckout; library = $LibraryCheckout; buildDev = $BuildDev
-                buildPlayer = $BuildPlayer; vcpkgRoot = $VcpkgRoot; renderStore = $RenderStore; minColourCoverage = $MinColourCoverage; oldPackageCheck = $OldPackageCheck; dist = $Dist})
+                buildPlayer = $BuildPlayer; vcpkgRoot = $VcpkgRoot; renderStore = $RenderStore; minColourCoverage = $MinColourCoverage; oldPackageCheck = $OldPackageCheck; dist = $Dist
+                colourPackRepo = $ColourPackRepo})
             Write-JobCmd $JobName 'job'
             Out-Result @{ok = $true; sourceFingerprint = $checkout.source.fingerprint; libraryFingerprint = $checkout.library.fingerprint}
         } catch { Out-Result @{ok = $false; error = $_.Exception.Message} }
@@ -144,6 +145,8 @@ switch ($Phase) {
             New-Item -ItemType Directory -Path $job.dist | Out-Null
             $package = @('-BuildDir', $job.buildPlayer, '-OutDir', $job.dist, '-VersionLabel', $job.label, '-RenderStore', $job.renderStore, '-MinColourCoverage', $job.minColourCoverage)
             if ($job.oldPackageCheck) { $package += @('-OldPackageCheck', $job.oldPackageCheck) }
+            # A repository here is the pipeline's colourPack setting: split the colours into a pack hosted on it.
+            if ($job.colourPackRepo) { $package += @('-ColourPack', '-ColourPackRepo', $job.colourPackRepo) }
             Invoke-Step 'package' (Join-Path $job.source 'scripts\package.ps1') $package
             $out = Join-Path $Work 'out'
             New-Item -ItemType Directory -Path $out -Force | Out-Null

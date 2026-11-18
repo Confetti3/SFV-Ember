@@ -64,9 +64,11 @@ the plan recorded and clean. The plan and promote check that the remotes push wh
 remote must push to `github.com/<publicRepo>`, the private origin must not push there, and the library remote must
 push to `github.com/<libraryGithubRepo>`.
 
-The colour pack (`docs/design/COLOUR_PACK.md`) is off by default: the build PC's job runs `package.ps1` without
-`-ColourPack`, so the zip carries every colour, names no pack, and the `colours` phase is done with nothing to host.
-With `-ColourPack` the pack is every colour but each costume's first, which the zip then does not carry,
+The colour pack (`docs/design/COLOUR_PACK.md`) is off by default: `config.json`'s `colourPack` (a boolean, absent
+means false) is the one setting. Off, the build PC's job runs `package.ps1` without `-ColourPack`, so the zip carries
+every colour, names no pack, and the `colours` phase is done with nothing to host (a dry run included). On, the job
+runs it with `-ColourPack -ColourPackRepo <publicRepo>`, and the build stage refuses a result whose job, zip and
+receipt do not all name a pack. The pack is every colour but each costume's first, which the zip then does not carry,
 in one archive the launcher downloads on its first start. `publish` refuses until the `colours` phase is done, so
 `-Skip colours` can never publish a release whose pack is not hosted. It is named by its SHA-256, so a release whose pictures
 did not change makes the same file, finds it on the `colour-packs` release and uploads nothing. That release is a

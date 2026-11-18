@@ -12,6 +12,10 @@
 $PubColourPackTag = 'colour-packs'
 $PubColourPackName = '^sfve-colours-[0-9a-f]{16}\.zip$'
 
+# Whether a release has a colour pack is one setting, config.json's colourPack (default false: the zip carries every
+# colour). On, it is the public repository the build PC's package step hosts the pack on; off, ''.
+function Get-PubColourPackRepo([object]$Ctx) { if ($Ctx.Config.colourPack -eq $true) { [string]$Ctx.Config.publicRepo } else { '' } }
+
 # The pack the build PC's job made, by the name its result.json records; $null when it made none.
 function Get-PubColourPackName([object]$Result) {
     if ($null -eq $Result.colourPack) { return $null }
@@ -28,8 +32,11 @@ function Get-PubColourPackName([object]$Result) {
 function Assert-PubColourPack([object]$Ctx, [string]$Folder, [object]$Result, [byte[]]$DescriptorBytes, [object]$Packaged, [byte[]]$LauncherBytes, [object[]]$Rules) {
     $name = Get-PubColourPackName $Result
     $named = @(@($name, $DescriptorBytes, $Packaged.renders.colourPack) | Where-Object { $null -ne $_ }).Count
+    $mode = Get-PubColourPackRepo $Ctx
+    if ($named -ne $(if ($mode) { 3 } else { 0 })) {
+        throw "The laptop job, the zip's colour-pack.json and its receipt do not agree on a colour pack (job: '$name'; config colourPack: $(if ($mode) { 'on' } else { 'off' }))."
+    }
     if (!$named) { return $null }
-    if ($named -ne 3) { throw "The laptop job, the zip's colour-pack.json and its receipt do not agree on a colour pack (job: '$name')." }
     if (![Text.Encoding]::Latin1.GetString($LauncherBytes).Contains("$($Ctx.Config.publicRepo)")) {
         throw "The zip's Launcher.exe does not name $($Ctx.Config.publicRepo), so it would refuse the colour pack's URL there."
     }

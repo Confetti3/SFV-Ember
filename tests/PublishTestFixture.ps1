@@ -105,7 +105,7 @@ function New-Fixture {
     $world = New-FakeWorld $F
     $null = Add-FakeRelease $world 'v0.1.0-beta.7' $false 'SFV Ember 0.1.0 Beta 7'
     $null = Add-FakeRelease $world 'v0.1.0-beta.8' $false 'SFV Ember 0.1.0 Beta 8'
-    $config = [pscustomobject]@{publicRepo = 'Owner/SFV-Ember'; publicRemote = 'public'; originRemote = 'origin'; libraryRepo = $lib; libraryRemote = 'origin'; libraryGithubRepo = 'Owner/Library'
+    $config = [pscustomobject]@{publicRepo = 'Owner/SFV-Ember'; publicRemote = 'public'; originRemote = 'origin'; libraryRepo = $lib; libraryRemote = 'origin'; libraryGithubRepo = 'Owner/Library'; colourPack = $false
         libraryBranch = 'feat/ember-library'; rules = @("$F\rules.txt"); notesForbidden = @('hidden')
         laptop = [pscustomobject]@{host = 'laptop'; work = 'D:\sf4\publish'; interactive = 'D:\sf4\interactive'; sourceCheckout = 'D:\sf4\wt\sfv'; libraryCheckout = 'D:\sf4\wt\lib'
             buildDev = 'D:\b\dev'; buildPlayer = 'D:\b\player'; vcpkgRoot = 'D:\vcpkg'; renderStore = 'D:\renders'; oldPackageCheck = ''; dist = 'D:\dist'
@@ -142,4 +142,5 @@ function Through($X, [string]$Last) {
     }
 }
 $fixtures = [Collections.Generic.List[string]]::new()
-function Fresh { $x = New-Fixture; $fixtures.Add($x.F); $x }
+# The default release has no colour pack; -ColourPack opts a fixture into the pack mode (config.json colourPack).
+function Fresh([switch]$ColourPack) { $x = New-Fixture; $fixtures.Add($x.F); $x.Ctx.Config.colourPack = [bool]$ColourPack; $x }

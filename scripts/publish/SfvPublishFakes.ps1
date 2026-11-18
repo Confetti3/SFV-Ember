@@ -163,6 +163,7 @@ function Invoke-FakeLaptop([object]$World, [string]$Command) {
             foreach ($b in 'source.bundle', 'library.bundle') { if (!(Test-Path -LiteralPath (Join-Path $local $b))) { return ConvertTo-FakeResult "RESULT {`"ok`":false,`"error`":`"no $b`"}`n" } }
             $job = & $arg 'JobName'
             Set-Content -LiteralPath (Join-Path $local 'job-name.txt') -Value $job
+            Set-Content -LiteralPath (Join-Path $local 'colour-pack-repo.txt') -Value (& $arg 'ColourPackRepo')
             return ConvertTo-FakeResult ("RESULT " + (@{ok = $true; sourceFingerprint = $World.Fingerprints.source; libraryFingerprint = $World.Fingerprints.library} | ConvertTo-Json -Compress) + "`n")
         }
         'rooms-install' {
@@ -204,8 +205,9 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
         tests = @('RoomBuild', 'Picks', 'Render'); ctestTotal = 3; ctestFailed = 0; version = $plan.version; label = $label
         resultFingerprint = $World.Fingerprints.source; machineScan = @(); sidecarSha = $null; zipShaOverride = $null; packagedOverride = $null
         packPicture = 'a colour of a costume'; packRepo = 'Owner/SFV-Ember'; descriptorOverride = $null; packNameOverride = $null
-        # package.ps1 -ColourPack: a pack beside the zip, named by the zip's descriptor; without it the zip has every colour.
-        colourPack = $true
+        # package.ps1 -ColourPack: a pack beside the zip, named by the zip's descriptor; without it the zip has every
+        # colour. The job packs as the pipeline asked in its sync (-ColourPackRepo), as the real agent does.
+        colourPack = [bool]("$(Get-Content -LiteralPath (Join-Path $Work 'colour-pack-repo.txt') -Raw)".Trim())
     }
     if ($World.BuildTweak) { & $World.BuildTweak $f }
     [IO.File]::WriteAllText((Join-Path $staging 'sfv_ember.dll'), $f.dll, [Text.Encoding]::Latin1)

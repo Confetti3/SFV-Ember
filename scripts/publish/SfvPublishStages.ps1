@@ -129,6 +129,7 @@ function Invoke-PubBuild([object]$Ctx, [hashtable]$P) {
             '-Label', $plan.label, '-Source', $plan.source.commit, '-SourceTree', $plan.source.tree, '-Library', $plan.library.commit, '-LibraryTree', $plan.library.tree,
             '-SourceCheckout', $lap.sourceCheckout, '-LibraryCheckout', $lap.libraryCheckout, '-BuildDev', $lap.buildDev, '-BuildPlayer', $lap.buildPlayer,
             '-VcpkgRoot', $lap.vcpkgRoot, '-RenderStore', $lap.renderStore, '-MinColourCoverage', "$PubColourCoverage", '-OldPackageCheck', $lap.oldPackageCheck,
+            '-ColourPackRepo', (Get-PubColourPackRepo $Ctx),
             '-Dist', "$($lap.dist)\$($plan.label)-$($attempt.id)",
             '-Interactive', $lap.interactive, '-JobName', $attempt.job) 1800
         if (!$sync.ok) { throw "The laptop could not check out the plan's commits: $($sync.error)" }
