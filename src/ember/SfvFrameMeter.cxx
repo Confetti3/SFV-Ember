@@ -132,7 +132,7 @@ void Watch(mod::SfvAdapter& adapter)
 		samples = followed.feed.Feed(followed.meter, fighters, ticks, TrainingLabInputs());
 		followed.log.Note(followed.meter.View(), fighters);
 		// The hitbox viewer reads the same battle's boxes after the same tick.
-		ReadSfvHitboxes(followed.reader);
+		ReadSfvHitboxes(followed.reader, fighters);
 	}
 	TrainingLabAfterUpdate(adapter, samples, fighters, ticks, followed.meter.View());
 }

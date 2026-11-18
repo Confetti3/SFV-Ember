@@ -12,16 +12,20 @@
 // (ui::TrainingMeterOptions, SetTrainingMeterOptions): its "meter"'s
 // "hitboxes", in SFV Ember's settings folder.
 
+#include <array>
+
 namespace sfve::mod {
 class FighterReader;
+struct FighterFrame;
 }
 
 namespace sfve::adapter {
 
 // Game thread, after each update of the followed Training battle that ran a
 // tick (SfvFrameMeter): reads the boxes and the camera while the viewer is
-// on, and publishes them for the render thread.
-void ReadSfvHitboxes(const mod::FighterReader& reader);
+// on, and publishes them for the render thread. fighters: what the meter just
+// read of both, for the log's naming of the scripts a kind of box was met in.
+void ReadSfvHitboxes(const mod::FighterReader& reader, const std::array<mod::FighterFrame, 2>& fighters);
 // Game thread: the followed battle is gone (or another one began); nothing is
 // drawn until the next one's first tick.
 void ForgetSfvHitboxes();
