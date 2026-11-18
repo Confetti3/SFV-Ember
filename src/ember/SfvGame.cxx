@@ -251,10 +251,16 @@ public:
 		const RollbackSession* session = LiveSession();
 		return session ? session->RecentRollbackFrames() : 0;
 	}
-	// The pings are kept (s_telemetry) but not handed on: Auto delay's record
-	// of the games played stays off for SFV until it is reviewed for SFV's
-	// session, which only reads its delay at the start.
-	sf4e::GamePing::Summary PingSummary() const override { return {}; }
+	// The battle's pings and rollbacks, as SF4's adapter hands its own: the
+	// runtime reads them as the match ends (RoomBattle::Close's NotifyMatchEnded),
+	// before SetBattleInPlay resets the telemetry and before the next Start
+	// resets the session's totals. Auto follows the ping for the next Ready;
+	// the session reads its delay only at its start.
+	sf4e::GamePing::Summary PingSummary() const override { return s_telemetry.pings.Summarize(); }
+	sf4e::RollbackHud::Totals RollbackTotals() const override
+	{
+		return s_battle.session ? s_battle.session->RollbackTotals() : sf4e::RollbackHud::Totals{};
+	}
 	void PollTelemetry() override
 	{
 		const RollbackSession* session = LiveSession();
@@ -530,8 +536,24 @@ Capabilities SfvCapabilities()
 	caps.settingsFeatures.shortcutHint = true;
 	return caps;
 }
+// Auto delay's bands for SFV (EMBER_LIBRARY.md section 66): one frame through
+// 100 ms of round trip, then one more per 33 ms. GGPO at 60 fps (16.7 ms a
+// frame) rolls a side back by about the frames its opponent's input spent on
+// the way, less the delay: per side, one way in frames - delay, and over both
+// sides the round trip in frames - 2 x delay, split by time sync with one
+// side a frame worse (a Brazil to NA match at ~150 ms, delay 2: 9 frames - 4
+// = 5, played as 2 and 3). Holding the worse side to 2 frames, which SFV
+// shows as a visible snap, takes round trip frames - 2 x delay <= 4, so a
+// delay of d covers a round trip up to (d + 2) x 33.3 ms: 100, 133, 167,
+// 200 ms. Jitter is the p95's: a tail one band worse is tolerated (one frame
+// more at the tail), a worse one raises the delay. SF4's bands (80 ms, then
+// 70) leave 2.5 to 3.6 frames at their edges, which its fighters hide better.
+// Auto's styles hold this alike for both games: Balanced reaches its 3 frames
+// at 134 ms and holds 2 frames of rollback to ~167 ms; past that, Smooth (to 4
+// frames, ~200 ms) or a chosen delay does.
+constexpr sf4e::InputDelayBands kSfvDelayBands = {100, 33};
 NoThemes s_themes;
-const Adapter s_game = {SfvCapabilities(), s_state, s_battleSide, s_input, s_preferences, s_services,
+const Adapter s_game = {SfvCapabilities(), kSfvDelayBands, s_state, s_battleSide, s_input, s_preferences, s_services,
 	SfvTrainingService(), SfvReplays(), s_themes};
 
 } // namespace

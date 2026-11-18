@@ -140,6 +140,8 @@ RoomBattle::Start RoomBattle::SessionConfig(RollbackSession::Config* config, std
 		return Start::Gone;
 	}
 	const auto& match = netplay->client._matchData;
+	// The table's: P1 waits by it for its watchers, and a watcher for P1.
+	config->watcherSyncDeadlineMs = netplay->client.SpectatorSyncDeadlineMs();
 	if (slot >= 2) return WatchConfig(config, seed, delay);
 	if (!endpoints_.remotePorts[1 - slot]) {
 		Log("netplay: the room's match has no link to the other fighter (slot %zu)", slot);
@@ -165,7 +167,6 @@ RoomBattle::Start RoomBattle::SessionConfig(RollbackSession::Config* config, std
 			if (endpoints_.remotePorts[watcher]) config->watchers.push_back({watcher, endpoints_.remotePorts[watcher]});
 		}
 	}
-	config->watcherSyncDeadlineMs = netplay->client.SpectatorSyncDeadlineMs();
 	*seed = match.rngSeed;
 	*delay = match.inputDelay[slot];
 	facade::ReportGgpoTransport(config->remoteIp.c_str(), config->remotePort);
@@ -212,6 +213,22 @@ RoomBattle::Start RoomBattle::WatchConfig(RollbackSession::Config* config, std::
 void RoomBattle::EndDroppedWatcherLinks(RollbackSession& session)
 {
 	for (const std::size_t slot : session.TakeDroppedWatchers()) facade::EndRuntimeSpectatorStream(slot);
+}
+
+void RoomBattle::LeaveOutUnagreedWatchers(RollbackSession::Config& config, const std::vector<StartAgreement::Result>& peers)
+{
+	std::vector<RollbackSession::Config::Watcher> agreed;
+	for (std::size_t i = 0; i < config.watchers.size(); i++) {
+		const RollbackSession::Config::Watcher& watcher = config.watchers[i];
+		const std::size_t peer = i + 1; // P2 is the agreement's first peer
+		if (peer < peers.size() && StartAgreement::PeerStarts(peers[peer])) {
+			agreed.push_back(watcher);
+			continue;
+		}
+		Log("netplay: the watcher in slot %zu was not ready with the fighters' start; it watches the next game", watcher.slot);
+		facade::EndRuntimeSpectatorStream(watcher.slot);
+	}
+	config.watchers = std::move(agreed);
 }
 
 void RoomBattle::NoteSessionStart(bool started)

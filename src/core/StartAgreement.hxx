@@ -49,7 +49,8 @@
 //      differs then shows at the first checkpoint, as before.
 //   5. the follower says it is done, with its hash, until the reference
 //      acknowledges it. The reference starts once P2 is done and each watcher
-//      is too (or a short grace after P2), or at the time limit.
+//      is too (or a grace after P2), or at the time limit. A watcher not done
+//      by then sits the game out (PeerStarts).
 //
 // The address ranges: which words a hash zeroes as addresses is each
 // process's own beyond the value rule (mod/AddressRanges.hxx: a Proton copy's
@@ -242,6 +243,11 @@ public:
 	// The results after which the match must not start: no repair makes two
 	// such copies play the same match (DataDiffers, LayoutsDiffer).
 	static bool RefusesTheMatch(Result result);
+	// A reference's peer (Report::peers) that may play the match from this
+	// start: it said it was done, in time, with a result the match may start
+	// from. A watcher that did not is left out of the session
+	// (RoomBattle::LeaveOutUnagreedWatchers).
+	static bool PeerStarts(Result peer);
 
 	struct Config {
 		Role role = Role::Follower;

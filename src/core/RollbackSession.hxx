@@ -138,8 +138,11 @@ public:
 			uint16_t port = 0;
 		};
 		std::vector<Watcher> watchers;
-		// How long P1 waits, once a fighter has synchronized, for a watcher
-		// to synchronize before it drops it (SpectatorPolicy::SyncDeadlineFor).
+		// How long a watcher has to be ready once the fighters are
+		// (SpectatorPolicy::SyncDeadlineFor): P1 waits this long after P2 for a
+		// watcher's start state agreement and, once a fighter has
+		// synchronized, for a watcher to synchronize before it drops it; a
+		// watcher's agreement waits as long for P1.
 		uint64_t watcherSyncDeadlineMs = sf4e::SpectatorPolicy::SyncDeadlineMs;
 		// This copy only watches: it plays the confirmed frames P1 streams
 		// from remoteIp:remotePort and sends nothing of its own. localPlayer,
@@ -320,6 +323,9 @@ public:
 	int DisconnectCountdownMs() const;
 	int AppliedDelay() const { return session_ ? appliedDelay_ : -1; }
 	unsigned RecentRollbackFrames() const;
+	// The session's rollbacks (sf4e::RollbackHud::Session): kept after it
+	// closes, until the next Start.
+	sf4e::RollbackHud::Totals RollbackTotals() const { return rollbackHud_.Session(); }
 	// GGPO dropped the peer: the session failed for it (FailureReason says so),
 	// and stays so until the next Start.
 	bool PeerDisconnected() const { return peerDisconnected_; }

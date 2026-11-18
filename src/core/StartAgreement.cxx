@@ -476,6 +476,11 @@ bool StartAgreement::RefusesTheMatch(Result result)
 	return result == Result::DataDiffers || result == Result::LayoutsDiffer;
 }
 
+bool StartAgreement::PeerStarts(Result peer)
+{
+	return peer != Result::Running && !RefusesTheMatch(peer);
+}
+
 StartAgreement::StartAgreement(GameAdapter& game, StartChannel& channel, Config config)
 	: game_(game), channel_(channel), config_(std::move(config))
 {
@@ -581,7 +586,7 @@ void StartAgreement::PumpReference(uint64_t nowMs)
 	// anything, this match must not start (its own copy refuses it too).
 	if (report_.dataDifference) result = Result::DataDiffers;
 	for (size_t i = required; i < report_.peers.size(); i++) {
-		if (report_.peers[i] == Result::Running) CoreLog("start: watcher peer %zu did not finish; it starts as it is", i);
+		if (report_.peers[i] == Result::Running) CoreLog("start: watcher peer %zu did not finish; it sits this game out", i);
 	}
 	Finish(result, nowMs);
 }
