@@ -1,18 +1,20 @@
 #Requires -Version 7
-# The colour pack in the publish pipeline (docs/design/COLOUR_PACK.md): every colour of every costume but the first,
-# one archive beside the zip that the launcher downloads on first run. The build stage checks the pack the build PC
-# made against the descriptor and receipt inside the zip; promote's colours phase puts it on the public repository's
-# colour-packs release, once per pack: a release whose pack is unchanged names an asset that is there already, and
-# nothing is uploaded. Packs of earlier releases stay, for the installs that still want them. Dot-sourced by
-# SfvPublish.ps1.
+# The colour pack in the publish pipeline (docs/design/COLOUR_PACK.md): with package.ps1 -ColourPack, every colour of
+# every costume but the first, one archive beside the zip that the launcher downloads on first run; by default the zip
+# carries every colour and there is no pack. The build stage checks the pack the build PC made against the descriptor
+# and receipt inside the zip; promote's colours phase puts it on the public repository's colour-packs release, once
+# per pack: a release whose pack is unchanged names an asset that is there already, and nothing is uploaded. Packs of
+# earlier releases stay, for the installs that still want them. A release that names a pack is never published before
+# its colours phase is done. Dot-sourced by SfvPublish.ps1.
 
 # The release that hosts every pack (scripts/ColourPack.ps1's $ColourPackTag): a pre-release that is no version, so
 # the updater and this pipeline's version checks pass over it, and never the repository's latest.
 $PubColourPackTag = 'colour-packs'
 $PubColourPackName = '^sfve-colours-[0-9a-f]{16}\.zip$'
 
-# The pack the build PC's job made, by the name its result.json records.
+# The pack the build PC's job made, by the name its result.json records; $null when it made none.
 function Get-PubColourPackName([object]$Result) {
+    if ($null -eq $Result.colourPack) { return $null }
     $name = [string]$Result.colourPack.name
     if ($name -cnotmatch $PubColourPackName) { throw "The laptop job names no colour pack ('$name')." }
     $name
@@ -20,9 +22,17 @@ function Get-PubColourPackName([object]$Result) {
 
 # The pack in $Folder against what the zip says of it: the descriptor (colour-pack.json: id, size, SHA-256, and the
 # URL on this pipeline's public repository's colour-packs release) and the receipt's renders.colourPack; every entry
-# scanned for the forbidden strings, as the package's are. Returns {name, sha256, size, url}.
-function Assert-PubColourPack([object]$Ctx, [string]$Folder, [object]$Result, [byte[]]$DescriptorBytes, [object]$Packaged, [object[]]$Rules) {
+# scanned for the forbidden strings, as the package's are; and the zip's Launcher.exe, which refuses a descriptor of
+# any other repository than its own (SfvProduct.cxx's stableRepo), names that repository. Returns {name, sha256,
+# size, url}, or $null when the job, the descriptor and the receipt all name no pack (the zip carries every colour).
+function Assert-PubColourPack([object]$Ctx, [string]$Folder, [object]$Result, [byte[]]$DescriptorBytes, [object]$Packaged, [byte[]]$LauncherBytes, [object[]]$Rules) {
     $name = Get-PubColourPackName $Result
+    $named = @(@($name, $DescriptorBytes, $Packaged.renders.colourPack) | Where-Object { $null -ne $_ }).Count
+    if (!$named) { return $null }
+    if ($named -ne 3) { throw "The laptop job, the zip's colour-pack.json and its receipt do not agree on a colour pack (job: '$name')." }
+    if (![Text.Encoding]::Latin1.GetString($LauncherBytes).Contains("$($Ctx.Config.publicRepo)")) {
+        throw "The zip's Launcher.exe does not name $($Ctx.Config.publicRepo), so it would refuse the colour pack's URL there."
+    }
     $path = Join-Path $Folder $name
     $sha = Get-PubSha256 $path
     $size = (Get-Item -LiteralPath $path).Length

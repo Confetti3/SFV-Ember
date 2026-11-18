@@ -140,10 +140,10 @@ function Invoke-PubBuild([object]$Ctx, [hashtable]$P) {
     # Bring back what the build made; the desktop checks everything itself.
     $fetch = Join-Path $dir 'files'
     if (Test-Path -LiteralPath $fetch) { Remove-Item -LiteralPath $fetch -Recurse -Force }
-    # result.json first: it names the colour pack the package step made.
+    # result.json first: it names the colour pack the package step made, if it made one.
     Copy-PubFromLaptop $Ctx "$($attempt.work)\out\result.json" (Join-Path $fetch 'result.json')
     $colourPack = Get-PubColourPackName (Read-PubJson (Join-Path $fetch 'result.json'))
-    foreach ($name in @('checkout.json', 'job.log', 'receipt-development.json', 'receipt-player.json', 'helper.provenance.json', 'build-provenance.json', $plan.zip, "$($plan.zip).sha256", $colourPack)) {
+    foreach ($name in @('checkout.json', 'job.log', 'receipt-development.json', 'receipt-player.json', 'helper.provenance.json', 'build-provenance.json', $plan.zip, "$($plan.zip).sha256") + @($colourPack | Where-Object { $_ })) {
         Copy-PubFromLaptop $Ctx "$($attempt.work)\out\$name" (Join-Path $fetch $name)
     }
     $facts = Assert-PubBuildFiles $Ctx $planRead $fetch $rules
@@ -198,8 +198,8 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
         $prefix = "$($plan.zip -replace '\.zip$', '')/"
         $entries = @($archive.Entries | Where-Object { $_.Length -gt 0 -or !$_.FullName.EndsWith('/') })
         if (@($entries | Where-Object { !$_.FullName.Replace('\', '/').StartsWith($prefix) }).Count) { throw "The zip holds files outside $prefix" }
-        $read = { param($Name) $entry = $entries | Where-Object { $_.FullName.Replace('\', '/') -ceq "$prefix$Name" } | Select-Object -First 1
-            if (!$entry) { throw "The zip has no $Name" }
+        $read = { param($Name, [switch]$Optional) $entry = $entries | Where-Object { $_.FullName.Replace('\', '/') -ceq "$prefix$Name" } | Select-Object -First 1
+            if (!$entry) { if ($Optional) { return $null }; throw "The zip has no $Name" }
             $stream = $entry.Open(); $memory = [IO.MemoryStream]::new(); try { $stream.CopyTo($memory) } finally { $stream.Dispose() }; ,$memory.ToArray() }
         $inner = [byte[]](& $read 'build-provenance.json')
         if ((Get-PubBytesSha256 $inner) -cne (Get-PubSha256 (Join-Path $Folder 'build-provenance.json'))) { throw 'The zip''s build-provenance.json is not the packaged receipt that came back.' }
@@ -218,8 +218,8 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
         $dll = [Text.Encoding]::Latin1.GetString([byte[]](& $read 'sfv_ember.dll'))
         if (!$dll.Contains($plan.roomBuild.id)) { throw "sfv_ember.dll does not carry the plan's room build $($plan.roomBuild.id)." }
         if (!$dll.Contains($plan.roomBuild.matchLine)) { throw "sfv_ember.dll does not carry the match line $($plan.roomBuild.matchLine)." }
-        # The colour pack the zip's descriptor names, beside it (SfvPublishColours.ps1).
-        $colourPack = Assert-PubColourPack $Ctx $Folder $result ([byte[]](& $read 'colour-pack.json')) $packaged $Rules
+        # The colour pack the zip's descriptor names, beside it, or none (SfvPublishColours.ps1).
+        $colourPack = Assert-PubColourPack $Ctx $Folder $result ([byte[]](& $read 'colour-pack.json' -Optional)) $packaged ([byte[]](& $read 'Launcher.exe')) $Rules
         # Every file and file name of the package, raw and UTF-16.
         $scan = Find-PubArchiveHits $entries $Rules 'package'
         $count = $scan.count
@@ -631,7 +631,9 @@ function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
         Set-PubPhase $Ctx $state 'server' 'done' $server
     }
 
-    # colours: the release's colour pack on the public repository's colour-packs release, before anything is pushed.
+    # colours: the release's colour pack on the public repository's colour-packs release, before anything is pushed;
+    # nothing to do when the zip carries every colour.
+    if (!(Test-PubPhaseDone $state 'colours') -and !$facts.colourPack) { Set-PubPhase $Ctx $state 'colours' 'done' 'no colour pack: the zip carries every colour' }
     if (!(Test-PubPhaseDone $state 'colours')) {
         $outcome = Publish-PubColourPack $Ctx (Join-Path (Get-PubStageDir $Ctx 'build') "files\$($facts.colourPack.name)") $facts.colourPack
         if ($outcome -cin @('uploaded', 'there')) { Set-PubPhase $Ctx $state 'colours' 'done' "$outcome $($facts.colourPack.name)" }
@@ -658,6 +660,8 @@ function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
                 throw "The public main is $main, which does not contain $($plan.source.commit): fast-forward it first (phase push-public)."
             }
             Assert-PubLibraryPublic $Ctx $plan
+            # The zip's launcher downloads the pack it names from the colour-packs release: never published without it.
+            if (!(Test-PubPhaseDone $state 'colours')) { throw "The colour pack $($facts.colourPack.name) is not on the colour-packs release (phase colours: $($state.phases.colours.status)); promote again without -Skip colours." }
             # Just before the irreversible step: the draft is still exactly the checked one and no tag has appeared.
             Assert-PubDraftRelease $Ctx $plan (Get-PubReleaseById $Ctx $id) $assets
             if (Get-PubRemoteRef $Ctx $Ctx.Repo $Ctx.Config.publicRemote "refs/tags/$($plan.tag)") { throw "A tag $($plan.tag) appeared on the public repository; nothing published." }
@@ -690,10 +694,14 @@ function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
             if ((Get-PubSha256 (Join-Path $download $asset.name)) -cne $asset.sha256) { throw "The published $($asset.name) is not the checked file." }
         }
         # The pack the release's launcher downloads, as GitHub serves it.
-        Confirm-PubColourPack $Ctx $download $facts.colourPack
-        Set-PubPhase $Ctx $state 'confirm' 'done' "downloaded $($plan.zip) $($facts.zipSha256) and $($facts.colourPack.name)"
+        $downloaded = @($assets | ForEach-Object { "downloaded\$($_.name)" })
+        if ($facts.colourPack) {
+            Confirm-PubColourPack $Ctx $download $facts.colourPack
+            $downloaded += "downloaded\$($facts.colourPack.name)"
+        }
+        Set-PubPhase $Ctx $state 'confirm' 'done' "downloaded $($plan.zip) $($facts.zipSha256)$(if ($facts.colourPack) { " and $($facts.colourPack.name)" })"
         $skipped = @($PubPromotePhases | Where-Object { $state.phases.$_ -and $state.phases.$_.status -ceq 'skipped' })
-        $files = @(@('state.json') + @($assets | ForEach-Object { "downloaded\$($_.name)" }) + @("downloaded\$($facts.colourPack.name)") | ForEach-Object { Get-PubFileRecord $dir $_ })
+        $files = @(@('state.json') + $downloaded | ForEach-Object { Get-PubFileRecord $dir $_ })
         $null = Write-PubEvidence $Ctx 'promote' (New-PubEvidence $Ctx 'promote' $planRead $files @{releaseId = $id; url = $live.html_url; tag = $plan.tag
             publishedAt = $live.published_at; zipSha256 = $facts.zipSha256; skipped = $skipped})
         Write-PubLog $Ctx "PUBLISHED $($plan.tag): $($live.html_url) (zip $($facts.zipSha256), downloaded again and compared)."

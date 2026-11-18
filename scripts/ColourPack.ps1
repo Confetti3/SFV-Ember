@@ -1,7 +1,8 @@
 # The colour pack (docs/design/COLOUR_PACK.md) for scripts\package.ps1 (dot-sourced), in a file of its own so
 # that tests\ColourPackTests.ps1 runs it on small stores. Takes Read-RenderStore's result (RenderStore.ps1).
 #
-# The zip ships each offered costume's first colour and every loadout picture; every other colour goes into one
+# By default the zip ships every picture of the store and there is no pack. With package.ps1 -ColourPack the zip
+# ships each offered costume's first colour and every loadout picture; every other colour goes into one
 # archive the launcher downloads on first run. The archive is content-addressed: stored entries in ordinal order,
 # every time stamp 1980-01-01, so the same pictures make the same bytes, and it is named by its SHA-256. The
 # public repository's release $ColourPackTag hosts every pack; the descriptor (colour-pack.json, at the
@@ -13,12 +14,13 @@ $ColourPackTag = 'colour-packs'
 function Get-ColourPackName([string]$Id) { "sfve-colours-$Id.zip" }
 function Get-ColourPackUrl([string]$Repo, [string]$Name) { "https://github.com/$Repo/releases/download/$ColourPackTag/$Name" }
 
-# The store's files split between the zip (first colours and loadout pictures) and the pack (the other colours).
-function Split-RenderFiles([object]$Renders) {
-	[pscustomobject]@{
-		Zip = @($Renders.Files | Where-Object { $_.Kind -cne 'colour' })
-		Pack = @($Renders.Files | Where-Object { $_.Kind -ceq 'colour' })
-	}
+# The store's files split between the zip and the pack: with -ColourPack the zip keeps the first colours and loadout
+# pictures and the pack takes the other colours; without it the zip keeps everything and the pack is empty.
+function Split-RenderFiles([object]$Renders, [switch]$ColourPack) {
+	$zip = [Collections.Generic.List[object]]::new()
+	$pack = [Collections.Generic.List[object]]::new()
+	foreach ($file in $Renders.Files) { if ($ColourPack -and $file.Kind -ceq 'colour') { $pack.Add($file) } else { $zip.Add($file) } }
+	[pscustomobject]@{ Zip = $zip.ToArray(); Pack = $pack.ToArray() }
 }
 
 # The store's manifest listing only $Files (the zip's or the pack's), as UTF-8 bytes: the zip and the pack each

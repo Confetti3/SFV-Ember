@@ -3,9 +3,10 @@
 # "unshipped" needs no picture and no manifest exception (one listed is
 # accepted), a picture of it is refused, and an offered costume without its
 # first colour still fails. Then the split between the zip and the colour pack
-# (scripts\ColourPack.ps1): the first colours and loadout pictures stay in the
-# zip, the other colours make one archive whose bytes depend on its pictures
-# alone, and the descriptor names it.
+# (scripts\ColourPack.ps1): by default the zip keeps every picture; with
+# -ColourPack the first colours and loadout pictures stay in the zip, the
+# other colours make one archive whose bytes depend on its pictures alone, and
+# the descriptor names it.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tests\RenderStoreTests.ps1
 #
@@ -124,13 +125,17 @@ try {
 
 	# A store of first colours only leaves nothing for a colour pack.
 	$read = Read-RenderStore (New-Store 'first-only' @($cutout, $skill, $trigger) @()) 0.0 $spacePath
-	$split = Split-RenderFiles $read
+	$split = Split-RenderFiles $read -ColourPack
 	Expect ($split.Zip.Count -eq 3 -and $split.Pack.Count -eq 0) "a first-colour store splits $($split.Zip.Count)/$($split.Pack.Count), not 3/0"
 
-	# Every colour: the zip keeps the first colour and the loadout pictures, the pack takes the other colour.
 	$read = Expect-Pass 'a store of every colour reaches full coverage' { Read-RenderStore (New-Store 'every' @($cutout, $second, $skill, $trigger) @()) 1.0 $spacePath }
 	if ($read) {
+		# By default the zip keeps every picture and there is no pack.
 		$split = Split-RenderFiles $read
+		$zipPaths = @($split.Zip | ForEach-Object { $_.Path } | Sort-Object)
+		Expect (($zipPaths -join ',') -ceq (@($cutout.Path, $second.Path, $skill.Path, $trigger.Path | Sort-Object) -join ',') -and $split.Pack.Count -eq 0) "by default the zip holds $($zipPaths -join ', ')"
+		# -ColourPack: the zip keeps the first colour and the loadout pictures, the pack takes the other colour.
+		$split = Split-RenderFiles $read -ColourPack
 		$zipPaths = @($split.Zip | ForEach-Object { $_.Path } | Sort-Object)
 		Expect (($zipPaths -join ',') -ceq (@($cutout.Path, $skill.Path, $trigger.Path | Sort-Object) -join ',')) "the zip holds $($zipPaths -join ', ')"
 		Expect ($split.Pack.Count -eq 1 -and $split.Pack[0].Path -ceq $second.Path) 'the pack holds the second colour alone'

@@ -164,6 +164,8 @@ try {
         @({ param($f) $f.packRepo = 'Someone/Else' }, '*colour-pack.json does not name the colour pack*'),
         @({ param($f) $f.packagedOverride = { param($r) $r.renders.colourPack = @{name = 'sfve-colours-0000000000000000.zip'} } }, '*receipt names another colour pack*'),
         @({ param($f) $f.packPicture = 'thanks to ForbiddenName' }, '*colour pack carries forbidden strings*'),
+        @({ param($f) $f.packagedOverride = { param($r) $r.renders.colourPack = $null } }, '*do not agree on a colour pack*'),
+        @({ param($f) $f.launcher = 'MZ launcher; releases of Owner/sfv-ember' }, '*Launcher.exe does not name Owner/SFV-Ember*'),
         @({ param($f) $f.version = '0.1.0-beta.8' }, '*is not SFV Ember 0.1.0-beta.9*')
     )
     foreach ($case in $cases) {
@@ -310,6 +312,25 @@ try {
     $y = Fresh; Through $y 'draft'; $null = Add-FakeRelease $y.World 'colour-packs' $true
     Reject { Invoke-PubPromote $y.Ctx $y.P 6>$null } '*is a draft*'
     Pass 'promote: a pack the colour-packs release has is not uploaded again; another file of its name, or a draft colour-packs release, stops promote before any push'
+
+    # A skipped colours phase never lets a release go public naming a pack that is not hosted.
+    $y = Fresh; Through $y 'draft'; $y.Ctx.Skip = @('colours')
+    Reject { Invoke-PubPromote $y.Ctx $y.P 6>$null } '*is not on the colour-packs release*'
+    Check ((Get-FakeRelease $y.World (Read-PubJson "$($y.Ctx.Root)\draft\evidence.json").facts.releaseId).draft) 'the draft stays a draft'
+    Check ((Read-PubJson "$($y.Ctx.Root)\promote\state.json").phases.colours.status -ceq 'skipped') 'colours recorded as skipped'
+    $y.Ctx.Skip = @(); Invoke-Quiet { Invoke-PubPromote $y.Ctx $y.P }
+    Check (Test-Path "$($y.Ctx.Root)\promote\evidence.json") 'finished once the pack is hosted'
+    Pass 'promote: with colours skipped, publish refuses; a later run hosts the pack and publishes'
+
+    # The default package: every colour in the zip, no pack, nothing for the colours phase to host.
+    $y = Fresh; $y.World.BuildTweak = { param($f) $f.colourPack = $false }; Through $y 'promote'
+    Check ($null -eq (Read-PubEvidence $y.Ctx 'build' (Read-PubPlan $y.Ctx)).facts.colourPack) 'the build names no pack'
+    Check ((Read-PubJson "$($y.Ctx.Root)\promote\state.json").phases.colours.note -like 'no colour pack*') 'colours: nothing to host'
+    Check (!@($y.World.Releases | Where-Object { $_.tag_name -ceq 'colour-packs' }).Count) 'no colour-packs release made'
+    Check (Test-Path "$($y.Ctx.Root)\promote\evidence.json") 'published'
+    $y = Fresh; $null = Plan $y; $y.World.BuildTweak = { param($f) $f.colourPack = $false; $f.packagedOverride = { param($r) $r.renders.colourPack = @{name = 'sfve-colours-0000000000000000.zip'} } }
+    Reject { Invoke-PubBuild $y.Ctx $y.P } '*do not agree on a colour pack*'
+    Pass 'build and promote: a zip with every colour names no pack and publishes without one; a receipt naming a pack the zip lacks is refused'
 
     # A final after its betas: the same stages, a draft that is not a pre-release, published as the latest release.
     $z = Fresh

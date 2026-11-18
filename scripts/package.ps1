@@ -3,7 +3,7 @@
 # .sha256 beside it. Nothing is published.
 #
 #   scripts\package.ps1 -RenderStore <dir> [-BuildDir D:\sfv-ember-build-player] [-OutDir D:\sfv-ember-dist] [-VersionLabel <label>]
-#       [-MinColourCoverage 0] [-ColourPackRepo Confetti3/SFV-Ember] [-OldPackageCheck <sfve_package_check.exe of an earlier beta>] [-NoRenders]
+#       [-MinColourCoverage 0] [-ColourPack [-ColourPackRepo Confetti3/SFV-Ember]] [-OldPackageCheck <sfve_package_check.exe of an earlier beta>] [-NoRenders]
 #
 # The build must be scripts\build.ps1's player build (-Player), with its tests
 # passed, and the helper scripts\build-helper.ps1's from the same Ember
@@ -39,15 +39,16 @@
 # release pipeline passes 1, every colour, from 0.1.1; the coverage is always
 # reported). Every loadout
 # picture (a V-Skill and V-Trigger of every fighter) is required too, or a
-# listed exception. The zip ships each costume's first colour and the loadout
-# pictures (ColourPack.ps1, docs\design\COLOUR_PACK.md): they are staged under
-# assets\selection\, a manifest of them beside them, and the package's
-# PackageInventory.inc lists each one (an installed updater of an earlier
-# beta refuses files it does not know unless the package's own inventory
-# does). Every other colour goes into the colour pack, written beside the zip
-# under -OutDir as sfve-colours-<id>.zip, which the launcher downloads from
-# -ColourPackRepo's colour-packs release; colour-pack.json in the package names
-# it. The provenance receipt gets a "renders" record: the store manifest's
+# listed exception. The zip ships every picture of the store (docs\design\COLOUR_PACK.md):
+# they are staged under assets\selection\, a manifest of them beside them, and
+# the package's PackageInventory.inc lists each one (an installed updater of an
+# earlier beta refuses files it does not know unless the package's own
+# inventory does). -ColourPack splits them instead (ColourPack.ps1): the zip
+# keeps each costume's first colour and the loadout pictures, every other
+# colour goes into the colour pack, written beside the zip under -OutDir as
+# sfve-colours-<id>.zip, which the launcher downloads from -ColourPackRepo's
+# colour-packs release; colour-pack.json in the package names it. The
+# provenance receipt gets a "renders" record: the store manifest's
 # hash, counts, bytes, coverage, pipeline and the capture's game build and mod
 # revision, what the zip holds, and the pack. -OldPackageCheck <path> also validates the staged folder with a
 # kept copy of an earlier beta's sfve_package_check.exe (beta.7's), which
@@ -61,8 +62,10 @@ param(
 	[string]$VersionLabel = '',
 	[string]$RenderStore = '',
 	[ValidateRange(0.0, 1.0)][double]$MinColourCoverage = 0.0,
-	# The public repository whose colour-packs release hosts the pack: the product's own (SfvProduct.cxx's
-	# stableRepo), or the launcher refuses the descriptor.
+	# Every colour but each costume's first in a colour pack beside the zip, not in the zip.
+	[switch]$ColourPack,
+	# With -ColourPack: the public repository whose colour-packs release hosts the pack: the product's own
+	# (SfvProduct.cxx's stableRepo), or the launcher refuses the descriptor.
 	[string]$ColourPackRepo = 'Confetti3/SFV-Ember',
 	[string]$OldPackageCheck = '',
 	[switch]$NoRenders
@@ -121,7 +124,7 @@ $renders = $null
 if ($RenderStore) {
 	if ($NoRenders) { throw '-RenderStore and -NoRenders contradict each other' }
 	$renders = Read-RenderStore $RenderStore $MinColourCoverage (Join-Path $repo 'data\pick-space.json')
-	$split = Split-RenderFiles $renders
+	$split = Split-RenderFiles $renders -ColourPack:$ColourPack
 	Write-Output ('Renders: {0} cutouts, {1} of {2} loadout pictures, {3:P2} colour coverage, {4:N1} MB, manifest {5}; {6} files in the zip, {7} in the colour pack' -f $renders.Cutouts, $renders.Loadouts, $renders.LoadoutTotal, $renders.Coverage, ($renders.Bytes / 1MB), $renders.ManifestHash, $split.Zip.Count, $split.Pack.Count)
 } elseif ($NoRenders) {
 	Write-Warning 'Packaging without renders (-NoRenders): the pick screen draws the game''s own pictures only. Not for players.'
@@ -205,17 +208,21 @@ if ($renders) {
 } else {
 	Stage $inventorySource 'PackageInventory.inc'
 }
-$colourPack = $null
+$pack = $null
 if ($renders) {
 	$shippedManifest = Join-Path $destination 'assets\selection\manifest.json'
 	New-Item -ItemType Directory -Path (Split-Path -Parent $shippedManifest) -Force | Out-Null
 	[IO.File]::WriteAllBytes($shippedManifest, (Get-RenderManifestBytes $renders.Manifest $split.Zip))
 	foreach ($render in $split.Zip) { Stage $render.Native $render.Relative }
-	# Every other colour: the pack beside the zip, and the descriptor in the package that names it.
+	# With -ColourPack, every other colour: the pack beside the zip, and the descriptor in the package that names it.
 	if ($split.Pack.Count) {
-		$colourPack = New-ColourPack $renders $split.Pack $OutDir $ColourPackRepo
-		Write-ColourPackDescriptor $colourPack (Join-Path $destination 'colour-pack.json')
-		Write-Output ('Colour pack: {0}, {1} cutouts, {2:N1} MB, {3}' -f $colourPack.Name, $colourPack.Cutouts, ($colourPack.Bytes / 1MB), $colourPack.Url)
+		# The launcher refuses a descriptor of any repository but its own stableRepo, which it carries as text.
+		if (![Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes((Join-Path $destination 'Launcher.exe'))).Contains($ColourPackRepo)) {
+			throw "Launcher.exe does not name $ColourPackRepo, so it would refuse the colour pack's URL there: pass its own repository as -ColourPackRepo"
+		}
+		$pack = New-ColourPack $renders $split.Pack $OutDir $ColourPackRepo
+		Write-ColourPackDescriptor $pack (Join-Path $destination 'colour-pack.json')
+		Write-Output ('Colour pack: {0}, {1} cutouts, {2:N1} MB, {3}' -f $pack.Name, $pack.Cutouts, ($pack.Bytes / 1MB), $pack.Url)
 	}
 }
 Stage (Join-Path $repo 'docs\guides\START_HERE.md') 'START_HERE.md'
@@ -246,11 +253,11 @@ $provenance.renders = if ($renders) {
 		# What the zip holds of the store, and the pack that holds the rest (null when nothing is left over).
 		shipped = [ordered]@{
 			files = $split.Zip.Count
-			cutouts = @($split.Zip | Where-Object { $_.Kind -ceq 'first' }).Count
+			cutouts = @($split.Zip | Where-Object { $_.Kind -cne 'loadout' }).Count
 			loadoutPictures = @($split.Zip | Where-Object { $_.Kind -ceq 'loadout' }).Count
 		}
-		colourPack = if ($colourPack) {
-			[ordered]@{ id = $colourPack.Id; name = $colourPack.Name; bytes = $colourPack.Bytes; sha256 = $colourPack.Sha256; url = $colourPack.Url; cutouts = $colourPack.Cutouts }
+		colourPack = if ($pack) {
+			[ordered]@{ id = $pack.Id; name = $pack.Name; bytes = $pack.Bytes; sha256 = $pack.Sha256; url = $pack.Url; cutouts = $pack.Cutouts }
 		} else { $null }
 	}
 } else {
@@ -267,11 +274,11 @@ if ($renders) {
 		"Selection renders: $($renders.Cutouts) cutouts, $($renders.Loadouts) loadout pictures, colour coverage $([math]::Round($renders.Coverage * 100, 2))%",
 		"Render manifest sha256: $($renders.ManifestHash)", "Render pipeline: $($renders.Manifest.pipeline)",
 		"Captured on game build $($renders.Manifest.gameBuild) with mod revision $($renders.Manifest.modRevision)",
-		"In the zip: $($split.Zip.Count) pictures (each costume's first colour and the loadout pictures)")
-	if ($colourPack) {
+		"In the zip: $($split.Zip.Count) pictures ($(if ($pack) { "each costume's first colour and the loadout pictures" } else { 'every colour and the loadout pictures' }))")
+	if ($pack) {
 		Add-Content -LiteralPath (Join-Path $destination 'BUILD_INFO.txt') -Encoding UTF8 -Value @(
-			"Colour pack: $($colourPack.Name), $($colourPack.Cutouts) cutouts, $($colourPack.Bytes) bytes, sha256 $($colourPack.Sha256)",
-			"Colour pack URL: $($colourPack.Url)")
+			"Colour pack: $($pack.Name), $($pack.Cutouts) cutouts, $($pack.Bytes) bytes, sha256 $($pack.Sha256)",
+			"Colour pack URL: $($pack.Url)")
 	}
 }
 Write-HashManifest $destination 'MANIFEST.txt'
@@ -291,4 +298,4 @@ Compress-Archive -LiteralPath $destination -DestinationPath "$destination.zip"
 if ($LASTEXITCODE) { throw "Updater download validation failed ($LASTEXITCODE)" }
 $hash = Write-Sha256Sidecar "$destination.zip"
 Write-Output "SFV Ember package: $destination.zip ($hash)"
-[pscustomobject]@{ zipPath = "$destination.zip"; folderPath = $destination; sha256 = $hash; colourPackPath = $(if ($colourPack) { $colourPack.Path } else { '' }) }
+[pscustomobject]@{ zipPath = "$destination.zip"; folderPath = $destination; sha256 = $hash; colourPackPath = $(if ($pack) { $pack.Path } else { '' }) }
