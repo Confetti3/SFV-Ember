@@ -213,6 +213,7 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
     Save-FakeJson (Join-Path $out 'helper.provenance.json') @{emberRevision = $f.emberRevision; emberFingerprint = $f.emberFingerprint; sha256 = ('C' * 64)}
     $packaged = & $receipt 'player'
     $packaged.package = @{label = $f.label}
+    $packaged.renders = [ordered]@{included = $true; colourCoverage = 1; minColourCoverage = 1}
     if ($f.packagedOverride) { & $f.packagedOverride $packaged }
     Save-FakeJson (Join-Path $staging 'build-provenance.json') $packaged
     Copy-Item -LiteralPath (Join-Path $staging 'build-provenance.json') (Join-Path $out 'build-provenance.json')

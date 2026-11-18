@@ -16,7 +16,7 @@ param([Parameter(Mandatory = $true)][ValidateSet('status', 'sync', 'job', 'rooms
       [Parameter(Mandatory = $true)][string]$Work,
       [string]$Label = '', [string]$Source = '', [string]$SourceTree = '', [string]$Library = '', [string]$LibraryTree = '',
       [string]$SourceCheckout = '', [string]$LibraryCheckout = '', [string]$BuildDev = '', [string]$BuildPlayer = '',
-      [string]$VcpkgRoot = '', [string]$RenderStore = '', [string]$OldPackageCheck = '', [string]$Dist = '',
+      [string]$VcpkgRoot = '', [string]$RenderStore = '', [string]$MinColourCoverage = '', [string]$OldPackageCheck = '', [string]$Dist = '',
       [string]$Interactive = 'D:\sf4\interactive', [string]$JobName = '', [string]$BuildId = '', [string]$SfvTar = '', [string]$LibraryTar = '', [ValidateSet('build', 'check')][string]$Mode = 'build')
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
@@ -96,6 +96,7 @@ switch ($Phase) {
     'sync' {
         try {
             Assert-FreshWork
+            if ($MinColourCoverage -cnotmatch '^(0(\.[0-9]+)?|1(\.0+)?)$') { throw "No colour coverage for the package (-MinColourCoverage, 0 to 1): '$MinColourCoverage'" }
             $sides = [ordered]@{source = @($SourceCheckout, $Source, $SourceTree); library = @($LibraryCheckout, $Library, $LibraryTree)}
             foreach ($side in $sides.Keys) {
                 $path, $commit, $tree = $sides[$side]
@@ -119,7 +120,7 @@ switch ($Phase) {
             }
             Save-Json (Join-Path $Work 'checkout.json') $checkout
             Save-Json (Join-Path $Work 'job.json') ([ordered]@{label = $Label; source = $SourceCheckout; library = $LibraryCheckout; buildDev = $BuildDev
-                buildPlayer = $BuildPlayer; vcpkgRoot = $VcpkgRoot; renderStore = $RenderStore; oldPackageCheck = $OldPackageCheck; dist = $Dist})
+                buildPlayer = $BuildPlayer; vcpkgRoot = $VcpkgRoot; renderStore = $RenderStore; minColourCoverage = $MinColourCoverage; oldPackageCheck = $OldPackageCheck; dist = $Dist})
             Write-JobCmd $JobName 'job'
             Out-Result @{ok = $true; sourceFingerprint = $checkout.source.fingerprint; libraryFingerprint = $checkout.library.fingerprint}
         } catch { Out-Result @{ok = $false; error = $_.Exception.Message} }
@@ -141,7 +142,7 @@ switch ($Phase) {
             Invoke-Step 'helper' (Join-Path $job.source 'scripts\build-helper.ps1') @('-BuildDir', $job.buildPlayer, '-EmberRepo', $job.library)
             if (Test-Path -LiteralPath $job.dist) { throw "The package folder $($job.dist) exists already; use a new attempt." }
             New-Item -ItemType Directory -Path $job.dist | Out-Null
-            $package = @('-BuildDir', $job.buildPlayer, '-OutDir', $job.dist, '-VersionLabel', $job.label, '-RenderStore', $job.renderStore)
+            $package = @('-BuildDir', $job.buildPlayer, '-OutDir', $job.dist, '-VersionLabel', $job.label, '-RenderStore', $job.renderStore, '-MinColourCoverage', $job.minColourCoverage)
             if ($job.oldPackageCheck) { $package += @('-OldPackageCheck', $job.oldPackageCheck) }
             Invoke-Step 'package' (Join-Path $job.source 'scripts\package.ps1') $package
             $out = Join-Path $Work 'out'

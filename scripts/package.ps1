@@ -35,8 +35,9 @@
 # offered costume's first colour must be there (or a listed exception; a
 # costume the pick space marks unshipped is never offered, needs no picture
 # and may have none) and the other colours must reach -MinColourCoverage
-# (default 0: beta.8 ships each costume's first colour only; the coverage is
-# still reported). Every loadout
+# (default 0: beta.8 to 0.1.0 shipped each costume's first colour only; the
+# release pipeline passes 1, every colour, from 0.1.1; the coverage is always
+# reported). Every loadout
 # picture (a V-Skill and V-Trigger of every fighter) is required too, or a
 # listed exception. The files
 # are staged under assets\selection\, the manifest beside them, the package's
