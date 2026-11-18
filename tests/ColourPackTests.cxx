@@ -4,7 +4,7 @@
 // the whole archive, one rename into place, only the current pack kept), and
 // the order the game reads pictures in (PictureSources, CharacterFiles: the
 // pack's file, then the package's, and the costume's first colour when the
-// pack lacks the look).
+// pack lacks the look; AppearanceFiles, a colour card's: the look's own alone).
 
 #include <doctest/doctest.h>
 
@@ -106,6 +106,16 @@ Pack Downloaded(const fs::path& data, const std::string& zip)
 }
 
 const std::atomic<bool> kGoOn{false};
+
+// The file the decoder shows of `files`: the first that is there; none where
+// none is.
+fs::path Shown(const std::vector<std::wstring>& files)
+{
+	for (const std::wstring& file : files) {
+		if (fs::exists(file)) return fs::path(file);
+	}
+	return fs::path();
+}
 
 } // namespace
 
@@ -289,12 +299,8 @@ TEST_CASE("the game reads a look from the colour pack first, then the package, t
 	CHECK(sources.Cutout("", 0, 0).empty());
 	CHECK(sources.Loadout("RYU", sfve::picks::LoadoutPart::VSkill, 2).empty());
 
-	// The decoder takes the first file that is there.
 	const auto shown = [&](int fighter, int costume, int colour) {
-		for (const std::wstring& file : sfve::adapter::CharacterFiles(sources, fighter, costume, colour)) {
-			if (fs::exists(file)) return fs::path(file);
-		}
-		return fs::path();
+		return Shown(sfve::adapter::CharacterFiles(sources, fighter, costume, colour));
 	};
 	// The package ships each costume's first colour (RYU's costume 4: 0, 1, 100, 101).
 	const fs::path first = package / L"assets\\selection\\RYU\\costume-4\\color-0-cutout.png";
@@ -311,6 +317,43 @@ TEST_CASE("the game reads a look from the colour pack first, then the package, t
 	// A colour the costume does not have is not asked for.
 	for (const std::wstring& file : sfve::adapter::CharacterFiles(sources, 0, 4, 7)) CHECK(file.find(L"color-7-") == std::wstring::npos);
 	CHECK(sfve::adapter::CharacterFiles(sources, 5, 0, 0).empty()); // not a fighter of the catalog
+	fs::remove_all(root);
+}
+
+TEST_CASE("a colour card reads its own colour's cutout, the pack's then the package's, and never another colour's")
+{
+	sfve::catalog_fixture::FillTestCatalog();
+	const fs::path root = FreshFolder("cards");
+	const fs::path pack = root / "pack", package = root / "package";
+	const PictureSources sources({pack, package});
+	const auto shown = [&](int fighter, int costume, int colour) {
+		return Shown(sfve::adapter::AppearanceFiles(sources, fighter, costume, colour));
+	};
+	// The look's one path under each source, the pack first, as a cutout is.
+	CHECK(sfve::adapter::AppearanceFiles(sources, 0, 4, 100) == sources.Cutout("RYU", 4, 100));
+	// The package ships the costume's first colour (RYU's costume 4: 0, 1, 100, 101).
+	const fs::path first = package / L"assets\\selection\\RYU\\costume-4\\color-0-cutout.png";
+	Write(first, "first");
+	CHECK(shown(0, 4, 0) == first);
+	// No pack yet: the other colours have no picture (their cards show the
+	// swatch), where the pane's figure falls back to the first colour.
+	CHECK(shown(0, 4, 1).empty());
+	CHECK(shown(0, 4, 100).empty());
+	CHECK(Shown(sfve::adapter::CharacterFiles(sources, 0, 4, 100)) == first);
+	// The pack arrives: each colour it has is its own picture; one it lacks
+	// still has none.
+	const fs::path inPack = pack / L"assets\\selection\\RYU\\costume-4\\color-100-cutout.png";
+	Write(inPack, "ex");
+	CHECK(shown(0, 4, 100) == inPack);
+	CHECK(shown(0, 4, 101).empty());
+	// The pack's own copy of a colour the package also has comes first.
+	const fs::path firstInPack = pack / L"assets\\selection\\RYU\\costume-4\\color-0-cutout.png";
+	Write(firstInPack, "first, pack");
+	CHECK(shown(0, 4, 0) == firstInPack);
+	// A look the catalog does not have is not asked for.
+	CHECK(sfve::adapter::AppearanceFiles(sources, 0, 4, 7).empty());
+	CHECK(sfve::adapter::AppearanceFiles(sources, 0, 2, 0).empty());
+	CHECK(sfve::adapter::AppearanceFiles(sources, 5, 0, 0).empty());
 	fs::remove_all(root);
 }
 

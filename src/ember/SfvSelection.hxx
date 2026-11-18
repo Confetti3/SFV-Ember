@@ -24,12 +24,16 @@
 
 namespace sfve::adapter {
 
-// Render thread. The files SelectionArt::Character reads a fighter's
-// (the catalog's id) figure from, first first: the look's cutout, then that
-// costume's first colour, then the fighter's first costume in its first
-// colour (the catalog's numbers and order), each from every one of `sources`
-// in order (the colour pack's, then the package's). A look the catalog does
-// not have is not asked for; a fighter it does not have has none.
+// Render thread. The files SelectionArt::Appearance reads one look of a
+// fighter (the catalog's id) from: that look's cutout from every one of
+// `sources` in order (the colour pack's, then the package's), and no other
+// look's. None for a look the catalog does not have.
+std::vector<std::wstring> AppearanceFiles(const colours::PictureSources& sources, int fighter, int costume, int colour);
+// Render thread. The files SelectionArt::Character reads a fighter's figure
+// from, first first: the look's (AppearanceFiles), then that costume's first
+// colour's, then the fighter's first costume's in its first colour (the
+// catalog's numbers and order). A look the catalog does not have is not asked
+// for; a fighter it does not have has none.
 std::vector<std::wstring> CharacterFiles(const colours::PictureSources& sources, int fighter, int costume, int colour);
 
 // The number SelectionArt::Ultra is asked with for a part's choice: part * 2 +

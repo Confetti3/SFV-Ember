@@ -132,10 +132,10 @@ SelectionImage SelectionArt::Character(int fighter, int costume, int colour, boo
 		.append(large ? "/figure-large" : "/figure-thumb");
 	return Request(key, files, large ? MaximumImageSide : ThumbnailSide, figure);
 }
-// The exact look's captured cutout, the pack's then the package's, and nothing
-// else: a costume or colour the catalog does not have, or no capture of it, is
+// The exact look's captured cutout (AppearanceFiles), and nothing else: a
+// costume or colour the catalog does not have, or no capture of it, is
 // missing, and the pane falls back to the fighter's figure (Character) and
-// then the banner.
+// then the banner, a colour card to the colour's swatch.
 SelectionImage SelectionArt::Appearance(int fighter, int costume, int colour)
 {
 	const std::string code = sfve::adapter::FighterCode(fighter);
@@ -145,7 +145,7 @@ SelectionImage SelectionArt::Appearance(int fighter, int costume, int colour)
 	const std::string& key = imageKey_.assign(code)
 		.append("/costume-").append(std::to_string(costume))
 		.append("/color-").append(std::to_string(colour));
-	return Request(key, [&] { return Sources().Cutout(code, costume, colour); }, MaximumImageSide);
+	return Request(key, [&] { return sfve::adapter::AppearanceFiles(Sources(), fighter, costume, colour); }, MaximumImageSide);
 }
 // A loadout picture (SfvSelection.hxx's LoadoutPicture): `ultra` is part * 2 +
 // choice, 0 to 3, and the picture is <CODE>/vs<k>.png or vt<k>.png (k is
@@ -175,10 +175,17 @@ SelectionArt::GameSheet SelectionArt::LetterFiles() const { return {}; }
 
 namespace sfve::adapter {
 
-std::vector<std::wstring> CharacterFiles(const colours::PictureSources& sources, int fighter, int costume, int colour)
+std::vector<std::wstring> AppearanceFiles(const colours::PictureSources& sources, int fighter, int costume, int colour)
 {
 	const std::string code = FighterCode(fighter);
-	if (code.empty()) return {};
+	const std::vector<int> colours = ColourIds(fighter, costume);
+	if (code.empty() || std::find(colours.begin(), colours.end(), colour) == colours.end()) return {};
+	return sources.Cutout(code, costume, colour);
+}
+
+std::vector<std::wstring> CharacterFiles(const colours::PictureSources& sources, int fighter, int costume, int colour)
+{
+	if (FighterCode(fighter).empty()) return {};
 	std::vector<std::pair<int, int>> looks;
 	const auto add = [&](int outfit, int palette) {
 		const std::pair<int, int> look{outfit, palette};
@@ -194,7 +201,7 @@ std::vector<std::wstring> CharacterFiles(const colours::PictureSources& sources,
 	}
 	std::vector<std::wstring> files;
 	for (const auto& [outfit, palette] : looks) {
-		const std::vector<std::wstring> more = sources.Cutout(code, outfit, palette);
+		const std::vector<std::wstring> more = AppearanceFiles(sources, fighter, outfit, palette);
 		files.insert(files.end(), more.begin(), more.end());
 	}
 	return files;
