@@ -4,6 +4,7 @@
 #include "ember/SfvCatalog.hxx"
 #include "ember/SfvGame.hxx"
 #include "ember/SfvPickStore.hxx"
+#include "mod/BackgroundPlay.hxx"
 #include "mod/ControlPipe.hxx"
 #include "mod/GameContent.hxx"
 #include "mod/GameExit.hxx"
@@ -16,6 +17,7 @@
 #include "platform/Utf8.hxx"
 #include "platform/HelperProcess.hxx"
 #include "sf4e/sf4e__NetplayFacade.hxx"
+#include "sf4e/sf4e__RuntimeEvents.hxx"
 
 #include <spdlog/sinks/callback_sink.h>
 #include <spdlog/spdlog.h>
@@ -319,6 +321,10 @@ void InstallEmberHost(const HostSettings& settings, ember::GameTick& battle)
 		// battle runs (a Ready is only made there).
 		if (++*frames % kVoiceReadFrames == 0 && mod::MainMenuInFront()) ReadOwnVoices();
 		ember::Tick(battle);
+		// A match this copy only watches, from its launch to its end, runs
+		// behind other windows, as SF4's does (mod/BackgroundPlay.hxx). The
+		// match's seat outlasts the match, so it is asked only while one is live.
+		mod::KeepRunningWhileWatching(facade::IsRuntimeMatchLive() && facade::IsRuntimeSpectator());
 		return true;
 	});
 }

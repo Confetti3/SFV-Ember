@@ -256,12 +256,12 @@ extern "C" int SfveStart(int beforeGameCode)
 	RegisterStatus("mode", [] { return JsonString(ModeName(Config().mode)); });
 	// Asked for at launch (-sfve_background), or the player's saved Play in
 	// the background (Settings > Player), read once here, after the settings'
-	// move: a change to the setting takes effect at the next start.
+	// move: a change to the setting takes effect at the next start. The hooks
+	// go in either way: a match this copy only watches runs behind other
+	// windows whatever the setting (EmberHost's tick says when).
 	const bool backgroundPlay = Config().backgroundPlay ||
 		sfve::adapter::SavedBoolPreference(&sf4e::netplay::PlayerPreferences::backgroundPlay, "background play");
-	std::string backgroundPlayState = "off";
-	if (backgroundPlay) backgroundPlayState = HookSetState(InstallBackgroundPlay());
-	RegisterHookSetStatus("backgroundPlay", std::move(backgroundPlayState));
+	RegisterHookSetStatus("backgroundPlay", HookSetState(InstallBackgroundPlay(backgroundPlay)));
 	// Instance 0 is a player's game, whose mutexes keep their names.
 	const int instance = Config().instance;
 	std::string multiInstanceState = "off";
