@@ -77,6 +77,13 @@ constexpr uint32_t kItemSiteI = 0x3BDB02;  // CharaUniquePart_036: the item let 
 constexpr uint32_t kItemSiteII = 0x3BDF3B; // CharaUniquePart_038: the item let go as V-Trigger II ends
 constexpr uint32_t kPropSite = 0x3BC294;   // CharaUniquePart_015: a dropped prop (b_C_Head), the same kind of projectile
 constexpr uint32_t kClawSite = 0x3A4B79;   // CharaUniquePart_008: where the claw (b_R_Hand, b_L_Hand) or the mask (b_C_Head) starts when knocked off
+constexpr uint32_t kKnownSites[] = {kItemSiteI, kItemSiteII, kPropSite, kClawSite};
+
+// The socket names the claw's site gives offsets of their own (AnchorOffsetFor).
+constexpr const wchar_t* kRightHand = L"b_R_Hand";
+constexpr const wchar_t* kLeftHand = L"b_L_Hand";
+constexpr const wchar_t* kHead = L"b_C_Head";
+constexpr const wchar_t* kNamedSockets[] = {kRightHand, kLeftHand, kHead};
 
 std::string SocketName(const wchar_t* name)
 {
@@ -295,7 +302,7 @@ Site SiteOf(uint32_t returnRva)
 {
 	if (std::find(std::begin(kNotTheFights), std::end(kNotTheFights), returnRva) != std::end(kNotTheFights)) return Site::NotTheFights;
 	if (returnRva == kSpawnBoneResolver) return Site::DrawOnly;
-	if (returnRva == kItemSiteI || returnRva == kItemSiteII || returnRva == kPropSite || returnRva == kClawSite) return Site::Known;
+	if (std::find(std::begin(kKnownSites), std::end(kKnownSites), returnRva) != std::end(kKnownSites)) return Site::Known;
 	return Site::Unknown;
 }
 
@@ -316,9 +323,32 @@ AnchorOffset AnchorOffsetFor(uint32_t returnRva, const wchar_t* socket, bool* ot
 	if (returnRva == kItemSiteI || returnRva == kItemSiteII) return {0.20f, 1.00f};
 	if (returnRva != kClawSite) return kHeadOffset;
 	const uint64_t name = NameKey(socket);
-	if (name == NameKey(L"b_R_Hand") || name == NameKey(L"b_L_Hand")) return {0.30f, 1.20f};
-	if (name != NameKey(L"b_C_Head") && otherName) *otherName = true;
+	if (name == NameKey(kRightHand) || name == NameKey(kLeftHand)) return {0.30f, 1.20f};
+	if (name != NameKey(kHead) && otherName) *otherName = true;
 	return {0.05f, 1.60f};
+}
+
+std::string AnchorRulesText()
+{
+	const auto rva = [](uint32_t site) {
+		char text[16];
+		snprintf(text, sizeof(text), "0x%X", site);
+		return std::string(text);
+	};
+	const auto offset = [](const AnchorOffset& o) {
+		char text[40];
+		snprintf(text, sizeof(text), "%.9g,%.9g", o.forward, o.up);
+		return std::string(text);
+	};
+	std::string text = std::to_string(kAnchorVersion) + "; not the fight's";
+	for (const uint32_t site : kNotTheFights) text += " " + rva(site);
+	text += "; drawn only " + rva(kSpawnBoneResolver) + "; known";
+	for (const uint32_t site : kKnownSites) {
+		text += " " + rva(site);
+		for (const wchar_t* socket : kNamedSockets) text += " " + SocketName(socket) + " " + offset(AnchorOffsetFor(site, socket));
+		text += " other " + offset(AnchorOffsetFor(site, nullptr));
+	}
+	return text + "; head " + offset(kHeadOffset);
 }
 
 ReadRule Policy(uint32_t returnRva, const wchar_t* socket, bool sessionBattle)

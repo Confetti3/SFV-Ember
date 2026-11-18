@@ -131,7 +131,30 @@ std::string Hex(uintptr_t v)
 	return text;
 }
 
+// "CharaUnit 0x3A647C0 +248/40 ... ->3160+16/32": an owner as RegionOwnersText gives it.
+std::string OwnerText(const OwnerSpec& spec)
+{
+	std::string text = std::string(spec.name) + " " + Hex(spec.typeRva);
+	for (const RunSpec& r : spec.runs) text += " +" + std::to_string(r.offset) + "/" + std::to_string(r.size);
+	for (const SubObjectSpec& s : spec.subObjects) {
+		text += " ->" + std::to_string(s.pointerAt) + "+" + std::to_string(s.run.offset) + "/" + std::to_string(s.run.size);
+	}
+	return text;
+}
+
 } // namespace
+
+std::string RegionOwnersText()
+{
+	std::string text = "units";
+	for (const OwnerSpec& spec : kUnits) text += ", " + OwnerText(spec);
+	text += "; parts";
+	for (const OwnerSpec& spec : kParts) text += ", " + OwnerText(spec);
+	text += "; root " + OwnerText(kRoot) + ", the manager at +" + std::to_string(kManagerInRoot) + "; unique parts derive from " +
+		Hex(kUniquePartBaseRva) + "; a unit's parts at +" + std::to_string(kPartsBegin) + "..+" + std::to_string(kPartsEnd) +
+		", at most " + std::to_string(kMaxParts) + "; at most " + std::to_string(kMaxUnitsOfAType) + " units of a type";
+	return text;
+}
 
 void RegionNames::AddObject(const std::string& name, uint8_t* object, const OwnerSpec& spec, size_t minExtent)
 {

@@ -47,6 +47,15 @@ inline std::string SubObjectName(const std::string& object, uintptr_t pointerAt)
 
 struct OwnerSpec; // an owner type's registered runs (SfvRegionNames.cxx)
 
+// Everything that decides which of the game's runs RegionNames names, and as
+// whose (an owner's name is what sfv::manager::kRunRules matches), as text:
+// every unit's and part's type, registered runs and sub-objects in the
+// tables' order (which numbers the names), the root's and where it holds the
+// manager, the unique parts' base type, the parts vector and the lookups'
+// bounds. Part of the rollback rules' id (SfvLayoutRules): a row changed
+// here changes which runs are hashed or masked.
+std::string RegionOwnersText();
+
 // A table entry's owner: the registered run that starts at its address.
 struct NamedRun {
 	std::string name;           // "CharaUnit[1].CharaStatusPart+0x238"; empty when unowned

@@ -49,20 +49,25 @@ struct OutsideState {
 // left out of the hash peers compare.
 void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& where);
 
-// The rules' id, 16 hex digits: a hash of kRunRules; of the regions and peer
+// The rules in words, which the id hashes: kRunRules; the owners those rules
+// match by name (RegionOwnersText: RegionNames' tables); the regions and peer
 // masks AddStateOutsideTheGameSnapshot adds, laid out at fixed made-up
-// addresses (their offsets, sizes, flags and masks); and of the flow
-// record's rules (its size, sfv::flowstate's base and every class's size,
-// own fields and leftover words); and of the rules no table shows, the
-// address rule's version (kAddressRuleVersion), the CRT math of the modes
-// that roll back (kRollbackCrtMath), where their battles run the tick's
-// tasks (kRollbackTickTasks, or the placement -sfve_tasks gave a development
-// build) and whether the fight socket reads that may feed fight state are
-// anchored to the fight's position, with their rules' version
-// (ChooseSocketAnchor): first
-// computed once the config is loaded. The same for every copy of one build;
-// any change to a table or rule that decides what is saved, restored,
-// computed or compared changes it, and a new one must feed it too.
+// addresses (their offsets, sizes, flags and masks); the flow record's rules
+// (its size, sfv::flowstate's base and every class's size, own fields and
+// leftover words); and the rules no table shows: the address rule's version
+// (kAddressRuleVersion), the start agreement's (start_state::kVersion), the
+// CRT math of the modes that roll back (kRollbackCrtMath), where their
+// battles run the tick's tasks (kRollbackTickTasks, or the placement
+// -sfve_tasks gave a development build) and whether the fight socket reads
+// that may feed fight state are anchored to the fight's position, with the
+// anchor rules' version, call sites and offsets (ChooseSocketAnchor,
+// socket_reads::AnchorRulesText). First made once the config is loaded.
+const std::string& LayoutRulesText();
+// The rules' id, 16 hex digits: a hash of LayoutRulesText. The same for every
+// copy of one build; any change to a table or rule that decides what is
+// saved, restored, computed or compared changes it, and a new one must feed
+// it too (its owning module's text, as RegionOwnersText and AnchorRulesText
+// do).
 const std::string& LayoutRulesId();
 
 } // namespace sfve::mod

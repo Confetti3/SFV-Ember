@@ -5,6 +5,7 @@
 #include "mod/ModConfig.hxx"
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvOffsets.hxx"
+#include "mod/SfvRegionNames.hxx"
 #include "mod/SocketReads.hxx"
 
 #include <xxhash.h>
@@ -31,7 +32,7 @@ std::string Hex(uint64_t value)
 	return hex;
 }
 
-std::string MakeLayoutRulesId()
+std::string MakeLayoutRulesText()
 {
 	// The outside state laid out at fixed made-up addresses, so each region's
 	// place in its object (its offset) is hashed with its size, flags and masks.
@@ -49,6 +50,9 @@ std::string MakeLayoutRulesId()
 			std::to_string(rule.maskFrom) + "," + std::to_string(rule.maskTo) + ")";
 		if (rule.maskEvery) text += "/" + std::to_string(rule.maskEvery);
 	}
+	// Whose run each of the game's regions is, which the rules above match by
+	// the owner's name (RegionNames' tables).
+	text += "; region owners " + RegionOwnersText();
 	// The flow record (SfvFlow): what each state class restores and which of
 	// its words peers leave out.
 	namespace fs = sfv::flowstate;
@@ -67,16 +71,16 @@ std::string MakeLayoutRulesId()
 	// it, so a -sfve_tasks=0 copy cannot meet a default one; the default's
 	// text is kRollbackTickTasks' name as before); and whether the fight
 	// socket reads that may feed fight state are given the fight's position,
-	// and the version of the rules that decide them (ChooseSocketAnchor,
-	// socket_reads::kAnchorVersion).
+	// and the rules that decide them: their version, call sites and offsets
+	// (ChooseSocketAnchor, socket_reads::AnchorRulesText).
 	// And the start agreement's version: it settles which words the hashes
 	// zero below 1 TB (start_state::kVersion 3, the fighters' address ranges),
 	// so two copies whose agreements cannot read each other hash apart.
 	text += "; address rule " + std::to_string(kAddressRuleVersion) + "; start agreement " +
 		std::to_string(start_state::kVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath) +
 		"; rollback tick tasks " + TickTasksName(ChooseTickTasks(Config(), true)) + "; socket anchors " +
-		(ChooseSocketAnchor(Config()) ? std::to_string(socket_reads::kAnchorVersion) : std::string("off"));
-	return Hex(XXH3_64bits(text.data(), text.size()));
+		(ChooseSocketAnchor(Config()) ? socket_reads::AnchorRulesText() : std::string("off"));
+	return text;
 }
 
 } // namespace
@@ -118,9 +122,15 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 	}
 }
 
+const std::string& LayoutRulesText()
+{
+	static const std::string text = MakeLayoutRulesText();
+	return text;
+}
+
 const std::string& LayoutRulesId()
 {
-	static const std::string id = MakeLayoutRulesId();
+	static const std::string id = Hex(XXH3_64bits(LayoutRulesText().data(), LayoutRulesText().size()));
 	return id;
 }
 

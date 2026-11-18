@@ -6,10 +6,16 @@
 #include "core/StateRegions.hxx"
 #include "ember/SfvPickSpace.hxx"
 #include "ember/SfvRoomBuild.hxx"
+#include "mod/ModConfig.hxx"
 #include "mod/SfvLayoutRules.hxx"
 #include "mod/SfvOffsets.hxx"
+#include "mod/SfvRegionNames.hxx"
+#include "mod/SocketReads.hxx"
+
+#include <xxhash.h>
 
 #include <stdint.h>
+#include <stdio.h>
 
 #include <fstream>
 #include <iterator>
@@ -31,6 +37,40 @@ TEST_CASE("the layout id is one build's own: 16 hex digits, the same wherever th
 	sfve::mod::AddStateOutsideTheGameSnapshot(other, {0x9000, 0x8000, 0x7000, 0x6000, 0x5000});
 	CHECK(one.LayoutId() == other.LayoutId());
 	CHECK(one.Regions().size() == other.Regions().size());
+}
+
+TEST_CASE("the layout id hashes the rules' text, which carries each owning module's tables whole")
+{
+	const std::string& text = sfve::mod::LayoutRulesText();
+	char hex[17];
+	snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)XXH3_64bits(text.data(), text.size()));
+	CHECK(sfve::mod::LayoutRulesId() == hex);
+	// A row changed in RegionNames' tables or in the socket reads' sites or
+	// offsets changes its module's text, so the text the id hashes.
+	CHECK(text.find("; region owners " + sfve::mod::RegionOwnersText() + "; ") != std::string::npos);
+	const std::string anchors =
+		sfve::mod::ChooseSocketAnchor(sfve::mod::Config()) ? sfve::mod::socket_reads::AnchorRulesText() : std::string("off");
+	CHECK(text.find("; socket anchors " + anchors) != std::string::npos);
+}
+
+TEST_CASE("the region owners' text names every owner's type, runs and sub-objects in the tables' order, and the lookups' bounds")
+{
+	const std::string owners = sfve::mod::RegionOwnersText();
+	CHECK(owners.rfind("units, CharaUnit 0x3A647C0 +248/40 +376/68 +1892/300 +2196/208 ", 0) == 0);
+	CHECK(owners.find(" +3604/16 ->3160+16/32, ProjectileUnit 0x3A64C20 +248/40 +376/68 +464/208 +688/104 ->672+16/20, ") !=
+		std::string::npos);
+	CHECK(owners.find("; parts, CharaActionPart 0x3A64A98 +216/15808 +16048/4 +16104/4 +16112/8 ->16072+48/224 ->16088+48/224, ") !=
+		std::string::npos);
+	CHECK(owners.find(", ProjectileVisualPart 0x3A66D00 +192/44 +240/136; root ModeUnit 0x0 +6448/228, the manager at +566272; ") !=
+		std::string::npos);
+	CHECK(owners.find("; unique parts derive from 0x3A64B40; a unit's parts at +192..+200, at most 256; at most 256 units of a type") !=
+		std::string::npos);
+	// Every owner kRunRules names is one of the tables' (a rule for an owner
+	// they lost would apply nowhere).
+	for (const sfve::mod::sfv::manager::RunRule& rule : sfve::mod::sfv::manager::kRunRules) {
+		CAPTURE(rule.owner);
+		CHECK(owners.find(", " + std::string(rule.owner) + " 0x") != std::string::npos);
+	}
 }
 
 TEST_CASE("every fighter unit's parts keep their state outside the snapshot, a partner's too")
