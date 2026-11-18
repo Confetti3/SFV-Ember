@@ -633,8 +633,10 @@ function Invoke-PubPromote([object]$Ctx, [hashtable]$P) {
 
     # colours: the release's colour pack on the public repository's colour-packs release, before anything is pushed;
     # nothing to do when the zip carries every colour.
-    if (!(Test-PubPhaseDone $state 'colours') -and !$facts.colourPack) { Set-PubPhase $Ctx $state 'colours' 'done' 'no colour pack: the zip carries every colour' }
-    if (!(Test-PubPhaseDone $state 'colours')) {
+    # Whether the build has a pack is its recorded fact, not a phase that a dry run never saves.
+    if (!$facts.colourPack) {
+        if (!(Test-PubPhaseDone $state 'colours')) { Set-PubPhase $Ctx $state 'colours' 'done' 'no colour pack: the zip carries every colour' }
+    } elseif (!(Test-PubPhaseDone $state 'colours')) {
         $outcome = Publish-PubColourPack $Ctx (Join-Path (Get-PubStageDir $Ctx 'build') "files\$($facts.colourPack.name)") $facts.colourPack
         if ($outcome -cin @('uploaded', 'there')) { Set-PubPhase $Ctx $state 'colours' 'done' "$outcome $($facts.colourPack.name)" }
         elseif ($outcome -ceq 'skipped') { Set-PubPhase $Ctx $state 'colours' 'skipped' }
