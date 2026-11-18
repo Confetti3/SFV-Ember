@@ -3005,3 +3005,28 @@ settings-load fix). What SFV Ember takes and what stays on SF4's side:
   until it has; SFV's own name and boolean reads (`LoadSavedSettings`) wait out a busy file as the library's launcher
   does and leave a damaged file to the runtime, which sets it aside and tells the player once. The launcher keeps its
   default name for a launch whose settings were not read.
+
+## 65. The fighters agree on their address ranges; reports carry the differing words (0.1.1, 2026-11-17)
+
+**Why.** 0.1.0's first evening (EMBER-121/122): seven matches of one Proton player against two Windows players ended in
+a desync 5 to 8 s into the fight, 0 rollbacks, equal game data. The Proton copy was the odd one out in every match (the
+Windows watcher agreed with the Windows fighter each time), and its report alone said "and in 6 start range(s)". Those
+ranges (Proton's heaps and images made before the game ran, below 1 TB; section 61 and `WineMemory.hxx`) are zeroed by
+the Proton copy's hashes only, so a number in them, such as the 16.16 values 0x30000 to 0x3FFFF that CharaMotionPart
+holds once a fighter moves (21 of 41 kept Windows states have one there), parted equal states. Not Karin's: the Proton
+player played her.
+
+**What changed** (`s011/desync`).
+- The start agreement (`core/StartAgreement`, version 3) carries each fighter's ranges below 1 TB
+  (`mod::RangesToShare`, at most 16): P2's question its own, P1 takes them with its own and answers with both, P2 and
+  every watcher take that set (`mod::AdoptAgreedRanges`). A watcher is answered once P2's ranges are in. Two Windows
+  copies send none. The version is part of the layout rules (`LayoutRulesId`), so the room build changes and
+  `data/pick-space.json` takes the new layout id. A replay's header keeps the agreed ranges (`addresses`) and its
+  playback takes them.
+- A desync report's details list every differing region's words, `*` on each word this copy's hashes zero
+  (`WordLines`), the ranges below 1 TB (`LowRangesText`) and the modules besides Windows' own (`OtherModules`; the
+  ones from outside the game's folder also in the comment). A match's start logs the modules.
+
+**Left.** A Proton watcher of a Windows match still hashes by its own ranges too (a watcher's diagnostic only). The
+desync of match 0.9 (JRI v Z39, checkpoint 5160, ProjectileUnit[47].ProjectileActionPart+0xD8, three copies three
+hashes) is not this; the next such report's word lines show its words.
