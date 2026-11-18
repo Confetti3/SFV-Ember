@@ -110,6 +110,15 @@ try {
     Reject { Plan $y } '*makes version*'
     $y = Fresh; Write-File "$($y.Sfv)\src\ember\SfvPickSpace.hxx" "constexpr const char* kMatchBuild = `"sfv-ember/13173604/0.8`";`n"; $null = Commit $y.Sfv 'm'
     Reject { Plan $y } '*kMatchBuild is not*'
+    $y = Fresh; Write-File "$($y.Sfv)\src\mod\ProjectileRelease.cxx" "// released at died only`n"; $null = Commit $y.Sfv 'rule'
+    Reject { Plan $y } '*src/mod/ProjectileRelease.cxx changed since the last release, but kRollbackCodeRules*is still 1: move it.'
+    $y = Fresh; Write-File "$($y.Sfv)\src\mod\GameHooks.cxx" "// allocations left as the heap left them`n"; Write-CodeRules $y.Sfv 2; $null = Commit $y.Sfv 'rule, moved'
+    $null = Plan $y
+    Check ((Read-PubPlan $y.Ctx).plan.source.commit -ceq (G $y.Sfv @('rev-parse', 'HEAD'))) 'a code rule change with the version moved plans'
+    $y = Fresh; Write-File "$($y.Sfv)\src\mod\SfvLayoutRules.hxx" "// no version`n"; $null = Commit $y.Sfv 'lost'
+    Reject { Plan $y } '*names no kRollbackCodeRules*'
+    $y = Fresh; G $y.Sfv @('rm', '-q', 'src/mod/GameHooks.cxx') | Out-Null; $null = Commit $y.Sfv 'moved away'
+    Reject { Plan $y } '*lists files * does not have: src/mod/GameHooks.cxx.'
     $y = Fresh; $p = $y.P.Clone(); $p.Library = $y.L1
     Reject { Invoke-PubPlan $y.Ctx $p 6>$null } '*README.md pins library*'
     $y = Fresh; G $y.Sfv @('checkout', '-q', '-b', 'side', $y.C0) | Out-Null; G $y.Sfv @('reset', '-q', '--hard', "$($y.C0)~0") | Out-Null
@@ -120,7 +129,7 @@ try {
     Reject { Plan $y } '*already has a release or draft named*'
     $y = Fresh; $null = Add-FakeRelease $y.World 'v0.1.0-beta.10' $false
     Reject { Plan $y } '*is not newer than the newest published release*'
-    Pass 'plan: refuses a dirty worktree, a wrong version, a pick space that disagrees with kMatchBuild, a library other than the README pin, a source off the last release, an existing draft, a newer release'
+    Pass 'plan: refuses a dirty worktree, a wrong version, a pick space that disagrees with kMatchBuild, a code rule changed with its version kept, no version or a covered file gone, a library other than the README pin, a source off the last release, an existing draft, a newer release'
 
     # --- build -----------------------------------------------------------------------------------------------------
     Invoke-Quiet { Invoke-PubBuild $x.Ctx $x.P }

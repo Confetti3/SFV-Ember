@@ -49,6 +49,23 @@ struct OutsideState {
 // left out of the hash peers compare.
 void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& where);
 
+// The version of the rollback code rules no table shows: code every copy of
+// a match must run alike, whose change makes two builds hash or compute
+// different state (some of it after frame 0, where the start agreement does
+// not look) yet changes no table the id hashes. Move it with any change to
+// that code. The publish pipeline's plan (scripts/publish/SfvPublish.ps1,
+// Assert-PubCodeRulesMoved) refuses a release that changed one of these
+// files since the last release while the version stayed; it reads them from
+// the lines "//   <file>: <the code>" below.
+//   src/mod/GameHooks.cxx: h_GameAlloc zeroes what the battle code allocates
+//   src/mod/ProjectileRelease.cxx: h_Releasable frees a projectile once its visual part died or fades
+//   src/mod/IntroSkip.hxx: ScenesStepFor, the scenes' cuts and the winner's and draw's demo guard (kDemoGuardTicks)
+//   src/mod/ScenesSkip.cxx: the KO stop and the phase's ticks the cuts are decided by
+//   src/mod/SfvAdapter.cxx: ReseedRandom's place formula and fighter draw reset; OnInputRecord's input while loading
+//   src/mod/GameInput.hxx: RecordedInput, what a pad records while the battle loads
+// 1 from 0.1.1 (the demo guard).
+constexpr int kRollbackCodeRules = 1;
+
 // The rules in words, which the id hashes: kRunRules; the owners those rules
 // match by name (RegionOwnersText: RegionNames' tables); the regions and peer
 // masks AddStateOutsideTheGameSnapshot adds, laid out at fixed made-up
@@ -56,12 +73,13 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 // (its size, sfv::flowstate's base and every class's size, own fields and
 // leftover words); and the rules no table shows: the address rule's version
 // (kAddressRuleVersion), the start agreement's (start_state::kVersion), the
-// CRT math of the modes that roll back (kRollbackCrtMath), where their
-// battles run the tick's tasks (kRollbackTickTasks, or the placement
-// -sfve_tasks gave a development build) and whether the fight socket reads
-// that may feed fight state are anchored to the fight's position, with the
-// anchor rules' version, call sites and offsets (ChooseSocketAnchor,
-// socket_reads::AnchorRulesText). First made once the config is loaded.
+// rollback code rules' (kRollbackCodeRules), the CRT math of the modes that
+// roll back (kRollbackCrtMath), where their battles run the tick's tasks
+// (kRollbackTickTasks, or the placement -sfve_tasks gave a development build)
+// and whether the fight socket reads that may feed fight state are anchored
+// to the fight's position, with the anchor rules' version, call sites and
+// offsets (ChooseSocketAnchor, socket_reads::AnchorRulesText). First made
+// once the config is loaded.
 const std::string& LayoutRulesText();
 // The rules' id, 16 hex digits: a hash of LayoutRulesText. The same for every
 // copy of one build; any change to a table or rule that decides what is

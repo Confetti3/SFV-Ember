@@ -21,6 +21,12 @@ foreach ($k in $identity.Keys) { Set-Item "env:$k" $identity[$k] }
 $oldBuild = 'sfv-ember/13173604/0.6/55c1d32e7a18ea97/layout-886b244cba8b2436'
 $newBuild = 'sfv-ember/13173604/0.7/55c1d32e7a18ea97/layout-d728d987b541ac1b'
 
+# src/mod/SfvLayoutRules.hxx as the plan reads it: the code rules' version and the files it covers.
+function Write-CodeRules([string]$Sfv, [int]$Version) {
+    Write-File "$Sfv\src\mod\SfvLayoutRules.hxx" ("// The rollback code rules.`r`n//   src/mod/ProjectileRelease.cxx: the release rule`r`n" +
+        "//   src/mod/GameHooks.cxx: the zeroing`r`nconstexpr int kRollbackCodeRules = $Version;`r`n")
+}
+
 # A fresh world: the SFV and library repositories with their remotes, the previous release published, the rules, the
 # notes, the base stage folder, and a context whose operations are the fakes.
 function New-Fixture {
@@ -64,6 +70,9 @@ function New-Fixture {
     Write-File "$sfv\scripts\build-room-host-linux.sh" "#!/usr/bin/env bash`nCATALOG_SOURCES=`"`$SFV/src/roomhost/SfvHostCatalog.cxx `$SFV/src/ember/SfvPickSpace.cxx `$GEN/SfvHostPickSpace.cxx`"`n"
     Write-File "$sfv\src\roomhost\SfvHostCatalog.cxx" "#include `"ember/SfvPickSpace.hxx`"`n#include `"RoomHost.hxx`"`n"
     Write-File "$sfv\src\ember\SfvPickSpace.cxx" "#include `"ember/SfvPickSpace.hxx`"`n#include `"common/Catalog.hxx`"`n"
+    Write-CodeRules $sfv 1
+    Write-File "$sfv\src\mod\ProjectileRelease.cxx" "// released at died or fading`n"
+    Write-File "$sfv\src\mod\GameHooks.cxx" "// allocations zeroed`n"
     $C0 = Commit $sfv '0.1.0-beta.8'
     G $sfv @('remote', 'add', 'public', "$F\public.git") | Out-Null
     G $sfv @('remote', 'add', 'origin', "$F\origin.git") | Out-Null

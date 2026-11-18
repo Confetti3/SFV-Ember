@@ -401,6 +401,28 @@ function Assert-PubCleanWorktrees([object]$Ctx, [string]$Repo, [string]$Commit, 
     $checked
 }
 
+# The rollback code rules no table shows (src/mod/SfvLayoutRules.hxx: kRollbackCodeRules, its files listed above it as
+# "//   <file>: <the code>"): a release that changed one of those files since the last release moves the version too, or
+# two copies that compute differently would share a room build.
+function Get-PubCodeRulesVersion([string]$Header) { if ($Header -cmatch 'constexpr int kRollbackCodeRules = ([0-9]+);') { $Matches[1] } else { '' } }
+function Assert-PubCodeRulesMoved([object]$Ctx, [string]$Repo, [string]$Previous, [string]$Commit) {
+    $path = 'src/mod/SfvLayoutRules.hxx'
+    $header = Get-PubShow $Ctx $Repo $Commit $path
+    $version = Get-PubCodeRulesVersion $header
+    $files = @([regex]::Matches($header, '(?m)^//   (src/[^:\s]+): ') | ForEach-Object { $_.Groups[1].Value })
+    if (!$version -or !$files.Count) { throw "$path at $Commit names no kRollbackCodeRules or no file it covers." }
+    $present = @((Get-PubGitText $Ctx $Repo (@('ls-tree', '--name-only', $Commit, '--') + $files)) -split "`n" | Where-Object { $_ })
+    if ($present.Count -ne $files.Count) { throw "$path lists files $Commit does not have: $(@($files | Where-Object { $_ -cnotin $present }) -join ', ')." }
+    $changed = @((Get-PubGitText $Ctx $Repo (@('diff', '--name-only', $Previous, $Commit, '--') + $files)) -split "`n" | Where-Object { $_ })
+    if (!$changed.Count) { return }
+    $before = Invoke-PubGit $Ctx $Repo @('show', "${Previous}:$path") -AllowFail
+    $previousVersion = if ($before.exitCode) { '' } else { Get-PubCodeRulesVersion (ConvertTo-PubText $before) }
+    if ($previousVersion -ceq $version) {
+        throw "$($changed -join ', ') changed since the last release, but kRollbackCodeRules ($path) is still ${version}: move it."
+    }
+    Write-PubLog $Ctx "Rollback code rules $version (the last release's: $(if ($previousVersion) { $previousVersion } else { 'none' })); changed: $($changed -join ', ')."
+}
+
 # The plan stage. $P: Source, Library, Notes, Rules, DiscordDraft, AllowIdentity, Replan.
 function Invoke-PubPlan([object]$Ctx, [hashtable]$P) {
     $label = ConvertFrom-PubLabel $Ctx.Label
@@ -453,6 +475,7 @@ function Invoke-PubPlan([object]$Ctx, [hashtable]$P) {
     $header = Get-PubShow $Ctx $repo $commit 'src/ember/SfvPickSpace.hxx'
     if ($header -cnotmatch 'kMatchBuild = "([^"]+)"' -or $Matches[1] -cne $roomBuild.matchLine) { throw "src/ember/SfvPickSpace.hxx's kMatchBuild is not the pick space's match line $($roomBuild.matchLine)." }
     $previousBuild = [string](Get-PubShow $Ctx $repo $previousCommit 'data/pick-space.json' | ConvertFrom-Json).build
+    Assert-PubCodeRulesMoved $Ctx $repo $previousCommit $commit
     $roomBuild | Add-Member previousId $previousBuild
     $roomBuild | Add-Member changed ($previousBuild -cne $roomBuild.id)
     $readme = Get-PubShow $Ctx $repo $commit 'README.md'

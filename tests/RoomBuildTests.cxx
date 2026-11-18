@@ -51,6 +51,8 @@ TEST_CASE("the layout id hashes the rules' text, which carries each owning modul
 	const std::string anchors =
 		sfve::mod::ChooseSocketAnchor(sfve::mod::Config()) ? sfve::mod::socket_reads::AnchorRulesText() : std::string("off");
 	CHECK(text.find("; socket anchors " + anchors) != std::string::npos);
+	// The code no table shows, by its hand version.
+	CHECK(text.find("; rollback code rules " + std::to_string(sfve::mod::kRollbackCodeRules) + "; ") != std::string::npos);
 }
 
 TEST_CASE("the region owners' text names every owner's type, runs and sub-objects in the tables' order, and the lookups' bounds")

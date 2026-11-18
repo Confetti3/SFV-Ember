@@ -75,9 +75,11 @@ std::string MakeLayoutRulesText()
 	// (ChooseSocketAnchor, socket_reads::AnchorRulesText).
 	// And the start agreement's version: it settles which words the hashes
 	// zero below 1 TB (start_state::kVersion 3, the fighters' address ranges),
-	// so two copies whose agreements cannot read each other hash apart.
+	// so two copies whose agreements cannot read each other hash apart. And
+	// the code rules' version (kRollbackCodeRules).
 	text += "; address rule " + std::to_string(kAddressRuleVersion) + "; start agreement " +
-		std::to_string(start_state::kVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath) +
+		std::to_string(start_state::kVersion) + "; rollback code rules " + std::to_string(kRollbackCodeRules) +
+		"; rollback math " + CrtMathName(kRollbackCrtMath) +
 		"; rollback tick tasks " + TickTasksName(ChooseTickTasks(Config(), true)) + "; socket anchors " +
 		(ChooseSocketAnchor(Config()) ? socket_reads::AnchorRulesText() : std::string("off"));
 	return text;
