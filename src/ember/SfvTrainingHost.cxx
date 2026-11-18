@@ -220,10 +220,10 @@ void DrawSfvTrainingLab(bool available, bool shellShown, bool paused, bool focus
 	const training::View view = ReadTrainingLab();
 	const bool lab = available && view.available;
 	if (!lab || !focused || called || shellShown) s_controls.Close();
-	// What the game thread reads of the lab's options: the meter's history
-	// and after-pause, and the boxes while the HUD shows them.
+	// What the game thread reads of the lab's options: the meter's history,
+	// after-pause and guard pose, and the boxes while the HUD shows them.
 	const training::MeterOptions options = ui::TrainingMeterOptions();
-	SetSfvMeterHistory(options.history, options.continuous);
+	SetSfvMeterOptions(options);
 	SetSfvHitboxesShown(lab && options.hitboxes && s_hud);
 	{
 		std::vector<std::string> requests;

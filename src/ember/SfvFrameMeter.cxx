@@ -56,9 +56,10 @@ struct Followed {
 };
 std::unique_ptr<Followed> s_followed;
 
-// The meter's options the game thread applies (SetSfvMeterHistory).
+// The meter's options the game thread applies (SetSfvMeterOptions).
 std::atomic<int> s_history{static_cast<int>(training::MeterHistory)};
 std::atomic<bool> s_continuous{false};
+std::atomic<bool> s_proximity{true};
 
 void MeterLog::Note(const training::MeterView& view, const std::array<mod::FighterFrame, 2>& fighters)
 {
@@ -118,6 +119,7 @@ void Watch(mod::SfvAdapter& adapter)
 	const uint32_t ticks = adapter.TicksInLastUpdate();
 	followed.meter.SetHistory(static_cast<std::size_t>(s_history.load()));
 	followed.meter.SetContinuous(s_continuous.load());
+	followed.meter.SetProximityGuard(s_proximity.load());
 	std::array<mod::FighterFrame, 2> fighters{};
 	std::array<training::FighterSample, 2> samples{};
 	// Paused: no tick, nothing to measure; the lab still takes its commands.
@@ -142,10 +144,11 @@ void InstallSfvFrameMeter()
 	mod::WatchBattleFrames(Watch);
 }
 
-void SetSfvMeterHistory(int frames, bool continuous)
+void SetSfvMeterOptions(const training::MeterOptions& options)
 {
-	s_history = frames;
-	s_continuous = continuous;
+	s_history = options.history;
+	s_continuous = options.continuous;
+	s_proximity = options.proximityGuard;
 }
 
 } // namespace sfve::adapter
