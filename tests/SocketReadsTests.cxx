@@ -8,6 +8,7 @@
 #include "mod/SfvOffsets.hxx"
 #include "mod/SocketReads.hxx"
 
+#include <locale.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -178,27 +179,36 @@ TEST_CASE("outside a battle a session plays, every read is Live")
 	}
 }
 
-TEST_CASE("the anchor rules' version is part of the room's build and moved with beta.10's rule")
-{
-	CHECK(socket_reads::kAnchorVersion == 2);
-}
-
 TEST_CASE("the anchor rules' text names every call site's class and every known site's offsets, for the layout id")
 {
 	const std::string text = socket_reads::AnchorRulesText();
-	CHECK(text.rfind("2; not the fight's 0x37D48E 0x31B10E 0x31B1DE ", 0) == 0);
+	CHECK(text.rfind("not the fight's 0x37D48E 0x31B10E 0x31B1DE ", 0) == 0);
 	for (const uint32_t site : kNotTheFights) {
 		char rva[16];
 		snprintf(rva, sizeof(rva), " 0x%X", site);
 		CHECK(text.find(rva) < text.find("; drawn only"));
 	}
-	CHECK(text.find("; drawn only 0x4CFC99; known 0x3BDB02 b_R_Hand 0.200000003,1 b_L_Hand 0.200000003,1 b_C_Head "
-					"0.200000003,1 other 0.200000003,1 0x3BDF3B ") != std::string::npos);
-	CHECK(text.find(" 0x3BC294 b_R_Hand 0,1.60000002 b_L_Hand 0,1.60000002 b_C_Head 0,1.60000002 other 0,1.60000002 ") !=
+	CHECK(text.find("; drawn only 0x4CFC99; known 0x3BDB02 b_R_Hand 0.2,1 b_L_Hand 0.2,1 b_C_Head 0.2,1 other 0.2,1 0x3BDF3B ") !=
 		std::string::npos);
-	CHECK(text.find(" 0x3A4B79 b_R_Hand 0.300000012,1.20000005 b_L_Hand 0.300000012,1.20000005 b_C_Head 0.0500000007,1.60000002 "
-					"other 0.0500000007,1.60000002; head 0,1.60000002") != std::string::npos);
-	CHECK(text.size() == text.rfind("; head 0,1.60000002") + std::string("; head 0,1.60000002").size());
+	CHECK(text.find(" 0x3BC294 b_R_Hand 0,1.6 b_L_Hand 0,1.6 b_C_Head 0,1.6 other 0,1.6 ") != std::string::npos);
+	CHECK(text.find(" 0x3A4B79 b_R_Hand 0.3,1.2 b_L_Hand 0.3,1.2 b_C_Head 0.05,1.6 other 0.05,1.6; head 0,1.6") != std::string::npos);
+	CHECK(text.size() == text.rfind("; head 0,1.6") + std::string("; head 0,1.6").size());
+}
+
+TEST_CASE("the anchor rules' text does not depend on the C runtime's locale, or two copies would hash different rules")
+{
+	const std::string before = socket_reads::AnchorRulesText();
+	// A locale whose decimal point is a comma, by the names Windows and a POSIX runtime take; if neither is installed
+	// the text is still the same by the check above.
+	const char* oldLocale = setlocale(LC_ALL, nullptr);
+	const std::string saved = oldLocale ? oldLocale : "C";
+	for (const char* name : {"de-DE", "German_Germany.1252", "de_DE.UTF-8", "fr-FR", "French_France.1252"}) {
+		if (!setlocale(LC_ALL, name)) continue;
+		CHECK(socket_reads::AnchorRulesText() == before);
+		break;
+	}
+	setlocale(LC_ALL, saved.c_str());
+	CHECK(before.find("0.2,1") != std::string::npos);
 }
 
 TEST_CASE("the anchor's offsets by call site and socket name")

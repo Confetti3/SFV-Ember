@@ -63,6 +63,7 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 //   src/mod/ScenesSkip.cxx: the KO stop and the phase's ticks the cuts are decided by
 //   src/mod/SfvAdapter.cxx: ReseedRandom's place formula and fighter draw reset; OnInputRecord's input while loading
 //   src/mod/GameInput.hxx: RecordedInput, what a pad records while the battle loads
+//   src/mod/SocketReads.cxx: Policy and AnchorPosition, the rules the anchor text names the sites and offsets of
 // 1 from 0.1.1 (the demo guard).
 constexpr int kRollbackCodeRules = 1;
 
@@ -77,8 +78,8 @@ constexpr int kRollbackCodeRules = 1;
 // roll back (kRollbackCrtMath), where their battles run the tick's tasks
 // (kRollbackTickTasks, or the placement -sfve_tasks gave a development build)
 // and whether the fight socket reads that may feed fight state are anchored
-// to the fight's position, with the anchor rules' version, call sites and
-// offsets (ChooseSocketAnchor, socket_reads::AnchorRulesText). First made
+// to the fight's position, with the anchor rules' call sites and offsets
+// (ChooseSocketAnchor, socket_reads::AnchorRulesText). First made
 // once the config is loaded.
 const std::string& LayoutRulesText();
 // The rules' id, 16 hex digits: a hash of LayoutRulesText. The same for every
