@@ -578,7 +578,11 @@ overlay::OverlayUi::Shown Draw()
 			input::RoomStateName(snapshot.session.room), input::MatchStateName(snapshot.session.match));
 	}
 	PublishStatus(shell);
-	return {presentation.Visible(), presentation.Available() ? sf4e::ui::F10Owner::Menu :
+	// The keys and the mouse are Ember's while its shell is shown, and while
+	// Training's lab controls are open, as SF4 Ember's overlay captures them
+	// (input::CapturesInput): the controls move with the arrows, Enter and
+	// Esc, which SFV would also take as the fighter's moves and its pause.
+	return {presentation.Visible() || TrainingControlsOpen(), presentation.Available() ? sf4e::ui::F10Owner::Menu :
 		trainingRoom.InRoom() ? sf4e::ui::F10Owner::RoomTraining : sf4e::ui::F10Owner::Game};
 }
 

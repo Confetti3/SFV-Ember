@@ -40,7 +40,9 @@ struct OverlayUi {
 	std::function<void()> beginFrame;
 	// Render thread, inside the ImGui frame, every frame the game presents.
 	struct Shown {
-		bool shown = false;     // the interface is on screen: the keys and the mouse are its own
+		// The interface takes the keys and the mouse (its menus are on screen):
+		// with the game window's focus, they are its own.
+		bool shown = false;
 		// Who F10 is for now: the interface when it may show, the way back to
 		// the room in a room's Training, else the game (ui/Win32Input.hxx).
 		sf4e::ui::F10Owner f10 = sf4e::ui::F10Owner::Game;

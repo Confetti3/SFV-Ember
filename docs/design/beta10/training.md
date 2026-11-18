@@ -58,7 +58,10 @@ that file is gone (review D8).
 - Pad buttons of its own for Record and Play: SFV Ember has no button layout
   page to bind them on; F7, F8 and the chord on standby do it.
 - Esc does not stop standby or a playback (SFV's keyboard pause is Esc);
-  F7 and F8 stop them.
+  F7 and F8 stop them. While the controls are open the keys and the mouse
+  are Ember's alone, as on SF4 (2026-11-18): the arrows, Enter and Esc move
+  through the controls and no longer also move the fighter or open SFV's
+  pause.
 - Invincibility marks on the meter: SFV's hurtbox invincibility was not read
   (it needs the box lists' state per tick; not settled in IDA), so none are
   drawn, as before.
