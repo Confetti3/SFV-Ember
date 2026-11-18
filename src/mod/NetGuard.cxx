@@ -1,5 +1,6 @@
 #include "mod/NetGuard.hxx"
 
+#include "common/sf4e__NetUtil.hxx"
 #include "mod/BuildKind.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/LagSim.hxx"
@@ -397,6 +398,29 @@ InternetConnectA_t o_InternetConnectA;
 InternetOpenUrlW_t o_InternetOpenUrlW;
 InternetOpenUrlA_t o_InternetOpenUrlA;
 
+// WinHTTP resolves and connects on threads of its own, so the addresses of an
+// Ember service are learned here, before the connection asks for them: the
+// name is looked up with the original getaddrinfo, and what it answers is what
+// the policy lets through on the service port.
+void LearnServiceAddresses(const std::string& host)
+{
+	if (!s_policy.IsServiceName(host.c_str())) return;
+	ADDRINFOA hints = {};
+	hints.ai_socktype = SOCK_STREAM;
+	ADDRINFOA* found = nullptr;
+	const std::string port = std::to_string(net::NetPolicy::kServicePort);
+	const int status = o_getaddrinfo(host.c_str(), port.c_str(), &hints, &found);
+	if (status != 0) {
+		Log("netguard: the service %s did not resolve (%d)", host.c_str(), status);
+		return;
+	}
+	for (const ADDRINFOA* a = found; a; a = a->ai_next) {
+		net::Address address;
+		if (net::ToAddress(a->ai_addr, (int)a->ai_addrlen, &address)) s_policy.AllowServiceAddress(address);
+	}
+	freeaddrinfo(found);
+}
+
 HINET WINAPI h_WinHttpConnect(HINET session, LPCWSTR server, WORD port, DWORD reserved)
 {
 	if (!s_policy.AllowsHostNameW(server)) {
@@ -404,6 +428,7 @@ HINET WINAPI h_WinHttpConnect(HINET session, LPCWSTR server, WORD port, DWORD re
 		SetLastError(kNameNotResolved);
 		return nullptr;
 	}
+	LearnServiceAddresses(Narrow(server));
 	return o_WinHttpConnect(session, server, port, reserved);
 }
 
@@ -509,6 +534,11 @@ bool InstallNetGuard()
 		{L"wininet.dll", "InternetOpenUrlA", (void*)h_InternetOpenUrlA, Slot(&o_InternetOpenUrlA)},
 	};
 
+	// The only Ember service the game process calls itself: the problem report's
+	// intake, the host the reporter posts to. The helper (a process of its own,
+	// outside this guard) carries rooms, the bridge and Discord.
+	s_policy.AllowService(sf4e::ReportIntakeHost);
+
 	char computer[256];
 	DWORD computerLen = sizeof(computer);
 	if (GetComputerNameExA(ComputerNameDnsHostname, computer, &computerLen)) s_policy.AllowLocalName(computer);
@@ -534,7 +564,7 @@ bool InstallNetGuard()
 		guard.Add(h.name, (void*)GetProcAddress(module, h.name), h.detour, h.original);
 	}
 	const bool ok = !CommitHookSet(guard, "network guard");
-	Log("netguard: %s", ok ? "installed; only loopback and allowed peers are reachable" : "NOT installed");
+	Log("netguard: %s", ok ? "installed; only loopback, allowed peers and the report intake are reachable" : "NOT installed");
 	return ok;
 }
 
