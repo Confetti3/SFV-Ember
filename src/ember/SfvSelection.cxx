@@ -34,6 +34,7 @@
 
 #include "common/GameCatalog.hxx"
 #include "common/Localization.hxx"
+#include "netplay/SettingsStore.hxx"
 #include "common/SelectionAssetPath.hxx"
 #include "ui/SelectionArt.hxx"
 #include "ui/SelectionLabels.hxx"
@@ -96,14 +97,14 @@ SelectionImage Missing()
 }
 
 // Where the captured pictures are read from: the colour pack the package
-// names, then the package (SfvColourPack.hxx). Made on first use, on the
-// drawing thread.
+// names, in the data folder the launcher keeps it in, then the package
+// (SfvColourPack.hxx). Made on first use, on the drawing thread.
 const sfve::colours::PictureSources& Sources()
 {
 	static const sfve::colours::PictureSources sources = [] {
 		std::string problem;
 		sfve::colours::PictureSources installed =
-			sfve::colours::InstalledSources(sfve::mod::ModuleFolder(), sfve::mod::DataFolder(), problem);
+			sfve::colours::InstalledSources(sfve::mod::ModuleFolder(), sf4e::netplay::SettingsStore::DefaultDirectory(), problem);
 		if (!problem.empty()) sfve::mod::Log("art: %s; the pictures are the package's alone", problem.c_str());
 		return installed;
 	}();
