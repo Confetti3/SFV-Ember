@@ -85,6 +85,9 @@ public:
 		int follower_; // -1: the reference
 	};
 
+	// Datagrams waiting for follower `follower`.
+	size_t ToFollower(size_t follower) const { return toFollower_.at(follower).size(); }
+
 private:
 	std::vector<std::deque<std::vector<uint8_t>>> toFollower_;
 	std::deque<std::pair<size_t, std::vector<uint8_t>>> toReference_;
@@ -215,6 +218,122 @@ TEST_CASE("a watcher takes P1's start state as P2 does, and P1 waits for both")
 	const uint64_t hash = p1.Layout().HashLive(HashScope::Peers);
 	CHECK(p2.Layout().HashLive(HashScope::Peers) == hash);
 	CHECK(watcher.Layout().HashLive(HashScope::Peers) == hash);
+}
+
+namespace {
+
+// Each copy's address ranges besides the value rule (mod/AddressRanges.hxx),
+// as its hashes read them: a Proton copy zeroes words in its own heaps below
+// 1 TB, a Windows copy has none. One set per copy, each copy's layout reading
+// its own (the tests run every copy in one process).
+std::vector<AddressRange> g_ranges[3];
+
+bool InRanges(const std::vector<AddressRange>& ranges, uint64_t value)
+{
+	if (value & 3) return false;
+	for (const AddressRange& r : ranges) {
+		if (value >= r.begin && value < r.end) return true;
+	}
+	return false;
+}
+bool Copy0Address(uint64_t value) { return InRanges(g_ranges[0], value); }
+bool Copy1Address(uint64_t value) { return InRanges(g_ranges[1], value); }
+bool Copy2Address(uint64_t value) { return InRanges(g_ranges[2], value); }
+constexpr AddressTest kCopyAddress[3] = {Copy0Address, Copy1Address, Copy2Address};
+
+// A Proton copy's first heap, and a number in it every copy's state holds:
+// fighter 0's x (16.16 fixed point 3.0) with y 0 is the word 0x30000.
+constexpr AddressRange kProtonHeap{0x30000, 0x130000};
+constexpr size_t kP1Position = 8;
+
+// Copy `copy` of a match whose own ranges are `own`, its layout reading them.
+StartAgreement::Config RangedRole(MockFighter& game, size_t copy, StartAgreement::Role role, std::vector<AddressRange> own)
+{
+	g_ranges[copy] = own;
+	game.Layout().SetAddressTest(kCopyAddress[copy]);
+	Int(game, kP1Position) = 0x30000;
+	Int(game, kP1Position + 4) = 0;
+	StartAgreement::Config c = Role(role);
+	c.addresses = std::move(own);
+	c.adoptAddresses = [copy](const std::vector<AddressRange>& taken) { g_ranges[copy] = taken; };
+	return c;
+}
+
+} // namespace
+
+TEST_CASE("a Proton P2 and a Windows P1 hash a number in P2's heap alike once they agree on the ranges")
+{
+	MockFighter p1, p2;
+	Exchange x(1);
+	Exchange::End referenceEnd(x, -1), followerEnd(x, 0);
+	StartAgreement::Config referenceConfig = RangedRole(p1, 0, StartAgreement::Role::Reference, {});
+	StartAgreement::Config followerConfig = RangedRole(p2, 1, StartAgreement::Role::Follower, {kProtonHeap});
+	// The same state, hashed apart: the 2026-11-17 false desyncs (EMBER-122).
+	REQUIRE(p1.Layout().HashLive(HashScope::Peers) != p2.Layout().HashLive(HashScope::Peers));
+
+	StartAgreement reference(p1, referenceEnd, referenceConfig);
+	StartAgreement follower(p2, followerEnd, followerConfig);
+	reference.Begin(1000, 1);
+	follower.Begin(1000);
+	Run({&reference, &follower}, 1000);
+
+	CHECK(follower.GetReport().result == StartAgreement::Result::Agreed);
+	CHECK(reference.GetReport().result == StartAgreement::Result::Agreed);
+	CHECK(follower.GetReport().regions.empty()); // nothing to repair: the states were equal
+	CHECK(InRanges(g_ranges[0], 0x30000));
+	CHECK(InRanges(g_ranges[1], 0x30000));
+	CHECK(InRanges(reference.GetReport().addresses, 0x30000));
+	CHECK(InRanges(follower.GetReport().addresses, 0x30000));
+	CHECK(p1.Layout().HashLive(HashScope::Peers) == p2.Layout().HashLive(HashScope::Peers));
+}
+
+TEST_CASE("a Proton P1's ranges reach a Windows P2, and a Windows watcher hashes as the fighters do")
+{
+	MockFighter p1, p2, watcher;
+	Exchange x(2);
+	Exchange::End referenceEnd(x, -1), p2End(x, 0), watcherEnd(x, 1);
+	StartAgreement::Config referenceConfig = RangedRole(p1, 0, StartAgreement::Role::Reference, {kProtonHeap});
+	StartAgreement::Config p2Config = RangedRole(p2, 1, StartAgreement::Role::Follower, {});
+	StartAgreement::Config watcherConfig = RangedRole(watcher, 2, StartAgreement::Role::Follower, {});
+	StartAgreement reference(p1, referenceEnd, referenceConfig);
+	StartAgreement second(p2, p2End, p2Config);
+	StartAgreement watching(watcher, watcherEnd, watcherConfig);
+	reference.Begin(1000, 2);
+	// The watcher asks first: P1 answers it only once it has P2's ranges.
+	watching.Begin(1000);
+	watching.Pump(1000);
+	reference.Pump(1000);
+	CHECK(x.ToFollower(1) == 0);
+	second.Begin(1000);
+	Run({&reference, &second, &watching}, 1000);
+
+	CHECK(second.GetReport().result == StartAgreement::Result::Agreed);
+	CHECK(watching.GetReport().result == StartAgreement::Result::Agreed);
+	CHECK(reference.GetReport().peers.at(1) == StartAgreement::Result::Agreed);
+	for (const std::vector<AddressRange>& taken : g_ranges) CHECK(InRanges(taken, 0x30000));
+	const uint64_t hash = p1.Layout().HashLive(HashScope::Peers);
+	CHECK(p2.Layout().HashLive(HashScope::Peers) == hash);
+	CHECK(watcher.Layout().HashLive(HashScope::Peers) == hash);
+}
+
+TEST_CASE("two Windows copies send no ranges and take none")
+{
+	MockFighter p1, p2;
+	Exchange x(1);
+	Exchange::End referenceEnd(x, -1), followerEnd(x, 0);
+	bool taken = false;
+	StartAgreement::Config referenceConfig = RangedRole(p1, 0, StartAgreement::Role::Reference, {});
+	StartAgreement::Config followerConfig = RangedRole(p2, 1, StartAgreement::Role::Follower, {});
+	referenceConfig.adoptAddresses = followerConfig.adoptAddresses = [&](const std::vector<AddressRange>&) { taken = true; };
+	StartAgreement reference(p1, referenceEnd, referenceConfig);
+	StartAgreement follower(p2, followerEnd, followerConfig);
+	reference.Begin(1000, 1);
+	follower.Begin(1000);
+	Run({&reference, &follower}, 1000);
+	CHECK(follower.GetReport().result == StartAgreement::Result::Agreed);
+	CHECK_FALSE(taken);
+	CHECK(reference.GetReport().addresses.empty());
+	CHECK(follower.GetReport().addresses.empty());
 }
 
 TEST_CASE("P1 waits for a watcher only a short grace after P2")
@@ -545,4 +664,40 @@ TEST_CASE("the summary and its question carry the match data")
 	CHECK(back.facts.fighters.empty());
 	plain.insert(plain.end(), askBytes.begin() + (ptrdiff_t)(plain.size()), askBytes.end());
 	CHECK_FALSE(Decode(plain.data(), plain.size(), 42, &back));
+}
+
+TEST_CASE("the summary and its question carry address ranges, and refuse a list past the limit")
+{
+	Message ask;
+	ask.type = Type::Ask;
+	ask.token = 42;
+	ask.asked = Asked::Summary;
+	ask.facts = Fighters(61, 0x2222);
+	ask.addresses = {{0x30000, 0x130000}, {0x140000000ull, 0x14441F000ull}};
+	const std::vector<uint8_t> askBytes = Encode(ask);
+	Message back;
+	REQUIRE(Decode(askBytes.data(), askBytes.size(), 42, &back));
+	CHECK(back.addresses == ask.addresses);
+	CHECK(back.facts == ask.facts);
+
+	// The largest summary: both fighters' most ranges and the most fighters.
+	Message summary;
+	summary.type = Type::Summary;
+	summary.token = 42;
+	summary.facts.fighters.assign(match_data::kMostFighters, {"Z41", 0, 61, true, 1});
+	for (uint64_t i = 0; i < kMostRanges; i++) summary.addresses.push_back({0x100000 * i, 0x100000 * i + 0x1000});
+	const std::vector<uint8_t> summaryBytes = Encode(summary);
+	CHECK(summaryBytes.size() <= kMaxDatagram);
+	REQUIRE(Decode(summaryBytes.data(), summaryBytes.size(), 42, &back));
+	CHECK(back.addresses == summary.addresses);
+
+	// A count past the limit, or a range that ends before it begins, is refused.
+	std::vector<uint8_t> tooMany = askBytes;
+	const uint16_t count = (uint16_t)(kMostRanges + 1);
+	memcpy(tooMany.data() + 28, &count, sizeof(count)); // the ranges follow the question's 28 bytes
+	CHECK_FALSE(Decode(tooMany.data(), tooMany.size(), 42, &back));
+	Message backwards = ask;
+	backwards.addresses = {{0x2000, 0x1000}};
+	const std::vector<uint8_t> backwardsBytes = Encode(backwards);
+	CHECK_FALSE(Decode(backwardsBytes.data(), backwardsBytes.size(), 42, &back));
 }

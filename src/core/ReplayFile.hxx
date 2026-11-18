@@ -24,6 +24,7 @@
 // not match. A file it accepts plays from its first frame to its last.
 
 #include "core/ReplayFrames.hxx"
+#include "core/StateRegions.hxx"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -44,6 +45,7 @@ constexpr const wchar_t* kExtension = L".sfvreplay";
 constexpr size_t kMostFrames = 2'000'000;
 constexpr size_t kMostHeaderBytes = 64 * 1024;
 constexpr size_t kMostFileBytes = 64ull * 1024 * 1024;
+constexpr size_t kMostAddressRanges = 64;
 
 // One side of the battle.
 struct Player {
@@ -104,6 +106,12 @@ struct Header {
 	// another state says so. Written only when known, as 16 hex digits; 0 for
 	// a header without it.
 	uint64_t startHash = 0;
+	// The address ranges the copies agreed on before frame 0
+	// (core/StartAgreement.hxx: a Proton fighter's heaps and images below
+	// 1 TB), which the playback's hashes take too, or its checkpoints would
+	// part from the recording's on a number in them. Written only when there
+	// are some; at most kMostAddressRanges.
+	std::vector<AddressRange> addresses;
 	int inputDelay = -1;  // the delay this copy played at (watchers: the fighters'); for the record
 	std::vector<Game> games;
 	// The battle went back to the room by its WIN's decision. False for one

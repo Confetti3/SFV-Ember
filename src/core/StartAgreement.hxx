@@ -19,12 +19,13 @@
 // The follower asks, the reference answers; the reference keeps no state per
 // question, so a lost datagram is simply asked again:
 //   1. the reference's summary: its layout id, its peers' hash of the whole
-//      state, how many regions it lists, and what its battle computes with
-//      (core/MatchData.hxx: each fighter's balance version and move data),
-//      which the follower's question carries too. Facts that differ end the
-//      agreement on both sides (Result::DataDiffers): no repair makes two
-//      copies that compute with different data play the same match. Equal
-//      hashes: done, nothing written.
+//      state, how many regions it lists, what its battle computes with
+//      (core/MatchData.hxx: each fighter's balance version and move data)
+//      and its address ranges (below), which the follower's question carries
+//      too. Facts that differ end the agreement on both sides
+//      (Result::DataDiffers): no repair makes two copies that compute with
+//      different data play the same match. Equal hashes: done, nothing
+//      written.
 //   2. its region list: per region an identity, the peers' hash, the size and
 //      its place in its own layout. A region is named by its owner the same
 //      way in every process, so a stable name pairs it; a name that is not
@@ -45,6 +46,16 @@
 //   5. the follower says it is done, with its hash, until the reference
 //      acknowledges it. The reference starts once P2 is done and each watcher
 //      is too (or a short grace after P2), or at the time limit.
+//
+// The address ranges: which words a hash zeroes as addresses is each
+// process's own beyond the value rule (mod/AddressRanges.hxx: a Proton copy's
+// heaps and images below 1 TB), and a number in one copy's ranges would be
+// zeroed in that copy's hash only. So both fighters' ranges become every
+// copy's: P2's question carries its own, P1 takes them on top of its own and
+// answers with both (Config::adoptAddresses, then the state is hashed again),
+// and P2 and every watcher take that set. P1 answers a watcher only once it
+// has P2's, so the watchers hash as the fighters do; a watcher's own ranges
+// are not sent on (the fighters do not wait for a watcher).
 //
 // The transport is the match's own UDP path, GGPO's ports before GGPO binds
 // them (StartChannel; UdpStartChannel): the room's link has no message a
@@ -75,7 +86,10 @@ namespace sfve {
 namespace start_state {
 
 constexpr uint16_t kMagic = 0x5345;
-constexpr uint16_t kVersion = 2; // 2: the summary and its question carry the match data
+// 2: the summary and its question carry the match data; 3: and the address
+// ranges. Part of the layout's rules (mod::LayoutRulesId), so copies whose
+// agreements cannot read each other never share a room.
+constexpr uint16_t kVersion = 3;
 // Every datagram's most bytes (the largest, a region list's or a chunk's, is
 // under it; static_asserts in the .cxx).
 constexpr size_t kMaxDatagram = 900;
@@ -84,6 +98,10 @@ constexpr size_t kMaxDatagram = 900;
 constexpr size_t kChunkBytes = 768;
 // Region entries per list datagram.
 constexpr size_t kEntriesPerPart = 36;
+// A copy's own address ranges, at most (mod::RangesToShare fits them); a
+// summary carries both fighters', so twice that.
+constexpr size_t kMostOwnRanges = 16;
+constexpr size_t kMostRanges = 2 * kMostOwnRanges;
 
 // At GGPO's type byte (its header: magic u16, sequence u16, type u8), values
 // GGPO's messages never take.
@@ -153,8 +171,10 @@ struct Message {
 	// Summary
 	uint64_t layoutId = 0, hash = 0;
 	uint32_t entryCount = 0;
-	// Summary, and an Ask for it: the sender's match data.
+	// Summary, and an Ask for it: the sender's match data and address ranges
+	// (an Ask: the asker's own; a Summary: both fighters', see the top).
 	match_data::Facts facts;
+	std::vector<AddressRange> addresses;
 	// Entries
 	uint32_t part = 0;
 	std::vector<Entry> entries;
@@ -233,6 +253,12 @@ public:
 		std::function<bool(const std::string&)> stableName;
 		// What this copy's battle computes with (core/MatchData.hxx).
 		match_data::Facts facts;
+		// This copy's own address ranges (at most kMostOwnRanges; more are
+		// not sent), and how the copy takes the match's: every range given
+		// becomes an address to its hashes, its own included (see the top).
+		// Unset: none sent and nothing taken.
+		std::vector<AddressRange> addresses;
+		std::function<void(const std::vector<AddressRange>&)> adoptAddresses;
 	};
 
 	// One repaired or still differing region, for the log and the report.
@@ -255,6 +281,9 @@ public:
 		std::vector<uint8_t> stateBefore;  // a follower's whole state at Begin (laid out by SaveTo)
 		// A reference: each peer's result as it said it (Running: never said).
 		std::vector<Result> peers;
+		// The address ranges this copy took (Config::adoptAddresses), its own
+		// among them; empty when it took none. A recording keeps them.
+		std::vector<AddressRange> addresses;
 		uint64_t elapsedMs = 0;
 		// DataDiffers: how this copy's facts part from the other's (a
 		// follower's: P1's; P1's: P2's), and the other copy's facts.
@@ -276,6 +305,9 @@ private:
 	void Answer(size_t peer, const start_state::Message& m);
 	// A peer's match data, as its question for the summary carried it.
 	void NotePeerFacts(size_t peer, const match_data::Facts& facts);
+	// Takes `ranges` as addresses beside the ones taken so far, then hashes
+	// the start state again (its regions' hashes and the whole's).
+	void Adopt(const std::vector<AddressRange>& ranges);
 	void PumpFollower(uint64_t nowMs);
 	void OnFollowerMessage(const start_state::Message& m, uint64_t nowMs);
 	void AskDue(uint64_t nowMs);
@@ -296,11 +328,15 @@ private:
 	uint64_t layoutId_ = 0;
 
 	std::vector<size_t> offsets_; // each region's place in state_
+	// The address ranges taken so far: this copy's own, then the fighters'
+	// (a reference: its own and P2's, which its summary carries).
+	std::vector<AddressRange> addresses_;
 
 	// Reference.
 	uint64_t requiredDoneMs_ = 0; // when the last required peer said it was done (0: not yet)
 	std::map<uint32_t, std::vector<uint64_t>> addressUnits_; // per region asked for, of state_
 	std::set<size_t> loggedWatcherData_;                       // watchers whose differing data was logged
+	std::set<size_t> addressesHeard_;                          // required peers whose ranges were taken
 
 	// Follower.
 	enum class Step { Summary, Entries, Bytes, Done };

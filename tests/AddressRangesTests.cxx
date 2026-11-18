@@ -8,7 +8,7 @@
 
 #include <memory>
 
-using sfve::mod::AddressRange;
+using sfve::AddressRange;
 using sfve::mod::AddressRanges;
 using sfve::mod::AddressRule;
 using sfve::mod::LooksLikeAddress;
@@ -183,6 +183,52 @@ TEST_CASE("start ranges are addresses under either rule, and the arenas come on 
 	CHECK(sfve::mod::ChooseAddressRule({0x00000204F5F98000ull}) == AddressRule::Value);
 	CHECK_FALSE(LooksLikeAddress(0x140001000ull));
 	CHECK(sfve::mod::AddressRuleText() == "value (words above 1 TB)");
+}
+
+TEST_CASE("fitted ranges join the closest neighbours first and never lose an address")
+{
+	const AddressRanges four = AddressRanges::Joined({{0x10000, 0x20000}, {0x30000, 0x40000}, {0x100000, 0x110000}, {0x140000000ull, 0x144000000ull}}, 0);
+	CHECK(four.Fitted(4).Ranges().size() == 4);
+	const AddressRanges three = four.Fitted(3);
+	REQUIRE(three.Ranges().size() == 3);
+	CHECK(three.Ranges()[0].begin == 0x10000); // the 64 KB gap went first
+	CHECK(three.Ranges()[0].end == 0x40000);
+	CHECK(three.Ranges()[1].begin == 0x100000);
+	const AddressRanges one = four.Fitted(1);
+	REQUIRE(one.Ranges().size() == 1);
+	for (const AddressRange& r : four.Ranges()) CHECK((one.Contains(r.begin) && one.Contains(r.end - 4)));
+	CHECK(four.Fitted(0).Ranges().empty());
+}
+
+TEST_CASE("a Proton copy shares its start ranges, and the agreed ranges make a number in them an address on every copy")
+{
+	// A Windows copy: nothing below 1 TB to share, and 0x30000 is a number.
+	sfve::mod::SetStartRanges({});
+	CHECK(sfve::mod::ChooseAddressRule({0x00000204F5F98000ull}) == AddressRule::Value);
+	CHECK(sfve::mod::RangesToShare(16).empty());
+	CHECK(sfve::mod::LowRangesText() == "none");
+	CHECK_FALSE(LooksLikeAddress(0x30000));
+	// The Proton fighter's ranges, as the start agreement hands them over.
+	const std::vector<AddressRange> proton = {{0x30000, 0x130000}, {0x140000000ull, 0x14441F000ull}};
+	sfve::mod::AdoptAgreedRanges(proton);
+	CHECK(LooksLikeAddress(0x30000));
+	CHECK(LooksLikeAddress(0x140001000ull));
+	CHECK_FALSE(LooksLikeAddress(0x130000));
+	CHECK(sfve::mod::AddressRuleText() == "value (words above 1 TB, and in the 2 range(s) the fighters agreed on before frame 0)");
+	CHECK(sfve::mod::LowRangesText() == "0x30000-0x130000, 0x140000000-0x14441F000");
+	// The next battle starts from this copy's own again.
+	CHECK(sfve::mod::ChooseAddressRule({0x00000204F5F98000ull}) == AddressRule::Value);
+	CHECK_FALSE(LooksLikeAddress(0x30000));
+	CHECK(sfve::mod::AddressRuleText() == "value (words above 1 TB)");
+
+	// The Proton copy itself shares its start ranges, at most as many as asked.
+	sfve::mod::SetStartRanges(AddressRanges::Joined(proton, 0));
+	sfve::mod::ChooseAddressRule({0x00007FFFE0000000ull});
+	CHECK(sfve::mod::RangesToShare(16) == proton);
+	REQUIRE(sfve::mod::RangesToShare(1).size() == 1);
+	CHECK(sfve::mod::RangesToShare(1)[0].begin == 0x30000);
+	sfve::mod::SetStartRanges({});
+	sfve::mod::ChooseAddressRule({0x00000204F5F98000ull});
 }
 
 TEST_CASE("under Wine only an allocation for this process at no fixed address and no zero-bits limit goes top down")

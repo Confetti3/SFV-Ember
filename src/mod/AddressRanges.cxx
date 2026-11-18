@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #include <stdio.h>
+#include <string.h>
 
 #include <algorithm>
 #include <atomic>
@@ -18,6 +19,11 @@ namespace {
 std::atomic<const AddressRanges*> s_published{nullptr};
 std::atomic<AddressRule> s_rule{AddressRule::Value};
 AddressRanges s_start; // set before any battle, then only read
+// For the rule's text: this battle's arenas (ChooseAddressRule) and the
+// ranges the start agreement added (AdoptAgreedRanges). Each is replaced
+// whole and never freed, so a reader keeps the set it fetched.
+std::atomic<const AddressRanges*> s_arenas{nullptr};
+std::atomic<const AddressRanges*> s_agreed{nullptr};
 
 // `a` and `b` as one set.
 AddressRanges Union(const AddressRanges& a, const AddressRanges& b)
@@ -52,6 +58,23 @@ bool AddressRanges::Contains(uint64_t value) const
 	const auto next = std::upper_bound(ranges_.begin(), ranges_.end(), value,
 		[](uint64_t v, const AddressRange& range) { return v < range.begin; });
 	return next != ranges_.begin() && value < std::prev(next)->end;
+}
+
+AddressRanges AddressRanges::Fitted(size_t most) const
+{
+	AddressRanges fitted = *this;
+	std::vector<AddressRange>& r = fitted.ranges_;
+	while (most && r.size() > most) {
+		// The two neighbours closest together become one.
+		size_t closest = 0;
+		for (size_t i = 1; i + 1 < r.size(); i++) {
+			if (r[i + 1].begin - r[i].end < r[closest + 1].begin - r[closest].end) closest = i;
+		}
+		r[closest].end = r[closest + 1].end;
+		r.erase(r.begin() + (ptrdiff_t)closest + 1);
+	}
+	if (!most) r.clear();
+	return fitted;
 }
 
 AddressRule RuleForGameHeap(const std::vector<uint64_t>& gameHeap)
@@ -199,7 +222,10 @@ AddressRule ChooseAddressRule(const std::vector<uint64_t>& gameHeap)
 	const AddressRule rule = RuleForGameHeap(gameHeap);
 	// The ranges first, then the rule: the value rule's set (the start ranges
 	// alone) drops the last battle's arenas.
-	PublishProcessRanges(rule == AddressRule::LowHeap ? Union(s_start, ArenasHolding(ReadCommittedRegions(), gameHeap, kJoinGap)) : s_start);
+	const AddressRanges arenas = rule == AddressRule::LowHeap ? ArenasHolding(ReadCommittedRegions(), gameHeap, kJoinGap) : AddressRanges();
+	s_arenas.store(new AddressRanges(arenas), std::memory_order_release);
+	s_agreed.store(nullptr, std::memory_order_release);
+	PublishProcessRanges(Union(s_start, arenas));
 	s_rule.store(rule, std::memory_order_release);
 	if (rule == AddressRule::Value) {
 		Log("address test: %s; the game's heap objects lie from 0x%llX to 0x%llX%s", AddressRuleText().c_str(),
@@ -218,19 +244,42 @@ AddressRule CurrentAddressRule()
 	return s_rule.load(std::memory_order_acquire);
 }
 
+std::vector<AddressRange> RangesToShare(size_t most)
+{
+	const AddressRanges* published = PublishedProcessRanges();
+	std::vector<AddressRange> low;
+	for (const AddressRange& r : published ? published->Ranges() : std::vector<AddressRange>()) {
+		if (r.begin < kHighAddresses) low.push_back({r.begin, (std::min)(r.end, kHighAddresses)});
+	}
+	return AddressRanges::Joined(std::move(low), 0).Fitted(most).Ranges();
+}
+
+void AdoptAgreedRanges(const std::vector<AddressRange>& agreed)
+{
+	const AddressRanges taken = AddressRanges::Joined(agreed, 0);
+	const AddressRanges* published = PublishedProcessRanges();
+	// The agreed set first (the text reads it with the published set), then
+	// the set the hashes read.
+	s_agreed.store(new AddressRanges(taken), std::memory_order_release);
+	PublishProcessRanges(published ? Union(*published, taken) : taken);
+	Log("address test: %s, as the start agreement settled; below 1 TB: %s", AddressRuleText().c_str(), LowRangesText().c_str());
+}
+
 std::string AddressRuleText()
 {
-	// The published set holds the start ranges too; the arenas are the rest.
-	char start[96] = "";
+	char start[192] = "";
 	if (!s_start.Ranges().empty()) {
 		snprintf(start, sizeof(start), ", and in %zu start range(s) (heaps and images made before the game ran)", s_start.Ranges().size());
 	}
-	if (CurrentAddressRule() == AddressRule::Value) return std::string("value (words above 1 TB") + start + ")";
-	const AddressRanges* published = PublishedProcessRanges();
-	std::vector<AddressRange> arenas;
-	for (const AddressRange& r : published ? published->Ranges() : std::vector<AddressRange>()) {
-		if (!s_start.Contains(r.begin)) arenas.push_back(r);
+	const AddressRanges* agreed = s_agreed.load(std::memory_order_acquire);
+	if (agreed && !agreed->Ranges().empty()) {
+		const size_t length = strlen(start);
+		snprintf(start + length, sizeof(start) - length, ", and in the %zu range(s) the fighters agreed on before frame 0",
+			agreed->Ranges().size());
 	}
+	if (CurrentAddressRule() == AddressRule::Value) return std::string("value (words above 1 TB") + start + ")";
+	const AddressRanges* chosen = s_arenas.load(std::memory_order_acquire);
+	const std::vector<AddressRange> arenas = chosen ? chosen->Ranges() : std::vector<AddressRange>();
 	if (arenas.empty()) return std::string("low heap (words above 1 TB") + start + "; no arena found)";
 	uint64_t bytes = 0;
 	for (const AddressRange& r : arenas) bytes += r.end - r.begin;
@@ -238,6 +287,19 @@ std::string AddressRuleText()
 	snprintf(text, sizeof(text), "low heap (words above 1 TB, and in %zu arena(s) from 0x%llX to 0x%llX, %llu MB", arenas.size(),
 		(unsigned long long)arenas.front().begin, (unsigned long long)arenas.back().end, (unsigned long long)(bytes >> 20));
 	return std::string(text) + start + ")";
+}
+
+std::string LowRangesText()
+{
+	const AddressRanges* published = PublishedProcessRanges();
+	std::string text;
+	for (const AddressRange& r : published ? published->Ranges() : std::vector<AddressRange>()) {
+		if (r.begin >= kHighAddresses) continue;
+		char one[48];
+		snprintf(one, sizeof(one), "%s0x%llX-0x%llX", text.empty() ? "" : ", ", (unsigned long long)r.begin, (unsigned long long)r.end);
+		text += one;
+	}
+	return text.empty() ? "none" : text;
 }
 
 } // namespace sfve::mod

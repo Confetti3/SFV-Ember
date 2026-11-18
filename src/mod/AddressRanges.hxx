@@ -33,27 +33,34 @@
 // The two arena rules below then only serve a low heap the top-down
 // allocations did not lift.
 //
-// What remains unsafe: a low-heap copy against a normal one can still part on
-// an integer that falls inside the low copy's arenas (a count of 0x02A41F10
-// is a number to the normal copy and an address to the low one), and two
-// low-heap copies whose arenas differ can too. Private memory that is not the
-// game's heap (a TEB, another allocator's block) lying within kJoinGap of an
-// arena with nothing between is taken as arena. The start agreement does not
-// carry the rule (that would change its wire and need a players' notice for
-// the refused match), so such a pair plays, and a difference shows as a
-// desync whose logs say which rule each copy took.
+// The start ranges and the arenas are this process's own, so on their own
+// they would part two copies on a number: 0x30000 (a 16.16 value of 3.0 in
+// CharaMotionPart) lies in a Proton copy's first heap and is zeroed in its
+// hash, while a Windows copy hashes it as the number it is. Equal states,
+// unequal hashes: the false desyncs of 2026-11-17 (a Proton Karin against
+// Windows copies, EMBER-122, the Proton copy the odd one out in every match).
+// So the copies agree on the ranges before frame 0 (core/StartAgreement.hxx):
+// each fighter sends its own (RangesToShare), and every copy of the match
+// takes both fighters' as addresses (AdoptAgreedRanges), so a word in either
+// fighter's ranges is zeroed in every copy's hash alike. A Windows copy's own
+// are none, so two Windows copies hash as they always did.
+//
+// What remains: a watcher's own ranges are not the fighters' (they never wait
+// for a watcher), so a Proton watcher of a Windows match can still see a
+// false mismatch, which is a watcher's diagnostic only; and a session that
+// started without the agreement (no answer in time) keeps each copy's own.
+// The report lists the words each copy zeroed below 1 TB, so such a case
+// shows for what it is (adapter::desync::WordLines).
 
+#include "core/StateRegions.hxx"
+
+#include <stddef.h>
 #include <stdint.h>
 
 #include <string>
 #include <vector>
 
 namespace sfve::mod {
-
-struct AddressRange {
-	uint64_t begin = 0; // first byte
-	uint64_t end = 0;   // one past the last
-};
 
 class AddressRanges {
 public:
@@ -64,6 +71,10 @@ public:
 	static AddressRanges Joined(std::vector<AddressRange> committed, uint64_t joinGap);
 
 	bool Contains(uint64_t value) const;
+	// At most `most` ranges holding every address these hold: past `most`,
+	// the neighbours with the smallest gap between them are joined (more is
+	// taken as addresses, never less). Pure.
+	AddressRanges Fitted(size_t most) const;
 	const std::vector<AddressRange>& Ranges() const { return ranges_; }
 
 private:
@@ -136,9 +147,25 @@ const AddressRanges* PublishedProcessRanges();
 AddressRule ChooseAddressRule(const std::vector<uint64_t>& gameHeap);
 // The rule last chosen (Value before any); any thread.
 AddressRule CurrentAddressRule();
+
+// What this copy sends the others before frame 0 (core/StartAgreement.hxx):
+// the published set's ranges below 1 TB (the start ranges, and the arenas
+// under the low-heap rule), at most `most` (Fitted). None on a Windows copy
+// whose heap lies above 1 TB. Game thread, after ChooseAddressRule.
+std::vector<AddressRange> RangesToShare(size_t most);
+// Takes `agreed` (the fighters' ranges as the start agreement settled them,
+// this copy's own among them) as addresses on top of the published set, and
+// logs it ("address test:"); the state hash changes with it. The next
+// battle's ChooseAddressRule drops it again. Game thread.
+void AdoptAgreedRanges(const std::vector<AddressRange>& agreed);
+
 // The rule in words, for the log and a desync report's head: "value (words
 // above 1 TB)" or "low heap (words above 1 TB, and in 3 arena(s) from
-// 0x2000000 to 0x9F00000, 120 MB)". Any thread.
+// 0x2000000 to 0x9F00000, 120 MB)", with the start ranges and the agreed
+// ranges when there are any. Any thread.
 std::string AddressRuleText();
+// Every range below 1 TB this copy's hashes zero words in, "0x30000-0x130000,
+// 0x140000000-0x14441F000", or "none". Any thread.
+std::string LowRangesText();
 
 } // namespace sfve::mod

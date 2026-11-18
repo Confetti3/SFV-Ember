@@ -237,6 +237,25 @@ TEST_CASE("a replay's header keeps P1's start state hash, and one written withou
 	CHECK(back.header.startHash == 0);
 }
 
+TEST_CASE("a replay's header keeps the address ranges the copies agreed on, and refuses a range that ends before it begins")
+{
+	replay::Replay r = SampleReplay();
+	r.header.addresses = {{0x30000, 0x130000}, {0x140000000ull, 0x14441F000ull}};
+	std::vector<uint8_t> bytes = replay::Encode(r);
+	replay::Replay back;
+	std::string error;
+	REQUIRE_MESSAGE(replay::Decode(bytes.data(), bytes.size(), &back, &error), error);
+	CHECK(back.header.addresses == r.header.addresses);
+	// None: not written, and a header without them reads none.
+	bytes = replay::Encode(SampleReplay());
+	CHECK(std::string(bytes.begin(), bytes.end()).find("addresses") == std::string::npos);
+	REQUIRE_MESSAGE(replay::Decode(bytes.data(), bytes.size(), &back, &error), error);
+	CHECK(back.header.addresses.empty());
+	r.header.addresses = {{0x2000, 0x1000}};
+	bytes = replay::Encode(r);
+	CHECK_FALSE(replay::Decode(bytes.data(), bytes.size(), &back, &error));
+}
+
 TEST_CASE("the recorder keeps a frame's last report, and only frames made final")
 {
 	replay::Recorder rec;

@@ -41,8 +41,12 @@ static_assert(kBytesHeader + kChunkBytes + kAddressBitBytes <= kMaxDatagram, "a 
 static_assert(kChunkBytes % 4 == 0, "a chunk starts on an address unit");
 // The match data's most bytes (core/MatchData.hxx: a count, 24 bytes a fighter).
 constexpr size_t kMostFactsBytes = 1 + match_data::kMostFighters * 24;
-static_assert(kAskSize + kMostFactsBytes <= kMaxDatagram, "a summary's question is too big");
-static_assert(kSummarySize + kMostFactsBytes <= kMaxDatagram, "a summary is too big");
+// Address ranges: a u16 count, a u16 0, then each range's begin and end (u64).
+constexpr size_t kRangesHeader = 4;
+constexpr size_t kRangeSize = 16;
+constexpr size_t kMostRangesBytes = kRangesHeader + kMostRanges * kRangeSize;
+static_assert(kAskSize + kMostRangesBytes + kMostFactsBytes <= kMaxDatagram, "a summary's question is too big");
+static_assert(kSummarySize + kMostRangesBytes + kMostFactsBytes <= kMaxDatagram, "a summary is too big");
 
 class Writer {
 public:
@@ -55,11 +59,38 @@ public:
 	}
 	void Put(const uint8_t* data, size_t size) { out_.insert(out_.end(), data, data + size); }
 	void Put(const match_data::Facts& facts) { match_data::Encode(facts, &out_); }
+	void Put(const std::vector<AddressRange>& ranges)
+	{
+		const size_t count = std::min(ranges.size(), kMostRanges);
+		Put<uint16_t>((uint16_t)count);
+		Put<uint16_t>(0);
+		for (size_t i = 0; i < count; i++) {
+			Put<uint64_t>(ranges[i].begin);
+			Put<uint64_t>(ranges[i].end);
+		}
+	}
 	std::vector<uint8_t> Take() { return std::move(out_); }
 
 private:
 	std::vector<uint8_t> out_;
 };
+
+// The ranges at `data`, then the match data filling the rest: a summary's
+// and its question's tail. False when either does not read.
+bool DecodeRangesAndFacts(const uint8_t* data, size_t size, std::vector<AddressRange>* ranges, match_data::Facts* facts)
+{
+	ByteReader r(data, size);
+	uint16_t count = 0, pad = 0;
+	if (!r.Get(&count) || !r.Get(&pad) || count > kMostRanges || r.Left() < (size_t)count * kRangeSize) return false;
+	ranges->resize(count);
+	for (AddressRange& range : *ranges) {
+		r.Get(&range.begin);
+		r.Get(&range.end);
+		if (range.end < range.begin) return false;
+	}
+	const size_t used = kRangesHeader + (size_t)count * kRangeSize;
+	return match_data::Decode(data + used, size - used, facts);
+}
 
 bool Bit(const std::vector<uint64_t>& bits, size_t i)
 {
@@ -190,13 +221,17 @@ std::vector<uint8_t> Encode(const Message& m)
 		w.Put<uint16_t>(0);
 		w.Put<uint32_t>(m.a);
 		w.Put<uint32_t>(m.b);
-		if (m.asked == Asked::Summary) w.Put(m.facts);
+		if (m.asked == Asked::Summary) {
+			w.Put(m.addresses);
+			w.Put(m.facts);
+		}
 		break;
 	case Type::Summary:
 		w.Put<uint64_t>(m.layoutId);
 		w.Put<uint64_t>(m.hash);
 		w.Put<uint32_t>(m.entryCount);
 		w.Put<uint32_t>(0);
+		w.Put(m.addresses);
 		w.Put(m.facts);
 		break;
 	case Type::Entries:
@@ -256,8 +291,10 @@ bool Decode(const uint8_t* data, size_t size, uint64_t token, Message* out)
 		r.Get(&m.b);
 		if (asked < (uint8_t)Asked::Summary || asked > (uint8_t)Asked::Bytes) return false;
 		m.asked = (Asked)asked;
-		// Only the question for the summary carries the asker's match data.
-		if (m.asked == Asked::Summary ? !match_data::Decode(data + kAskSize, size - kAskSize, &m.facts) : size != kAskSize) {
+		// Only the question for the summary carries the asker's match data
+		// and address ranges.
+		if (m.asked == Asked::Summary ? !DecodeRangesAndFacts(data + kAskSize, size - kAskSize, &m.addresses, &m.facts)
+									  : size != kAskSize) {
 			return false;
 		}
 		break;
@@ -269,7 +306,9 @@ bool Decode(const uint8_t* data, size_t size, uint64_t token, Message* out)
 		r.Get(&m.hash);
 		r.Get(&m.entryCount);
 		r.Get(&pad32);
-		if (m.entryCount > kMostEntries || !match_data::Decode(data + kSummarySize, size - kSummarySize, &m.facts)) return false;
+		if (m.entryCount > kMostEntries || !DecodeRangesAndFacts(data + kSummarySize, size - kSummarySize, &m.addresses, &m.facts)) {
+			return false;
+		}
 		break;
 	}
 	case Type::Entries: {
@@ -455,12 +494,14 @@ void StartAgreement::Begin(uint64_t nowMs, size_t peers)
 	layoutId_ = layout.LayoutId();
 	report_.localBefore = layout.HashSaved(state_.data(), HashScope::Peers);
 	report_.localAfter = report_.localBefore;
+	addresses_.assign(config_.addresses.begin(), config_.addresses.begin() + (ptrdiff_t)std::min(config_.addresses.size(), kMostOwnRanges));
 	if (config_.role == Role::Reference) {
 		report_.reference = report_.localBefore;
 		report_.peers.assign(peers, Result::Running);
 		requiredDoneMs_ = 0;
 		addressUnits_.clear();
 		loggedWatcherData_.clear();
+		addressesHeard_.clear();
 		CoreLog("start: this copy's start state is the reference (hash %016llx, %zu regions compared); %zu peer(s) "
 			"compare theirs with it", (unsigned long long)report_.localBefore, entries_.size(), peers);
 		return;
@@ -546,14 +587,29 @@ void StartAgreement::Answer(size_t peer, const Message& m)
 	Message reply;
 	reply.token = config_.token;
 	switch (m.asked) {
-	case Asked::Summary:
+	case Asked::Summary: {
+		const bool required = peer < config_.requiredPeers;
+		// Taken whenever either fighter has ranges: this copy's own as sent
+		// (mod::RangesToShare may have joined some) become its addresses too,
+		// exactly as P2 takes them.
+		if (required && addressesHeard_.insert(peer).second && (!m.addresses.empty() || !addresses_.empty())) {
+			CoreLog("start: P2 zeroes words in %zu address range(s) below 1 TB, this copy in %zu; both copies take all of them",
+				m.addresses.size(), addresses_.size());
+			Adopt(std::vector<AddressRange>(m.addresses.begin(),
+				m.addresses.begin() + (ptrdiff_t)std::min(m.addresses.size(), kMostOwnRanges)));
+		}
+		// A watcher hashes by the fighters' ranges, so it waits for P2's: it
+		// asks again.
+		if (!required && addressesHeard_.size() < std::min(config_.requiredPeers, report_.peers.size())) return;
 		reply.type = Type::Summary;
 		reply.layoutId = layoutId_;
 		reply.hash = report_.localBefore;
 		reply.entryCount = (uint32_t)entries_.size();
 		reply.facts = config_.facts;
+		reply.addresses = addresses_;
 		NotePeerFacts(peer, m.facts);
 		break;
+	}
 	case Asked::Entries: {
 		const size_t from = (size_t)m.a * kEntriesPerPart;
 		if (from >= entries_.size()) return;
@@ -612,6 +668,25 @@ void StartAgreement::NotePeerFacts(size_t peer, const match_data::Facts& facts)
 
 // --- a follower ------------------------------------------------------------
 
+void StartAgreement::Adopt(const std::vector<AddressRange>& ranges)
+{
+	addresses_.insert(addresses_.end(), ranges.begin(), ranges.end());
+	if (!config_.adoptAddresses) return;
+	config_.adoptAddresses(addresses_);
+	report_.addresses = addresses_;
+	const StateLayout& layout = game_.Layout();
+	const uint64_t before = report_.localBefore;
+	entries_ = ListEntries(layout, state_.data(), config_.stableName);
+	report_.localBefore = layout.HashSaved(state_.data(), HashScope::Peers);
+	report_.localAfter = report_.localBefore;
+	addressUnits_.clear();
+	if (config_.role == Role::Reference) report_.reference = report_.localBefore;
+	if (report_.localBefore != before) {
+		CoreLog("start: with them this copy's start state hash is %016llx (was %016llx)", (unsigned long long)report_.localBefore,
+			(unsigned long long)before);
+	}
+}
+
 void StartAgreement::PumpFollower(uint64_t nowMs)
 {
 	size_t peer = 0;
@@ -639,6 +714,13 @@ void StartAgreement::OnFollowerMessage(const Message& m, uint64_t nowMs)
 		answered(Asked::Summary, 0, 0);
 		report_.reference = m.hash;
 		report_.otherFacts = m.facts;
+		// The fighters' ranges (this copy's own among them when it is P2) on
+		// top of this copy's own, before the hashes are compared.
+		if (!m.addresses.empty()) {
+			CoreLog("start: P1 says the fighters zero words in %zu address range(s) below 1 TB; this copy takes them too",
+				m.addresses.size());
+			Adopt(m.addresses);
+		}
 		if (const auto difference = match_data::Compare(config_.facts, m.facts)) {
 			report_.dataDifference = difference;
 			CoreLog("start: %s; this copy: %s; P1: %s", match_data::Describe(*difference).c_str(),
@@ -778,7 +860,10 @@ void StartAgreement::AskDue(uint64_t nowMs)
 		m.asked = asked;
 		m.a = a;
 		m.b = b;
-		if (asked == Asked::Summary) m.facts = config_.facts;
+		if (asked == Asked::Summary) {
+			m.facts = config_.facts;
+			m.addresses = addresses_;
+		}
 		Send(0, m);
 		return true;
 	};

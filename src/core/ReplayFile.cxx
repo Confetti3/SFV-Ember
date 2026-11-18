@@ -62,6 +62,11 @@ json HeaderJson(const Header& h)
 		snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)h.startHash);
 		j["startHash"] = hex;
 	}
+	if (!h.addresses.empty()) {
+		json ranges = json::array();
+		for (const AddressRange& r : h.addresses) ranges.push_back({r.begin, r.end});
+		j["addresses"] = ranges;
+	}
 	return j;
 }
 
@@ -109,6 +114,25 @@ uint64_t ReadStartHash(const json& j)
 	return strtoull(text.c_str(), nullptr, 16);
 }
 
+// The agreed address ranges: none for a header without the field; a list
+// that is not pairs of a begin and an end at or past it is refused.
+std::vector<AddressRange> ReadAddresses(const json& j)
+{
+	std::vector<AddressRange> out;
+	if (!j.contains("addresses")) return out;
+	const json& ranges = j.at("addresses");
+	if (!ranges.is_array() || ranges.size() > kMostAddressRanges) throw std::runtime_error("addresses is not a list of ranges");
+	for (const json& r : ranges) {
+		if (!r.is_array() || r.size() != 2 || !r[0].is_number_unsigned() || !r[1].is_number_unsigned()) {
+			throw std::runtime_error("an address range is not a begin and an end");
+		}
+		const AddressRange range{r[0].get<uint64_t>(), r[1].get<uint64_t>()};
+		if (range.end < range.begin) throw std::runtime_error("an address range ends before it begins");
+		out.push_back(range);
+	}
+	return out;
+}
+
 Player ReadPlayer(const json& j)
 {
 	Player p;
@@ -151,6 +175,7 @@ bool ReadHeader(const uint8_t* text, size_t size, Header* out, std::string* erro
 		h.timeFrames = Field<int>(j, "timeFrames");
 		h.seed = Field<uint32_t>(j, "seed");
 		h.startHash = ReadStartHash(j);
+		h.addresses = ReadAddresses(j);
 		h.inputDelay = Field<int>(j, "inputDelay");
 		const json& games = j.at("games");
 		if (!games.is_array() || games.size() > 1000) throw std::runtime_error("games is not a list of games");

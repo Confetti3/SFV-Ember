@@ -87,6 +87,7 @@ bool NetplayMode::StartSession(SfvAdapter& adapter)
 		// P1's start state, which a playback compares its own with, and the
 		// balance versions every copy agreed on before frame 0.
 		recording_.Header().startHash = startHash_;
+		recording_.Header().addresses = startAddresses_;
 		for (int side = 0; side < kPlayers; side++) {
 			recording_.Header().players[side].balanceVersion = match_data::SideVersion(adapter.BattleFacts(), side);
 		}
@@ -180,8 +181,11 @@ NetplayMode::Prepared NetplayMode::PrepareStart(SfvAdapter& adapter)
 	NetplayDevCommands::PerturbStart(adapter, config_.startPerturb);
 	pending_ = {c, seed, practice};
 	startHash_ = 0;
+	startAddresses_.clear();
 	if (replay_) {
-		// No peer to agree with: the recording says what P1 started from.
+		// No peer to agree with: the recording says what P1 started from,
+		// and which words the copies' hashes zeroed (mod/AddressRanges.hxx).
+		if (!replay_->header.addresses.empty()) AdoptAgreedRanges(replay_->header.addresses);
 		adapter::NotePlaybackStart(replay_->header.startHash, adapter.Layout().HashLive(HashScope::Peers));
 	} else {
 		BeginStartAgreement(adapter);
@@ -199,6 +203,10 @@ void NetplayMode::BeginStartAgreement(SfvAdapter& adapter)
 	// SfvLayoutRules) and the same in every process.
 	agreement.stableName = [](const std::string& name) { return name.rfind("game.", 0) != 0; };
 	agreement.facts = adapter.BattleFacts();
+	// Which words both fighters' hashes zero (mod/AddressRanges.hxx): this
+	// copy's ranges below 1 TB go to the others, and the match's come back.
+	agreement.addresses = RangesToShare(start_state::kMostOwnRanges);
+	agreement.adoptAddresses = AdoptAgreedRanges;
 	std::vector<uint16_t> ports{c.remotePort};
 	if (!c.watching && c.localPlayer == 0) {
 		// P1: P2 first, then each watcher it streams to.
@@ -236,6 +244,7 @@ bool NetplayMode::AgreeStart(SfvAdapter& adapter)
 		return false;
 	}
 	startHash_ = report.reference ? report.reference : report.localBefore;
+	startAddresses_ = report.addresses;
 	// A repair is reported as a desync is (it was one, before frame 0).
 	if (!report.regions.empty() && room_.Active()) {
 		adapter::ReportStartRepair(report, adapter.Layout(), room_.Watching(), pending_.config.inputDelay);

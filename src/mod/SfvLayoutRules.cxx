@@ -1,5 +1,7 @@
 #include "mod/SfvLayoutRules.hxx"
 
+#include "core/StartAgreement.hxx"
+
 #include "mod/ModConfig.hxx"
 #include "mod/SfvFlow.hxx"
 #include "mod/SfvOffsets.hxx"
@@ -67,7 +69,11 @@ std::string MakeLayoutRulesId()
 	// socket reads that may feed fight state are given the fight's position,
 	// and the version of the rules that decide them (ChooseSocketAnchor,
 	// socket_reads::kAnchorVersion).
-	text += "; address rule " + std::to_string(kAddressRuleVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath) +
+	// And the start agreement's version: it settles which words the hashes
+	// zero below 1 TB (start_state::kVersion 3, the fighters' address ranges),
+	// so two copies whose agreements cannot read each other hash apart.
+	text += "; address rule " + std::to_string(kAddressRuleVersion) + "; start agreement " +
+		std::to_string(start_state::kVersion) + "; rollback math " + CrtMathName(kRollbackCrtMath) +
 		"; rollback tick tasks " + TickTasksName(ChooseTickTasks(Config(), true)) + "; socket anchors " +
 		(ChooseSocketAnchor(Config()) ? std::to_string(socket_reads::kAnchorVersion) : std::string("off"));
 	return Hex(XXH3_64bits(text.data(), text.size()));

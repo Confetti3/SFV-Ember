@@ -69,6 +69,15 @@ struct RegionHash {
 // True for a value that is an address of this process.
 using AddressTest = bool (*)(uint64_t value);
 
+// A stretch of addresses an address test takes as addresses besides the
+// value rule's (mod/AddressRanges.hxx), as copies of one match exchange them
+// before frame 0 (core/StartAgreement.hxx).
+struct AddressRange {
+	uint64_t begin = 0; // first byte
+	uint64_t end = 0;   // one past the last
+	bool operator==(const AddressRange& o) const { return begin == o.begin && end == o.end; }
+};
+
 // Which words an address test reads (StateRegions.cxx, AddressAt): 1 tested
 // every 4-byte boundary, with a tie-break between overlapping windows; 2
 // tests only 8-byte boundaries of the real address. Two copies whose rules

@@ -111,6 +111,7 @@ void NetplayMode::NewBattle(SfvAdapter& adapter)
 	Enter(netplay::Event::BattleBound);
 	EndStartAgreement();
 	startHash_ = 0;
+	startAddresses_.clear();
 	exitAsked_ = false;
 	introSkip_ = {};
 	scenes_.Reset();

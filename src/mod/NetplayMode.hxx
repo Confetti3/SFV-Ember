@@ -198,8 +198,10 @@ private:
 	std::unique_ptr<UdpStartChannel> startChannel_;
 	std::unique_ptr<StartAgreement> startAgreement_;
 	// P1's peers' hash of the start state as agreed (this copy's own when P1's
-	// is not known), for the replay's header.
+	// is not known), and the address ranges the copies agreed on, for the
+	// replay's header.
 	uint64_t startHash_ = 0;
+	std::vector<AddressRange> startAddresses_;
 	uint32_t seed_ = kSessionSeed; // the session's: a rematch in place reseeds from it
 	uint32_t startTime_ = 0;       // the match's start time, kept the session's (Frame)
 	// The runtime asked the battle to end (Retire, Abort, Fail); the next
