@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #include <string>
+#include <vector>
 
 TEST_CASE("a file's folder is compared without case or slash direction")
 {
@@ -34,4 +35,35 @@ TEST_CASE("a loaded module is described by its path and version, and one that is
 	CHECK(sfve::mod::DescribeModule(L"no_such_runtime_140.dll", system) == "no_such_runtime_140.dll: not loaded");
 	CHECK_FALSE(sfve::mod::FileVersionText(std::wstring(system) + L"\\kernel32.dll").empty());
 	CHECK(sfve::mod::FileVersionText(L"C:\\no\\such\\file.dll").empty());
+}
+
+TEST_CASE("the modules besides Windows' own are named, the game folder's apart from the rest")
+{
+	using sfve::mod::OtherModules;
+	const std::vector<std::wstring> paths = {
+		L"C:\Games\SFV\StreetFighterV\Binaries\Win64\StreetFighterV.exe",
+		L"C:\Games\SFV\StreetFighterV\Binaries\Win64\sfv_ember.dll",
+		L"c:/games/sfv/Engine/Binaries/ThirdParty/PhysX/PhysX3_x64.dll",
+		L"C:\WINDOWS\System32\KERNEL32.DLL",
+		L"C:\Windows\WinSxS\amd64_microsoft.windows.common-controls\comctl32.dll",
+		L"C:\Users\someone\Polarity\polarity.live.0.0.dll",
+		L"C:\Program Files (x86)\Steam\gameoverlayrenderer64.dll",
+		L"C:\Program Files (x86)\Steam\gameoverlayrenderer64.dll",
+		L"C:\Games\SFVOther\other.dll", // a folder whose name only starts like the game's
+	};
+	const OtherModules modules = sfve::mod::SortModules(paths, L"C:\Windows", L"C:\Games\SFV");
+	CHECK(modules.game == std::vector<std::string>{"PhysX3_x64.dll", "StreetFighterV.exe", "sfv_ember.dll"});
+	CHECK(modules.elsewhere == std::vector<std::string>{"gameoverlayrenderer64.dll", "other.dll", "polarity.live.0.0.dll"});
+	CHECK(sfve::mod::OtherModulesText(modules) ==
+		"elsewhere: gameoverlayrenderer64.dll, other.dll, polarity.live.0.0.dll; in the game's folder: PhysX3_x64.dll, "
+		"StreetFighterV.exe, sfv_ember.dll");
+	CHECK(sfve::mod::OtherModulesText({}) == "none");
+	// No game folder known: every module not Windows' is elsewhere.
+	CHECK(sfve::mod::SortModules(paths, L"C:\Windows", L"").game.empty());
+}
+
+TEST_CASE("this process's own exe is among its other modules")
+{
+	const sfve::mod::OtherModules modules = sfve::mod::LoadedOtherModules();
+	CHECK(modules.game.size() + modules.elsewhere.size() >= 1);
 }

@@ -21,6 +21,29 @@ std::string Hex16(std::uint64_t value)
 	return text;
 }
 
+std::string HexAddress(std::uint64_t value)
+{
+	char text[24];
+	snprintf(text, sizeof(text), "0x%llX", static_cast<unsigned long long>(value));
+	return text;
+}
+
+// "a.dll, b.dll"; past `limit` characters, the names that fit and "and 3
+// more" (the comment keeps its later lines whatever a player runs).
+std::string Joined(const std::vector<std::string>& names, std::size_t limit = std::string::npos)
+{
+	std::string text;
+	for (std::size_t i = 0; i < names.size(); i++) {
+		const std::string next = (text.empty() ? "" : ", ") + names[i];
+		if (text.size() + next.size() > limit) return text + " and " + std::to_string(names.size() - i) + " more (the log lists them)";
+		text += next;
+	}
+	return text;
+}
+
+// The comment's list of modules from outside Windows and the game, at most.
+constexpr std::size_t kCommentModuleCharacters = 240;
+
 // "I" or "II" for a choice number, as SFV's select screen numbers them.
 const char* Numeral(int number)
 {
@@ -223,6 +246,11 @@ std::string Comment(const Facts& facts, std::string_view buildId)
 	text += "Paks: " + (facts.paks.empty() ? std::string("not read") : facts.paks) + "\n";
 	text += "OS: " + (facts.os.empty() ? std::string("not read") : facts.os) + "\n";
 	text += "Address rule: " + (facts.addressRule.empty() ? std::string("not read") : facts.addressRule) + "\n";
+	text += "Modules from outside Windows and the game: " +
+		(!facts.modulesRead                ? std::string("not read")
+			: facts.modulesElsewhere.empty() ? std::string("none")
+											 : Joined(facts.modulesElsewhere, kCommentModuleCharacters)) +
+		"\n";
 	if (facts.roomEpoch) {
 		text += "Room " + Hex16(facts.roomEpoch) + ", table " + std::to_string(facts.table) + ", match " +
 			std::to_string(facts.generation);
@@ -351,6 +379,15 @@ std::string DetailLines(const Facts& facts)
 	} else {
 		text += "rollbacks, last " + std::to_string(kRecentFrames) + " frames: not counted\n";
 	}
+	text += "address ranges below 1 TB this copy's hashes zero: " + (facts.lowRanges.empty() ? std::string("not read") : facts.lowRanges) +
+		"\n";
+	if (facts.modulesRead) {
+		text += "modules besides Windows' own: from elsewhere " +
+			(facts.modulesElsewhere.empty() ? std::string("none") : Joined(facts.modulesElsewhere)) + "; in the game's folder " +
+			(facts.modulesInGame.empty() ? std::string("none") : Joined(facts.modulesInGame)) + "\n";
+	} else {
+		text += "modules besides Windows' own: not read\n";
+	}
 	text += "pace: " + (facts.pace.empty() ? std::string("not read") : facts.pace) + "\n";
 	text += "socket reads: " + (facts.socketReads.empty() ? std::string("not read") : facts.socketReads) + "\n";
 	if (!facts.inputs.known) {
@@ -363,6 +400,57 @@ std::string DetailLines(const Facts& facts)
 			snprintf(line, sizeof(line), "input %d +%d P1 %08x P2 %08x f%u\n", run.first, run.frames,
 				static_cast<unsigned>(run.p1), static_cast<unsigned>(run.p2), static_cast<unsigned>(run.flags));
 			text += line;
+		}
+	}
+	return text;
+}
+
+std::string WordLines(const Facts& facts, bool (*looksLikeAddress)(std::uint64_t))
+{
+	std::uint64_t total = 0;
+	for (const StateRegionFacts& r : facts.stateRegions) total += r.size;
+	if (!facts.regionsCompared || facts.state.empty() || total != facts.state.size()) return {};
+	std::string text;
+	std::size_t rows = 0;
+	for (const DifferingRegion& differing : facts.differing) {
+		std::size_t at = 0;
+		const StateRegionFacts* region = nullptr;
+		for (const StateRegionFacts& r : facts.stateRegions) {
+			if (r.name == differing.name) {
+				region = &r;
+				break;
+			}
+			at += static_cast<std::size_t>(r.size);
+		}
+		if (!region) continue;
+		const std::uint8_t* bytes = facts.state.data() + at;
+		const std::size_t size = static_cast<std::size_t>(region->size);
+		text += "words of " + region->name + " (" + std::to_string(size) + " bytes at " + HexAddress(region->address) +
+			"), 8 to a row, rows of zeros left out, * zeroed in this copy's hashes:\n";
+		// The words as the hashes read them: a part word up to the first
+		// 8-byte boundary of the real address, then 8 bytes from each.
+		const std::size_t first = std::min<std::size_t>((8 - (region->address & 7)) & 7, size);
+		std::vector<std::pair<std::size_t, std::size_t>> words; // offset, length
+		if (first) words.push_back({0, first});
+		for (std::size_t offset = first; offset < size; offset += 8) words.push_back({offset, std::min<std::size_t>(8, size - offset)});
+		for (std::size_t from = 0; from < words.size(); from += 8) {
+			std::string row;
+			bool nonzero = false;
+			for (std::size_t i = from; i < words.size() && i < from + 8; i++) {
+				std::uint64_t value = 0;
+				memcpy(&value, bytes + words[i].first, words[i].second);
+				nonzero = nonzero || value != 0;
+				const bool address = words[i].second == 8 && looksLikeAddress && looksLikeAddress(value);
+				char word[24];
+				snprintf(word, sizeof(word), " %llx%s", static_cast<unsigned long long>(value), address ? "*" : "");
+				row += word;
+			}
+			if (!nonzero) continue;
+			if (rows == kWordRows) return text + "words: no more rows (" + std::to_string(kWordRows) + " shown)\n";
+			rows++;
+			char offset[16];
+			snprintf(offset, sizeof(offset), "+0x%04zX", words[from].first);
+			text += offset + row + "\n";
 		}
 	}
 	return text;

@@ -193,6 +193,15 @@ struct Facts {
 	// The address rule this copy hashes and checks by (mod/AddressRanges.hxx
 	// AddressRuleText); empty when not read.
 	std::string addressRule;
+	// Its ranges below 1 TB (mod::LowRangesText: "none" on a Windows copy
+	// whose heap lies above 1 TB); empty when not read.
+	std::string lowRanges;
+	// The modules it runs besides Windows' own (mod::OtherModules): those
+	// from anywhere but the game's folder (an overlay, another mod), and the
+	// game folder's. `modulesRead` false: not read.
+	bool modulesRead = false;
+	std::vector<std::string> modulesElsewhere;
+	std::vector<std::string> modulesInGame;
 	// The regions that differ from the other copy's, once its list arrived
 	// (`regionsCompared`); otherwise every region is listed (`regions`).
 	// `regionExchange` says how the lists' exchange went, in words.
@@ -347,6 +356,19 @@ std::string RegionLines(const Facts& facts);
 // whole battle and of the last kRecentFrames frames, the socket reads and
 // both players' inputs in runs ("inputs P1 <hex> P2 <hex> frames A..B").
 std::string DetailLines(const Facts& facts);
+
+// The words of each region that differs from the other copy's, as this copy
+// held them at the checkpoint, so the two players' reports compare word by
+// word: per region a line naming it, then a row per 8 words (64 bytes, rows
+// of zeros left out), "+0x0C0 3ffd8* 0 1 ...": each word on an 8-byte boundary
+// of its real address as the hashes read it (bytes before the first boundary
+// and after the last whole word, a part word), in hex, and a `*` on each word
+// `looksLikeAddress` takes as an address, which this copy's hashes zero. A
+// word marked in one report and not in the other, with the same value, is a
+// false desync (mod/AddressRanges.hxx); a value that differs is the game's.
+// At most kWordRows rows in all; empty without a compared list or the state.
+constexpr std::size_t kWordRows = 768;
+std::string WordLines(const Facts& facts, bool (*looksLikeAddress)(std::uint64_t));
 
 // The last `lines` lines of the mod's log before the report was written,
 // leaving out the region lines of checkpoint `frame` (RegionLines has them).

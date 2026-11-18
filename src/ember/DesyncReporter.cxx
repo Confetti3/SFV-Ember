@@ -13,6 +13,7 @@
 #include "mod/Log.hxx"
 #include "mod/Pace.hxx"
 #include "mod/PakList.hxx"
+#include "mod/RuntimeModules.hxx"
 #include "mod/SocketReads.hxx"
 
 #include "common/Localization.hxx"
@@ -59,6 +60,21 @@ constexpr std::size_t kLogReadBytes = 256 * 1024;
 // Reports gathered and not yet written; more are dropped (the check finds at
 // most one a battle, so this is never reached in play).
 constexpr std::size_t kQueued = 2;
+
+// What this process is, beside the battle: its paks, its Windows, which
+// words its hashes take as addresses (the rule and the ranges below 1 TB) and
+// the modules besides Windows' own it runs.
+void ProcessFacts(desync::Facts& facts)
+{
+	facts.paks = mod::PakCensusSummary();
+	facts.os = desync::WindowsVersion();
+	facts.addressRule = mod::AddressRuleText();
+	facts.lowRanges = mod::LowRangesText();
+	const mod::OtherModules modules = mod::LoadedOtherModules();
+	facts.modulesRead = true;
+	facts.modulesElsewhere = modules.elsewhere;
+	facts.modulesInGame = modules.game;
+}
 
 void PickFacts(desync::Facts& facts)
 {
@@ -145,9 +161,7 @@ desync::Facts Gather(const RollbackSession& session, const sf4e::SessionClient& 
 	facts.layoutId = session.Layout().LayoutId();
 	facts.matchBuild = MatchBuildId();
 	if (const mod::SfvAdapter* game = CurrentBattle().game) facts.battleData = match_data::Text(game->BattleFacts());
-	facts.paks = mod::PakCensusSummary();
-	facts.os = desync::WindowsVersion();
-	facts.addressRule = sfve::mod::AddressRuleText();
+	ProcessFacts(facts);
 	if (const std::vector<uint8_t>* state = session.CheckpointState(mismatch.frame)) {
 		for (const StateRegion& r : session.Layout().Regions()) {
 			facts.stateRegions.push_back({r.name, r.size, reinterpret_cast<std::uint64_t>(r.ptr), r.checked, r.comparedWithPeers});
@@ -368,7 +382,9 @@ void WriteDown(const desync::Facts& facts)
 	spooled.watcher = facts.watcher;
 	spooled.comment = desync::Comment(facts, spooled.buildId);
 	spooled.regionLines = desync::RegionLines(facts);
-	spooled.details = desync::DetailLines(facts);
+	// The differing regions' words, each marked when this copy's hashes zero
+	// it, so the two players' reports tell a false desync from a real one.
+	spooled.details = desync::DetailLines(facts) + desync::WordLines(facts, &mod::LooksLikeAddress);
 	spooled.logTail = LogTail(facts.frame);
 
 	const fs::path target = folder / (stem + desync::kSpoolExtension);
@@ -534,9 +550,7 @@ void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& 
 	facts.layoutId = layout.LayoutId();
 	facts.matchBuild = MatchBuildId();
 	if (const mod::SfvAdapter* game = CurrentBattle().game) facts.battleData = match_data::Text(game->BattleFacts());
-	facts.paks = mod::PakCensusSummary();
-	facts.os = desync::WindowsVersion();
-	facts.addressRule = sfve::mod::AddressRuleText();
+	ProcessFacts(facts);
 	size_t written = 0, kept = 0, still = 0;
 	for (const StartAgreement::RegionOutcome& r : report.regions) {
 		facts.regions.push_back({r.name, r.size, r.before});
@@ -582,9 +596,7 @@ void ReportGameDataDiffers(const StartAgreement::Report& report, const match_dat
 	facts.delay = delay;
 	facts.matchBuild = MatchBuildId();
 	facts.battleData = match_data::Text(battle);
-	facts.paks = mod::PakCensusSummary();
-	facts.os = desync::WindowsVersion();
-	facts.addressRule = sfve::mod::AddressRuleText();
+	ProcessFacts(facts);
 	facts.otherBattleData = match_data::Text(report.otherFacts);
 	facts.gameDataDiffers = what;
 	Queue(std::move(facts));

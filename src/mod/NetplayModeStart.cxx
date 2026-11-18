@@ -22,6 +22,7 @@
 #include "mod/GameScene.hxx"
 #include "mod/Log.hxx"
 #include "mod/MatchEnd.hxx"
+#include "mod/RuntimeModules.hxx"
 #include "mod/SfvBattleLayouts.hxx"
 #include "mod/VersusLaunch.hxx"
 
@@ -151,6 +152,9 @@ NetplayMode::Prepared NetplayMode::PrepareStart(SfvAdapter& adapter)
 	// same seeds, before anything is simulated.
 	adapter.ZeroBattleFrameCounts();
 	Log("netplay: reseeded %d random generator(s)", adapter.ReseedRandom(seed));
+	// What else runs in this game (mod/RuntimeModules.hxx: an overlay, another
+	// mod that may change fight state), so two copies' logs compare.
+	Log("netplay: modules besides Windows' own: %s", OtherModulesText(LoadedOtherModules()).c_str());
 	// What the battle's ticks before the session recorded for each player,
 	// which the session's first frames read back: nothing pressed for a
 	// room's or a replay's battle on every copy (BattleDriver). Anything else

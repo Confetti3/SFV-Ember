@@ -16,6 +16,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -131,6 +132,88 @@ TEST_CASE("a desync's comment says the address rule beside the OS")
 	CHECK(Comment(facts, kBuild).find("OS: Windows 10.0 build 19045\nAddress rule: value (words above 1 TB)\n") != std::string::npos);
 	facts.addressRule.clear();
 	CHECK(Comment(facts, kBuild).find("Address rule: not read\n") != std::string::npos);
+}
+
+TEST_CASE("a desync's comment names the modules from outside Windows and the game, and keeps its later lines")
+{
+	Facts facts = SampleFacts();
+	CHECK(Comment(facts, kBuild).find("Modules from outside Windows and the game: not read\n") != std::string::npos);
+	facts.modulesRead = true;
+	CHECK(Comment(facts, kBuild).find("Modules from outside Windows and the game: none\n") != std::string::npos);
+	facts.modulesElsewhere = {"gameoverlayrenderer64.dll", "polarity.live.0.0.dll"};
+	facts.modulesInGame = {"StreetFighterV.exe", "sfv_ember.dll"};
+	CHECK(Comment(facts, kBuild).find("Modules from outside Windows and the game: gameoverlayrenderer64.dll, polarity.live.0.0.dll\n") !=
+		std::string::npos);
+	CHECK(DetailLines(facts).find("modules besides Windows' own: from elsewhere gameoverlayrenderer64.dll, polarity.live.0.0.dll; "
+								  "in the game's folder StreetFighterV.exe, sfv_ember.dll\n") != std::string::npos);
+	// A player with many: the comment names what fits and still ends with its own lines.
+	facts.modulesElsewhere.assign(60, "some-overlay-or-tool.dll");
+	const std::string comment = Comment(facts, kBuild);
+	CHECK(comment.find("more (the log lists them)\n") != std::string::npos);
+	CHECK(comment.find("Pair key: match 1122334455667788.2.41") != std::string::npos);
+	CHECK(Characters(comment) < kCommentCharacters);
+}
+
+TEST_CASE("a desync's details list the address ranges below 1 TB this copy zeroes")
+{
+	Facts facts = SampleFacts();
+	CHECK(DetailLines(facts).find("address ranges below 1 TB this copy's hashes zero: not read\n") != std::string::npos);
+	facts.lowRanges = "0x30000-0x130000, 0x140000000-0x14441F000";
+	CHECK(DetailLines(facts).find("address ranges below 1 TB this copy's hashes zero: 0x30000-0x130000, 0x140000000-0x14441F000\n") !=
+		std::string::npos);
+}
+
+namespace {
+
+// The 2026-11-17 false desync's test: a Proton copy zeroes 0x30000 (in its
+// first heap), a Windows copy does not.
+bool ProtonAddress(std::uint64_t value)
+{
+	return (value & 3) == 0 && ((value >= 0x30000 && value < 0x130000) || value >= (1ull << 40));
+}
+
+} // namespace
+
+TEST_CASE("a desync's word lines show each differing region's words as the hashes read them, marked where this copy zeroes one")
+{
+	Facts facts = SampleFacts();
+	// Two regions of the kept state: the differing one starts 4 bytes past an
+	// 8-byte boundary, so its first word is a part word of 4 bytes.
+	facts.stateRegions = {{"global.rng", 4, 0x1000, true, true}, {"CharaUnit[1].CharaMotionPart+0xC0", 4 + 8 * 17, 0x2004, true, true}};
+	facts.state.assign(4 + 4 + 8 * 17, 0);
+	auto word = [&](std::size_t offset, std::uint64_t value) { memcpy(facts.state.data() + 4 + offset, &value, 8); };
+	facts.state[4] = 0x07;              // the part word
+	word(4, 0x30000);                   // a 16.16 3.0: a number to Windows, Proton's heap to Proton
+	word(4 + 8, 0x00000204F5F98000ull); // a pointer above 1 TB
+	word(4 + 8 * 16, 0x1);              // the third row; the second is all zeros
+	facts.regionsCompared = true;
+	facts.differing = {{"CharaUnit[1].CharaMotionPart+0xC0", 4 + 8 * 17, 0x1, true, 0x2}};
+	const std::string proton = WordLines(facts, &ProtonAddress);
+	CHECK(proton ==
+		"words of CharaUnit[1].CharaMotionPart+0xC0 (140 bytes at 0x2004), 8 to a row, rows of zeros left out, * zeroed in this copy's hashes:\n"
+		"+0x0000 7 30000* 204f5f98000* 0 0 0 0 0\n"
+		"+0x007C 0 1\n");
+	const std::string windows = WordLines(facts, [](std::uint64_t value) { return (value & 3) == 0 && value >= (1ull << 40); });
+	CHECK(windows.find("+0x0000 7 30000 204f5f98000* 0 0 0 0 0\n") != std::string::npos);
+	// Nothing compared, or no state kept: nothing to show.
+	facts.regionsCompared = false;
+	CHECK(WordLines(facts, &ProtonAddress).empty());
+	facts.regionsCompared = true;
+	facts.state.clear();
+	CHECK(WordLines(facts, &ProtonAddress).empty());
+}
+
+TEST_CASE("a desync's word lines stop at kWordRows rows")
+{
+	Facts facts = SampleFacts();
+	const std::size_t size = 64 * (kWordRows + 10);
+	facts.stateRegions = {{"CharaUnit[0].CharaActionPart+0xD8", size, 0x10000, true, true}};
+	facts.state.assign(size, 0x11);
+	facts.regionsCompared = true;
+	facts.differing = {{"CharaUnit[0].CharaActionPart+0xD8", size, 0x1, true, 0x2}};
+	const std::string lines = WordLines(facts, nullptr);
+	CHECK(std::count(lines.begin(), lines.end(), '\n') == 1 + kWordRows + 1);
+	CHECK(lines.find("words: no more rows (768 shown)\n") != std::string::npos);
 }
 
 TEST_CASE("a desync's comment names the match, this copy, both picks and the checkpoint")
