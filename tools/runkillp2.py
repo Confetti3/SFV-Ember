@@ -7,8 +7,8 @@ watcher (copy 2) join, copy 0 is P1 and copy 1 is P2, the watcher watches the
 table. The room's lag simulation holds the other player's inputs back (--lag,
 80 ms by default), so when the fight ends P1 has predicted frames its peer never
 confirmed. As copy 0 logs the WIN's answers (the match's result answered by both:
-the battle closes and goes back to the room), copy 1's process is ended (taskkill
-/F /T of that copy's pid only). Ending it any earlier, at the decision, is a drop
+the battle closes and goes back to the room), copy 1's process is ended (the library's
+identity-checked tree kill of that copy's pid only, never Steam). Ending it any earlier, at the decision, is a drop
 during the scenes: copy 0's session fails within seconds and the room's game is
 cancelled, the session is never kept. Then (commit da53c91, the session kept
 for the watchers):
@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -73,6 +72,7 @@ def main(argv: list[str]) -> int:
                                           "-sfve_mash_from=300", f"-sfve_lag={a.lag}", "-sfve_hash_every=0"])
             wait_for("the runtime on every copy", 120, lambda: all(status(i)["ember"]["host"] == "running" for i in (0, 1, 2)))
             pids = {i: lib.status_pid(i) for i in (0, 1, 2)}
+            p2_identity = lib.process_identity(pids[1])  # the pid with its creation time: a reused pid is not copy 1
             wait_for("the room", 30, lambda: lib.request(0, "room 1 30 0 0 0 -").startswith("ok"))
             invitation = ""
 
@@ -108,9 +108,9 @@ def main(argv: list[str]) -> int:
             wait_for("the watcher's stream", 120, lambda: lib.count_log(2, "netplay: room match watched") > watched)
             print("the battle and the watcher's stream have started; waiting for the match's WIN to be answered")
             wait_for("copy 0 to hear the WIN's answers", 240, lambda: lib.count_log(0, "netplay: the WIN's answers") > answered)
-            killed = subprocess.run(["taskkill", "/F", "/T", "/PID", str(pids[1])], capture_output=True, text=True)
-            print(f"copy 1 (pid {pids[1]}) ended as copy 0 heard the WIN's answers: {killed.stdout.strip() or killed.stderr.strip()}")
-            if killed.returncode != 0:
+            ended = lib._kill_tree([p2_identity]) if p2_identity else []  # noqa: SLF001 - the library's own kill: never Steam
+            print(f"copy 1 (pid {pids[1]}) ended as copy 0 heard the WIN's answers: {len(ended)} process(es)")
+            if not ended:
                 raise lib.SfveError("copy 1's process could not be ended")
             if a.shots:
                 try:
