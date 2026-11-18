@@ -112,6 +112,9 @@ LRESULT CALLBACK OverlayWndProc(HWND window, UINT message, WPARAM wParam, LPARAM
 	if (BorderlessMessage(window, message)) return 0;
 	if (message == WM_ACTIVATEAPP) {
 		s_focused = wParam != 0;
+		// Without the focus the keys are another window's, and the game reads
+		// no pad unless Play in the background is on (mod/BackgroundPlay).
+		Log("overlay: the game window %s the focus", wParam ? "has" : "lost");
 		if (!wParam) s_inputBridge.RequestClear(); // nothing stays held while away
 	}
 	if (s_haveUi) {
@@ -251,10 +254,28 @@ void Render(ImDrawData* data)
 	Release(depth);
 }
 
+// Render thread: a window presenting that the overlay does not draw on, logged
+// the first time each of a few is seen. A game whose picture is on such a
+// window shows no Ember and takes no F10.
+void NoteSkippedWindow(HWND window, const char* why)
+{
+	static HWND s_skipped[8] = {};
+	static size_t s_count = 0;
+	for (size_t i = 0; i < s_count; i++) {
+		if (s_skipped[i] == window) return;
+	}
+	if (s_count == sizeof(s_skipped) / sizeof(s_skipped[0])) return;
+	s_skipped[s_count++] = window;
+	wchar_t name[64] = {};
+	if (window) GetClassNameW(window, name, 64);
+	Log("overlay: not drawing on window %p (class \"%ls\"): %s", (void*)window, name, why);
+}
+
 void Draw(IDXGISwapChain* swap)
 {
 	DXGI_SWAP_CHAIN_DESC desc{};
-	if (FAILED(swap->GetDesc(&desc)) || !IsGameWindow(desc.OutputWindow)) return;
+	if (FAILED(swap->GetDesc(&desc))) return;
+	if (!IsGameWindow(desc.OutputWindow)) return NoteSkippedWindow(desc.OutputWindow, "not a visible top-level window of the game");
 	// The game's own Screen Mode full screen is exclusive: the chain says so.
 	// Others (BackgroundPlay, Borderless) leave the window alone then.
 	BOOL fullscreen = FALSE;
@@ -271,7 +292,9 @@ void Draw(IDXGISwapChain* swap)
 	}
 	if (!ui.draw) return; // no interface: nothing to draw
 	if (s_r.ready && s_r.swap != swap) {
-		if (desc.OutputWindow != s_window.load()) return; // another window's swap chain
+		if (desc.OutputWindow != s_window.load()) {
+			return NoteSkippedWindow(desc.OutputWindow, "another window than the one the overlay draws on");
+		}
 		Log("overlay: the game's swap chain changed");
 		Detach();
 	}
@@ -422,8 +445,14 @@ void FilterGamePad(unsigned long user, void* xinputState)
 		takesPad = s_ui.takesPad;
 	}
 	static WORD heldAtRelease[XUSER_MAX_COUNT]; // buttons down when the interface let go: hidden until released
+	static bool taken[XUSER_MAX_COUNT];         // the last answer, for the log
 	XINPUT_GAMEPAD& pad = static_cast<XINPUT_STATE*>(xinputState)->Gamepad;
-	if (takesPad && takesPad(user, pad.wButtons)) {
+	const bool takes = takesPad && takesPad(user, pad.wButtons);
+	if (takes != taken[user]) {
+		taken[user] = takes;
+		Log("overlay: pad %lu %s", user, takes ? "kept from the game (Ember has it)" : "back to the game");
+	}
+	if (takes) {
 		heldAtRelease[user] = pad.wButtons; // what is down now must not reach the game on letting go
 		pad = XINPUT_GAMEPAD{};
 	} else {
