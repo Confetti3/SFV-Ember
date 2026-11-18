@@ -253,6 +253,28 @@ TEST_CASE("a start state's repair is reported under a title of its own, with bot
 	CHECK(watched.find("diagnostic only") == std::string::npos);
 }
 
+TEST_CASE("a refused match is reported under a title of its own per cause, with why it never started")
+{
+	CHECK(RefusedTitle(Refused::GameData, false, kBuild) == "SFV game data differs: build 0123456789ab");
+	CHECK(RefusedTitle(Refused::GameData, true, kBuild) == "SFV game data differs for a watcher: build 0123456789ab");
+	CHECK(RefusedTitle(Refused::Layout, false, kBuild) == "SFV layouts differ: build 0123456789ab");
+	CHECK(RefusedTitle(Refused::Layout, true, kBuild, "0000000000000007.2.41") ==
+		"SFV layouts differ for a watcher: build 0123456789ab match 0000000000000007.2.41");
+	Facts facts = SampleFacts();
+	facts.frame = 0;
+	facts.confirmed = -1;
+	facts.refused = Refused::Layout;
+	facts.refusedBecause = "another layout: P1's state layout 0123456789abcdef is not this copy's fedcba9876543210";
+	const std::string comment = Comment(facts, kBuild);
+	CHECK(comment.rfind("SFV layouts differ: build 0123456789ab match 1122334455667788.2.41\n", 0) == 0);
+	CHECK(comment.find("Before frame 0: another layout: P1's state layout 0123456789abcdef is not this copy's fedcba9876543210; the "
+					   "match did not start\n") != std::string::npos);
+	CHECK(comment.find("Checkpoint ") == std::string::npos);
+	CHECK(RegionLines(facts).find("every region follows") == std::string::npos);
+	facts.refused = Refused::GameData;
+	CHECK(Comment(facts, kBuild).rfind("SFV game data differs: build 0123456789ab", 0) == 0);
+}
+
 TEST_CASE("a watcher's comment says its mismatch is a diagnostic; what is not known says so")
 {
 	Facts facts;

@@ -118,10 +118,10 @@ std::string StartRepairTitle(bool watcher, std::string_view buildId, std::string
 	return text;
 }
 
-std::string GameDataTitle(bool watcher, std::string_view buildId, std::string_view key)
+std::string RefusedTitle(Refused refused, bool watcher, std::string_view buildId, std::string_view key)
 {
-	std::string text = std::string(watcher ? "SFV game data differs for a watcher: build " : "SFV game data differs: build ") +
-		std::string(buildId.substr(0, 12));
+	const std::string what = refused == Refused::Layout ? "SFV layouts differ" : "SFV game data differs";
+	std::string text = what + (watcher ? " for a watcher: build " : ": build ") + std::string(buildId.substr(0, 12));
 	if (!key.empty()) text += " match " + std::string(key);
 	return text;
 }
@@ -224,10 +224,10 @@ std::string ScriptsText(const Facts& facts)
 
 std::string Comment(const Facts& facts, std::string_view buildId)
 {
-	const bool refused = !facts.gameDataDiffers.empty();
+	const bool refused = facts.refused != Refused::No;
 	const bool repair = refused || !facts.startRepair.empty();
 	const std::string key = MatchKey(facts);
-	std::string text = (refused ? GameDataTitle(facts.watcher, buildId, key)
+	std::string text = (refused ? RefusedTitle(facts.refused, facts.watcher, buildId, key)
 						: repair ? StartRepairTitle(facts.watcher, buildId, key)
 								 : Title(facts.watcher, buildId, key)) +
 		"\n";
@@ -270,7 +270,7 @@ std::string Comment(const Facts& facts, std::string_view buildId)
 	}
 	text += "Stage: " + (facts.stage.empty() ? std::string("not known") : facts.stage) + "\n";
 	if (refused) {
-		text += "Before frame 0: " + facts.gameDataDiffers + "; the match did not start\n";
+		text += "Before frame 0: " + facts.refusedBecause + "; the match did not start\n";
 	} else if (repair) {
 		text += "Start state before frame 0: " + Hex16(facts.local) + " here, " + Hex16(facts.remote) + " at P1. " +
 			facts.startRepair + "\n";
@@ -343,7 +343,7 @@ std::string RegionLines(const Facts& facts)
 	}
 	// A desync's whole list says why (a start repair's and a refusal's lists
 	// are the regions that differed).
-	if (!facts.regions.empty() && facts.startRepair.empty() && facts.gameDataDiffers.empty()) {
+	if (!facts.regions.empty() && facts.startRepair.empty() && facts.refused == Refused::No) {
 		text += "desync: checkpoint " + std::to_string(facts.frame) + ": every region follows; the other copy's list was " +
 			DifferingText(facts) + ", so most of these equal the other copy's\n";
 	}

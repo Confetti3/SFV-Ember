@@ -238,12 +238,14 @@ bool NetplayMode::AgreeStart(SfvAdapter& adapter)
 {
 	if (!startAgreement_->Pump(GetTickCount64())) return false;
 	const StartAgreement::Report& report = startAgreement_->GetReport();
-	if (report.result == StartAgreement::Result::DataDiffers) {
-		// Two copies that compute with other game data cannot play one match
-		// (core/MatchData.hxx): it ends here, on each copy, before frame 0.
-		adapter::ReportGameDataDiffers(report, adapter.BattleFacts(), room_.Watching(), pending_.config.inputDelay);
+	if (StartAgreement::RefusesTheMatch(report.result)) {
+		// Two copies that compute with other game data (core/MatchData.hxx), or
+		// that save and compare another state layout (another build's rollback
+		// rules, SfvLayoutRules), cannot play one match: it ends here, on each
+		// copy, before frame 0.
+		adapter::ReportStartRefused(report, adapter.BattleFacts(), adapter.Layout(), room_.Watching(), pending_.config.inputDelay);
 		EndStartAgreement();
-		room_.FlushHeld("the copies' game data differs");
+		room_.FlushHeld(StartAgreement::ResultName(report.result));
 		Leave();
 		return false;
 	}

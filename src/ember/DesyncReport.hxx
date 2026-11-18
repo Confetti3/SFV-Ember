@@ -123,6 +123,11 @@ struct CensusObject {
 	std::uint64_t extent = 0;
 };
 
+// Why a match never started (core/StartAgreement's RefusesTheMatch): the
+// copies' game data differed (DataDiffers), or their state layouts did
+// (LayoutsDiffer, another build's rollback rules).
+enum class Refused : std::uint8_t { No, GameData, Layout };
+
 struct Facts {
 	// This copy: its match slot (0 P1, 1 P2, 2 and up watch; -1 not known),
 	// and whether it watches.
@@ -208,10 +213,11 @@ struct Facts {
 	bool regionsCompared = false;
 	std::vector<DifferingRegion> differing;
 	std::string regionExchange;
-	// Not empty: no desync but a match that never started because the
-	// copies' game data differed (StartAgreement's DataDiffers), in words
-	// (match_data::Describe). Its own Bugsink group; `frame` is 0.
-	std::string gameDataDiffers;
+	// Not No: no desync but a match that never started (Refused), and
+	// `refusedBecause` says how in words (match_data::Describe, or the
+	// layouts' ids). Each its own Bugsink group; `frame` is 0.
+	Refused refused = Refused::No;
+	std::string refusedBecause;
 };
 
 // "Windows 10.0 build 19045" (RtlGetVersion: the PC's own, whatever the
@@ -339,10 +345,10 @@ std::string Title(bool watcher, std::string_view buildId, std::string_view key =
 // repaired: build <12 digits>[ match <key>]", or "SFV start state repaired
 // for a watcher: ...", its own Bugsink group.
 std::string StartRepairTitle(bool watcher, std::string_view buildId, std::string_view key = {});
-// A refused match's first line (Facts::gameDataDiffers): "SFV game data
-// differs: build <12 digits>[ match <key>]", or "... for a watcher: ...", its
-// own Bugsink group.
-std::string GameDataTitle(bool watcher, std::string_view buildId, std::string_view key = {});
+// A refused match's first line (Facts::refused): "SFV game data differs:
+// build <12 digits>[ match <key>]" or "SFV layouts differ: ...", or "... for
+// a watcher: ...", each its own Bugsink group.
+std::string RefusedTitle(Refused refused, bool watcher, std::string_view buildId, std::string_view key = {});
 // The whole comment: the title, then the match, this copy, both picks, the
 // checkpoint and the session, at most kCommentCharacters characters.
 std::string Comment(const Facts& facts, std::string_view buildId);

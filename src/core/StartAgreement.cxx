@@ -471,6 +471,11 @@ const char* StartAgreement::ResultName(Result result)
 	return "?";
 }
 
+bool StartAgreement::RefusesTheMatch(Result result)
+{
+	return result == Result::DataDiffers || result == Result::LayoutsDiffer;
+}
+
 StartAgreement::StartAgreement(GameAdapter& game, StartChannel& channel, Config config)
 	: game_(game), channel_(channel), config_(std::move(config))
 {
@@ -713,6 +718,7 @@ void StartAgreement::OnFollowerMessage(const Message& m, uint64_t nowMs)
 		if (step_ != Step::Summary) return;
 		answered(Asked::Summary, 0, 0);
 		report_.reference = m.hash;
+		report_.referenceLayout = m.layoutId;
 		report_.otherFacts = m.facts;
 		// The fighters' ranges (this copy's own among them when it is P2) on
 		// top of this copy's own, before the hashes are compared.
@@ -729,8 +735,8 @@ void StartAgreement::OnFollowerMessage(const Message& m, uint64_t nowMs)
 			return;
 		}
 		if (m.layoutId != layoutId_) {
-			CoreLog("start: P1's layout %016llx is not this copy's %016llx: nothing compared", (unsigned long long)m.layoutId,
-				(unsigned long long)layoutId_);
+			CoreLog("start: P1's layout %016llx is not this copy's %016llx: nothing compared, the match must not start",
+				(unsigned long long)m.layoutId, (unsigned long long)layoutId_);
 			Finish(Result::LayoutsDiffer, nowMs);
 			return;
 		}

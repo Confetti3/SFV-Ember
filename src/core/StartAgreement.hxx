@@ -24,7 +24,11 @@
 //      and its address ranges (below), which the follower's question carries
 //      too. Facts that differ end the agreement on both sides
 //      (Result::DataDiffers): no repair makes two copies that compute with
-//      different data play the same match. Equal hashes: done, nothing
+//      different data play the same match. So does another layout
+//      (Result::LayoutsDiffer): the copies save, restore and compare other
+//      state (another build's rollback rules), so their first checkpoint
+//      would differ; two copies of one build lay out one battle alike. P1
+//      learns a follower's refusal from its Done. Equal hashes: done, nothing
 //      written.
 //   2. its region list: per region an identity, the peers' hash, the size and
 //      its place in its own layout. A region is named by its owner the same
@@ -230,11 +234,14 @@ public:
 		Agreed = 1,        // the same state already
 		Repaired = 2,      // differed; equal after the repair
 		Differs = 3,       // differed; still differs after what could be written
-		LayoutsDiffer = 4, // another layout: nothing compared
+		LayoutsDiffer = 4, // another layout: nothing compared, the match must not start
 		TimedOut = 5,      // no answer in time (a reference: P2 never said it was done)
 		DataDiffers = 6,   // the copies compute with different game data: the match must not start
 	};
 	static const char* ResultName(Result result);
+	// The results after which the match must not start: no repair makes two
+	// such copies play the same match (DataDiffers, LayoutsDiffer).
+	static bool RefusesTheMatch(Result result);
 
 	struct Config {
 		Role role = Role::Follower;
@@ -276,6 +283,10 @@ public:
 		uint64_t localBefore = 0; // this copy's peers' hash at Begin
 		uint64_t localAfter = 0;
 		uint64_t reference = 0;   // the reference's (0 when never heard)
+		// A follower: the reference's layout id (StateLayout::LayoutId) as its
+		// summary said; 0 when never heard, and always on the reference, which
+		// hears a follower's other layout only as its Done's result.
+		uint64_t referenceLayout = 0;
 		std::vector<RegionOutcome> regions;
 		std::vector<std::string> unpaired; // names on this side; "reference region N" for the other's
 		std::vector<uint8_t> stateBefore;  // a follower's whole state at Begin (laid out by SaveTo)

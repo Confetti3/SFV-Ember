@@ -34,6 +34,8 @@
 
 #include <windows.h>
 
+#include <stdio.h>
+
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
@@ -532,6 +534,42 @@ void ReportDesync(const RollbackSession& session, const sf4e::SessionClient& cli
 	}
 }
 
+namespace {
+
+// Why the start agreement refused the match: the report's class, the words
+// it and the log give, and the players' notice.
+struct StartRefusal {
+	desync::Refused refused = desync::Refused::GameData;
+	std::string because;
+	std::string notice;
+};
+
+StartRefusal RefusalOf(const StartAgreement::Report& report, uint64_t layoutId)
+{
+	StartRefusal refusal;
+	if (report.result == StartAgreement::Result::LayoutsDiffer) {
+		char because[160];
+		if (report.referenceLayout) {
+			snprintf(because, sizeof(because), "another layout: P1's state layout %016llx is not this copy's %016llx",
+				(unsigned long long)report.referenceLayout, (unsigned long long)layoutId);
+		} else {
+			snprintf(because, sizeof(because), "another layout: P2's state layout is not this copy's %016llx",
+				(unsigned long long)layoutId);
+		}
+		refusal.refused = desync::Refused::Layout;
+		refusal.because = std::string(because) + " (the copies' rollback rules differ)";
+		refusal.notice = sf4e::loc::T("runtime.build_mismatch");
+		return refusal;
+	}
+	refusal.because = report.dataDifference ? match_data::Describe(*report.dataDifference) : std::string("game data differs");
+	const std::string fighter = report.dataDifference ? match_data::NoticeFighter(*report.dataDifference) : std::string();
+	refusal.notice = fighter.empty() ? std::string(sf4e::loc::T("runtime.game_data_differs"))
+		: sf4e::loc::Tf("runtime.game_data_differs_fighter", fighter);
+	return refusal;
+}
+
+} // namespace
+
 void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& layout, bool watcher, int delay)
 {
 	desync::Facts facts;
@@ -573,14 +611,12 @@ void ReportStartRepair(const StartAgreement::Report& report, const StateLayout& 
 	Queue(std::move(facts));
 }
 
-void ReportGameDataDiffers(const StartAgreement::Report& report, const match_data::Facts& battle, bool watcher, int delay)
+void ReportStartRefused(const StartAgreement::Report& report, const match_data::Facts& battle, const StateLayout& layout, bool watcher,
+	int delay)
 {
-	const std::string what = report.dataDifference ? match_data::Describe(*report.dataDifference) : std::string("game data differs");
-	mod::Log("netplay: %s; the match ends before frame 0", what.c_str());
-	const std::string fighter = report.dataDifference ? match_data::NoticeFighter(*report.dataDifference) : std::string();
-	const std::string notice = fighter.empty() ? std::string(sf4e::loc::T("runtime.game_data_differs"))
-		: sf4e::loc::Tf("runtime.game_data_differs_fighter", fighter);
-	sf4e::NetplayFacade::PushAlert(notice.c_str(), sf4e::NoticeSeverity::Error);
+	const StartRefusal refusal = RefusalOf(report, layout.LayoutId());
+	mod::Log("netplay: %s; the match ends before frame 0", refusal.because.c_str());
+	sf4e::NetplayFacade::PushAlert(refusal.notice.c_str(), sf4e::NoticeSeverity::Error);
 	desync::Facts facts;
 	facts.watcher = watcher;
 	if (const RoomBattle* room = CurrentBattle().room) {
@@ -594,11 +630,13 @@ void ReportGameDataDiffers(const StartAgreement::Report& report, const match_dat
 	facts.remote = report.reference;
 	facts.confirmed = -1;
 	facts.delay = delay;
+	facts.layoutId = layout.LayoutId();
 	facts.matchBuild = MatchBuildId();
 	facts.battleData = match_data::Text(battle);
 	ProcessFacts(facts);
-	facts.otherBattleData = match_data::Text(report.otherFacts);
-	facts.gameDataDiffers = what;
+	if (refusal.refused == desync::Refused::GameData) facts.otherBattleData = match_data::Text(report.otherFacts);
+	facts.refused = refusal.refused;
+	facts.refusedBecause = refusal.because;
 	Queue(std::move(facts));
 }
 

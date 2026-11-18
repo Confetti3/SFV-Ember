@@ -374,7 +374,7 @@ TEST_CASE("with nobody answering, both give up at the time limit")
 	CHECK(reference.GetReport().result == StartAgreement::Result::TimedOut);
 }
 
-TEST_CASE("another layout is compared no further")
+TEST_CASE("another layout is compared no further, and both copies refuse the match")
 {
 	MockFighter p1, p2(kBugUnmaskedClock); // the clock is compared: another layout
 	Int(p2, kP2Health) -= 1;
@@ -387,6 +387,43 @@ TEST_CASE("another layout is compared no further")
 	Run({&reference, &follower}, 1000);
 	CHECK(follower.GetReport().result == StartAgreement::Result::LayoutsDiffer);
 	CHECK(follower.GetReport().regions.empty());
+	// The follower names P1's layout; P1 learns of the other layout from its Done.
+	CHECK(follower.GetReport().referenceLayout == p1.Layout().LayoutId());
+	CHECK(follower.GetReport().referenceLayout != p2.Layout().LayoutId());
+	CHECK(reference.GetReport().result == StartAgreement::Result::LayoutsDiffer);
+	CHECK(reference.GetReport().peers.at(0) == StartAgreement::Result::LayoutsDiffer);
+	CHECK(reference.GetReport().referenceLayout == 0);
+	CHECK(StartAgreement::RefusesTheMatch(follower.GetReport().result));
+	CHECK(StartAgreement::RefusesTheMatch(reference.GetReport().result));
+}
+
+TEST_CASE("the match is refused for other game data or another layout, and for nothing else")
+{
+	using Result = StartAgreement::Result;
+	CHECK(StartAgreement::RefusesTheMatch(Result::DataDiffers));
+	CHECK(StartAgreement::RefusesTheMatch(Result::LayoutsDiffer));
+	for (const Result played : {Result::Running, Result::Agreed, Result::Repaired, Result::Differs, Result::TimedOut}) {
+		CAPTURE(StartAgreement::ResultName(played));
+		CHECK_FALSE(StartAgreement::RefusesTheMatch(played));
+	}
+}
+
+TEST_CASE("a watcher with another layout refuses alone; the players' match goes on")
+{
+	MockFighter p1, p2, watcher(kBugUnmaskedClock);
+	Exchange x(2);
+	Exchange::End referenceEnd(x, -1), p2End(x, 0), watcherEnd(x, 1);
+	StartAgreement reference(p1, referenceEnd, Role(StartAgreement::Role::Reference, 1));
+	StartAgreement second(p2, p2End, Role(StartAgreement::Role::Follower));
+	StartAgreement watching(watcher, watcherEnd, Role(StartAgreement::Role::Follower));
+	reference.Begin(1000, 2);
+	second.Begin(1000);
+	watching.Begin(1000);
+	Run({&reference, &second, &watching}, 1000);
+	CHECK(second.GetReport().result == StartAgreement::Result::Agreed);
+	CHECK(watching.GetReport().result == StartAgreement::Result::LayoutsDiffer);
+	CHECK(reference.GetReport().result == StartAgreement::Result::Agreed);
+	CHECK(reference.GetReport().peers.at(1) == StartAgreement::Result::LayoutsDiffer);
 }
 
 TEST_CASE("regions pair by stable name, else by hash, else by a size only one of them has")
