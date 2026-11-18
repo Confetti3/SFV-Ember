@@ -350,8 +350,49 @@ TEST_CASE("P1 waits for a watcher only a short grace after P2")
 	const uint64_t took = Run({&reference, &second}, 1000);
 	CHECK(reference.GetReport().result == StartAgreement::Result::Agreed);
 	CHECK(reference.GetReport().peers.at(1) == StartAgreement::Result::Running);
+	CHECK_FALSE(StartAgreement::PeerStarts(reference.GetReport().peers.at(1)));
 	CHECK(took >= 300);
 	CHECK(took < c.timeLimitMs);
+}
+
+TEST_CASE("P1 serves a watcher whose battle loads seconds after the fighters', within its grace")
+{
+	MockFighter p1, p2, watcher;
+	Exchange x(2);
+	Exchange::End referenceEnd(x, -1), p2End(x, 0), watcherEnd(x, 1);
+	StartAgreement::Config c = Role(StartAgreement::Role::Reference, 1);
+	c.watcherGraceMs = 5000; // the room's watcher deadline (SpectatorPolicy::SyncDeadlineMs)
+	StartAgreement reference(p1, referenceEnd, c);
+	StartAgreement second(p2, p2End, Role(StartAgreement::Role::Follower));
+	StartAgreement watching(watcher, watcherEnd, Role(StartAgreement::Role::Follower));
+	reference.Begin(1000, 2);
+	second.Begin(1000);
+	uint64_t now = 1000;
+	for (; now < 4000; now += 5) {
+		reference.Pump(now);
+		second.Pump(now);
+	}
+	REQUIRE(second.Finished());
+	CHECK_FALSE(reference.Finished()); // still waiting for the watcher
+	watching.Begin(now);               // three seconds after the fighters
+	Run({&reference, &second, &watching}, now);
+	CHECK(watching.GetReport().result == StartAgreement::Result::Agreed);
+	CHECK(reference.GetReport().result == StartAgreement::Result::Agreed);
+	CHECK(reference.GetReport().peers.at(1) == StartAgreement::Result::Agreed);
+	CHECK(StartAgreement::PeerStarts(reference.GetReport().peers.at(1)));
+}
+
+TEST_CASE("a peer starts the match once it said it was done with a result the match may start from")
+{
+	using Result = StartAgreement::Result;
+	for (const Result left : {Result::Running, Result::DataDiffers, Result::LayoutsDiffer}) {
+		CAPTURE(StartAgreement::ResultName(left));
+		CHECK_FALSE(StartAgreement::PeerStarts(left));
+	}
+	for (const Result played : {Result::Agreed, Result::Repaired, Result::Differs, Result::TimedOut}) {
+		CAPTURE(StartAgreement::ResultName(played));
+		CHECK(StartAgreement::PeerStarts(played));
+	}
 }
 
 TEST_CASE("with nobody answering, both give up at the time limit")

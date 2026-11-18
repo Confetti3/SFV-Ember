@@ -213,16 +213,21 @@ void NetplayMode::BeginStartAgreement(SfvAdapter& adapter)
 	agreement.adoptAddresses = AdoptAgreedRanges;
 	std::vector<uint16_t> ports{c.remotePort};
 	if (!c.watching && c.localPlayer == 0) {
-		// P1: P2 first, then each watcher it streams to.
+		// P1: P2 first, then each watcher it streams to (the order
+		// RoomBattle::LeaveOutUnagreedWatchers reads the report in).
 		agreement.role = StartAgreement::Role::Reference;
 		agreement.requiredPeers = 1;
 		for (const RollbackSession::Config::Watcher& w : c.watchers) ports.push_back(w.port);
+		// A watcher's battle loads as fast as its PC does, often seconds after
+		// the fighters'. P1 serves it for as long as SF4's P1 waits for a
+		// watcher to synchronize; one not done by then sits the game out
+		// (AgreeStart) and holds the fighters no longer.
+		agreement.watcherGraceMs = c.watcherSyncDeadlineMs;
 	} else {
 		agreement.role = StartAgreement::Role::Follower;
-		// P1 drops a watcher that has not synchronized 5 s after a fighter
-		// has (SpectatorPolicy::SyncDeadlineMs), and serves watchers only a
-		// second after P2 is done: a watcher gives up sooner than a fighter.
-		if (c.watching) agreement.timeLimitMs = 3000;
+		// A watcher waits for P1 as long as P1 waits for it; a fighter, the
+		// whole time limit.
+		if (c.watching) agreement.timeLimitMs = c.watcherSyncDeadlineMs;
 	}
 	auto channel = std::make_unique<UdpStartChannel>();
 	if (!channel->Open(c.localPort, c.remoteIp, ports)) {
@@ -249,6 +254,9 @@ bool NetplayMode::AgreeStart(SfvAdapter& adapter)
 		Leave();
 		return false;
 	}
+	// P1 streams only to the watchers that agreed in time (a follower's
+	// report names no peers and its config no watchers).
+	adapter::RoomBattle::LeaveOutUnagreedWatchers(pending_.config, report.peers);
 	startHash_ = report.reference ? report.reference : report.localBefore;
 	startAddresses_ = report.addresses;
 	// A repair is reported as a desync is (it was one, before frame 0).

@@ -37,6 +37,7 @@
 // Game thread only, but for DeclineRematch and NoteShellLeftPrompt.
 
 #include "core/RollbackSession.hxx"
+#include "core/StartAgreement.hxx"
 #include "ember/RematchDecision.hxx"
 
 #include "common/RoomRules.hxx"
@@ -45,6 +46,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace sfve::mod {
 class SfvAdapter;
@@ -100,6 +102,13 @@ public:
 	// copy gives up at once (SF4's EndRuntimeSpectatorStream). Any battle,
 	// the room's or not.
 	static void EndDroppedWatcherLinks(RollbackSession& session);
+	// P1, once the copies have agreed on the start state (core/StartAgreement,
+	// `peers` its report's: P2, then config.watchers in order): a watcher
+	// that did not finish its part while P1 waited for it, or that refuses
+	// the match, is left out of the session and its link ended, as one whose
+	// link was not up at the start is: it watches the next game. Listed in
+	// GGPO, it would hold the fighters' start until its sync deadline.
+	static void LeaveOutUnagreedWatchers(RollbackSession::Config& config, const std::vector<StartAgreement::Result>& peers);
 
 	// Each live frame: the session's phase as the runtime last heard it.
 	void NoteSyncPhase(const RollbackSession& session);

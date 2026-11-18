@@ -138,8 +138,11 @@ public:
 			uint16_t port = 0;
 		};
 		std::vector<Watcher> watchers;
-		// How long P1 waits, once a fighter has synchronized, for a watcher
-		// to synchronize before it drops it (SpectatorPolicy::SyncDeadlineFor).
+		// How long a watcher has to be ready once the fighters are
+		// (SpectatorPolicy::SyncDeadlineFor): P1 waits this long after P2 for a
+		// watcher's start state agreement and, once a fighter has
+		// synchronized, for a watcher to synchronize before it drops it; a
+		// watcher's agreement waits as long for P1.
 		uint64_t watcherSyncDeadlineMs = sf4e::SpectatorPolicy::SyncDeadlineMs;
 		// This copy only watches: it plays the confirmed frames P1 streams
 		// from remoteIp:remotePort and sends nothing of its own. localPlayer,

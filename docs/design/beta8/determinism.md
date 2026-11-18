@@ -67,10 +67,15 @@ P1 is the reference: its session streams to the watchers and its state is the ro
 **every watcher** follow it. So a watcher starts from the same state as both fighters by the
 same repair, not by a hash it could only compare: a watcher that differs would otherwise watch
 another fight until the end of the game. P1 waits for P2 (required) and for each watcher it
-streams to, but for a watcher only a second after P2 is done (`watcherGraceMs`), and a
-watcher gives up after 3 s (P1 drops a watcher that has not synchronized 5 s after a fighter,
-`SpectatorPolicy::SyncDeadlineMs`). Fighters give up after 8 s; the session then starts as it
-is, and a state that still differs shows at the first checkpoint, as before.
+streams to, but for a watcher only the table's watcher deadline after P2 is done
+(`watcherGraceMs` = `Config::watcherSyncDeadlineMs`, `SpectatorPolicy::SyncDeadlineMs`, 5 s,
+the time SF4's P1 gives a watcher to synchronize), and a watcher waits for P1 as long. A
+watcher that is not done by then, or that refuses the match, sits the game out: P1 leaves it
+out of its GGPO session and ends its link (`RoomBattle::LeaveOutUnagreedWatchers`), so it
+holds the fighters no longer, and it watches the next game. (Until 0.1.1 P1 waited a second
+and a watcher three: a watcher whose battle loaded more than about two seconds after the
+fighters' was dropped at GGPO's sync, every game.) Fighters give up after 8 s; the session
+then starts as it is, and a state that still differs shows at the first checkpoint, as before.
 
 ### The exchange
 
