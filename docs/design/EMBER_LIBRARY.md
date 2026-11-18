@@ -3058,3 +3058,13 @@ Auto's choice were in no log, and `PingSummary` was empty, so "Auto delay: game 
   delays, and why: chosen, or Auto's style with the median, p95, recommendation and bands); "Auto delay: connection
   check" when Auto takes a check (route, median, p95, p99, jitter, replies, recommendation); "Match end" (ping, rollback
   count, mean and deepest depth, Auto's next delay).
+
+## 67. Watching with Ember's room open: the watched game's picture (0.1.1, 2026-11-18)
+
+SF4 Ember's picture-in-picture over a watched game, in SFV: the library asks the game for the picture
+(`ShellGame::WatchedPicture`, `ui::WatchedPictureToTake`), and SFV's overlay answers it from the frame it is
+about to present (`overlay/WatchedFrame`: one copy or resolve of the back buffer and one draw into a B8G8R8X8
+picture per frame, only while Ember's menu is shown over a watched game with the picture on). The HUD says the
+shared watching hint, and Alt+Enter stays Ember's while a stream is watched. The room's own use while watching
+was already the library's (section 25). Design, cost, input, match end and the laptop checks:
+`docs/design/WATCH_PICTURE.md`.
