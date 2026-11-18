@@ -162,9 +162,11 @@ Fields:
   `"vtrigger"`, `choice` = 1 or 2, the file's k), all of which must agree with `path`; `frame`
   (the fight frame captured, number) and `stage` (string) are required and only recorded.
 - The manifest is shipped as `assets\selection\manifest.json`, so it must stay ASCII-safe
-  JSON and carry nothing private. Cutouts are 256x384 palette PNGs and loadout pictures 256x144 RGB PNGs, both as SF4's importer and
-  its Ultra pictures are made (Lanczos, `ImageOps.fit` for the loadout ones, no palette for them); the pack is what the
-  game draws, not the 512x768 masters (those stay in the store).
+  JSON and carry nothing private. Cutouts are 256x384 palette PNGs with transparency and loadout pictures 256x144 palette PNGs,
+  at the sizes SF4's importer and its Ultra pictures are made (Lanczos, `ImageOps.fit` for the loadout
+  ones); boothpack 1.1 makes the palettes (`tools.md`). The pack is what the game draws, not the
+  512x768 masters (those stay in the store). Nothing reads more of a picture than its pixels: the
+  mod decodes any PNG through WIC (`SelectionArt`) at up to 512 px on the long side.
 
 ## Not verified
 

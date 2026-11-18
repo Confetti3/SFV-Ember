@@ -5,9 +5,20 @@
 `tools/boothpack.py` turns the masters into the pack (`pack.md`); `tools/boothsheet.py` makes
 contact sheets. Development builds only; never on a player build.
 
-Pack formats: costume cutouts are 256x384 palette PNGs (SF4's importer); loadout pictures are
-`vs<k>.png` / `vt<k>.png`, 256x144 RGB PNGs made as SF4 makes its `ultra-N.png` (Lanczos
-`ImageOps.fit` from the lossless 16:9 master, saved as PNG, no palette, `optimize=True`).
+Pack formats (boothpack 1.1): costume cutouts are 256x384 palette PNGs with transparency (SF4's
+importer's canvas); loadout pictures are `vs<k>.png` / `vt<k>.png`, 256x144 as SF4 makes its
+`ultra-N.png` (Lanczos `ImageOps.fit` from the lossless 16:9 master), as 256-colour palette PNGs.
+`tools/booth/palette.py` makes the palettes: weighted k-means in premultiplied RGBA, no dithering,
+and for a cutout the fewest colours (32 to 256) whose picture is as close to the canvas (PSNR) as
+boothpack 1.0's 256-colour octree palette was. On the 2026-11-17 every-colour capture (6,336
+cutouts, 180 loadout pictures) that is 40 to 80 colours for nearly every cutout, 117.0 MB of cutouts
+down to 90.1 MB and 9.6 MB of loadout pictures down to 3.7 MB (44 dB from the RGB ones, 39 dB at
+worst). A pack another version made is made again whole (its manifest's `pipeline`).
+
+Why not smaller: the mod draws a cutout at 348x522 or more at a 1080p interface scale of 1 (the
+pick pane, `SfvPickPreview`) and decodes at most 512 px on the long side, so 256x384 is already
+below every size it is drawn at; no format the mod reads does better than an undithered palette PNG
+on these renders (JPEG with a mask measured larger at the same closeness).
 
 ## Setup
 
@@ -66,7 +77,7 @@ python -I tools\runbooth.py --phase all --copies 4
 python -I tools\runbooth.py --retry-failed --copies 2        # looks the log lists as failed
 python -I tools\boothsheet.py
 python -I tools\boothpack.py pack --except-failed [--mod-revision <hex>]
-scripts\package.ps1 -RenderStore D:\sfv-ember-renders
+scripts\package.ps1 -RenderStore D:\sfv-ember-renders -MinColourCoverage 1
 ```
 
 Resumable: a look whose master exists is skipped (`--force` captures again). Ctrl-C stops after the

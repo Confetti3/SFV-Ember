@@ -12,7 +12,11 @@ from pathlib import Path
 VERSION = "1.0"
 
 
-PIPELINE = f"runbooth {VERSION} / boothpack {VERSION}"
+# 1.1: palette pictures in the fewest colours that keep them as close as 1.0's 256 (palette.py).
+PACK_VERSION = "1.1"
+
+
+PIPELINE = f"runbooth {VERSION} / boothpack {PACK_VERSION}"
 
 
 DEFAULT_STORE = r"D:\sfv-ember-renders"
@@ -33,10 +37,7 @@ PACK_SIZE = (256, 384)
 PACK_MARGIN = 16            # the same canvas and margin as SF4's importer, at half the master
 
 
-PACK_COLOURS = 256
-
-
-LOADOUT_PACK_SIZE = (256, 144)  # SF4's ultra-N.png: 256x144 RGB PNG, ImageOps.fit with Lanczos, no palette
+LOADOUT_PACK_SIZE = (256, 144)  # SF4's ultra-N.png size, ImageOps.fit with Lanczos; a palette PNG (palette.py)
 
 
 PART_NAMES = {"vs": "vskill", "vt": "vtrigger"}

@@ -18,16 +18,16 @@ from .space import (CUTOUT_RE, LOADOUT_PACK_SIZE, LOADOUT_RE, MANIFEST_PACKAGE_P
 
 
 def image_problem(file: Path, kind: str) -> str | None:
-    """Why `file` is not the picture pack.md describes, or None: a PNG that decodes, a cutout 256x384
-    palette with transparency, a loadout picture 256x144 RGB. The sha256 and size in the manifest say
-    the file is the one that was packed, not that it is an image."""
+    """Why `file` is not the picture pack.md describes, or None: a palette PNG that decodes, a cutout
+    256x384 with transparency, a loadout picture 256x144. The sha256 and size in the manifest say the
+    file is the one that was packed, not that it is an image."""
     try:
         with Image.open(file) as im:
             fmt, size, mode, transparent = im.format, im.size, im.mode, "transparency" in im.info
             im.verify()
     except (OSError, ValueError, SyntaxError) as e:  # Pillow: truncated, not an image, a bad chunk
         return f"not a readable picture ({e})"
-    want_size, want_mode = (PACK_SIZE, "P") if kind == "cutout" else (LOADOUT_PACK_SIZE, "RGB")
+    want_size, want_mode = (PACK_SIZE if kind == "cutout" else LOADOUT_PACK_SIZE), "P"
     if fmt != "PNG":
         return f"is {fmt}, not PNG"
     if size != want_size:
