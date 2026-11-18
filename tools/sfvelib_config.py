@@ -24,6 +24,9 @@ PACKAGE_DIR = Path(os.environ.get("SFVE_PACKAGE_DIR", str(BUILD_DIR)))
 LAUNCHER_FILES = ("Launcher.exe", "sfv_ember.dll", "sf4-net.exe")
 # The mod's logs (mod/Log.cxx) and the launcher's, however the game started.
 LOG_DIR = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming"))) / "SFVEmber" / "logs"
+# The one lock every runner takes while it launches SFV, so two runs never start copies at once.
+LAUNCH_LOCK = Path(os.environ.get("SFVE_LAUNCH_LOCK", r"D:\sfv-re\sfv-launch.lock"))
+LOCK_STALE_S = 45 * 60
 # What deploy installed in the game folder (proxy mode), relative to it.
 MANIFEST = "sfve-deployed.json"
 
