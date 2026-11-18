@@ -127,7 +127,7 @@ TEST_CASE("a colour pack descriptor names one archive of the product's own relea
 		nlohmann::json changed = Descriptor(expected);
 		if (value.is_null()) changed.erase(key);
 		else changed[key] = std::move(value);
-		CHECK_MESSAGE(!Parse(changed).has_value(), std::string(key) + " = " + changed.dump());
+		CHECK_MESSAGE(!Parse(changed).has_value(), (std::string(key) + " = " + changed.dump()));
 	};
 	refused("format", 2);
 	refused("format", nullptr);
@@ -243,7 +243,7 @@ TEST_CASE("a colour pack with one entry outside its folder is refused whole")
 		const Pack pack = Downloaded(data, StoredZip({{"assets/selection/RYU/costume-0/color-1-cutout.png", "fine"}, {unsafe, "escaped"}}));
 		std::string error;
 		CHECK_FALSE(sfve::launcher::InstallPack(data, pack, error, kGoOn));
-		CHECK_MESSAGE(error.find("unsafe entry name") != std::string::npos, std::string(unsafe) + ": " + error);
+		CHECK_MESSAGE(error.find("unsafe entry name") != std::string::npos, (std::string(unsafe) + ": " + error));
 		// Nothing of it stays: not the entry that came before, not the download.
 		CHECK(!fs::exists(sfve::colours::PackFolder(data, pack)));
 		CHECK(fs::is_empty(sfve::colours::PacksFolder(data)));
