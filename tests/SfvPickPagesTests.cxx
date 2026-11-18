@@ -554,6 +554,24 @@ TEST_CASE("a look whose own colour has no picture shows its costume's picture, t
 	CHECK(RowOf(colours, "color-101").label == "EX02");
 }
 
+TEST_CASE("a colour card is its colour's own picture once that has loaded, and its swatch until then or without one")
+{
+	sf4e::ui::SelectionImage own;
+	// No cutout of the colour (no pack yet, or a colour the capture lacks).
+	own.missing = true;
+	CHECK(ChooseColourCardFace(own) == ColourCardFace::Swatch);
+	// Asked for and still loading.
+	own.missing = false;
+	CHECK(ChooseColourCardFace(own) == ColourCardFace::Swatch);
+	own.texture = (ImTextureID)1;
+	own.width = 256;
+	own.height = 384;
+	CHECK(ChooseColourCardFace(own) == ColourCardFace::Picture);
+	// A texture of no size is not drawn.
+	own.width = 0;
+	CHECK(ChooseColourCardFace(own) == ColourCardFace::Swatch);
+}
+
 TEST_CASE("a costume the game has no words for in this language is named by the shared word and its number, never its text id")
 {
 	const std::string costume = sf4e::loc::T("selection.costume");

@@ -27,8 +27,6 @@ constexpr float kLocked = .4f;
 // The stage cards (StageSelectIcon_l, 674x238): their picture's height over
 // width, and the narrowest and widest they go (unscaled).
 constexpr sf4e::ui::CardShape kStageCardShape{238.f / 674.f, 120, 340};
-// The colour cards: each the colour's swatch chip, square, as many as fit.
-constexpr sf4e::ui::CardShape kColourCardShape{1.f, 48, 110};
 
 // The body's area from the cursor, `height` tall, and the pane cut from its
 // right where there is room for one.

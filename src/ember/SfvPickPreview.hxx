@@ -123,6 +123,19 @@ void DrawColourTag(ImDrawList* draw, const sf4e::selection::Pick& look, sf4e::ui
 // first colour on top as the game's costume menu splits it. False, drawing
 // nothing, while the swatches load or where the game has none for it.
 bool DrawSwatch(ImDrawList* draw, int fighter, int costume, int colour, sf4e::ui::v2::Box box, float alpha);
+
+// What a colour card (the colour gallery) shows of its colour: the colour's
+// own picture (SelectionArt::Appearance, the colour pack's cutout, then the
+// package's) once it has loaded; its swatch while the picture loads and where
+// there is none (no colour pack yet, a colour without a cutout). Never the
+// costume's first colour, which would make every card the same picture.
+enum class ColourCardFace { Picture, Swatch };
+ColourCardFace ChooseColourCardFace(const sf4e::ui::SelectionImage& own);
+// A colour card's picture in `box`, as ChooseColourCardFace picks it: the
+// colour's own picture standing on a thin strip of its swatch, or its swatch
+// chip as large a square as the box holds (its edge alone while the swatches
+// load), struck through with `struck` (a colour this player cannot ready).
+void DrawColourCard(ImDrawList* draw, const sf4e::selection::Pick& look, sf4e::ui::v2::Box box, float alpha, bool struck);
 // The game's mark for the part's choice in `box`: the mark fitted on whole
 // pixels, never larger than it is; Ember's plate with the numeral where the
 // mark does not load; nothing while it loads.

@@ -46,6 +46,8 @@ constexpr float kFigureShape = 384.f / 256.f;
 // A swatch chip: its first colour fills this much of it from the top, the
 // second the rest, as the game's costume menu splits its swatch.
 constexpr float kSwatchSplit = .6f;
+// A colour card's swatch strip under its picture: this tall (unscaled).
+constexpr float kColourCardStrip = 8;
 // The V marks' frame: as wide as this many line heights, so a mark, Ember's
 // plate or nothing (while the mark loads) all leave the words in one place.
 constexpr float kMarkWidth = 1.5f;
@@ -409,6 +411,31 @@ bool DrawSwatch(ImDrawList* draw, int fighter, int costume, int colour, v2::Box 
 	draw->AddRectFilled(box.min, ImVec2(box.max.x, split), Rgb(entry->swatch->first, alpha));
 	draw->AddRectFilled(ImVec2(box.min.x, split), box.max, Rgb(entry->swatch->second, alpha));
 	return true;
+}
+
+ColourCardFace ChooseColourCardFace(const SelectionImage& own)
+{
+	return own.texture && own.width > 0 && own.height > 0 ? ColourCardFace::Picture : ColourCardFace::Swatch;
+}
+
+void DrawColourCard(ImDrawList* draw, const sf4e::selection::Pick& look, v2::Box box, float alpha, bool struck)
+{
+	const auto& colors = v2::Colors();
+	const float s = sf4e::ui::Scale(), edge = (std::max)(1.f, s);
+	sf4e::ui::SelectionArt* art = sf4e::ui::MenuArt();
+	const SelectionImage own = art ? art->Appearance(look.fighter, look.costume, look.color) : Missing();
+	if (ChooseColourCardFace(own) == ColourCardFace::Picture) {
+		const v2::Box strip{ImVec2(box.min.x, box.max.y - Whole(kColourCardStrip * s)), box.max};
+		FitIn(draw, own, {box.min, ImVec2(box.max.x, strip.min.y)}, alpha, true);
+		DrawSwatch(draw, look.fighter, look.costume, look.color, strip, alpha);
+		return;
+	}
+	const float side = std::floor((std::min)(box.W(), box.H()) * .8f);
+	const ImVec2 corner(std::floor(box.min.x + (box.W() - side) * .5f), std::floor(box.min.y + (box.H() - side) * .5f));
+	const v2::Box chip{corner, ImVec2(corner.x + side, corner.y + side)};
+	DrawSwatch(draw, look.fighter, look.costume, look.color, chip, alpha);
+	draw->AddRect(chip.min, chip.max, v2::color::Alpha(colors.border, alpha), 0, 0, edge);
+	if (struck) draw->AddLine(ImVec2(chip.min.x + s, chip.max.y - s), ImVec2(chip.max.x - s, chip.min.y + s), colors.muted, s);
 }
 
 void DrawLoadoutMark(ImDrawList* draw, picks::LoadoutPart part, int number, v2::Box box)

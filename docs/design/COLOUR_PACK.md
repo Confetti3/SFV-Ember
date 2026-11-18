@@ -74,6 +74,9 @@ exist and logs nothing for it. So:
   0.1.0's behaviour.
 - A pack that arrives mid-session is picked up by every picture asked for afterwards; one already shown keeps
   its first-colour stand-in until the next start (the cache keeps what it decoded).
+- The colour gallery's cards are each colour's own picture (`Appearance`, `AppearanceFiles`: the look's
+  cutout, the pack's then the package's, no other colour's), so they share the pane's cached pictures; a
+  colour with none (no pack yet) shows its swatch chip instead, as 0.1.0's cards did.
 - Only the pack the package names is ever read; an old pack's folder is never a source.
 
 ## The release pipeline

@@ -177,9 +177,13 @@ The board's pane, the look page's pane and the card pages' panes are one drawing
   opens the stage cards.
 
 Cards: costume cards show each costume in its picture's colour (its first), labelled with the
-costume's name; colour cards are the colours' swatch chips (the game's two colours each, square,
-as large as the card holds), one this player cannot ready dimmed and struck through, with the
-pane beside them showing the costume tagged with the focused colour; stage cards
+costume's name; colour cards (0.1.1, the colour pack) are cut as the costume cards are, each
+the colour's own picture (`SelectionArt::Appearance`, never the costume's first colour) on a
+thin strip of its swatch, and the colour's swatch chip (the game's two colours, square, as large
+as the card holds) while that picture loads or where there is none (no pack yet, a colour without
+a cutout; `ChooseColourCardFace`, `DrawColourCard`); one this player cannot ready dimmed, its
+chip struck through; the pane beside them shows the focused colour. A card grid draws only the
+cards in view, so only their pictures are asked for; stage cards
 `StageSelectIcon_l`; loadout cards the captured move picture (`LoadoutPicture`, `vs<k>.png` / `vt<k>.png`), else the
 fighter in their look, with the game's I/II mark, SAVED on the stored choice, the part and
 numeral, the game's move name and the note (`LoadoutNote`, drawn after `NoteUserText`).
