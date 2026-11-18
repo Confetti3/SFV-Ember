@@ -36,6 +36,8 @@
 #include <windows.h>
 #include <bcrypt.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -306,10 +308,20 @@ public:
 // whichever side it fights on (NetplayMode).
 constexpr int kGameplaySlot = 0;
 
+// The keyboard as the devices list it, as SF4's lists it: always there. SFV
+// reads the keyboard for player 1 itself, after its own key settings, so the
+// battle's input record for player 1, which the battle plays as this copy's
+// pad 0 (SfvAdapter::Sampled), carries what it plays.
+bool GameplayKeyboard(const sf4e::input::Device& device)
+{
+	return device.type == sf4e::input::PadKeyboard && device.index == 0;
+}
+
 // SFV's pads are XInput pads (mod/XInputHooks hooks XInputGetState). The devices
-// are the slots as the game last read them; the game's pad 0 is the gameplay
-// device and fights for either side. No SFV module sets pads up or lays out
-// their buttons yet: those answer as a game with no pad layer would.
+// are the slots as the game last read them, then the keyboard; the game's pad
+// 0 is the gameplay device and fights for either side, and with no pad 0 the
+// keyboard is. No SFV module sets pads up or lays out their buttons yet: those
+// answer as a game with no pad layer would.
 class SfvInput final : public Input {
 public:
 	std::vector<sf4e::input::Device> ReadDevices(bool) override
@@ -326,27 +338,42 @@ public:
 			device.buttons = seen.buttons;
 			devices.push_back(device);
 		}
+		sf4e::input::Device keyboard;
+		keyboard.type = sf4e::input::PadKeyboard;
+		keyboard.index = 0;
+		keyboard.name = "Keyboard";
+		keyboard.connected = true;
+		devices.push_back(keyboard);
 		return devices;
 	}
-	// SFV Ember lists no keyboard device yet.
+	// Nothing captures a device in SFV (Capabilities::gameplayDeviceChoice is
+	// off), so no key's held bit is read.
 	void ScanKeyboard(std::vector<sf4e::input::Device>&) override {}
+	// Pad 0 while one is there, else the keyboard: a player without a pad
+	// plays with it, and plugging one in hands it the game.
 	sf4e::input::Device MenuDevice(const std::vector<sf4e::input::Device>& devices) override
 	{
+		const sf4e::input::Device* keyboard = nullptr;
 		for (const sf4e::input::Device& device : devices) {
-			if (device.index == kGameplaySlot) return device;
+			if (device.type == sf4e::input::PadXInput && device.index == kGameplaySlot) return device;
+			if (GameplayKeyboard(device)) keyboard = &device;
 		}
-		return {};
+		return keyboard ? *keyboard : sf4e::input::Device{};
 	}
 	void LogInventory(const std::vector<sf4e::input::Device>& devices) override
 	{
-		if (devices.size() == loggedDevices_) return;
-		loggedDevices_ = devices.size();
-		mod::Log("ember: %zu pad(s) connected", devices.size());
+		const std::size_t pads = static_cast<std::size_t>(std::count_if(devices.begin(), devices.end(),
+			[](const sf4e::input::Device& device) { return device.type == sf4e::input::PadXInput; }));
+		if (pads == loggedPads_) return;
+		loggedPads_ = pads;
+		mod::Log("ember: %zu pad(s) connected", pads);
 	}
-	// The game's pad 0 plays either side; another pad cannot (the battle reads pad 0).
+	// The game's pad 0, or the keyboard, plays either side; another pad cannot
+	// (the battle reads pad 0).
 	bool AssignToSide(const sf4e::input::Device& device, int, bool) override
 	{
-		return device.connected && device.type == sf4e::input::PadXInput && device.index == kGameplaySlot;
+		return device.connected &&
+			((device.type == sf4e::input::PadXInput && device.index == kGameplaySlot) || GameplayKeyboard(device));
 	}
 	void ReleaseFromSide(int) override {}
 	// The bound battle's input from this copy's pad, in GameInput's bits.
@@ -386,7 +413,7 @@ public:
 	std::optional<std::string> SaveSetup() override { return std::nullopt; }
 
 private:
-	std::size_t loggedDevices_ = ~std::size_t{0};
+	std::size_t loggedPads_ = ~std::size_t{0};
 };
 
 // The player's settings go to the library's settings store, in SFV Ember's
