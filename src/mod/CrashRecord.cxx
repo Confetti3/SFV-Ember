@@ -1,6 +1,7 @@
 #include "mod/CrashRecord.hxx"
 
 #include "mod/ControlPipe.hxx"
+#include "mod/GameExit.hxx"
 #include "mod/GameHooks.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
@@ -163,16 +164,18 @@ BOOL WINAPI OnMiniDumpWriteDump(HANDLE process, DWORD processId, HANDLE file, MI
 	RecordCrash("unhandled_exception", exception->ExceptionPointers, "the game's crash reporter", exception->ThreadId);
 	const BOOL written = s_originalWriter(process, processId, file, type, exception, user, callback);
 	// Without a launcher (the proxy's starts) nothing else would show the
-	// crash: the reporter's own handling goes on.
-	if (!s_state.launcherChannel) return written;
+	// crash: the reporter's own handling goes on, unless the game was already
+	// leaving (nothing to show then).
+	const bool leaving = GracefulExitDone();
+	if (!s_state.launcherChannel && !leaving) return written;
 	// After its dump the reporter waits on an error box of its own, and the
 	// launcher, which has the dump already, waits on the game. End it here so
 	// the launcher sees the crash at once and offers its report: with the
 	// fault's code when the launcher reads that as a crash, else with 3 (an
 	// abort's).
-	const UINT exitCode = sf4e::crash::IsCrashExit(code) ? code : 3;
-	snprintf(s_line, sizeof(s_line), "crash: the game's own dump %s; ending the game with code 0x%08X",
-		written ? "written" : "not written", exitCode);
+	const UINT exitCode = EndingCode(code, leaving);
+	snprintf(s_line, sizeof(s_line), "crash: the game's own dump %s; ending the game with code 0x%08X%s",
+		written ? "written" : "not written", exitCode, leaving ? " (the graceful exit was done: its teardown, not a crash)" : "");
 	TryLogLine(s_line);
 	TerminateProcess(GetCurrentProcess(), exitCode);
 	return written;
@@ -188,6 +191,13 @@ LONG WINAPI OnUnhandledException(EXCEPTION_POINTERS* pointers)
 	if (inside) return EXCEPTION_CONTINUE_SEARCH;
 	inside = true;
 	RecordCrash("unhandled_exception", pointers, nullptr, GetCurrentThreadId());
+	if (GracefulExitDone()) {
+		// A fault in the engine's or a driver's teardown, after the room was
+		// left and the saves done: the record and dump are kept, and the game
+		// ends as a clean exit instead of offering the player a crash report.
+		TryLogLine("crash: after the graceful exit was done: its teardown, not a crash; ending the game with code 0");
+		TerminateProcess(GetCurrentProcess(), EndingCode(0, true));
+	}
 	const LPTOP_LEVEL_EXCEPTION_FILTER previous = s_previousFilter;
 	const LONG result = previous ? previous(pointers) : EXCEPTION_CONTINUE_SEARCH;
 	inside = false;
@@ -313,6 +323,12 @@ DWORD WINAPI FaultThread(void*)
 }
 
 } // namespace
+
+unsigned EndingCode(unsigned long faultCode, bool afterGracefulExit)
+{
+	if (afterGracefulExit) return 0;
+	return sf4e::crash::IsCrashExit(static_cast<uint32_t>(faultCode)) ? static_cast<unsigned>(faultCode) : 3;
+}
 
 bool IsInGameExe(const void* address)
 {

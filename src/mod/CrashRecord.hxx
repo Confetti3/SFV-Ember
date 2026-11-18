@@ -64,6 +64,14 @@ struct CrashRecordState {
 // A second call returns the first's state.
 CrashRecordState InstallCrashRecord(const CrashRecordSetup& setup);
 
+// The exit code the game ends with after a crash: 0 when the fault came once
+// the graceful exit was done (GracefulExitDone: everything Ember keeps is
+// saved, and the engine was tearing itself down, where 0.1.0 players' AMD
+// driver and the engine's own teardown faulted after the window had closed),
+// so the launcher shows no crash for something the player never saw; else the
+// fault's code when the launcher reads it as a crash, or 3 (an abort's).
+unsigned EndingCode(unsigned long faultCode, bool afterGracefulExit);
+
 // True when `address` is code of the game's own exe. Only the game's reporter
 // (its guarded loop and threads, which end in MiniDumpWriteDump) is taken for
 // the game ending: another module that dumps (a second mod's vectored handler

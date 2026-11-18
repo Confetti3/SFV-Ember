@@ -73,6 +73,14 @@ TEST_CASE("the launcher's dump channel reaches the mod as three hex handle value
 	LoadConfigFromCommandLine(L"");
 }
 
+TEST_CASE("a fault after the graceful exit ends the game as a clean exit")
+{
+	CHECK(sfve::mod::EndingCode(0xC0000005, true) == 0);
+	CHECK(sfve::mod::EndingCode(0xC0000005, false) == 0xC0000005);
+	// A code the launcher does not read as a crash is ended with an abort's.
+	CHECK(sfve::mod::EndingCode(0xC0000139, false) == 3);
+}
+
 TEST_CASE("only code of the game's own exe is the game's crash reporter")
 {
 	// The test exe stands in for the game's; a dump asked from another module

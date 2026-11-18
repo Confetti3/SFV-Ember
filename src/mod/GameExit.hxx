@@ -38,6 +38,12 @@ struct ExitWork {
 
 bool InstallGameExit(uintptr_t imageBase);
 
+// True once the graceful leave finished (every work said it was done, not
+// timed out): everything Ember keeps is saved and left, and what the engine
+// does from here is its own teardown. The crash record reads a fault after
+// this as the game's exit, not a crash (CrashRecord's EndingCode). Any thread.
+bool GracefulExitDone();
+
 // Adds work for the game's exit. Game thread, before the exit.
 void OnGameExit(ExitWork work);
 
