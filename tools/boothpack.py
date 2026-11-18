@@ -12,8 +12,9 @@ Masters (written while the capture runs, by runbooth.py through make_masters):
   <store>\\masters\\<CODE>\\vs1.png ...                  loadout pictures, 16:9, lossless (+ .json)
 
 The pack (`pack`), exactly as docs/design/beta8/pack.md says:
-  <store>\\pack\\assets\\selection\\<CODE>\\costume-<N>\\color-<M>-cutout.png   256x384, 256-colour palette PNG
-  <store>\\pack\\assets\\selection\\<CODE>\\vs<k>.png, vt<k>.png               256x144 RGB PNG
+  <store>\\pack\\assets\\selection\\<CODE>\\costume-<N>\\color-<M>-cutout.png   256x384 palette PNG, transparent
+  <store>\\pack\\assets\\selection\\<CODE>\\vs<k>.png, vt<k>.png               256x144 palette PNG
+(booth/palette.py: the fewest colours that keep a cutout as close as boothpack 1.0's 256 did)
   <store>\\pack\\manifest.json
 """
 

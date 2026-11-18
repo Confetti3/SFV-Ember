@@ -4,6 +4,7 @@ Run through `python -I tools/boothpack.py --selftest`."""
 from __future__ import annotations
 
 import collections
+import io
 import json
 import shutil
 import sys
@@ -19,6 +20,7 @@ except ImportError:  # pragma: no cover - environment problem, said clearly
 from .checks import write_reference_once
 from .mask import make_masters
 from .pack import build_pack
+from .palette import closeness, cutout_png, octree_png, palette_picture, png_bytes
 from .space import (LOADOUT_PACK_SIZE, MASTER_MARGIN, MASTER_SIZE, PACK_MARGIN, PACK_SIZE, BoothError,
                     is_selection_asset_path, loadout_master_path, master_path)
 from .validate import image_problem, validate_pack
@@ -58,6 +60,32 @@ def _write_grabs(folder: Path, with_depth: bool, fighters_fill: tuple[tuple[int,
     return a_path, b_path
 
 
+def _check_palettes(check) -> None:
+    """The palette pictures (palette.py) on a soft-edged gradient figure, as a cutout is."""
+    h, w = 384, 256
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    rgb = np.dstack([xs * 255 / w, ys * 255 / h, 128 + 100 * np.sin(xs / 9) * np.cos(ys / 13)])
+    edge = np.clip(90 - np.hypot((xs - 128) * 1.6, ys - 200), 0, 1) * 255  # a one-pixel soft edge
+    canvas = Image.fromarray(np.dstack([rgb, edge]).clip(0, 255).astype(np.uint8), "RGBA")
+    data, colours = cutout_png(canvas)
+    octree = octree_png(canvas)
+    check(closeness(canvas, data) >= closeness(canvas, octree) and len(data) <= len(octree),
+          f"a cutout is as close as the 256-colour octree palette and no bigger ({colours} colours, "
+          f"{len(data)} bytes, octree {len(octree)})")
+    with Image.open(io.BytesIO(data)) as packed:
+        check(packed.mode == "P" and "transparency" in packed.info and packed.convert("RGBA").getpixel((0, 0))[3] == 0,
+              "the cutout keeps a transparent corner in a palette PNG")
+    check(png_bytes(palette_picture(canvas, 48)) == png_bytes(palette_picture(canvas, 48)), "a palette is the same every run")
+    few = Image.fromarray(np.dstack([rgb // 64 * 64, np.where(edge > 127, 255, 0)]).clip(0, 255).astype(np.uint8), "RGBA")
+    few_rgba = np.asarray(few.convert("RGBA"))
+    kept = np.asarray(palette_picture(few, 256).convert("RGBA"))
+    seen = few_rgba[..., 3] > 0
+    check(len(np.unique(few_rgba[seen].reshape(-1, 4), axis=0)) <= 255 and (kept[seen] == few_rgba[seen]).all(),
+          "a picture with fewer colours than the palette keeps every pixel")
+    opaque = palette_picture(Image.fromarray(rgb.clip(0, 255).astype(np.uint8), "RGB"), 64)
+    check("transparency" not in opaque.info, "an opaque picture gets no transparency")
+
+
 def selftest() -> int:
     failures: list[str] = []
 
@@ -83,6 +111,7 @@ def selftest() -> int:
     for p in bad:
         check(not is_selection_asset_path(p, space), f"refused {p!r}")
     check(is_selection_asset_path("assets\\selection\\manifest.json", {"fighters": {}}), "manifest accepted with an empty space")
+    _check_palettes(check)
 
     work = Path(tempfile.mkdtemp(prefix="boothpack-selftest-"))
     try:
@@ -146,10 +175,19 @@ def selftest() -> int:
         check(rgba.size == PACK_SIZE and rgba.getpixel((0, 0))[3] == 0, "cutout is 256x384 with a transparent corner")
         box = rgba.getchannel("A").point(lambda v: 255 if v >= 8 else 0).getbbox()
         check(box[3] == PACK_SIZE[1] - PACK_MARGIN and box[1] >= PACK_MARGIN, "cutout bottom-centred with the 16 px margin")
-        jpg = Image.open(pack / "assets/selection/AAA/vs1.png")
-        check(jpg.format == "PNG" and jpg.mode == "RGB" and jpg.size == LOADOUT_PACK_SIZE, "loadout picture is a 256x144 RGB PNG")
+        with Image.open(pack / "assets/selection/AAA/vs1.png") as shot:
+            check(shot.format == "PNG" and shot.mode == "P" and "transparency" not in shot.info and shot.size == LOADOUT_PACK_SIZE,
+                  "loadout picture is a 256x144 palette PNG without transparency")
         print(f"  sizes: cutout {cut.stat().st_size} bytes, loadout picture {(pack / 'assets/selection/AAA/vs1.png').stat().st_size} bytes")
         check({f["path"] for f in manifest["files"]} >= {"assets/selection/AAA/vs2.png", "assets/selection/BBB/vs1.png"}, "manifest lists the loadout pictures")
+        # A pack another version of the tools made is made again whole, newer files and all.
+        packed = cut.read_bytes()
+        cut.write_bytes(b"made by other tools")
+        stale = json.loads((pack / "manifest.json").read_text())
+        stale["pipeline"] = "runbooth 1.0 / boothpack 1.0"
+        (pack / "manifest.json").write_text(json.dumps(stale))
+        build_pack(store, space, "0123abc", True, 300, "TRN", 1)
+        check(cut.read_bytes() == packed, "a pack of another pipeline is made again whole")
         # An accepted exception: remove BBB costume 0 colour 1's master and AAA's costume 2.
         master_path(store, "AAA", 2, 0).unlink()
         master_path(store, "AAA", 2, 0).with_suffix(".json").unlink()

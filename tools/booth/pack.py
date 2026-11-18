@@ -17,33 +17,34 @@ except ImportError:  # pragma: no cover - environment problem, said clearly
     sys.exit("the booth tools need Pillow and numpy: python -m pip install -r tools/booth-requirements.txt (in a venv)")
 
 from .imageops import alpha_crop, fit
-from .space import (LOADOUT_PACK_SIZE, PACK_COLOURS, PACK_MARGIN, PACK_SIZE, PART_NAMES, PIPELINE, BoothError,
+from .palette import cutout_png, loadout_png
+from .space import (LOADOUT_PACK_SIZE, PACK_MARGIN, PACK_SIZE, PART_NAMES, PIPELINE, BoothError,
                     cutout_relpath, loadout_master_path, loadout_relpath, master_path)
+
+
+def _write(target: Path, data: bytes) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temp = target.with_suffix(".tmp.png")
+    temp.write_bytes(data)
+    os.replace(temp, target)
 
 
 def pack_cutout(master: Path, target: Path) -> None:
     """A master as SF4's importer makes a render into a selection cutout: cropped to the alpha
-    box, fitted 256x384 with 16 px margin bottom-centred (premultiplied-alpha downscale), 256
-    colours with transparency."""
+    box, fitted 256x384 with 16 px margin bottom-centred (premultiplied-alpha downscale), then a
+    palette PNG with transparency in as few colours as keep it as close as 256 octree colours did
+    (palette.py's cutout_png)."""
     with Image.open(master) as im:
         canvas = fit(alpha_crop(im.convert("RGBA")), PACK_SIZE, PACK_MARGIN)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temp = target.with_suffix(".tmp.png")
-    canvas.quantize(colors=PACK_COLOURS, method=Image.Quantize.FASTOCTREE,
-                    dither=Image.Dither.FLOYDSTEINBERG).save(temp, optimize=True)
-    os.replace(temp, target)
+    _write(target, cutout_png(canvas)[0])
 
 
 def pack_loadout(master: Path, target: Path) -> None:
     """A loadout master as SF4 makes its Ultra pictures (the library's fetch-ultra-references.py):
-    ImageOps.fit to 256x144 with Lanczos, saved as an RGB PNG (not quantized); optimize=True
-    only shrinks the file, losslessly."""
+    ImageOps.fit to 256x144 with Lanczos, then a 256-colour palette PNG (palette.py's loadout_png)."""
     with Image.open(master) as im:
         rgb = ImageOps.fit(im.convert("RGB"), LOADOUT_PACK_SIZE, Image.Resampling.LANCZOS)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temp = target.with_suffix(".tmp.png")
-    rgb.save(temp, "PNG", optimize=True)
-    os.replace(temp, target)
+    _write(target, loadout_png(rgb))
 
 
 def _pack_one(job: tuple[str, str, str]) -> None:  # module level so a process pool can run it
@@ -84,10 +85,20 @@ def failed_looks(store: Path) -> dict[tuple[str, int, int], str]:
     return {k: v for k, v in out.items() if not master_path(store, *k).is_file()}
 
 
+def packed_by(pack: Path) -> str | None:
+    """The pipeline the pack's manifest names, or None for no readable manifest."""
+    try:
+        return str(json.loads((pack / "manifest.json").read_text(encoding="utf-8"))["pipeline"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def build_pack(store: Path, space: dict, mod_revision: str | None, except_failed: bool, default_frame: int,
                default_stage: str, jobs: int, force: bool = False) -> dict:
-    """Converts every master into the pack and writes manifest.json. Returns the manifest."""
+    """Converts every master into the pack and writes manifest.json. Returns the manifest. A pack
+    another version of these tools made (its manifest's pipeline) is made again whole."""
     pack = store / "pack"
+    force = force or packed_by(pack) != PIPELINE
     work: list[tuple[str, str, str]] = []
     files: list[dict] = []
     for code, fighter in space["fighters"].items():

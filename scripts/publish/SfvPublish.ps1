@@ -25,6 +25,9 @@ $PubInputs = @{ build = @(); rooms = @(); draft = @('build', 'rooms'); promote =
 $PubPromotePhases = @('verify', 'server', 'push-library', 'push-origin', 'push-public', 'publish', 'confirm')
 $PubOutwardPromote = @('push-library', 'push-origin', 'push-public', 'publish')
 $PubRoomBuildPattern = '^(sfv-ember/[0-9]+/[0-9]+\.[0-9]+)/([0-9a-f]{16})/layout-([0-9a-f]{16})$'
+# A release's pictures cover every colour of every costume the pick space offers, bar the looks the render
+# manifest lists as exceptions: package.ps1 -MinColourCoverage refuses less, and the build's receipt must say so.
+$PubColourCoverage = 1.0
 
 # ---------------------------------------------------------------------------------------------------------------
 # Small helpers

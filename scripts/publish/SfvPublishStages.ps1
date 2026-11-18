@@ -128,7 +128,8 @@ function Invoke-PubBuild([object]$Ctx, [hashtable]$P) {
         $sync = Invoke-PubAgent $Ctx $attempt.work 'sync' @(
             '-Label', $plan.label, '-Source', $plan.source.commit, '-SourceTree', $plan.source.tree, '-Library', $plan.library.commit, '-LibraryTree', $plan.library.tree,
             '-SourceCheckout', $lap.sourceCheckout, '-LibraryCheckout', $lap.libraryCheckout, '-BuildDev', $lap.buildDev, '-BuildPlayer', $lap.buildPlayer,
-            '-VcpkgRoot', $lap.vcpkgRoot, '-RenderStore', $lap.renderStore, '-OldPackageCheck', $lap.oldPackageCheck, '-Dist', "$($lap.dist)\$($plan.label)-$($attempt.id)",
+            '-VcpkgRoot', $lap.vcpkgRoot, '-RenderStore', $lap.renderStore, '-MinColourCoverage', "$PubColourCoverage", '-OldPackageCheck', $lap.oldPackageCheck,
+            '-Dist', "$($lap.dist)\$($plan.label)-$($attempt.id)",
             '-Interactive', $lap.interactive, '-JobName', $attempt.job) 1800
         if (!$sync.ok) { throw "The laptop could not check out the plan's commits: $($sync.error)" }
         Save-PubAttempt $Ctx 'build' $attempt
@@ -202,6 +203,10 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
         $packaged = [Text.UTF8Encoding]::new($false).GetString($inner).TrimStart([char]0xFEFF) | ConvertFrom-Json
         if ($packaged.sourceRevision -cne $plan.source.commit -or $packaged.emberRevision -cne $plan.library.commit -or $packaged.buildKind -cne 'player' -or
             $packaged.sourceFingerprint -cne $checkout.source.fingerprint -or $packaged.package.label -cne $plan.label -or $packaged.testsPassed -ne $true) { throw 'The zip''s receipt is not a player build of the plan''s commits labelled for this release.' }
+        $renders = $packaged.renders
+        if ($renders.included -ne $true -or [double]$renders.minColourCoverage -lt $PubColourCoverage -or [double]$renders.colourCoverage -lt $PubColourCoverage) {
+            throw "The zip's receipt says its pictures cover $($renders.colourCoverage) of the looks (packaged with -MinColourCoverage $($renders.minColourCoverage)); a release ships every colour ($PubColourCoverage)."
+        }
         $player = Read-PubJson (Join-Path $Folder 'receipt-player.json')
         foreach ($binary in @($player.binaries)) {
             $bytes = [byte[]](& $read $binary.path)

@@ -153,6 +153,9 @@ try {
         @({ param($f) $f.extra = 'thanks to ForbiddenName' }, '*package carries forbidden strings*'),
         @({ param($f) $f.machineScan = @(@{file = 'Launcher.exe'; hits = 2}) }, '*laptop''s own names appear*'),
         @({ param($f) $f.packagedOverride = { param($r) $r.package = @{label = '0.1.0-beta.8'} } }, '*zip''s receipt is not a player build*'),
+        @({ param($f) $f.packagedOverride = { param($r) $r.renders.colourCoverage = 0.98 } }, '*a release ships every colour*'),
+        @({ param($f) $f.packagedOverride = { param($r) $r.renders.minColourCoverage = 0 } }, '*a release ships every colour*'),
+        @({ param($f) $f.packagedOverride = { param($r) $r.renders = @{included = $false} } }, '*a release ships every colour*'),
         @({ param($f) $f.version = '0.1.0-beta.8' }, '*is not SFV Ember 0.1.0-beta.9*')
     )
     foreach ($case in $cases) {
@@ -160,7 +163,7 @@ try {
         Reject { Invoke-PubBuild $y.Ctx $y.P } $case[1]
         Check (!(Test-Path "$($y.Ctx.Root)\build\evidence.json")) 'no evidence after a refusal'
     }
-    Pass "build: refuses $($cases.Count) kinds of wrong result (other commit or fingerprint, failed tests, sidecar, zip, room build, forbidden or machine names in the package, receipt, version)"
+    Pass "build: refuses $($cases.Count) kinds of wrong result (other commit or fingerprint, failed tests, sidecar, zip, room build, forbidden or machine names in the package, receipt, colour coverage, version)"
     $y = Fresh; $null = Plan $y; $y.World.LaptopBusy = 'sfv-b9-roomhost'
     Reject { Invoke-PubBuild $y.Ctx $y.P } '*one heavy build at a time*'
     $y = Fresh; $null = Plan $y; $y.World.JobFails = $true
@@ -411,9 +414,14 @@ try {
     $agent = Join-Path $scripts 'laptop-agent.ps1'
     $sync = { pwsh -NoProfile -File $agent -Phase sync -Work $work -Label t -Source $y.C1 -SourceTree (G $y.Sfv @('rev-parse', "$($y.C1)^{tree}")) -Library $l3 `
         -LibraryTree (G $y.Lib @('rev-parse', "$l3^{tree}")) -SourceCheckout "$($y.F)\sfv-laptop" -LibraryCheckout "$($y.F)\lib-laptop" -BuildDev D:\x -BuildPlayer D:\y `
-        -VcpkgRoot D:\v -RenderStore D:\r -Dist D:\d -Interactive "$($y.F)\interactive" -JobName t-job | Select-Object -Last 1 }
+        -VcpkgRoot D:\v -RenderStore D:\r -MinColourCoverage $coverage -Dist D:\d -Interactive "$($y.F)\interactive" -JobName t-job | Select-Object -Last 1 }
+    $coverage = ''
+    $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
+    Check (!$result.ok -and $result.error -like '*No colour coverage*' -and !(Test-Path "$work\job.json")) 'a sync without the colour coverage is refused'
+    $coverage = '1'
     $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
     Check ($result.ok -and $result.sourceFingerprint -ceq ('F' * 64)) "agent sync: $($result.error)"
+    Check ((Get-Content "$work\job.json" -Raw | ConvertFrom-Json).minColourCoverage -ceq '1') 'the job packages with the colour coverage it was given'
     Check ((G "$($y.F)\sfv-laptop" @('rev-parse', 'HEAD')) -ceq $y.C1 -and (G "$($y.F)\lib-laptop" @('rev-parse', 'HEAD')) -ceq $l3) 'checkouts fast-forwarded'
     Check ((Get-Content "$($y.F)\interactive\t-job.cmd" -Raw) -match '-Phase job') 'job file written'
     $poll = ((pwsh -NoProfile -File $agent -Phase poll -Work $work -Interactive "$($y.F)\interactive" | Select-Object -Last 1) -replace '^RESULT ', '') | ConvertFrom-Json
@@ -428,7 +436,7 @@ try {
     Remove-Item "$work\checkout.json", "$work\job.json" -ErrorAction SilentlyContinue
     $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
     Check (!$result.ok -and $result.error -like '*not behind*') 'a diverged checkout is refused'
-    Pass 'build PC agent: fetches the bundles, fast-forwards both checkouts to the plan''s commits, writes the job; refuses a used folder, a dirty or a diverged checkout'
+    Pass 'build PC agent: fetches the bundles, fast-forwards both checkouts to the plan''s commits, writes the job; refuses a used folder, a dirty or a diverged checkout, and a sync without the colour coverage'
     # the desktop as its own build PC: local operations and the local queue
     $ops = New-PubOperations
     $ran = & $ops.Ssh 'local' "Write-Output 'local ok'" $null 60
