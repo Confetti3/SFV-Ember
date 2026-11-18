@@ -461,3 +461,27 @@ TEST_CASE("the skip ends Finish between two rounds as at the match's end, and le
 	// The any-button answer stays a decided match's (the results screens').
 	CHECK_FALSE(intro_skip::PadsHear(kSkipBit, 0xFFFFBFF0u, false));
 }
+
+TEST_CASE("the winner's and the draw's demo are not cut before they have played kDemoGuardTicks")
+{
+	namespace rf = sfve::mod::sfv::resultflow;
+	using intro_skip::ScenesAction;
+	using intro_skip::ScenesStep;
+	using intro_skip::ScenesStepFor;
+	constexpr int kShown = intro_skip::kDemoGuardTicks;
+	// The demo's phase: nothing while it is young, the game's own skip after.
+	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, rf::kResultSkipPhase, false, 0) == ScenesStep{});
+	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, rf::kResultSkipPhase, false, kShown - 1) == ScenesStep{});
+	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, rf::kResultSkipPhase, false, kShown) ==
+		ScenesStep{ScenesAction::ResultSkip, rf::kResultSkippedPhase});
+	CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, rf::kDrawDemoPhase, false, kShown - 1) == ScenesStep{});
+	CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, rf::kDrawDemoPhase, false, kShown) ==
+		ScenesStep{ScenesAction::SetPhase, rf::kDrawAfterDemoPhase});
+	// The waits before the demo shows anything are cut at once, as before.
+	CHECK(ScenesStepFor(rf::kMatchResultDemo, rf::kMatchResultDemoVtable, rf::kResultSetupWaitPhase, false, 0) ==
+		ScenesStep{ScenesAction::SetPhase, rf::kResultSetupPhase});
+	CHECK(ScenesStepFor(rf::kMatchDrawDemo, rf::kMatchDrawDemoVtable, rf::kDrawWaitPhase, false, 0) ==
+		ScenesStep{ScenesAction::SetPhase, rf::kDrawResultPhase});
+	// Finish takes no guard.
+	CHECK(ScenesStepFor(rf::kFinish, rf::kFinishVtable, 3, false, 0) == ScenesStep{ScenesAction::RequestNext, -1});
+}

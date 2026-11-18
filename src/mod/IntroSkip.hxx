@@ -220,8 +220,21 @@ struct ScenesStep {
 // 0x46E110). Finish is not cut while it is set (ScenesStepFor's `koStop`).
 constexpr uint32_t kKoStopBit = 0x20;
 
+// Ticks a winner's (or a draw's) demo plays in the phase that shows it before
+// a press may cut it (flowstate::kElapsed counts in the unit the phases' own
+// waits use: 90, 5, 600). A press made in the KO's scenes, or by the other
+// player at any time, stays asked for through the scenes, so the demo used to
+// be cut on its first skip frame and the results' page came up with the
+// winner's pose never shown (field report 2026-11-17). Two seconds show the
+// pose; the demo ends by itself, as before, when it has played.
+constexpr int kDemoGuardTicks = 120;
+// A phase whose elapsed ticks are not known (a test that does not say): the
+// guard is passed.
+constexpr int kElapsedUnknown = 1 << 30;
+
 // The step for the current state: its id (resultflow::kStateId), its class
-// (its vtable's rva) and its phase (flowstate::kPhase). Only the classes the
+// (its vtable's rva), its phase (flowstate::kPhase) and the ticks that phase
+// has run (flowstate::kElapsed). Only the classes the
 // versus flow builds for these ids are moved; anything else plays on.
 // - Finish: whatever it waits on (the KO's presentation), on to RoundOver,
 //   which asks for the winner's or the draw's demo on its first tick. Not
@@ -243,7 +256,7 @@ constexpr uint32_t kKoStopBit = 0x20;
 //   themselves (sfv::resultflow), on the same confirmed frame.
 // - MatchDrawDemo: the wait for its demo ends (phase 3, which goes to 4 at
 //   once), and its 300-tick wait (phase 5, the results' event).
-constexpr ScenesStep ScenesStepFor(int stateId, uint32_t vtableRva, int phase, bool koStop)
+constexpr ScenesStep ScenesStepFor(int stateId, uint32_t vtableRva, int phase, bool koStop, int phaseTicks = kElapsedUnknown)
 {
 	namespace rf = sfv::resultflow;
 	if (stateId == rf::kFinish && vtableRva == rf::kFinishVtable) {
@@ -251,10 +264,11 @@ constexpr ScenesStep ScenesStepFor(int stateId, uint32_t vtableRva, int phase, b
 	}
 	if (stateId == rf::kMatchResultDemo && vtableRva == rf::kMatchResultDemoVtable) {
 		if (phase == rf::kResultSetupWaitPhase) return {ScenesAction::SetPhase, rf::kResultSetupPhase};
-		if (phase == rf::kResultSkipPhase) return {ScenesAction::ResultSkip, rf::kResultSkippedPhase};
+		// Phase 3 is the winner's demo itself: not cut before it has shown.
+		if (phase == rf::kResultSkipPhase && phaseTicks >= kDemoGuardTicks) return {ScenesAction::ResultSkip, rf::kResultSkippedPhase};
 	}
 	if (stateId == rf::kMatchDrawDemo && vtableRva == rf::kMatchDrawDemoVtable) {
-		if (phase == rf::kDrawDemoPhase) return {ScenesAction::SetPhase, rf::kDrawAfterDemoPhase};
+		if (phase == rf::kDrawDemoPhase && phaseTicks >= kDemoGuardTicks) return {ScenesAction::SetPhase, rf::kDrawAfterDemoPhase};
 		if (phase == rf::kDrawWaitPhase) return {ScenesAction::SetPhase, rf::kDrawResultPhase};
 	}
 	return {};

@@ -39,7 +39,9 @@ void ScenesSkip::Apply(uint8_t* flow, uint8_t* battleFrame, const FighterUnit* u
 	// so both copies read the same one on the same frame.
 	const uint32_t stateWord = battleFrame ? Field<uint32_t>(battleFrame, sfv::battleframe::kState) : 0;
 	const bool koStop = battleFrame && (stateWord & intro_skip::kKoStopBit) != 0;
-	const intro_skip::ScenesStep step = intro_skip::ScenesStepFor(id, vtable, phase, koStop);
+	// Ticks the phase has run: the sequencer's elapsed (in the flow record).
+	const int phaseTicks = (int)Field<float>(state, sfv::flowstate::kElapsed);
+	const intro_skip::ScenesStep step = intro_skip::ScenesStepFor(id, vtable, phase, koStop, phaseTicks);
 	// Finish's last phase asks for the state the constructor gave it; the
 	// skip asks for that one only when it is RoundOver, as the versus flow's.
 	const bool unexpectedNext = step.action == ScenesAction::RequestNext && Field<int32_t>(state, rf::kNextState) != rf::kRoundOver;
