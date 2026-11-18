@@ -101,8 +101,9 @@ whose grabs fail a check is loaded again once; then its looks fail with the reas
 `--force` over an old master: the old master stays, the look is logged as failed). Every grab is
 taken with `ui=off` (the colour from before the frame's first interface draw: no HUD gauges, no
 menu left over, no overlay toast). A side drawn without its textures (boothpack `untextured`:
-nearly all light cyan-grey and no warm pixel) fails as a look: on the laptop some costumes render
-so every time, their texture data missing there. Each master's sidecar keeps `checks` (`outside`,
+nearly all light cyan-grey, no warm pixel, almost no dark pixel and little fine detail) fails as a
+look. Only the costumes the pick space marks `unshipped` render so (select.md), and the booth
+tools leave those out: no capture, no sheet, no pack entry, no exception. Each master's sidecar keeps `checks` (`outside`,
 `plate`, `stable`, `warm`). Every wait has a timeout; on a timeout the copy
 tries `booth leave`, else it is killed and relaunched (only that copy); every 200 loads a copy is
 relaunched. P1 and P2 come from one grab pair: the combined mask is split at the widest empty

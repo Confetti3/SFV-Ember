@@ -17,7 +17,7 @@ from pathlib import Path
 
 try:
     import numpy as np
-    from PIL import Image
+    from PIL import Image, ImageFilter
 except ImportError:  # pragma: no cover - environment problem, said clearly
     sys.exit("the booth tools need Pillow and numpy: python -m pip install -r tools/booth-requirements.txt (in a venv)")
 
@@ -58,14 +58,28 @@ def untextured(rgb: np.ndarray, mask: np.ndarray) -> bool:
     Measured on the 2026-11-12 capture (875 masters): the bare models 0.47-0.84 grey and 0.00
     warm; every textured master with almost no warm pixel 0.16 grey at most. The bare models are
     the 45 costumes the game lists with no name (the raw text id ID_SYS_BSet_0224): slots it never
-    shipped assets for, the same on every install."""
+    shipped assets for, the same on every install.
+
+    A textured costume in pale, cold colours with dark or blue-grey skin passes the grey and warm
+    tests too (the 2026-11-17 every-colour capture: JRI 9/8, Z27 0/105, Z28 5/8, Z30 6/9), so a
+    side that also has dark pixels or fine detail is textured: the bare model is light all over
+    (dark 0.004-0.043) and smooth (detail 4.6-9.7), those four dark 0.05-0.27 and detail 10.1-12.4."""
     if not mask.any():
         return False
     px = rgb[mask].astype(np.int32)
     mx, mn = px.max(axis=1), px.min(axis=1)
     sat = (mx - mn) / np.maximum(mx, 1)
     tint = float(((px[:, 2] >= px[:, 0]) & (px[:, 1] >= px[:, 0] - 4) & (sat < 0.35) & (mx > 110)).mean())
-    return tint >= UNTEXTURED_TINT and warm_share(rgb, mask) <= UNTEXTURED_WARM
+    if tint < UNTEXTURED_TINT or warm_share(rgb, mask) > UNTEXTURED_WARM:
+        return False
+    inner = morph(mask, "erode", 5)  # away from the edge, where the stage blends in
+    if not inner.any():
+        return True
+    if float((rgb[inner].max(axis=1) < 60).mean()) > UNTEXTURED_DARK:
+        return False
+    lum = rgb.astype(np.float32).mean(axis=2)
+    blurred = np.asarray(Image.fromarray(lum.astype(np.uint8)).filter(ImageFilter.GaussianBlur(2)), dtype=np.float32)
+    return float(np.abs(lum - blurred)[inner].mean()) <= UNTEXTURED_DETAIL
 
 
 def write_reference_once(reference: Path, plate: np.ndarray) -> bool:
@@ -176,7 +190,13 @@ def master_suspect(path: Path | str) -> list[str]:
 UNTEXTURED_TINT = 0.4      # a fighter this much light cyan-grey... (bare models 0.47-0.84, textured with no warm pixel 0.16 at most)
 
 
-UNTEXTURED_WARM = 0.01     # ...with no more warm pixels than this is drawn without its textures
+UNTEXTURED_WARM = 0.01     # ...with no more warm pixels than this is drawn without its textures...
+
+
+UNTEXTURED_DARK = 0.1      # ...unless more of it than this is dark (bare models 0.043 at most)...
+
+
+UNTEXTURED_DETAIL = 11.0   # ...or its fine detail averages more than this (bare models 9.7 at most)
 
 
 SUSPECT_LINE = 0.18        # a row with a straight edge across this share of the fighter's width...

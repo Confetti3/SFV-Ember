@@ -48,12 +48,17 @@ class BoothError(RuntimeError):
 
 def load_space(path: Path | str = DEFAULT_PICK_SPACE) -> dict:
     """The pick space as the capture needs it: build, game build and, per fighter code, its
-    costume ids with their colours in the game's order and its loadout counts."""
+    costume ids with their colours in the game's order and its loadout counts. A costume the pick
+    space marks `unshipped` (select.md: the game ships no textures for it and never offers it) is
+    no look to capture, sheet or pack; it is kept apart under "unshipped" only so the path rule
+    still accepts what the mod accepts."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     fighters = collections.OrderedDict()
     for f in data["fighters"]:
-        costumes = collections.OrderedDict((c["id"], list(c["colours"])) for c in f["costumes"])
-        fighters[f["code"]] = {"costumes": costumes, "vs": int(f.get("v_skills", 0)), "vt": int(f.get("v_triggers", 0))}
+        costumes = collections.OrderedDict((c["id"], list(c["colours"])) for c in f["costumes"] if not c.get("unshipped"))
+        unshipped = {c["id"]: list(c["colours"]) for c in f["costumes"] if c.get("unshipped")}
+        fighters[f["code"]] = {"costumes": costumes, "unshipped": unshipped,
+                               "vs": int(f.get("v_skills", 0)), "vt": int(f.get("v_triggers", 0))}
     build = data["build"]
     return {"build": build, "gameBuild": build.split("/")[1], "fighters": fighters,
             "stages": list(data.get("stages", []))}
@@ -82,7 +87,7 @@ def is_selection_asset_path(path: str, space: dict) -> bool:
         fighter = space["fighters"].get(m.group(1))
         if fighter is None:
             return False
-        colours = fighter["costumes"].get(int(m.group(2)))
+        colours = fighter["costumes"].get(int(m.group(2)), fighter.get("unshipped", {}).get(int(m.group(2))))
         return colours is not None and int(m.group(3)) in colours
     m = LOADOUT_RE.fullmatch(path)
     if m:
