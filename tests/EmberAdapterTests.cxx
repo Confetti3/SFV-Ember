@@ -19,6 +19,7 @@
 
 #include <initializer_list>
 #include <string>
+#include <vector>
 
 using namespace sfve;
 using namespace sfve::adapter;
@@ -132,6 +133,50 @@ TEST_CASE("Auto delay recommends with SFV's own bands, SF4's left as they were")
 	CHECK(sf4e::RecommendedInputDelay(bands, sf4e::RoundTrip{120, 167}) == 3);
 	// Balanced holds at its 3 frames past 166 ms; a chosen delay goes higher.
 	CHECK(sf4e::AutoInputDelay(sf4e::RecommendedInputDelay(bands, sf4e::RoundTrip{190, 190})) == sf4e::AutoInputDelayMaximum);
+}
+
+TEST_CASE("the keyboard plays when no pad 0 is there, and pad 0 when it is")
+{
+	using sf4e::input::Device;
+	ember::game::Input& input = ember::game::Game().input;
+	const auto pad = [](int slot) {
+		Device device;
+		device.type = sf4e::input::PadXInput;
+		device.index = slot;
+		device.name = "Controller " + std::to_string(slot + 1);
+		device.connected = true;
+		return device;
+	};
+	// Whatever pads the other tests left read, the keyboard is always listed.
+	const std::vector<Device> listed = input.ReadDevices(false);
+	REQUIRE_FALSE(listed.empty());
+	const Device& keyboard = listed.back();
+	CHECK(keyboard.type == sf4e::input::PadKeyboard);
+	CHECK(keyboard.index == 0);
+	CHECK(keyboard.connected);
+	// A keyboard-only player has a device, so a room can be opened and a seat readied.
+	const Device alone = input.MenuDevice({keyboard});
+	CHECK(alone.connected);
+	CHECK(alone.type == sf4e::input::PadKeyboard);
+	CHECK(input.AssignToSide(alone, 0, true));
+	CHECK(input.AssignToSide(alone, 1, true));
+	// Another pad than pad 0 does not take the keyboard's place: the battle reads pad 0.
+	CHECK(input.MenuDevice({pad(1), keyboard}).type == sf4e::input::PadKeyboard);
+	CHECK_FALSE(input.AssignToSide(pad(1), 0, true));
+	// Pad 0 plugged in is the gameplay device, wherever the list puts it.
+	const Device withPad = input.MenuDevice({keyboard, pad(0)});
+	CHECK(withPad.type == sf4e::input::PadXInput);
+	CHECK(withPad.index == 0);
+	CHECK(input.AssignToSide(withPad, 0, true));
+	// Nothing listed is no device, and a device gone is assigned to no side.
+	CHECK_FALSE(input.MenuDevice({}).connected);
+	Device gone = keyboard;
+	gone.connected = false;
+	CHECK_FALSE(input.AssignToSide(gone, 0, true));
+	// The keyboard drives no menu as a pad: Ember's menus read its keys themselves.
+	unsigned held = 1;
+	CHECK_FALSE(input.ReadController(sf4e::input::PadKeyboard, 0, held, nullptr));
+	CHECK(held == 0u);
 }
 
 TEST_CASE("P1's session kept for its watchers is the battle's until the runtime's drain ends")

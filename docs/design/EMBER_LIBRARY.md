@@ -2039,7 +2039,7 @@ Settings showed SFV players rows that only do something in SF4 Ember. The librar
 
 - **Player page** (`inputDisplayFixes`): Lower input lag, Lower keyboard lag, Faster display, Borderless window. Only SF4's own pad, platform and battle code reads them.
 - **Player page** (`padLayer`): Controllers (SFV lists no native controllers), Button layout, Game's button settings (its words are SF4's Options path and its layouts) and Game reads controllers. SFV has no pad layer; `padSetup`, the wizard inside it, stays off too.
-- **Player page** (`keyboard`): Use keyboard. SFV lists no keyboard device and fights with pad 0 only.
+- **Player page** (`keyboard`): Use keyboard. SFV's gameplay device is the game's own choice, not the player's: pad 0, or the keyboard while no pad 0 is there (`SfvInput::MenuDevice`), so there is nothing to choose.
 - **Profile**: Share my Steam profile (`Capabilities::steamProfile`, now also `ShellView::offersSteamProfile`), and the room member's Steam profile action with it: SFV has no Steam module. Main character, and the main on the profile card, where the product's players have no main (`ember::PlayersHaveMain`: `Branding::roomFacesArePicks`, which SFV sets).
 - **Interface > Sounds** (`challengerCall`, `lobbyMusic`): Ready sound, its volume and test (`PlayChallengerCall` returns false; the away sound is not built) and Lobby music (always greyed). The panel goes.
 - **Interface > Room layout** (`characterPictures`): Pictures. SFV has no full-length character art, so both choices drew the portrait.
