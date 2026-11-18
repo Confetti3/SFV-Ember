@@ -34,7 +34,9 @@ public:
 	// An update is due in the frame now running (SfvAdapter::NoteUpdateDue).
 	void Due() { paceClock_.Due(); }
 	// The battle's last rendered frame has ended (a new one is seen).
-	void FrameEnded() { paceClock_.Frame(Now()); }
+	// A frame that took longer than kHitchMs is logged (audio dropouts: a game
+	// thread that stands still that long starves the sound the game starts per tick).
+	void FrameEnded();
 	// The battle ends: its pace and controller events logged, the next
 	// battle's record begun, and every count back to none.
 	void EndBattle();
