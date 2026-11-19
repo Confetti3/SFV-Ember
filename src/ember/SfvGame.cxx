@@ -161,11 +161,17 @@ public:
 		picks->linked = true;
 		// A launch that fails leaves the game at the main menu with no battle:
 		// the player hears why, and the runtime hears this copy's battle is
-		// not coming, so the room ends the game rather than wait for it.
+		// not coming, so the room ends the game rather than wait for it. A
+		// game the runtime has already left (it dropped the launch: the room
+		// ended the game, or a later game was entered) told the player then,
+		// and its entry is no longer this one's, so the failure is only logged.
 		mod::LaunchOnMainMenu(
 			*picks, [ticket] { return s_launch.Armed(ticket); },
-			[](const std::string& why) {
-				mod::Log("ember: the room's battle could not be launched: %s", why.c_str());
+			[ticket](const std::string& why) {
+				const bool wanted = s_launch.Armed(ticket);
+				mod::Log("ember: the room's battle could not be launched: %s%s", why.c_str(),
+					wanted ? "" : " (the room's game had already ended here)");
+				if (!wanted) return;
 				sf4e::NetplayFacade::PushAlert(sf4e::loc::T("runtime.authorized_connection_unavailable"));
 				sf4e::NetplayFacade::NotifyRuntimeBattleClosedWithoutSession();
 			});
