@@ -95,18 +95,18 @@ timeline that shows where you are.
   the interface in 14 languages.
 
 Known limits: Ember's menus and its battles follow the pad in the game's first
-slot; the frame meter is in Training only; non-English translations are drafts.
+slot, or the keyboard when no pad is there; the frame meter is in Training only; non-English translations are drafts.
 
 ## Build
 
 Needs Visual Studio 18 Build Tools (C++ x64), a vcpkg checkout next to this
 folder (`..\vcpkg`), and the Ember library: the `feat/ember-library` branch of
 [SF4-Ember-Netplay](https://github.com/Confetti3/SF4-Ember-Netplay). This
-release builds against library commit `1749aadc0`.
+release builds against library commit `c97dad47d`.
 
 ```powershell
 git clone -b feat/ember-library https://github.com/Confetti3/SF4-Ember-Netplay ember-library
-git -C ember-library checkout 1749aadc0
+git -C ember-library checkout c97dad47d
 .\scripts\build.ps1 -EmberRoot ..\ember-library
 ```
 
