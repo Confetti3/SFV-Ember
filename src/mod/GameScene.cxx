@@ -132,4 +132,11 @@ bool ChangeScene(uint8_t* stateClass, uint8_t* initMessage)
 	return true;
 }
 
+bool ChangeToMainMenu()
+{
+	using GetClassFn = uint8_t* (*)(const wchar_t* package);
+	uint8_t* mainMenu = reinterpret_cast<GetClassFn>(s_imageBase + sfv::kMainMenuClass.rva)(L"/Script/KiwiGame");
+	return mainMenu && ChangeScene(mainMenu, nullptr);
+}
+
 } // namespace sfve::mod

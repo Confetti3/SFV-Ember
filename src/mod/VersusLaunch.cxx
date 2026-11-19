@@ -9,6 +9,7 @@
 #include "mod/GameScene.hxx"
 #include "mod/GameThread.hxx"
 #include "mod/Log.hxx"
+#include "mod/MenuReturn.hxx"
 #include "mod/ModConfig.hxx"
 #include "mod/SfvOffsets.hxx"
 #include "mod/TinyFighters.hxx"
@@ -53,7 +54,8 @@ using GameInstanceFn = uint8_t* (*)();
 // (the jump is normally there within a few frames).
 constexpr int kLaunchFrames = 60 * 10;
 // After the picks are written the game loads the stage and fighters (about
-// 4 s); a load still not done after this long is reported as failed.
+// 4 s; 22 s seen under Proton); a load still not done after this long is
+// reported as failed, and the copy leaves the jump for the main menu.
 constexpr int kLoadFrames = 60 * 60;
 // A launch waiting for the main menu gives up after this long.
 constexpr int kWaitForMenuFrames = 60 * 120;
@@ -118,6 +120,22 @@ uint8_t* ModeData(uint8_t* flow)
 {
 	uint8_t* loader = Field<uint8_t*>(flow, jump::kFlowLoader);
 	return loader ? Field<uint8_t*>(loader, jump::kLoaderProvider) : nullptr;
+}
+
+// How far the battle flow's load got, for the log of a load that did not
+// end: " (the battle flow's loader in state N, loaded is 8)".
+std::string LoaderNote()
+{
+	GameRef flow{};
+	GameFn<GetFlowFn>(sfv::kGetBattleFlow)(&flow);
+	uint8_t* loader = flow.object ? Field<uint8_t*>(flow.object, jump::kFlowLoader) : nullptr;
+	std::string note = " (the battle flow has no loader)";
+	if (loader) {
+		note = " (the battle flow's loader in state " + std::to_string(Field<int32_t>(loader, jump::kLoaderState)) +
+			", loaded is " + std::to_string(jump::kLoaderLoaded) + ")";
+	}
+	GiveBackGameRef(flow);
+	return note;
 }
 
 bool IsOurJump(uint8_t* jumpState)
@@ -213,6 +231,37 @@ std::string LaunchStatusJson()
 	return "{\"number\":" + std::to_string(s.number) + ",\"state\":" + JsonString(s.state) +
 		",\"loaded\":" + (s.loaded ? "true" : "false") + ",\"asked\":" + asked + ",\"looks\":" + looks +
 		",\"mismatch\":" + (s.mismatch ? "true" : "false") + ",\"failure\":" + JsonString(s.failure) + "}";
+}
+
+// The way back from a launch that gave up on its battle while the game is in
+// the jump (MenuReturn): once each frame no change is pending, until the main
+// menu is in front. Asking from the jump, its step is made null first, as
+// its own exit does (sfv::jump::kJumpStateStep): the load it was waiting for
+// asks for nothing more, so its battle cannot take the change's place.
+void ReturnToMainMenu()
+{
+	Log("launch: leaving the battle jump for the main menu");
+	auto back = std::make_shared<MenuReturn>();
+	RunEachGameFrame([back] {
+		uint8_t* state = CurrentSceneState();
+		const uintptr_t kind = SceneStateKind(state);
+		switch (back->Observe(kind == sfv::scene::kMainMenuVtable, SceneChangePending())) {
+		case MenuReturn::Step::Wait: return true;
+		case MenuReturn::Step::Ask:
+			if (kind == sfv::scene::kJumpStateVtable) Field<void*>(state, jump::kJumpStateStep) = nullptr;
+			if (ChangeToMainMenu()) return true;
+			Log("launch: the main menu cannot be asked for; the game stays in state 0x%llX", (unsigned long long)kind);
+			return false;
+		case MenuReturn::Step::Back:
+			Log("launch: back on the main menu after %d frame(s)", back->Frames());
+			return false;
+		case MenuReturn::Step::GaveUp:
+			Log("launch: the game did not go back to the main menu within %d frames; it stays in state 0x%llX",
+				MenuReturn::kGiveUpFrames, (unsigned long long)kind);
+			return false;
+		}
+		return false;
+	});
 }
 
 // Ends the launch in progress, reporting why to whoever asked for it.
@@ -375,9 +424,11 @@ void WriteStage(uint8_t* modeData, const MatchPicks& picks)
 // Game thread: from the picks to the battle. The jump state stays current
 // while the game loads; leaving it for the main menu, or never leaving it,
 // means no battle came, which a linked match must hear about rather than
-// wait for. Leaving it for a battle state means the load is done (the
-// resource load, rva 0x69BC20, put back any costume it would at its start),
-// and the looks it loaded are logged (LogLoadedLooks).
+// wait for; one still current after kLoadFrames is left for the main menu
+// (ReturnToMainMenu), as the game's own load step would wait for ever.
+// Leaving it for a battle state means the load is done (the resource load,
+// rva 0x69BC20, put back any costume it would at its start), and the looks
+// it loaded are logged (LogLoadedLooks).
 void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 {
 	auto frames = std::make_shared<int>(0);
@@ -408,13 +459,17 @@ void WatchLoading(PlayerLooks written, LaunchFailed onFailed, bool gameCheck)
 			: ++*frames >= kLoadFrames                        ? "the battle did not load within a minute"
 															  : nullptr;
 		if (!why) return true; // still loading
-		Log("launch: failed: %s", why);
+		// Still in the jump: its load never ended. The loader's state says
+		// how far it got.
+		const bool inJump = kind == sfv::scene::kJumpStateVtable;
+		Log("launch: failed: %s%s", why, inJump ? LoaderNote().c_str() : "");
 		NoteLaunchFailed(why);
 		DisarmLaunchVersions();
 		s_linkedLoading = s_replayLoading = false; // no battle came for it
 		s_loadingTiny = {false, false};
 		ClearTinyFighters();
 		if (onFailed) onFailed(why);
+		if (inJump) ReturnToMainMenu();
 		return false;
 	});
 }
@@ -620,9 +675,13 @@ void Launch(const MatchPicks& picks, LaunchFailed onFailed)
 		if (s_pending.message != message) return false; // done, or failed already
 		const uintptr_t kind = SceneStateKind(CurrentSceneState());
 		const bool onTheWay = kind == sfv::scene::kMainMenuVtable || kind == sfv::scene::kJumpStateVtable;
-		if (!onTheWay) FailLaunch("the game went to another scene");
-		else if (++*frames >= kLaunchFrames) FailLaunch("the jump did not reach its second step");
-		else return true;
+		if (!onTheWay) {
+			FailLaunch("the game went to another scene");
+			return false;
+		}
+		if (++*frames < kLaunchFrames) return true;
+		FailLaunch("the jump did not reach its second step");
+		if (kind == sfv::scene::kJumpStateVtable) ReturnToMainMenu();
 		return false;
 	});
 }

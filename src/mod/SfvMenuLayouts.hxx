@@ -322,12 +322,28 @@ constexpr uint32_t kJumpStateMessage = 848; // the jump state's init message
 // (by TRN or S25, in one branch chosen by rand(): rva 0x5E3082-0x5E360A),
 // 0x400 the setup asset missing.
 constexpr uint32_t kJumpCheckResult = 856;
+// The state's current step (void (*)(state)), which its tick (rva 0x5F9FE0)
+// calls each frame; null runs none. After the second step (sfv::
+// kJumpSecondStep): the check (rva 0x602790), then rva 0x602690, which copies
+// the mode's data into the battle setting and starts the battle flow's load
+// (rva 0x600AF0, whose rva 0x7072A0 resolves each player's balance version),
+// then the load step (rva 0x6026C0): each frame it asks whether the flow's
+// loader is loaded (rva 0x6051E0, kLoaderState) and, once it is, asks for the
+// battle's state (rva 0x602560). The load step has no limit and no other way
+// out. The jump's own exit (rva 0x602C40, for the check's 0x400) asks for
+// MainMenuState with no message (rva 0x584D20) and makes the step null.
+constexpr uint32_t kJumpStateStep = 864;
 constexpr int kModeVersusCpu = 0;
 constexpr int kModeVersus = 1;
 constexpr int kModeTraining = 2;
 constexpr int kModeBackToMainMenu = -1;
 constexpr uint32_t kFlowLoader = 16;     // Flow: the loader
 constexpr uint32_t kLoaderProvider = 16; // Loader: the mode's provider
+// Loader: its state (int), 0 idle to kLoaderLoaded. rva 0x710560 is the
+// "loaded" test the jump's load step asks; rva 0x711440 starts an idle loader
+// (to 1) and makes a loaded one idle again.
+constexpr uint32_t kLoaderState = 8;
+constexpr int32_t kLoaderLoaded = 8;
 constexpr int kProviderType = 14;        // a provider type registered by the flow reset (rva 0x71A790)
 constexpr uint32_t kProviderPlayers = 8; // Provider: PlayerSetup[]
 constexpr uint32_t kPlayerSetupSize = 96;

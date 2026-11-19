@@ -69,4 +69,10 @@ void NoteBattleFrame(SfvAdapter& adapter);
 // before the manager is known.
 bool ChangeScene(uint8_t* stateClass, uint8_t* initMessage);
 
+// Asks the manager for the main menu (MainMenuState, no message): the change
+// the game's own exits ask for, from a battle (the results menu's "Exit",
+// Training's EXIT_BATTLE) and from the battle jump (rva 0x602C40). Game
+// thread only; false before the manager is known or without the class.
+bool ChangeToMainMenu();
+
 } // namespace sfve::mod

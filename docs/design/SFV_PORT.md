@@ -239,6 +239,12 @@ with neutral inputs, and no check restores to one's start.
   after its second step it writes the fighters, costumes, colours, loadouts,
   voices and stage into the new mode's data object through the object's own
   setters. The game loads and enters the battle itself (about 4 s). The
+  jump's load step waits for the battle flow's loader with no limit, so a
+  load that never ends (once under Proton, 2026-11-18: the loader never
+  reached the fighters' resources) would keep the copy in the jump with a
+  black screen; after a minute the launch fails, its log line gives the
+  loader's state, and the copy leaves the jump for the main menu
+  (`MenuReturn`), as the jump's own exit does. The
   voice is the per-fighter record's +61 (`sfv::jump::kCharVoice`, 0
   Japanese, 1 English), which the game's own menus fill from the player's
   options for that fighter (`sfv::kCharaVoiceLanguage`) and which a fresh or

@@ -86,9 +86,7 @@ void Rematch(uint8_t* state)
 
 bool LeaveBattle()
 {
-	using GetClassFn = uint8_t* (*)(const wchar_t* package);
-	uint8_t* mainMenu = reinterpret_cast<GetClassFn>(s_base + sfv::kMainMenuClass.rva)(L"/Script/KiwiGame");
-	if (!mainMenu || !ChangeScene(mainMenu, nullptr)) return false;
+	if (!ChangeToMainMenu()) return false;
 	Log("match end: back to the main menu");
 	return true;
 }
