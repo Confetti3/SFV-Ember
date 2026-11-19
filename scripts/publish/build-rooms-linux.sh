@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The Linux room-host pair for a release (docs/release/PUBLISHING.md, stage rooms), on any Linux with cargo, g++
 # and xxhash.h: WSL on the build PC today. Reads two git archives of the plan's commits from <in>:
-#   sfv.tar      (sfv-ember: src scripts data)      library.tar  (Ember library: server rust src)
+#   sfv.tar      (sfv-ember: src scripts data cmake)      library.tar  (Ember library: server rust src)
 # and writes to <out>: sfve-room-host, sf4-net, SHA256SUMS and result.txt (KEY=value lines the desktop checks).
 #
 #   build-rooms-linux.sh <in> <out> <room build id>

@@ -261,11 +261,12 @@ function Invoke-PubRooms([object]$Ctx, [hashtable]$P) {
     if ($backend -cnotin @('wsl', 'server1')) { throw "No Linux back end $backend (wsl or server1)." }
     if ($Ctx.DryRun) { Write-PubLog $Ctx "Dry run: would archive $($plan.source.commit) and $($plan.library.commit), build sf4-net and sfve-room-host for $($plan.roomBuild.id) on $backend, and stage the kit."; return }
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    # The inputs: git archives of exactly the plan's commits, no line-ending conversion.
+    # The inputs: git archives of exactly the plan's commits, no line-ending conversion. sfv-ember's holds cmake/ too:
+    # build-room-host-linux.sh embeds the pick space with cmake/EmbedTextFile.cmake.
     $inputs = Join-Path $dir 'inputs'
     if (!(Test-Path -LiteralPath (Join-Path $inputs 'sfv.tar')) -or !(Test-Path -LiteralPath (Join-Path $inputs 'library.tar'))) {
         New-Item -ItemType Directory -Path $inputs -Force | Out-Null
-        Invoke-PubGit $Ctx $Ctx.Repo @('-c', 'core.autocrlf=false', 'archive', '--format=tar', '-o', (Join-Path $inputs 'sfv.tar'), $plan.source.commit, 'src', 'scripts', 'data') | Out-Null
+        Invoke-PubGit $Ctx $Ctx.Repo @('-c', 'core.autocrlf=false', 'archive', '--format=tar', '-o', (Join-Path $inputs 'sfv.tar'), $plan.source.commit, 'src', 'scripts', 'data', 'cmake') | Out-Null
         Invoke-PubGit $Ctx $Ctx.LibraryRepo @('-c', 'core.autocrlf=false', 'archive', '--format=tar', '-o', (Join-Path $inputs 'library.tar'), $plan.library.commit, 'server', 'rust', 'src') | Out-Null
     }
     $out = Join-Path $dir 'out'

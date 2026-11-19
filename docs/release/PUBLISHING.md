@@ -218,7 +218,9 @@ flag stands in for that last read only: the hash comparison and the room host's 
 ## Known limits
 
 - Review findings 12, 14 and 15 of the review of commit 75138f5 are not addressed in this version.
-- The `server1` Linux back end is not written; rooms builds in the build PC's WSL, or adopts a kit.
+- The `server1` Linux back end is not written; rooms builds in the build PC's WSL, or adopts a kit. With `laptop.host`
+  `"local"` that is this PC's own WSL. Its Ubuntu has to be the VPS's release (26.04, glibc 2.43): the pair links
+  glibc dynamically, so a newer Linux (the Linux laptop's 26.10, glibc 2.44) can make binaries the VPS cannot run.
 - When the supervisor's `config.json` is root-only, whether it lists the build rests on the owner's
   `-RoomsConfirmed`. The installed hashes and the room host's own answer are still checked by the pipeline.
 ## Tests

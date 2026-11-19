@@ -201,6 +201,10 @@ try {
     Check (($paths -join '|') -ceq ($sorted -join '|')) 'SHA256SUMS in byte order'
     Check ($x.World.VpsStaged -ceq $rooms.facts.kit.sums) 'kit staged on the VPS'
     Check (!@($x.World.Commands | Where-Object { $_ -match 'sudo' -and $_ -like 'ssh*' }).Count) 'the pipeline never runs sudo'
+    $archived = [Collections.Generic.List[string]]::new()
+    $reader = [Formats.Tar.TarReader]::new([IO.File]::OpenRead("$($x.Ctx.Root)\rooms\inputs\sfv.tar"))
+    try { while ($entry = $reader.GetNextEntry()) { $archived.Add($entry.Name) } } finally { $reader.Dispose() }
+    Check ($archived -contains 'cmake/EmbedTextFile.cmake' -and $archived -contains 'scripts/build-room-host-linux.sh' -and $archived -contains 'data/pick-space.json') 'sfv.tar holds what build-room-host-linux.sh runs (its pick space embedder included)'
     Pass 'rooms: the pair built from the plan''s archives, checked, the kit made from the base stage with the new room build and staged; no sudo'
     foreach ($case in @(@({ param($r) $r.own = 'other_build' }, '*for its own build*'), @({ param($r) $r.other = 'ok' }, '*for another build*'),
                         @({ param($r) $r.embedded = $oldBuild }, '*embeds*'), @({ param($r) $r.paths = '3' }, '*build-machine paths*'),
