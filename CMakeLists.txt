@@ -454,7 +454,10 @@ if(SFVE_DEV_BUILD)
     target_sources(sfv_ember PRIVATE src/mod/MultiInstance.cxx src/mod/SyncTestMode.cxx src/mod/LagSim.cxx src/mod/WriteWatch.cxx)
 endif()
 target_link_libraries(sfv_ember PRIVATE sfve_ember dbghelp ember_sdl_pads_x64 SDL3::SDL3-static)
-target_compile_definitions(sfv_ember PRIVATE SFVE_VERSION="${SFVE_VERSION}")
+# Only dllmain.cxx names the version: a define on the whole target would change
+# every compile command in it, so a version bump would recompile the mod and
+# miss the compiler cache.
+set_property(SOURCE src/mod/dllmain.cxx APPEND PROPERTY COMPILE_DEFINITIONS "SFVE_VERSION=\"${SFVE_VERSION}\"")
 # Ember's own pictures the shell draws beside the mod (overlay/Overlay.hxx):
 # the button prompts and the flags, and SFV Ember's own menu backdrop
 # (assets/brand) in place of Ember's. SFV's fighter and stage pictures are the

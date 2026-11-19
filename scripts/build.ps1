@@ -31,7 +31,9 @@ param(
 	[ValidateSet('RelWithDebInfo', 'Debug', 'Release')][string]$Config = 'RelWithDebInfo',
 	# A player build, for a package: no test switches.
 	[switch]$Player,
-	[switch]$SkipTests
+	[switch]$SkipTests,
+	# Compiles go through ccache unless this is given (see below).
+	[switch]$NoCompilerCache
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -85,6 +87,23 @@ $sourceFingerprint = Get-SourceFingerprint $repo
 $emberRevision = (& git -C $EmberRoot rev-parse HEAD)
 $emberFingerprint = Get-SourceFingerprint $EmberRoot
 
+# Compiles go through ccache, which serves any compile whose inputs it has seen
+# before (another build tree, a switched branch, a rebuilt dev or player tree).
+# It cannot cache /Zi, so objects carry their debug information (/Z7); the
+# linker still writes the PDB. -NoCompilerCache, or no ccache 4.6+ on PATH,
+# builds without it; every configure states the choice, so a tree never keeps
+# an old one. The receipt records the ccache version a build used.
+$ccacheVersion = $null
+$ccache = if ($NoCompilerCache) { $null } else { (Get-Command ccache -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source }
+if ($ccache) {
+	$ccacheVersion = [regex]::Match((& $ccache --version | Select-Object -First 1), '\d+(\.\d+)+').Value
+	if (!$ccacheVersion -or [version]$ccacheVersion -lt [version]'4.6') { Write-Warning "ccache '$ccacheVersion' is older than 4.6: building without it."; $ccache = $null; $ccacheVersion = $null }
+}
+$compilerCacheOptions = if ($ccache) {
+	"-DCMAKE_C_COMPILER_LAUNCHER=$ccache", "-DCMAKE_CXX_COMPILER_LAUNCHER=$ccache", '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded'
+} else { '-UCMAKE_C_COMPILER_LAUNCHER', '-UCMAKE_CXX_COMPILER_LAUNCHER', '-UCMAKE_MSVC_DEBUG_INFORMATION_FORMAT' }
+Write-Host "Compiler cache: $(if ($ccache) { "ccache $ccacheVersion" } else { 'off' })"
+
 $triplet = 'x64-windows-static-md-wchar-filenames'
 & $cmake -S $repo -B $BuildDir -G Ninja "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_BUILD_TYPE=$Config" `
 	"-DCMAKE_TOOLCHAIN_FILE=$VcpkgRoot\scripts\buildsystems\vcpkg.cmake" `
@@ -92,7 +111,7 @@ $triplet = 'x64-windows-static-md-wchar-filenames'
 	"-DVCPKG_OVERLAY_PORTS=$repo\vcpkg-overlays\ports" "-DVCPKG_OVERLAY_TRIPLETS=$EmberRoot\vcpkg-overlays\triplets" `
 	"-DVCPKG_INSTALL_OPTIONS=$vcpkgOptions" "-DVCPKG_INSTALLED_DIR=$BuildDir\vcpkg_installed" `
 	"-DSFVE_EMBER_SOURCE_ROOT=$EmberRoot" "-DSFVE_DISCORD_SDK_ARCHIVE=$DiscordSdkArchive" `
-	"-DSFVE_DEV_BUILD=$(if ($Player) { 'OFF' } else { 'ON' })"
+	"-DSFVE_DEV_BUILD=$(if ($Player) { 'OFF' } else { 'ON' })" @compilerCacheOptions
 if ($LASTEXITCODE) { throw "configure failed ($LASTEXITCODE)" }
 & $cmake --build $BuildDir
 if ($LASTEXITCODE) { throw "build failed ($LASTEXITCODE)" }
@@ -147,6 +166,8 @@ $receipt = [ordered]@{
 	testsPassed = !$SkipTests
 	tests = @(if (!$SkipTests) { & $ctest --test-dir $BuildDir -N | Select-String '^\s*Test\s+#\d+: (\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } })
 	discordCompanion = $discordCompanion
+	# The ccache version the compiles went through; null when built without it.
+	compilerCache = $ccacheVersion
 	binaries = @(foreach ($name in $binaryNames) {
 		[ordered]@{ path = $name; sha256 = (Get-FileHash -LiteralPath (Join-Path $BuildDir $name) -Algorithm SHA256).Hash }
 	})
