@@ -96,7 +96,10 @@ $emberFingerprint = Get-SourceFingerprint $EmberRoot
 $ccacheVersion = $null
 $ccache = if ($NoCompilerCache) { $null } else { (Get-Command ccache -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source }
 if ($ccache) {
-	$ccacheVersion = [regex]::Match((& $ccache --version | Select-Object -First 1), '\d+(\.\d+)+').Value
+	# Its cache lives on D: like every other place this build writes to.
+	if (!$env:CCACHE_DIR) { $env:CCACHE_DIR = 'D:\sf4-build\ccache' }
+	New-Item -ItemType Directory -Force $env:CCACHE_DIR | Out-Null
+	$ccacheVersion =[regex]::Match((& $ccache --version | Select-Object -First 1), '\d+(\.\d+)+').Value
 	if (!$ccacheVersion -or [version]$ccacheVersion -lt [version]'4.6') { Write-Warning "ccache '$ccacheVersion' is older than 4.6: building without it."; $ccache = $null; $ccacheVersion = $null }
 }
 $compilerCacheOptions = if ($ccache) {
