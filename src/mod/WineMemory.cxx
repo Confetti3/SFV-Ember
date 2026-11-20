@@ -43,24 +43,6 @@ bool TopDownFits(bool thisProcess, bool fixedAddress, uint64_t zeroBits, uint32_
 	return thisProcess && !fixedAddress && zeroBits == 0 && (allocationType & (MEM_RESERVE | MEM_COMMIT)) != 0;
 }
 
-uint64_t ZeroBitsLimit(uint64_t zeroBits)
-{
-	if (zeroBits == 0) return 0;
-	unsigned shift = 0;
-	if (zeroBits < 32) {
-		shift = 32 + static_cast<unsigned>(zeroBits);
-	} else {
-		shift = 63;
-		if (zeroBits >> 32) { shift -= 32; zeroBits >>= 32; }
-		if (zeroBits >> 16) { shift -= 16; zeroBits >>= 16; }
-		if (zeroBits >> 8) { shift -= 8; zeroBits >>= 8; }
-		if (zeroBits >> 4) { shift -= 4; zeroBits >>= 4; }
-		if (zeroBits >> 2) { shift -= 2; zeroBits >>= 2; }
-		if (zeroBits >> 1) shift -= 1;
-	}
-	return ~0ull >> shift;
-}
-
 bool InstallWineMemory()
 {
 	if (!RunningUnderWine()) return true;

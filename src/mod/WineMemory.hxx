@@ -11,9 +11,10 @@
 // Windows one would too.
 //
 // So under Wine, from the exe's entry point on (before any of the game's
-// code), every allocation made at no fixed address is asked for top down,
-// which Wine places just below the end of user space: above 1 TB, as on
-// Windows. What was made before that stays low, and its reservations (the
+// code), every allocation made at no fixed address is asked for top down
+// under an 8 TB limit (kTopDownZeroBits), which Wine places just below that
+// limit: above 1 TB and below 8 TB, as on Windows. What was made before that
+// stays low, and its reservations (the
 // heaps then made and the loaded images) become the start ranges, taken as
 // addresses by every rule. On Windows nothing is hooked and the start ranges
 // stay empty.
@@ -39,11 +40,6 @@ bool TopDownFits(bool thisProcess, bool fixedAddress, uint64_t zeroBits, uint32_
 // Wine reads as an upper limit: the result lies in [1 TB, 8 TB).
 constexpr uint64_t kWineUserSpace = 1ull << 43;
 constexpr uint64_t kTopDownZeroBits = kWineUserSpace - 1;
-
-// The highest address (inclusive) a zero-bits value allows for an allocation
-// at no fixed address, as Wine reads it (get_zero_bits_limit); 0 is no limit.
-// Values below 32 count leading zero bits above bit 32, larger ones are masks.
-uint64_t ZeroBitsLimit(uint64_t zeroBits);
 
 // Whether an address a top down allocation returned lies where it should.
 constexpr bool InTopDownRange(uint64_t address) { return address >= kHighAddresses && address < kWineUserSpace; }

@@ -46,6 +46,9 @@ bool AddGameRegions(StateLayout& layout, RegionNames& names, uint8_t* rollbackUn
 	}
 	names.LogSummary();
 	for (size_t k = 0; k < std::size(sfv::manager::kRunRules); k++) {
+		// One fighter's own part is in a battle only when that fighter is: no
+		// news when its rule has no run.
+		if (strncmp(sfv::manager::kRunRules[k].owner, "CharaUniquePart_", 16) == 0) continue;
 		if (!applied[k]) {
 			Log("adapter: no %s run at +0x%X in this battle; its rule applied nowhere", sfv::manager::kRunRules[k].owner,
 				sfv::manager::kRunRules[k].offset);

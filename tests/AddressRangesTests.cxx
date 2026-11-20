@@ -243,6 +243,29 @@ TEST_CASE("under Wine only an allocation for this process at no fixed address an
 	CHECK_FALSE(TopDownFits(true, false, 0, MEM_RESET));
 }
 
+namespace {
+// The highest address (inclusive) a zero-bits value allows for an allocation
+// at no fixed address, as Wine reads it (get_zero_bits_limit); 0 is no limit.
+// Values below 32 count leading zero bits above bit 32, larger ones are masks.
+uint64_t ZeroBitsLimit(uint64_t zeroBits)
+{
+	if (zeroBits == 0) return 0;
+	unsigned shift = 0;
+	if (zeroBits < 32) {
+		shift = 32 + static_cast<unsigned>(zeroBits);
+	} else {
+		shift = 63;
+		if (zeroBits >> 32) { shift -= 32; zeroBits >>= 32; }
+		if (zeroBits >> 16) { shift -= 16; zeroBits >>= 16; }
+		if (zeroBits >> 8) { shift -= 8; zeroBits >>= 8; }
+		if (zeroBits >> 4) { shift -= 4; zeroBits >>= 4; }
+		if (zeroBits >> 2) { shift -= 2; zeroBits >>= 2; }
+		if (zeroBits >> 1) shift -= 1;
+	}
+	return ~0ull >> shift;
+}
+} // namespace
+
 TEST_CASE("a top down allocation is limited to below 8 TB, as 43-bit pointer code needs")
 {
 	using namespace sfve::mod;
