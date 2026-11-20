@@ -1,8 +1,10 @@
 # Publishing an SFV Ember release
 
 `scripts\publish.ps1` publishes a release in five stages. It runs on the desktop (where `gh` is signed in and
-`ssh vps` works). The Windows build runs on the build PC over `ssh director`. The Linux room hosts build in the
-build PC's WSL. The VPS only receives files: every root step stays with the owner. Nothing becomes public before
+`ssh vps` works). The Windows build runs on the build PC over SSH: a Windows PC with Microsoft's compiler, or a
+Linux PC that cross-compiles it with clang-cl (config `laptop.os`, "The build PC" below). The Linux room hosts build
+in the Windows build PC's WSL, or on the Linux build PC itself. The VPS only receives files: every root step stays
+with the owner. Nothing becomes public before
 the last stage, and the last stage publishes only after it has checked everything again.
 
 ## The stages and what each proves
@@ -11,7 +13,7 @@ the last stage, and the last stage publishes only after it has checked everythin
 |---|---|---|---|
 | `plan` | desktop, read-only | `plan.json`, `notes.md` | The label is newer than every published release, and no release, draft or tag has it yet. The source commit descends from the last release's tag and fast-forwards the public `main` and the private release branch (`release/beta.N` for a beta, `release/x.y.z` for a final). Every worktree on that commit or branch is clean, and so is the pipeline's own checkout. `CMakeLists.txt` makes this version. `data/pick-space.json`'s room build agrees with `kMatchBuild`, and the plan records whether it changed since the last release. A file `kRollbackCodeRules` covers (`src/mod/SfvLayoutRules.hxx` lists them) that changed since the last release needs that version moved. The README's library pin names the library commit, which is on the library's public branch or fast-forwards it. The notes exist and use none of the words `notesForbidden` lists (the option public text never mentions). No forbidden string (the owner's rules file, plus this PC's user, profile and computer names) appears in the notes, the Discord draft, or any commit, tree, blob or path being released, raw or UTF-16. That covers both repositories. Every released commit has the last release's identity and no `...-by:` trailer. |
 | `build` | build PC (Interactive task queue) | `build\files\*`, `build\evidence.json` | Both build PC checkouts are fast-forwarded to exactly the plan's commits and trees, are clean, and have their fingerprints recorded before the build. A development build and a player build ran, with their tests (ctest's own count must equal the receipt's list), then the helper and `package.ps1 -VersionLabel <label> -RenderStore <laptop.renderStore> -MinColourCoverage 1` (every colour of every offered costume, bar the render manifest's exceptions). Back on the desktop: both receipts name the plan's commits, the checkouts' fingerprints, the right kind and passing tests. The fingerprints did not move during the job. The zip, its `.sha256` and the receipt inside it agree with each other. Every packaged binary is the player build's, by hash. `sfv_ember.dll` carries the plan's room build and match line. The packaged receipt's `renders` say the pictures are included and cover every look (`colourCoverage` and `minColourCoverage` 1). By default the zip carries every colour and the job, the zip and its receipt name no colour pack. With `-ColourPack`, the pack the job brought back (`sfve-colours-<id>.zip`, named in `result.json`) is the one the zip's `colour-pack.json` and receipt name: its size, its SHA-256 (whose start is its id) and its URL on the public repository's `colour-packs` release, which the zip's `Launcher.exe` names; all three name it or none does. No file or file name in the package or the pack carries a forbidden string or a name of the desktop or the build PC. |
-| `rooms` | build PC WSL (`server1` slot not written yet) | `rooms\out\*`, `rooms\kit.tar`, `rooms\evidence.json` | `sf4-net` (`--profile server`) and `sfve-room-host` are built from `git archive`s of the plan's two commits, checked by hash. Both are Linux binaries named in `SHA256SUMS`. The room host answers `helper_unavailable` for its own build and `other_build` for another, and embeds exactly the plan's build. They hold no build-machine path or forbidden string. The kit is the last release's stage folder, checked against its own `SHA256SUMS`, with the library's `upgrade.sh` at the plan's commit and `room-build/` replaced. It is staged on the VPS without sudo, and the stage prints the owner's command. A pair built earlier can be adopted instead (below); a room build the last release already has must be adopted, never skipped, so promote always has hashes to compare. |
+| `rooms` | build PC: its WSL, or the Linux build PC itself (`server1` slot not written yet) | `rooms\out\*`, `rooms\kit.tar`, `rooms\evidence.json` | `sf4-net` (`--profile server`) and `sfve-room-host` are built from `git archive`s of the plan's two commits, checked by hash. Both are Linux binaries named in `SHA256SUMS`. The room host answers `helper_unavailable` for its own build and `other_build` for another, and embeds exactly the plan's build. They hold no build-machine path or forbidden string, and need no newer glibc than the server's (`rooms.maxGlibc`, when set). The kit is the last release's stage folder, checked against its own `SHA256SUMS`, with the library's `upgrade.sh` at the plan's commit and `room-build/` replaced. It is staged on the VPS without sudo, and the stage prints the owner's command. A pair built earlier can be adopted instead (below); a room build the last release already has must be adopted, never skipped, so promote always has hashes to compare. |
 | `draft` | desktop → GitHub | `draft\draft-state.json`, `draft\evidence.json` | The stage creates a draft by API (a pre-release for a beta label such as `0.1.0-beta.9`, a release for a final label such as `0.1.0`) (it keeps the id) and uploads the zip and its `.sha256` to that id. It reads the draft back: tag, title, pre-release or not, notes and both assets by size and SHA-256 digest. It refuses when any other release has the tag or a release as new or newer is published. |
 | `promote` | desktop → VPS (read-only), GitHub, git remotes | `promote\state.json`, `promote\downloaded\*`, `promote\evidence.json` | Every run first checks the whole chain again, then rechecks the build from its files, with the zip scanned again. It checks the draft by the recorded id: the only release with the tag, unchanged assets and notes, nothing newer published, no tag elsewhere. Then the server gate: the live VPS must offer the room build. Then the colour pack, if the zip names one, goes to the `colour-packs` release (below). Then it pushes the library (if needed), the private release branch and the public `main`, each only as a fast-forward. It publishes the release by id at the source commit; a final is also made the repository's latest release. Finally it reads the release back, checks that the tag is on the commit, downloads the zip, `.sha256` and the colour pack, and compares them. |
 
@@ -124,9 +126,24 @@ compares the installed files with these hashes, as for a built pair.
               "renderStore": "D:\\sfv-ember-renders-b8", "oldPackageCheck": "D:\\keep\\beta6\\sfve_package_check.exe",
               "dist": "D:\\sfv-ember-dist\\publish", "pollSeconds": 60,
               "startTimeoutMinutes": 90, "buildTimeoutMinutes": 300, "roomsTimeoutMinutes": 90 },
-  "rooms": { "backend": "wsl", "baseStage": "<the folder staged on the VPS for the last release>" },
+  "rooms": { "backend": "wsl", "baseStage": "<the folder staged on the VPS for the last release>", "maxGlibc": "2.43" },
   "vps": { "host": "vps", "stage": "ember-sfv-bridge", "roomsLib": "/usr/local/lib/ember-rooms" }
 }
+```
+
+A Linux build PC's `laptop` block, and `rooms.backend` `"linux"`:
+
+```json
+  "laptop": { "host": "laptop", "os": "linux", "pwsh": "<its pwsh>", "setup": "<a shell file that puts its tools on PATH>",
+              "work": "/mnt/games/sfv-publish/work", "sourceCheckout": "/mnt/games/sfv-publish/sfv",
+              "libraryCheckout": "/mnt/games/sfv-publish/lib", "buildDev": "/mnt/games/sfv-publish/build-dev",
+              "buildPlayer": "/mnt/games/sfv-publish/build-player", "vcpkgRoot": "<its vcpkg>",
+              "vcpkgCache": "/mnt/games/sfv-publish/vcpkg-cache", "renderStore": "<its copy of the render store>",
+              "oldPackageCheck": "/mnt/games/sfv-publish/keep/beta6/sfve_package_check.exe",
+              "discordSdk": "/mnt/games/sfv-publish/deps/DiscordSocialSdk-1.10.19337.zip", "dist": "/mnt/games/sfv-publish/packages",
+              "testEmulator": "<ember-wine>", "testPrefix": "/mnt/games/sfv-publish/wine-tests",
+              "lock": "/mnt/games/sfv-publish/heavy-job.lock", "jobs": 12, "machineNames": ["<its user>", "<its host name>"],
+              "pollSeconds": 60, "startTimeoutMinutes": 90, "buildTimeoutMinutes": 300, "roomsTimeoutMinutes": 90 },
 ```
 
 ### The build PC
@@ -137,6 +154,43 @@ build PC needs, in its `interactive` folder, `scripts\publish\local-queue.ps1` c
 `local-queue` holding the Discord SDK archive's path. The queue starts each job detached at below-normal priority
 and holds `D:\sf4-build\heavy-build.lock`, which the desktop's other builds take too, so it waits while another
 heavy build runs. Its checkouts may be this PC's own worktrees at the plan's commits; they must be clean.
+
+`laptop.os` `"linux"` makes the build PC a Linux PC (the Linux laptop, `ssh laptop`). The same stages and checks run;
+what differs on that PC:
+
+- The build is cross-compiled: `scripts\build.ps1` on Linux builds with clang-cl and lld-link against the Microsoft
+  CRT and Windows SDK that xwin splats (`cmake/cross/clang-cl-x64.cmake`, from the setup file's `SF4E_XWIN` and
+  `SF4E_LLVM_BIN`), its vcpkg packages with the same toolchain (Detours from `cmake/cross/vcpkg-ports`, built with
+  CMake), and the helper with lld-link (`scripts\build-helper.ps1`). The tests run through Wine (`testEmulator`,
+  `ember-wine`, in the prefix `testPrefix`, with `xinput1_3=n,b` so a test program loads the proxy beside it, as
+  Windows does). Nothing in the checkouts is edited: what clang-cl needs is in the source (the library's probe gets
+  its clang-only warnings turned off by SFV's CMakeLists.txt; guarded memory accesses fault inside a call of their
+  own, which a clang-cl `__try` takes). Every receipt names its toolchain (`toolchain`: host, compiler, linker, CRT
+  and SDK, read from the tools and the splat), the helper's record its `rustc`, linker and C compiler; the build
+  stage refuses receipts whose toolchain is not the build PC's kind (MSVC on Windows, clang-cl on Linux), is
+  missing, or differs between the two builds and the zip.
+- `scripts\package.ps1` on Linux packages the same files: the checkouts are made with Windows line endings
+  (`git config core.autocrlf true` in both; the agent refuses a checkout without it), so their fingerprints and the
+  packaged text are the desktop's; the files it writes get CRLF lines and `MANIFEST.txt` its `\` paths; the Windows
+  programs it runs (`sfve_package_check.exe`, the earlier beta's) run through Wine. The zip's entries are the same; the
+  archive records Unix as their origin, in the order Linux lists the folder.
+- Its checkouts, build trees, caches and package folder are outside the home folder (`/mnt/games/sfv-publish`):
+  the compiled source paths would carry the user's name. `build.ps1` refuses a path in the home folder.
+  `laptop.machineNames` (its user and host name) join the desktop's own names in every scan, and the agent's own scan
+  of the package reports the names it looked for, which the desktop adds too.
+- The job is `job.sh` in the attempt folder, which the agent's phase `start` starts detached (`setsid`), so the SSH
+  call returns. It takes the heavy-job lock (`laptop.lock`, flock) before it builds: `start` answers WAIT while
+  another job holds it, `status` reports the PC Running then, and a job that waited two hours for it fails. It
+  sources `laptop.setup`, runs niced with `laptop.jobs` parallel jobs, and ends the test prefix's Wine at its exit.
+- Rooms (`rooms.backend` `"linux"`) run `build-rooms-linux.sh` on the PC itself. It needs the room host's
+  build headers there (`nlohmann-json3-dev`, `libspdlog-dev`, `libfmt-dev`, `libxxhash-dev`), and binaries that run
+  on the server's glibc: `result.txt` reports the newest glibc symbol each binary needs, and `rooms.maxGlibc` (the
+  server's release, 2.43 for Ubuntu 26.04) refuses a newer one.
+
+Setting one up: `git clone` the SFV and library repositories into the two checkout folders, `git config core.autocrlf
+true` in each, and check out a commit at or behind the next release's (the agent only fast-forwards); the bundles the
+build stage sends bring the rest. Copy the earlier beta's `sfve_package_check.exe` and the Discord SDK archive into
+the folders the config names.
 
 `laptop.renderStore` is the render store the package takes its pictures from: a folder holding `pack\manifest.json`
 and `pack\assets\selection\...` as `tools/boothpack.py pack` leaves them (`docs/design/beta8/pack.md`). It lives
@@ -218,13 +272,20 @@ flag stands in for that last read only: the hash comparison and the room host's 
 ## Known limits
 
 - Review findings 12, 14 and 15 of the review of commit 75138f5 are not addressed in this version.
-- The `server1` Linux back end is not written; rooms builds in the build PC's WSL, or adopts a kit. With `laptop.host`
-  `"local"` that is this PC's own WSL. Its Ubuntu has to be the VPS's release (26.04, glibc 2.43): the pair links
-  glibc dynamically, so a newer Linux (the Linux laptop's 26.10, glibc 2.44) can make binaries the VPS cannot run.
+- The `server1` Linux back end is not written; rooms builds in the build PC's WSL or on the Linux build PC, or adopts
+  a kit. With `laptop.host` `"local"` that is this PC's own WSL. Its Ubuntu should be the VPS's release (26.04,
+  glibc 2.43): the pair links glibc dynamically, so a newer Linux (the Linux laptop's 26.10, glibc 2.44) can make
+  binaries the VPS cannot run. `rooms.maxGlibc` refuses those; the Linux laptop also lacks the room host's build
+  headers (no system packages there without the owner's sudo), so its rooms stage fails until they are there, and
+  adopting a kit or the WSL build stays the way until then.
+- The Linux build PC's cross build is not MSVC: the binaries differ from the desktop's (clang-cl's code, Detours built
+  with CMake, the CRT and SDK of the xwin splat), and the receipts say so. Its tests ran under Wine, not Windows.
 - When the supervisor's `config.json` is root-only, whether it lists the build rests on the owner's
   `-RoomsConfirmed`. The installed hashes and the room host's own answer are still checked by the pipeline.
 ## Tests
 
 `pwsh -NoProfile -File tests\PublishTests.ps1` and `tests\PublishReviewTests.ps1` (one test per review finding; `-Only <name>`) run every stage on a fixture of local git repositories. GitHub,
 the build PC and the VPS are faked (`scripts/publish/SfvPublishFakes.ps1`), and a push to anything outside the
-fixture throws.
+fixture throws. They run on Windows and on Linux (the Linux laptop: `pwsh` from its setup file); on Linux the agent's
+own test runs as a Linux build PC's (its job started under a real lock) and the desktop-as-build-PC test is skipped,
+on Windows the other way round. The Linux build PC's stages are tested on the fakes on both.

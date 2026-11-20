@@ -1,6 +1,7 @@
 #Requires -Version 7
 # Publishes an SFV Ember release in stages (docs/release/PUBLISHING.md). Runs on the desktop; the Windows build runs
-# on the build PC over SSH, the Linux room hosts in its WSL, and the VPS only gets files (the owner runs sudo).
+# on the build PC over SSH (a Windows PC, or a Linux PC that cross-compiles: config laptop.os), the Linux room hosts
+# in its WSL or on the Linux build PC itself, and the VPS only gets files (the owner runs sudo).
 #
 #   scripts\publish.ps1 -Stage plan    -Label 0.1.0-beta.9 -Source b9/integrate -Notes <notes.md> [-DiscordDraft <file>]
 #   scripts\publish.ps1 -Stage build   -Label 0.1.0-beta.9
@@ -23,7 +24,7 @@ param(
     [string[]]$Rules = @(), [string[]]$AllowIdentity = @(),
     [string]$StateRoot = 'D:\sfv-ember-dist\publish', [string]$ConfigPath = '',
     [ValidateSet('vps-stage', 'draft', 'push-library', 'push-origin', 'push-public', 'publish')][string[]]$Skip = @(),
-    [ValidateSet('', 'wsl', 'server1')][string]$LinuxBackend = '',
+    [ValidateSet('', 'wsl', 'linux', 'server1')][string]$LinuxBackend = '',
     [switch]$DryRun, [switch]$Redo, [switch]$Replan, [switch]$NewAttempt, [switch]$Force, [switch]$RoomsConfirmed
 )
 $ErrorActionPreference = 'Stop'

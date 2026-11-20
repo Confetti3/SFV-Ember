@@ -11,13 +11,15 @@ function New-FakeWorld([string]$Fixture) {
         LaptopBusy = ''; JobStarted = @{}; BuildTweak = $null; RoomsTweak = $null; JobFails = $false
         VpsCheck = 'offered'; VpsStaged = ''; VpsUploads = @{}; Patches = 0; PatchThenFail = $false; OnPush = $null
         Fingerprints = @{source = ('A' * 64); library = ('B' * 64)}
-        Plan = $null
+        Plan = $null; LinuxBuildPc = $false; LaptopCommands = [Collections.Generic.List[string]]::new()
     }
 }
 
 function Get-FakeLocalPath([object]$World, [string]$Remote) {
-    # "laptop:D:/sf4/publish/x" -> <fixture>\laptop\D\sf4\publish\x ; "vps:name" -> <fixture>\vps\name
+    # "laptop:D:/sf4/publish/x" -> <fixture>\laptop\D\sf4\publish\x ; a Linux build PC's "laptop:/srv/x" ->
+    # <fixture>\laptop-linux\srv\x ; "vps:name" -> <fixture>\vps\name
     if ($Remote -cmatch '^laptop:([A-Za-z]):[\\/](.*)$') { return Join-Path $World.Fixture "laptop\$($Matches[1])\$($Matches[2].Replace('/', '\'))" }
+    if ($Remote -cmatch '^laptop:/(.*)$') { return Join-Path $World.Fixture "laptop-linux\$($Matches[1].Replace('/', '\'))" }
     if ($Remote -cmatch '^vps:(.*)$') { return Join-Path $World.Fixture "vps\$($Matches[1])" }
     $null
 }
@@ -45,7 +47,7 @@ function Add-FakeAsset([object]$World, [object]$Release, [string]$Path, [string]
 $script:FakeWorlds = @{}
 function New-FakeOperations([object]$World, [string]$PublicBare) {
     $key = [Guid]::NewGuid().ToString('N')
-    $World | Add-Member -NotePropertyName PublicBare -NotePropertyValue $PublicBare -Force
+    $World | Add-Member -NotePropertyName PublicBare -NotePropertyValue (Get-PubNativePath $PublicBare) -Force
     $script:FakeWorlds[$key] = $World
     $w = "`$W = `$script:FakeWorlds['$key']"
     $real = New-PubOperations
@@ -138,8 +140,22 @@ function Invoke-FakeVps([object]$World, [string]$Command) {
     throw "A test reached an unexpected VPS command: $Command"
 }
 
-# The build PC: the agent's phases and the queue, answered from the fixture.
+# The build PC: the agent's phases and the queue, answered from the fixture. A Linux build PC is reached through bash:
+# its commands are refused here unless they are what bash would run as meant (every value in single quotes, a quote
+# inside one written '\'').
 function Invoke-FakeLaptop([object]$World, [string]$Command) {
+    $World.LaptopCommands.Add($Command)
+    if ($World.LinuxBuildPc) {
+        if ($Command -cmatch 'New-Item|sfv-start\.ps1|powershell') { throw "A Windows command reached the Linux build PC: $Command" }
+        if ($Command -cmatch "^mkdir -p '([^']+)'$") {
+            New-Item -ItemType Directory -Path (Get-FakeLocalPath $World "laptop:$($Matches[1])") -Force | Out-Null
+            return ConvertTo-FakeResult ''
+        }
+        if ($Command -cnotmatch "^'/opt/pwsh/pwsh' -NoProfile -ExecutionPolicy Bypass -File '[^']+/laptop-agent\.ps1' -Phase ") { throw "An unexpected command reached the Linux build PC: $Command" }
+        # Every argument after the phase is -Name '<value>' with bash's quoting.
+        $rest = $Command.Substring($Command.IndexOf(' -Phase ') + 8)
+        if ($rest -cnotmatch "^\S+( -[A-Za-z]+ '([^']|'\\'')*')*$") { throw "A command bash would not read as meant: $Command" }
+    } elseif ($Command -cmatch "^mkdir ") { throw "A Linux command reached the Windows build PC: $Command" }
     if ($Command -cmatch "New-Item -ItemType Directory -Force -Path '([^']+)'") {
         New-Item -ItemType Directory -Path (Get-FakeLocalPath $World "laptop:$($Matches[1])") -Force | Out-Null
         return ConvertTo-FakeResult ''
@@ -152,22 +168,36 @@ function Invoke-FakeLaptop([object]$World, [string]$Command) {
     if ($Command -cnotmatch "-Phase (\S+) -Work '([^']+)'") { throw "A test reached an unexpected laptop command: $Command" }
     $phase = $Matches[1]; $work = $Matches[2]
     $local = Get-FakeLocalPath $World "laptop:$work"
-    $arg = { param($Name) if ($Command -cmatch "-$Name '([^']*)'") { $Matches[1] } else { '' } }
+    $arg = { param($Name) if ($Command -cmatch "-$Name '(([^']|'\\'')*)'") { $Matches[1].Replace("'\''", "'") } else { '' } }
     switch ($phase) {
         'status' {
             $task = if ($World.LaptopBusy) { 'Running' } else { 'Ready' }
+            if ($World.LinuxBuildPc -and !(& $arg 'Lock')) { throw 'A Linux build PC''s status needs the lock it reports on.' }
             return ConvertTo-FakeResult ("RESULT " + (@{task = $task; job = $World.LaptopBusy; game = @(); heavy = @()} | ConvertTo-Json -Compress) + "`n")
+        }
+        'start' {
+            # The Linux build PC's job: started unless the lock is held.
+            if (!$World.LinuxBuildPc) { throw 'The phase start reached a Windows build PC.' }
+            $job = (Get-Content -LiteralPath (Join-Path $local 'job-name.txt')).Trim()
+            if ($World.LaptopBusy) { return ConvertTo-FakeResult "RESULT {`"state`":`"wait`",`"note`":`"another heavy job holds the lock`"}`n" }
+            $World.JobStarted[$job] = $true
+            return ConvertTo-FakeResult "RESULT {`"state`":`"started`",`"note`":`"`"}`n"
         }
         'sync' {
             if (Test-Path -LiteralPath (Join-Path $local 'out')) { return ConvertTo-FakeResult "RESULT {`"ok`":false,`"error`":`"used folder`"}`n" }
             foreach ($b in 'source.bundle', 'library.bundle') { if (!(Test-Path -LiteralPath (Join-Path $local $b))) { return ConvertTo-FakeResult "RESULT {`"ok`":false,`"error`":`"no $b`"}`n" } }
             $job = & $arg 'JobName'
+            if ($World.LinuxBuildPc) {
+                foreach ($name in 'Setup', 'TestEmulator', 'Lock', 'VcpkgCache', 'DiscordSdk') { if (!(& $arg $name)) { return ConvertTo-FakeResult "RESULT {`"ok`":false,`"error`":`"A Linux build PC needs -$name.`"}`n" } }
+                if ((& $arg 'Dist') -cnotmatch '^/') { throw "A Windows path for a Linux build PC: $(& $arg 'Dist')" }
+            }
             Set-Content -LiteralPath (Join-Path $local 'job-name.txt') -Value $job
             Set-Content -LiteralPath (Join-Path $local 'colour-pack-repo.txt') -Value (& $arg 'ColourPackRepo')
             return ConvertTo-FakeResult ("RESULT " + (@{ok = $true; sourceFingerprint = $World.Fingerprints.source; libraryFingerprint = $World.Fingerprints.library} | ConvertTo-Json -Compress) + "`n")
         }
         'rooms-install' {
             if (Test-Path -LiteralPath (Join-Path $local 'out')) { return ConvertTo-FakeResult "RESULT {`"ok`":false,`"error`":`"used folder`"}`n" }
+            if ($World.LinuxBuildPc -and !(& $arg 'Lock')) { return ConvertTo-FakeResult "RESULT {`"ok`":false,`"error`":`"A Linux build PC needs -Lock.`"}`n" }
             Set-Content -LiteralPath (Join-Path $local 'job-name.txt') -Value (& $arg 'JobName')
             Set-Content -LiteralPath (Join-Path $local 'build-id.txt') -Value (& $arg 'BuildId')
             Set-Content -LiteralPath (Join-Path $local 'mode.txt') -Value (& $arg 'Mode')
@@ -204,6 +234,11 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
         sourceFingerprint = $World.Fingerprints.source; emberFingerprint = $World.Fingerprints.library
         tests = @('RoomBuild', 'Picks', 'Render'); ctestTotal = 3; ctestFailed = 0; version = $plan.version; label = $label
         resultFingerprint = $World.Fingerprints.source; machineScan = @(); sidecarSha = $null; zipShaOverride = $null; packagedOverride = $null
+        # The toolchain the receipts name: the build PC's (MSVC on Windows, the clang-cl cross build on Linux).
+        toolchain = $(if ($World.LinuxBuildPc) { [ordered]@{host = 'linux'; compiler = 'clang-cl: clang version 21.1.8 (x)'; linker = 'lld-link: LLD 21.1.8 (x)'; crt = 'Microsoft CRT 14.44.35220 (xwin 0.10.0)'; sdk = 'Windows SDK 10.0.26100 (xwin 0.10.0)'} }
+            else { [ordered]@{host = 'windows'; compiler = 'MSVC 14.51.36231'; linker = 'MSVC link 14.51.36231'; crt = 'MSVC 14.51.36231'; sdk = 'Windows SDK 10.0.26100.0'} })
+        playerToolchain = $null; helperToolchain = [ordered]@{rustc = 'rustc 1.98.0'; linker = 'lld-link: LLD 21.1.8'; cc = 'clang-cl: clang version 21.1.8'}
+        machineNames = @()
         packPicture = 'a colour of a costume'; packRepo = 'Owner/SFV-Ember'; descriptorOverride = $null; packNameOverride = $null
         # package.ps1 -ColourPack: a pack beside the zip, named by the zip's descriptor; without it the zip has every
         # colour. The job packs as the pipeline asked in its sync (-ColourPackRepo), as the real agent does.
@@ -215,10 +250,11 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
     [IO.File]::WriteAllBytes((Join-Path $staging $f.extraName), [Text.Encoding]::Unicode.GetBytes($f.extra))
     $binaries = @('sfv_ember.dll', 'Launcher.exe') | ForEach-Object { [ordered]@{path = $_; sha256 = (Get-FileHash -LiteralPath (Join-Path $staging $_) -Algorithm SHA256).Hash} }
     $receipt = { param($Kind) [ordered]@{schema = 1; product = 'SFV Ember'; version = $f.version; sourceRevision = $f.sourceRevision; sourceFingerprint = $f.sourceFingerprint
-        emberRevision = $f.emberRevision; emberFingerprint = $f.emberFingerprint; buildKind = $Kind; testsPassed = $true; tests = $f.tests; binaries = $binaries} }
+        emberRevision = $f.emberRevision; emberFingerprint = $f.emberFingerprint; buildKind = $Kind; testsPassed = $true; tests = $f.tests; binaries = $binaries
+        toolchain = $(if ($Kind -ceq 'player' -and $f.playerToolchain) { $f.playerToolchain } else { $f.toolchain })} }
     Save-FakeJson (Join-Path $out 'receipt-development.json') (& $receipt 'development')
     Save-FakeJson (Join-Path $out 'receipt-player.json') (& $receipt 'player')
-    Save-FakeJson (Join-Path $out 'helper.provenance.json') @{emberRevision = $f.emberRevision; emberFingerprint = $f.emberFingerprint; sha256 = ('C' * 64)}
+    Save-FakeJson (Join-Path $out 'helper.provenance.json') @{emberRevision = $f.emberRevision; emberFingerprint = $f.emberFingerprint; sha256 = ('C' * 64); toolchain = $f.helperToolchain}
     $packaged = & $receipt 'player'
     $packaged.package = @{label = $f.label}
     $packaged.renders = [ordered]@{included = $true; colourCoverage = 1; minColourCoverage = 1; colourPack = $null}
@@ -227,7 +263,7 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
         # The colour pack beside the zip, named by its SHA-256, and the descriptor in the package that names it.
         $packFolder = Join-Path $Work 'pkg\pack'
         New-Item -ItemType Directory -Path "$packFolder\assets\selection\RYU\costume-0" -Force | Out-Null
-        [IO.File]::WriteAllText("$packFolder\assets\selection\RYU\costume-0\color-1-cutout.png", $f.packPicture)
+        [IO.File]::WriteAllText((Join-Path $packFolder 'assets/selection/RYU/costume-0/color-1-cutout.png'), $f.packPicture)
         Compress-Archive -Path "$packFolder\*" -DestinationPath "$Work\pkg\pack.zip"
         $packSha = (Get-FileHash -LiteralPath "$Work\pkg\pack.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
         $packName = "sfve-colours-$($packSha.Substring(0, 16)).zip"
@@ -252,7 +288,7 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
         library = @{commit = $plan.library.commit; tree = $plan.library.tree; clean = $true; fingerprint = $World.Fingerprints.library}}
     Save-FakeJson (Join-Path $out 'result.json') @{ok = $true; steps = @(@{name = 'build-development'; exit = 0}, @{name = 'package'; exit = 0})
         ctest = @{development = @{passed = $f.ctestTotal - $f.ctestFailed; failed = $f.ctestFailed; total = $f.ctestTotal}; player = @{passed = $f.ctestTotal - $f.ctestFailed; failed = $f.ctestFailed; total = $f.ctestTotal}}
-        zipSha256 = $(if ($f.zipShaOverride) { $f.zipShaOverride } else { $sha }); machineScan = $f.machineScan
+        zipSha256 = $(if ($f.zipShaOverride) { $f.zipShaOverride } else { $sha }); machineScan = $f.machineScan; machineNames = $f.machineNames
         colourPack = $resultPack
         source = @{fingerprint = $f.resultFingerprint}; library = @{fingerprint = $World.Fingerprints.library}}
     Set-Content -LiteralPath (Join-Path $out 'job.log') -Value 'fake job'
@@ -262,7 +298,7 @@ function New-FakeRoomOutput([object]$World, [string]$Work) {
     $out = Join-Path $Work 'out'
     New-Item -ItemType Directory -Path $out -Force | Out-Null
     $build = (Get-Content -LiteralPath (Join-Path $Work 'build-id.txt')).Trim()
-    $r = @{own = 'helper_unavailable'; other = 'other_build'; embedded = $build; paths = '0'; hostBytes = "`u{7f}ELF room host $build"; status = 'ok'}
+    $r = @{own = 'helper_unavailable'; other = 'other_build'; embedded = $build; paths = '0'; hostBytes = "`u{7f}ELF room host $build"; status = 'ok'; glibc = '2.38'; netPaths = '0'}
     if ($World.RoomsTweak) { & $World.RoomsTweak $r }
     $mode = if (Test-Path -LiteralPath (Join-Path $Work 'mode.txt')) { (Get-Content -LiteralPath (Join-Path $Work 'mode.txt')).Trim() } else { 'build' }
     if ($mode -ceq 'check') {
@@ -281,6 +317,7 @@ function New-FakeRoomOutput([object]$World, [string]$Work) {
     $sha = { param($N) (Get-FileHash -LiteralPath (Join-Path $Work $N) -Algorithm SHA256).Hash.ToLowerInvariant() }
     $inputsLines = if ($mode -ceq 'check') { @('MODE=check') } else { @('MODE=build', "SFV_TAR=$(& $sha 'sfv.tar')", "LIBRARY_TAR=$(& $sha 'library.tar')") }
     Set-Content -LiteralPath (Join-Path $out 'result.txt') -Value (@("BUILD_ID=$build") + $inputsLines + @(
-        "ANSWER_OWN=$($r.own)", "ANSWER_OTHER=$($r.other)", "EMBEDDED=$($r.embedded)", "PATHS_SFVE_ROOM_HOST=$($r.paths)", 'PATHS_SF4_NET=0', "STATUS=$($r.status)"))
+        "ANSWER_OWN=$($r.own)", "ANSWER_OTHER=$($r.other)", "EMBEDDED=$($r.embedded)", "PATHS_SFVE_ROOM_HOST=$($r.paths)", "PATHS_SF4_NET=$($r.netPaths)",
+        "GLIBC_SFVE_ROOM_HOST=$($r.glibc)", 'GLIBC_SF4_NET=2.34', "STATUS=$($r.status)"))
     Set-Content -LiteralPath (Join-Path $out 'job.log') -Value 'fake rooms'
 }

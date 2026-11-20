@@ -32,6 +32,9 @@ $PubColourCoverage = 1.0
 # ---------------------------------------------------------------------------------------------------------------
 # Small helpers
 
+# A path as .NET's file functions take it here: PowerShell's own commands read '\' as a separator everywhere, .NET
+# on Linux only '/' (the tests run on Linux too).
+function Get-PubNativePath([string]$Path) { if ($IsWindows) { $Path } else { $Path.Replace('\', '/') } }
 function Get-PubSha256([string]$Path) {
     if (!(Test-Path -LiteralPath $Path -PathType Leaf)) { throw "No file at $Path" }
     (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -41,11 +44,11 @@ function Get-PubTextSha256([string]$Text) { Get-PubBytesSha256 ([Text.UTF8Encodi
 function ConvertTo-PubJsonText([object]$Value) { (($Value | ConvertTo-Json -Depth 30) -replace "`r`n", "`n") + "`n" }
 function Read-PubJson([string]$Path) {
     if (!(Test-Path -LiteralPath $Path -PathType Leaf)) { throw "No file at $Path" }
-    [IO.File]::ReadAllText($Path) | ConvertFrom-Json
+    [IO.File]::ReadAllText((Get-PubNativePath $Path)) | ConvertFrom-Json
 }
 function Write-PubText([string]$Path, [string]$Text) {
     New-Item -ItemType Directory -Path (Split-Path -Parent $Path) -Force | Out-Null
-    [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Get-PubNativePath $Path), $Text, [Text.UTF8Encoding]::new($false))
 }
 function Get-PubNow([object]$Ctx) { (& $Ctx.Ops.Now).ToUniversalTime().ToString('o') }
 function Write-PubLog([object]$Ctx, [string]$Text) {
@@ -132,7 +135,7 @@ function Read-PubRules([string[]]$Paths, [string[]]$MachineNames = @()) {
     if (!@($Paths | Where-Object { $_ }).Count) { throw 'Pass the rules file (-Rules): the forbidden strings live outside the repository.' }
     foreach ($path in $Paths) {
         if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw "No rules file at $path" }
-        $raw = [IO.File]::ReadAllBytes($path)
+        $raw = [IO.File]::ReadAllBytes((Get-PubNativePath $path))
         if ([Array]::IndexOf($raw, [byte]0) -ge 0) { throw "The rules file $(Split-Path $path -Leaf) holds NUL bytes; refused." }
         try { $text = [Text.UTF8Encoding]::new($false, $true).GetString($raw) } catch { throw "The rules file $(Split-Path $path -Leaf) is not valid UTF-8; refused." }
         $number = 0
@@ -154,14 +157,21 @@ function Read-PubRules([string[]]$Paths, [string[]]$MachineNames = @()) {
     }
     if (!$rules.Count) { throw 'The rules files hold no rule.' }
     # The scanning machine's own names (its user, profile folder and computer), read at run time.
-    # A name as a word of its own (a path's folder, a user field), not inside another word: a user named Ann is in
-    # C:\Users\Ann\ but not in "Annual" (a time-zone table's city names hold such words).
-    foreach ($name in @($MachineNames | Where-Object { $_ -and $_.Length -ge 3 } | Sort-Object -Unique)) {
-        $rules.Add([pscustomobject]@{id = 'machine-name'; regex = [regex]::new("(?<![A-Za-z0-9])$([regex]::Escape($name))(?![A-Za-z0-9])", 'CultureInvariant, IgnoreCase')})
-    }
+    foreach ($rule in (New-PubMachineNameRules $MachineNames)) { $rules.Add($rule) }
     $rules
 }
-function Get-PubMachineNames { @($env:USERNAME, $env:COMPUTERNAME, (Split-Path -Leaf "$env:USERPROFILE")) | Where-Object { $_ } }
+# Rules for machine names: a name as a word of its own (a path's folder, a user field), not inside another word, in
+# any case: a user named Ann is in C:\Users\Ann\ and /home/ann/ but not in "Annual" (a time-zone table's city names
+# hold such words).
+function New-PubMachineNameRules([string[]]$Names) {
+    @(foreach ($name in @($Names | Where-Object { $_ -and $_.Length -ge 3 } | Sort-Object -Unique)) {
+        [pscustomobject]@{id = 'machine-name'; regex = [regex]::new("(?<![A-Za-z0-9])$([regex]::Escape($name))(?![A-Za-z0-9])", 'CultureInvariant, IgnoreCase')}
+    })
+}
+function Get-PubMachineNames {
+    if ($IsWindows) { return @($env:USERNAME, $env:COMPUTERNAME, (Split-Path -Leaf "$env:USERPROFILE")) | Where-Object { $_ } }
+    @($env:USER, [Environment]::MachineName, (Split-Path -Leaf "$HOME")) | Where-Object { $_ }
+}
 function Get-PubRulesFingerprint([string[]]$Paths) { @($Paths | ForEach-Object { Get-PubSha256 $_ }) }
 
 # Hits of the rules in a byte array: its raw bytes (Latin-1, one char per byte) and UTF-16LE text at both byte
@@ -391,7 +401,7 @@ function Read-PubPlan([object]$Ctx) {
 function Assert-PubNotesText([string]$Path, [object[]]$Rules, [string]$What, [string[]]$Words = @()) {
     if (!$Path) { throw "Pass the $What file: the pipeline never writes it." }
     if (!(Test-Path -LiteralPath $Path -PathType Leaf)) { throw "No $What at $Path" }
-    $bytes = [IO.File]::ReadAllBytes($Path)
+    $bytes = [IO.File]::ReadAllBytes((Get-PubNativePath $Path))
     $text = [Text.UTF8Encoding]::new($false).GetString($bytes)
     if (!$text.Trim()) { throw "The $What is empty." }
     foreach ($word in @($Words | Where-Object { $_ })) {

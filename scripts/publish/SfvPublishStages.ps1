@@ -9,6 +9,26 @@ function ConvertTo-PubWslPath([string]$WindowsPath) {
     if ($WindowsPath -cnotmatch '^([A-Za-z]):[\\/](.*)$') { throw "Not a drive path: $WindowsPath" }
     "/mnt/$($Matches[1].ToLowerInvariant())/$($Matches[2].Replace('\', '/'))"
 }
+# The build PC is a Windows PC (the default; the desktop itself when its host is 'local') or, with laptop.os
+# "linux", a Linux PC that cross-compiles (docs/release/PUBLISHING.md, "The build PC").
+function Test-PubLinuxBuildPc([object]$Ctx) { "$($Ctx.Config.laptop.os)" -ceq 'linux' }
+# A path on the build PC: $Base and the parts joined with its separator.
+function Join-PubLaptopPath([object]$Ctx, [string]$Base, [string[]]$Parts) {
+    $separator = if (Test-PubLinuxBuildPc $Ctx) { '/' } else { '\' }
+    (@($Base.TrimEnd('\', '/')) + @($Parts)) -join $separator
+}
+# A value in single quotes for the build PC's shell: bash on Linux, PowerShell on Windows.
+function ConvertTo-PubLaptopQuoted([object]$Ctx, [string]$Value) {
+    if (Test-PubLinuxBuildPc $Ctx) { "'" + $Value.Replace("'", "'\''") + "'" } else { "'" + $Value.Replace("'", "''") + "'" }
+}
+# A Linux build PC's own settings for a job (the agent keeps them in job.json); none for a Windows one.
+function Get-PubLinuxJobArguments([object]$Ctx) {
+    if (!(Test-PubLinuxBuildPc $Ctx)) { return @() }
+    $lap = $Ctx.Config.laptop
+    foreach ($key in 'setup', 'testEmulator', 'lock', 'vcpkgCache', 'discordSdk') { if (!$lap.$key) { throw "config.json's laptop block names no $key, which a Linux build PC needs." } }
+    @('-Setup', $lap.setup, '-VcpkgCache', $lap.vcpkgCache, '-DiscordSdk', $lap.discordSdk, '-TestEmulator', $lap.testEmulator, '-TestPrefix', "$($lap.testPrefix)",
+        '-Lock', $lap.lock, '-Jobs', "$($lap.jobs)")
+}
 function Invoke-PubLaptop([object]$Ctx, [string]$Command, [int]$TimeoutSeconds = 300) {
     $result = & $Ctx.Ops.Ssh $Ctx.Config.laptop.host $Command $null $TimeoutSeconds
     $text = ConvertTo-PubText $result
@@ -17,12 +37,14 @@ function Invoke-PubLaptop([object]$Ctx, [string]$Command, [int]$TimeoutSeconds =
 }
 # Runs a phase of the laptop agent in $Work and returns its RESULT line as an object.
 function Invoke-PubAgent([object]$Ctx, [string]$Work, [string]$Phase, [string[]]$Arguments = @(), [int]$TimeoutSeconds = 600) {
-    $agent = "$Work\laptop-agent.ps1"
+    $agent = Join-PubLaptopPath $Ctx $Work 'laptop-agent.ps1'
     # Name/value pairs; a pair with an empty value is left out (Windows PowerShell, the build PC's SSH shell, drops
     # empty arguments, which would shift every later one).
-    $pairs = for ($i = 0; $i -lt $Arguments.Count; $i += 2) { if ("$($Arguments[$i + 1])") { "$($Arguments[$i]) '$($Arguments[$i + 1].Replace("'", "''"))'" } }
+    $pairs = for ($i = 0; $i -lt $Arguments.Count; $i += 2) { if ("$($Arguments[$i + 1])") { "$($Arguments[$i]) $(ConvertTo-PubLaptopQuoted $Ctx "$($Arguments[$i + 1])")" } }
     $quoted = @($pairs) -join ' '
-    $text = Invoke-PubLaptop $Ctx "pwsh -NoProfile -ExecutionPolicy Bypass -File '$agent' -Phase $Phase -Work '$Work' $quoted" $TimeoutSeconds
+    # A Linux build PC's SSH shell is bash, which finds pwsh where the config says (laptop.pwsh) or on its PATH.
+    $pwsh = if ((Test-PubLinuxBuildPc $Ctx) -and $Ctx.Config.laptop.pwsh) { ConvertTo-PubLaptopQuoted $Ctx $Ctx.Config.laptop.pwsh } else { 'pwsh' }
+    $text = Invoke-PubLaptop $Ctx "$pwsh -NoProfile -ExecutionPolicy Bypass -File $(ConvertTo-PubLaptopQuoted $Ctx $agent) -Phase $Phase -Work $(ConvertTo-PubLaptopQuoted $Ctx $Work) $quoted".TrimEnd() $TimeoutSeconds
     $line = @($text -split "`r?`n" | Where-Object { $_ -cmatch '^RESULT ' }) | Select-Object -Last 1
     if (!$line) { throw "The laptop agent ($Phase) gave no result:`n$text" }
     $line.Substring(7) | ConvertFrom-Json
@@ -36,22 +58,28 @@ function Copy-PubFromLaptop([object]$Ctx, [string]$Remote, [string]$Local, [int]
     $result = & $Ctx.Ops.Scp "$($Ctx.Config.laptop.host):$($Remote.Replace('\', '/'))" $Local $TimeoutSeconds
     if ($result.exitCode) { throw "Could not copy $Remote from the laptop: $($result.stderr)" }
 }
-# The laptop must be free: no game, no build, no job of another caller running in the Interactive task.
+# The laptop must be free: no game, no build, no job of another caller running in the Interactive task (on Linux:
+# holding the heavy-job lock).
 function Assert-PubLaptopFree([object]$Ctx, [string]$Work) {
-    $status = Invoke-PubAgent $Ctx $Work 'status' @('-Interactive', $Ctx.Config.laptop.interactive)
+    $status = if (Test-PubLinuxBuildPc $Ctx) { Invoke-PubAgent $Ctx $Work 'status' @('-Lock', $Ctx.Config.laptop.lock) }
+        else { Invoke-PubAgent $Ctx $Work 'status' @('-Interactive', $Ctx.Config.laptop.interactive) }
     if ($status.game) { throw "The laptop runs the game ($($status.game -join ', ')); try again when it is closed." }
     if ($status.task -cne 'Ready') { throw "The laptop's Interactive task is $($status.task) (a job runs: $($status.job)); one heavy build at a time." }
     if (@($status.heavy).Count) { throw "The laptop is building ($(@($status.heavy) -join ', ')); one heavy build at a time." }
     $status
 }
-# Starts a job through the laptop's queue (sfv-start.ps1) and waits, polling, until its result exists.
+# Starts a job through the laptop's queue (sfv-start.ps1; on Linux the agent's phase start) and waits, polling, until
+# its result exists.
 function Wait-PubLaptopJob([object]$Ctx, [string]$Work, [string]$JobName, [int]$StartMinutes, [int]$RunMinutes) {
     $poll = [int]$Ctx.Config.laptop.pollSeconds
     $deadline = (& $Ctx.Ops.Now).AddMinutes($StartMinutes)
     $state = Invoke-PubAgent $Ctx $Work 'poll'
     if ($state.state -ceq 'new') {
         while ($true) {
-            $start = Invoke-PubLaptop $Ctx "powershell -NoProfile -ExecutionPolicy Bypass -File '$($Ctx.Config.laptop.interactive)\sfv-start.ps1' -Job $JobName"
+            $start = if (Test-PubLinuxBuildPc $Ctx) {
+                $answer = Invoke-PubAgent $Ctx $Work 'start'
+                "$(([string]$answer.state).ToUpperInvariant()) $($answer.note)"
+            } else { Invoke-PubLaptop $Ctx "powershell -NoProfile -ExecutionPolicy Bypass -File '$($Ctx.Config.laptop.interactive)\sfv-start.ps1' -Job $JobName" }
             if ($start -cmatch 'STARTED') { Write-PubLog $Ctx "Laptop job $JobName started."; break }
             if ($start -cmatch 'ERROR') { throw "The laptop queue refused $JobName`: $start" }
             if ((& $Ctx.Ops.Now) -gt $deadline) { throw "$JobName did not start within $StartMinutes minutes ($($start.Trim())); run the stage again to keep waiting." }
@@ -77,7 +105,7 @@ function Get-PubAttempt([object]$Ctx, [string]$Stage, [switch]$New) {
     $id = "$((& $Ctx.Ops.Now).ToUniversalTime().ToString('yyyyMMdd-HHmmss'))-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
     [pscustomobject]@{
         id = $id; job = "sfv-publish-$($Ctx.Label -replace '[^A-Za-z0-9]', '')-$Stage-$id"
-        work = "$($Ctx.Config.laptop.work)\$($Ctx.Label)\$Stage-$id"; startedAt = Get-PubNow $Ctx
+        work = (Join-PubLaptopPath $Ctx $Ctx.Config.laptop.work @($Ctx.Label, "$Stage-$id")); startedAt = Get-PubNow $Ctx
     }
 }
 function Save-PubAttempt([object]$Ctx, [string]$Stage, [object]$Attempt) {
@@ -89,8 +117,9 @@ function Save-PubAttempt([object]$Ctx, [string]$Stage, [object]$Attempt) {
 # waits its turn in the task queue).
 function New-PubLaptopAttempt([object]$Ctx, [string]$Stage, [switch]$Queue) {
     $attempt = Get-PubAttempt $Ctx $Stage -New
-    Invoke-PubLaptop $Ctx "pwsh -NoProfile -Command `"New-Item -ItemType Directory -Force -Path '$($attempt.work)' | Out-Null`"" | Out-Null
-    Copy-PubToLaptop $Ctx $Ctx.AgentPath "$($attempt.work)\laptop-agent.ps1"
+    if (Test-PubLinuxBuildPc $Ctx) { Invoke-PubLaptop $Ctx "mkdir -p $(ConvertTo-PubLaptopQuoted $Ctx $attempt.work)" | Out-Null }
+    else { Invoke-PubLaptop $Ctx "pwsh -NoProfile -Command `"New-Item -ItemType Directory -Force -Path '$($attempt.work)' | Out-Null`"" | Out-Null }
+    Copy-PubToLaptop $Ctx $Ctx.AgentPath (Join-PubLaptopPath $Ctx $attempt.work 'laptop-agent.ps1')
     if (!$Queue) { $null = Assert-PubLaptopFree $Ctx $attempt.work }
     Write-PubLog $Ctx "$Stage attempt $($attempt.id) in $($attempt.work) on the laptop."
     $attempt
@@ -123,29 +152,29 @@ function Invoke-PubBuild([object]$Ctx, [hashtable]$P) {
             $bundle = Join-Path $bundles "$($side[0]).bundle"
             if (Test-Path -LiteralPath $bundle) { Remove-Item -LiteralPath $bundle }
             Invoke-PubGit $Ctx $side[1] @('bundle', 'create', $bundle, $ref) | Out-Null
-            Copy-PubToLaptop $Ctx $bundle "$($attempt.work)\$($side[0]).bundle"
+            Copy-PubToLaptop $Ctx $bundle (Join-PubLaptopPath $Ctx $attempt.work "$($side[0]).bundle")
         }
-        $sync = Invoke-PubAgent $Ctx $attempt.work 'sync' @(
+        $sync = Invoke-PubAgent $Ctx $attempt.work 'sync' (@(
             '-Label', $plan.label, '-Source', $plan.source.commit, '-SourceTree', $plan.source.tree, '-Library', $plan.library.commit, '-LibraryTree', $plan.library.tree,
             '-SourceCheckout', $lap.sourceCheckout, '-LibraryCheckout', $lap.libraryCheckout, '-BuildDev', $lap.buildDev, '-BuildPlayer', $lap.buildPlayer,
             '-VcpkgRoot', $lap.vcpkgRoot, '-RenderStore', $lap.renderStore, '-MinColourCoverage', "$PubColourCoverage", '-OldPackageCheck', $lap.oldPackageCheck,
             '-ColourPackRepo', (Get-PubColourPackRepo $Ctx),
-            '-Dist', "$($lap.dist)\$($plan.label)-$($attempt.id)",
-            '-Interactive', $lap.interactive, '-JobName', $attempt.job) 1800
+            '-Dist', (Join-PubLaptopPath $Ctx $lap.dist "$($plan.label)-$($attempt.id)"),
+            '-Interactive', $lap.interactive, '-JobName', $attempt.job) + (Get-PubLinuxJobArguments $Ctx)) 1800
         if (!$sync.ok) { throw "The laptop could not check out the plan's commits: $($sync.error)" }
         Save-PubAttempt $Ctx 'build' $attempt
         Write-PubLog $Ctx "Laptop checkouts at the plan's commits; source fingerprint $($sync.sourceFingerprint)."
     }
     $state = Wait-PubLaptopJob $Ctx $attempt.work $attempt.job ([int]$lap.startTimeoutMinutes) ([int]$lap.buildTimeoutMinutes)
-    if ($state.state -ceq 'failed') { throw "The laptop build failed: $($state.tail)`nIts log: $($attempt.work)\job.log. Fix it and run -Stage build -NewAttempt." }
+    if ($state.state -ceq 'failed') { throw "The laptop build failed: $($state.tail)`nIts log: $(Join-PubLaptopPath $Ctx $attempt.work 'job.log'). Fix it and run -Stage build -NewAttempt." }
     # Bring back what the build made; the desktop checks everything itself.
     $fetch = Join-Path $dir 'files'
     if (Test-Path -LiteralPath $fetch) { Remove-Item -LiteralPath $fetch -Recurse -Force }
     # result.json first: it names the colour pack the package step made, if it made one.
-    Copy-PubFromLaptop $Ctx "$($attempt.work)\out\result.json" (Join-Path $fetch 'result.json')
+    Copy-PubFromLaptop $Ctx (Join-PubLaptopPath $Ctx $attempt.work @('out', 'result.json')) (Join-Path $fetch 'result.json')
     $colourPack = Get-PubColourPackName (Read-PubJson (Join-Path $fetch 'result.json'))
     foreach ($name in @('checkout.json', 'job.log', 'receipt-development.json', 'receipt-player.json', 'helper.provenance.json', 'build-provenance.json', $plan.zip, "$($plan.zip).sha256") + @($colourPack | Where-Object { $_ })) {
-        Copy-PubFromLaptop $Ctx "$($attempt.work)\out\$name" (Join-Path $fetch $name)
+        Copy-PubFromLaptop $Ctx (Join-PubLaptopPath $Ctx $attempt.work @('out', $name)) (Join-Path $fetch $name)
     }
     $facts = Assert-PubBuildFiles $Ctx $planRead $fetch $rules
     $files = @(Get-ChildItem -LiteralPath $fetch -File | Sort-Object Name | ForEach-Object { Get-PubFileRecord $dir "files\$($_.Name)" })
@@ -155,11 +184,13 @@ function Invoke-PubBuild([object]$Ctx, [hashtable]$P) {
     Write-PubLog $Ctx "Build done: $($plan.zip) $($facts.zipSha256)."
 }
 
-# The rules files the plan pinned, by SHA-256: a later stage scans with exactly those.
+# The rules files the plan pinned, by SHA-256: a later stage scans with exactly those, and with this PC's own names
+# and the build PC's (config laptop.machineNames: its user and computer, whose paths a build could carry).
 function Read-PubRulesForPlan([object]$Ctx, [object]$Plan, [string[]]$Paths) {
     $given = @(Get-PubRulesFingerprint $Paths)
     if ((@($given) -join ',') -cne (@($Plan.rules.sha256) -join ',')) { throw 'These rules files are not the ones the plan was made with (-Rules, same files in the same order).' }
-    Read-PubRules $Paths (Get-PubMachineNames)
+    if ((Test-PubLinuxBuildPc $Ctx) -and !@($Ctx.Config.laptop.machineNames | Where-Object { $_ }).Count) { throw 'config.json''s laptop block names no machineNames (the Linux build PC''s user and computer names).' }
+    Read-PubRules $Paths (@(Get-PubMachineNames) + @($Ctx.Config.laptop.machineNames | Where-Object { $_ }))
 }
 
 # Everything about the build's files, from the files alone (the build stage and promote both run it).
@@ -168,14 +199,25 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
     $result = Read-PubJson (Join-Path $Folder 'result.json')
     $checkout = Read-PubJson (Join-Path $Folder 'checkout.json')
     if (!$result.ok -or @($result.steps | Where-Object { $_.exit -ne 0 }).Count) { throw 'The laptop job did not finish every step.' }
+    # The names the build PC's own scan looked for are looked for here too.
+    $Rules = @($Rules) + @(New-PubMachineNameRules @($result.machineNames | Where-Object { $_ }))
     if ($checkout.source.commit -cne $plan.source.commit -or $checkout.source.tree -cne $plan.source.tree -or
         $checkout.library.commit -cne $plan.library.commit -or $checkout.library.tree -cne $plan.library.tree) { throw 'The laptop checked out other commits than the plan''s.' }
     if (!$checkout.source.clean -or !$checkout.library.clean) { throw 'The laptop checkouts were not clean.' }
     foreach ($fp in @($checkout.source.fingerprint, $checkout.library.fingerprint)) { if ("$fp" -cnotmatch '^[0-9A-F]{64}$') { throw 'The laptop recorded no source fingerprint.' } }
     if ($result.source.fingerprint -cne $checkout.source.fingerprint -or $result.library.fingerprint -cne $checkout.library.fingerprint) { throw 'The laptop checkouts changed between the sync and the end of the build.' }
     $tests = $null
+    $toolchain = $null
     foreach ($kind in @('development', 'player')) {
         $receipt = Read-PubJson (Join-Path $Folder "receipt-$kind.json")
+        # The toolchain the receipt names: the build PC's kind (MSVC on Windows, clang-cl cross on Linux), every
+        # part named, and the same for both builds.
+        $tool = $receipt.toolchain
+        if (!$tool -or @('host', 'compiler', 'linker', 'crt', 'sdk' | Where-Object { "$($tool.$_)" -notmatch '\S' }).Count) { throw "The $kind receipt names no whole toolchain (host, compiler, linker, crt, sdk)." }
+        $expected = if (Test-PubLinuxBuildPc $Ctx) { @('linux', '^clang-cl: clang version ', '^lld-link: LLD ') } else { @('windows', '^MSVC ', '^MSVC link ') }
+        if ($tool.host -cne $expected[0] -or $tool.compiler -cnotmatch $expected[1] -or $tool.linker -cnotmatch $expected[2]) { throw "The $kind receipt's toolchain ($($tool.compiler), $($tool.linker)) is not the build PC's ($($expected[0]))." }
+        $toolText = ConvertTo-Json $tool -Compress
+        if ($null -eq $toolchain) { $toolchain = $toolText } elseif ($toolText -cne $toolchain) { throw 'The development and player builds name different toolchains.' }
         if ($receipt.product -cne 'SFV Ember' -or $receipt.version -cne $plan.version) { throw "The $kind receipt is not SFV Ember $($plan.version) ($($receipt.version))." }
         if ($receipt.sourceRevision -cne $plan.source.commit -or $receipt.emberRevision -cne $plan.library.commit) { throw "The $kind receipt is for source $($receipt.sourceRevision) and library $($receipt.emberRevision), not the plan's commits." }
         if ($receipt.sourceFingerprint -cne $checkout.source.fingerprint -or $receipt.emberFingerprint -cne $checkout.library.fingerprint) { throw "The $kind receipt's fingerprints are not those of the plan's checkouts." }
@@ -186,6 +228,7 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
     }
     $helper = Read-PubJson (Join-Path $Folder 'helper.provenance.json')
     if ($helper.emberRevision -cne $plan.library.commit -or $helper.emberFingerprint -cne $checkout.library.fingerprint) { throw 'The helper was not built from the plan''s library checkout.' }
+    if (@('rustc', 'linker', 'cc' | Where-Object { "$($helper.toolchain.$_)" -notmatch '\S' }).Count) { throw 'The helper''s record names no whole toolchain (rustc, linker, cc).' }
     # The zip: its hash, its sidecar, and the receipt inside it.
     $zip = Join-Path $Folder $plan.zip
     $zipSha = Get-PubSha256 $zip
@@ -207,6 +250,7 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
         $packaged = [Text.UTF8Encoding]::new($false).GetString($inner).TrimStart([char]0xFEFF) | ConvertFrom-Json
         if ($packaged.sourceRevision -cne $plan.source.commit -or $packaged.emberRevision -cne $plan.library.commit -or $packaged.buildKind -cne 'player' -or
             $packaged.sourceFingerprint -cne $checkout.source.fingerprint -or $packaged.package.label -cne $plan.label -or $packaged.testsPassed -ne $true) { throw 'The zip''s receipt is not a player build of the plan''s commits labelled for this release.' }
+        if ((ConvertTo-Json $packaged.toolchain -Compress) -cne $toolchain) { throw 'The zip''s receipt names another toolchain than the builds''.' }
         $renders = $packaged.renders
         if ($renders.included -ne $true -or [double]$renders.minColourCoverage -lt $PubColourCoverage -or [double]$renders.colourCoverage -lt $PubColourCoverage) {
             throw "The zip's receipt says its pictures cover $($renders.colourCoverage) of the looks (packaged with -MinColourCoverage $($renders.minColourCoverage)); a release ships every colour ($PubColourCoverage)."
@@ -231,7 +275,8 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
         if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force }
     }
     @{zip = $plan.zip; zipSha256 = $zipSha; zipSize = (Get-Item -LiteralPath $zip).Length; packageFiles = $count; tests = $tests.Count; colourPack = $colourPack
-      sourceFingerprint = $checkout.source.fingerprint; libraryFingerprint = $checkout.library.fingerprint; roomBuild = $plan.roomBuild.id}
+      sourceFingerprint = $checkout.source.fingerprint; libraryFingerprint = $checkout.library.fingerprint; roomBuild = $plan.roomBuild.id
+      toolchain = ($toolchain | ConvertFrom-Json); helperToolchain = $helper.toolchain}
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -258,7 +303,8 @@ function Invoke-PubRooms([object]$Ctx, [hashtable]$P) {
         throw "The room build $($plan.roomBuild.id) is $($plan.previous.tag)'s, which the VPS has installed: adopt that kit (-AdoptKit <folder> -KitSource <sfv commit> -KitLibrary <library commit>), or build it again with -Force."
     }
     $backend = if ($P.LinuxBackend) { $P.LinuxBackend } else { $Ctx.Config.rooms.backend }
-    if ($backend -cnotin @('wsl', 'server1')) { throw "No Linux back end $backend (wsl or server1)." }
+    if ($backend -cnotin @('wsl', 'linux', 'server1')) { throw "No Linux back end $backend (wsl, linux or server1)." }
+    Assert-PubRoomsBackend $Ctx $backend
     if ($Ctx.DryRun) { Write-PubLog $Ctx "Dry run: would archive $($plan.source.commit) and $($plan.library.commit), build sf4-net and sfve-room-host for $($plan.roomBuild.id) on $backend, and stage the kit."; return }
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     # The inputs: git archives of exactly the plan's commits, no line-ending conversion. sfv-ember's holds cmake/ too:
@@ -270,8 +316,8 @@ function Invoke-PubRooms([object]$Ctx, [hashtable]$P) {
         Invoke-PubGit $Ctx $Ctx.LibraryRepo @('-c', 'core.autocrlf=false', 'archive', '--format=tar', '-o', (Join-Path $inputs 'library.tar'), $plan.library.commit, 'server', 'rust', 'src') | Out-Null
     }
     $out = Join-Path $dir 'out'
-    if ($backend -ceq 'wsl') { Invoke-PubRoomsWsl $Ctx $plan $inputs $out $P }
-    else { Invoke-PubRoomsServer1 $Ctx $plan $inputs $out $P }
+    if ($backend -ceq 'server1') { Invoke-PubRoomsServer1 $Ctx $plan $inputs $out $P }
+    else { Invoke-PubRoomsBuildPc $Ctx $plan $inputs $out $P }
     $facts = Assert-PubRoomFiles $Ctx $plan $out $rules
     $facts.backend = $backend
     $facts.inputs = @{sfvTar = (Get-PubSha256 (Join-Path $inputs 'sfv.tar')); libraryTar = (Get-PubSha256 (Join-Path $inputs 'library.tar'))}
@@ -284,31 +330,37 @@ function Invoke-PubRooms([object]$Ctx, [hashtable]$P) {
     Publish-PubRoomKit $Ctx $plan $evidence
 }
 
+# The build PC's Linux: 'wsl' is a Windows build PC's WSL, 'linux' a Linux build PC itself.
+function Assert-PubRoomsBackend([object]$Ctx, [string]$Backend) {
+    if ($Backend -ceq 'wsl' -and (Test-PubLinuxBuildPc $Ctx)) { throw 'The build PC runs Linux: its rooms back end is linux, not wsl (config rooms.backend).' }
+    if ($Backend -ceq 'linux' -and !(Test-PubLinuxBuildPc $Ctx)) { throw 'The rooms back end linux needs a Linux build PC (config laptop.os "linux").' }
+}
+# The room hosts built by build-rooms-linux.sh on the build PC: in its WSL (Windows) or on itself (Linux).
 # -Check: the kit's two binaries (in $Inputs) are checked by the same script in its --check mode; nothing is built.
-function Invoke-PubRoomsWsl([object]$Ctx, [object]$Plan, [string]$Inputs, [string]$Out, [hashtable]$P, [switch]$Check) {
+function Invoke-PubRoomsBuildPc([object]$Ctx, [object]$Plan, [string]$Inputs, [string]$Out, [hashtable]$P, [switch]$Check) {
     $lap = $Ctx.Config.laptop
     $attempt = if ((Test-Path -LiteralPath (Join-Path (Get-PubStageDir $Ctx 'rooms') 'attempt.json')) -and !$P.NewAttempt) { Get-PubAttempt $Ctx 'rooms' } else { $null }
     if (!$attempt) {
         $attempt = New-PubLaptopAttempt $Ctx 'rooms' -Queue:$Check
-        Copy-PubToLaptop $Ctx $Ctx.RoomScriptPath "$($attempt.work)\build-rooms-linux.sh"
+        Copy-PubToLaptop $Ctx $Ctx.RoomScriptPath (Join-PubLaptopPath $Ctx $attempt.work 'build-rooms-linux.sh')
         $names = if ($Check) { @('sfve-room-host', 'sf4-net') } else { @('sfv.tar', 'library.tar') }
-        foreach ($name in $names) { Copy-PubToLaptop $Ctx (Join-Path $Inputs $name) "$($attempt.work)\$name" }
-        $job = Invoke-PubAgent $Ctx $attempt.work 'rooms-install' @('-BuildId', $Plan.roomBuild.id, '-Interactive', $lap.interactive, '-JobName', $attempt.job,
+        foreach ($name in $names) { Copy-PubToLaptop $Ctx (Join-Path $Inputs $name) (Join-PubLaptopPath $Ctx $attempt.work $name) }
+        $job = Invoke-PubAgent $Ctx $attempt.work 'rooms-install' (@('-BuildId', $Plan.roomBuild.id, '-Interactive', $lap.interactive, '-JobName', $attempt.job,
             '-Mode', $(if ($Check) { 'check' } else { 'build' }),
-            '-SfvTar', (Get-PubSha256 (Join-Path $Inputs $names[0])), '-LibraryTar', (Get-PubSha256 (Join-Path $Inputs $names[1])))
+            '-SfvTar', (Get-PubSha256 (Join-Path $Inputs $names[0])), '-LibraryTar', (Get-PubSha256 (Join-Path $Inputs $names[1]))) + (Get-PubLinuxJobArguments $Ctx))
         if (!$job.ok) { throw "The laptop could not prepare the room-host job: $($job.error)" }
         Save-PubAttempt $Ctx 'rooms' $attempt
     }
     $state = Wait-PubLaptopJob $Ctx $attempt.work $attempt.job ([int]$lap.startTimeoutMinutes) ([int]$lap.roomsTimeoutMinutes)
-    if ($state.state -ceq 'failed') { throw "The room-host build failed: $($state.tail)`nIts log: $($attempt.work)\job.log. Run -Stage rooms -NewAttempt after fixing it." }
+    if ($state.state -ceq 'failed') { throw "The room-host build failed: $($state.tail)`nIts log: $(Join-PubLaptopPath $Ctx $attempt.work 'job.log'). Run -Stage rooms -NewAttempt after fixing it." }
     if (Test-Path -LiteralPath $Out) { Remove-Item -LiteralPath $Out -Recurse -Force }
-    foreach ($name in @('sfve-room-host', 'sf4-net', 'SHA256SUMS', 'result.txt', 'job.log')) { Copy-PubFromLaptop $Ctx "$($attempt.work)\out\$name" (Join-Path $Out $name) }
+    foreach ($name in @('sfve-room-host', 'sf4-net', 'SHA256SUMS', 'result.txt', 'job.log')) { Copy-PubFromLaptop $Ctx (Join-PubLaptopPath $Ctx $attempt.work @('out', $name)) (Join-Path $Out $name) }
 }
 function Invoke-PubRoomsServer1([object]$Ctx, [object]$Plan, [string]$Inputs, [string]$Out, [hashtable]$P) {
     # The second back end: a workflow in the private builds repository on the self-hosted server1 runner
     # (gh workflow run <file> -f ref=... -f runner=server1), its artifact downloaded into $Out with the same four
-    # files the WSL job leaves. Not written yet: the builds repository has no SFV room-host workflow.
-    throw 'The server1 back end is not implemented yet (no SFV room-host workflow in the builds repository); use -LinuxBackend wsl.'
+    # files the build PC's job leaves. Not written yet: the builds repository has no SFV room-host workflow.
+    throw 'The server1 back end is not implemented yet (no SFV room-host workflow in the builds repository); use -LinuxBackend wsl or linux.'
 }
 
 # The pair, checked from the files: Linux binaries, the hashes SHA256SUMS names, the room host's own answers for
@@ -316,7 +368,8 @@ function Invoke-PubRoomsServer1([object]$Ctx, [object]$Plan, [string]$Inputs, [s
 # -Adopted: the files are a kit's, checked by the script's --check mode (no archives; the hashes must be the kit's).
 function Assert-PubRoomFiles([object]$Ctx, [object]$Plan, [string]$Out, [object[]]$Rules, [switch]$Adopted, [hashtable]$KitHashes = @{}) {
     $result = @{}
-    foreach ($line in [IO.File]::ReadAllLines((Join-Path $Out 'result.txt'))) { if ($line -cmatch '^([A-Z_]+)=(.*)$') { $result[$Matches[1]] = $Matches[2] } }
+    # Keys may hold digits (PATHS_SF4_NET, GLIBC_SF4_NET).
+    foreach ($line in [IO.File]::ReadAllLines((Join-Path $Out 'result.txt'))) { if ($line -cmatch '^([A-Z0-9_]+)=(.*)$') { $result[$Matches[1]] = $Matches[2] } }
     if ($result.STATUS -cne 'ok') { throw "The room-host build did not finish (STATUS $($result.STATUS))." }
     if ($result.BUILD_ID -cne $Plan.roomBuild.id) { throw "The room host was built for $($result.BUILD_ID), not $($Plan.roomBuild.id)." }
     if ($Adopted) {
@@ -327,6 +380,15 @@ function Assert-PubRoomFiles([object]$Ctx, [object]$Plan, [string]$Out, [object[
     if ($result.ANSWER_OTHER -cne 'other_build') { throw "The room host answers $($result.ANSWER_OTHER) for another build (other_build expected)." }
     if ($result.EMBEDDED -cne $Plan.roomBuild.id) { throw "The room host embeds $($result.EMBEDDED), not $($Plan.roomBuild.id)." }
     foreach ($key in @($result.Keys | Where-Object { $_ -clike 'PATHS_*' })) { if ($result[$key] -cne '0') { throw "The Linux build left build-machine paths in its binaries ($key=$($result[$key]))." } }
+    # The server runs them with its own glibc (config rooms.maxGlibc, its release's): a build machine with a newer
+    # one may have made binaries that need more.
+    $maxGlibc = "$($Ctx.Config.rooms.maxGlibc)"
+    if ($maxGlibc) {
+        foreach ($key in @('GLIBC_SFVE_ROOM_HOST', 'GLIBC_SF4_NET')) {
+            if ("$($result[$key])" -cnotmatch '^[0-9]+(\.[0-9]+)+$') { throw "The room-host build names no glibc version its binaries need ($key)." }
+            if ([version]$result[$key] -gt [version]$maxGlibc) { throw "The Linux build needs glibc $($result[$key]) ($key), newer than the server's $maxGlibc (config rooms.maxGlibc)." }
+        }
+    }
     $sums = @{}
     foreach ($line in [IO.File]::ReadAllLines((Join-Path $Out 'SHA256SUMS'))) { if ($line -cmatch '^([0-9a-f]{64}) [ *]?(.+)$') { $sums[$Matches[2]] = $Matches[1] } }
     $facts = @{buildId = $Plan.roomBuild.id; adopted = [bool]$Adopted}
@@ -862,9 +924,9 @@ function Invoke-PubRoomsAdopt([object]$Ctx, [object]$PlanRead, [object[]]$Rules,
     foreach ($name in $kitHashes.Keys) { Copy-Item -LiteralPath (Join-Path $bin $name) -Destination (Join-Path $inputs $name) }
     foreach ($name in $kitHashes.Keys) { if ((Get-PubSha256 (Join-Path $inputs $name)) -cne $kitHashes[$name]) { throw "The kit's $name changed while it was copied." } }
     $out = Join-Path $dir 'out'
-    Invoke-PubRoomsWsl $Ctx $plan $inputs $out $P -Check
+    Invoke-PubRoomsBuildPc $Ctx $plan $inputs $out $P -Check
     $facts = Assert-PubRoomFiles $Ctx $plan $out $Rules -Adopted -KitHashes $kitHashes
-    $facts.backend = 'wsl-check'
+    $facts.backend = if (Test-PubLinuxBuildPc $Ctx) { 'linux-check' } else { 'wsl-check' }
     $facts.buildScript = Get-PubSha256 $Ctx.RoomScriptPath
     $facts.kit = @{folder = $folder; sfvCommit = $equivalent.sfvCommit; libraryCommit = $equivalent.libraryCommit; sfvPaths = $equivalent.paths.sfv; libraryPaths = $equivalent.paths.library}
     $files = @(@('kit-in\sfve-room-host', 'kit-in\sf4-net', 'out\SHA256SUMS', 'out\result.txt') | ForEach-Object { Get-PubFileRecord $dir $_ })

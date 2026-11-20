@@ -12,8 +12,12 @@ function Reject([scriptblock]$Action, [string]$Expected) {
     }
     throw "Expected a refusal like '$Expected', but it went through."
 }
-function G([string]$Repo, [string[]]$A) { $out = & git -C $Repo @A 2>&1; if ($LASTEXITCODE) { throw "git $($A -join ' '): $out" }; ($out -join "`n").Trim() }
-function Write-File([string]$Path, [string]$Text) { New-Item -ItemType Directory -Path (Split-Path -Parent $Path) -Force | Out-Null; [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false)) }
+# The tests write fixture paths with '\' as on Windows; on Linux git and .NET take them with '/' (Get-PubNativePath).
+function G([string]$Repo, [string[]]$A) {
+    $A = @($A | ForEach-Object { Get-PubNativePath $_ })
+    $out = & git -C (Get-PubNativePath $Repo) @A 2>&1; if ($LASTEXITCODE) { throw "git $($A -join ' '): $out" }; ($out -join "`n").Trim()
+}
+function Write-File([string]$Path, [string]$Text) { $Path = Get-PubNativePath $Path; New-Item -ItemType Directory -Path (Split-Path -Parent $Path) -Force | Out-Null; [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false)) }
 function Commit([string]$Repo, [string]$Message) { G $Repo @('add', '-A') | Out-Null; G $Repo @('-c', 'commit.gpgsign=false', 'commit', '-q', '-m', $Message) | Out-Null; G $Repo @('rev-parse', 'HEAD') }
 
 $identity = @{GIT_AUTHOR_NAME = 'Release Bot'; GIT_AUTHOR_EMAIL = 'release@example.invalid'; GIT_COMMITTER_NAME = 'Release Bot'; GIT_COMMITTER_EMAIL = 'release@example.invalid'}
@@ -124,8 +128,8 @@ function New-Kit($X, [string]$Build, [string]$Embedded = '') {
     $kit = Join-Path $X.F "kit-$([Guid]::NewGuid().ToString('N').Substring(0, 6))"
     if (!$Embedded) { $Embedded = $Build }
     New-Item -ItemType Directory -Path "$kit\room-build" -Force | Out-Null
-    [IO.File]::WriteAllText("$kit\room-build\sfve-room-host", "`u{7f}ELF hand-built room host $Embedded", [Text.Encoding]::Latin1)
-    [IO.File]::WriteAllText("$kit\room-build\sf4-net", "`u{7f}ELF hand-built helper", [Text.Encoding]::Latin1)
+    [IO.File]::WriteAllText((Join-Path $kit 'room-build/sfve-room-host'), "`u{7f}ELF hand-built room host $Embedded", [Text.Encoding]::Latin1)
+    [IO.File]::WriteAllText((Join-Path $kit 'room-build/sf4-net'), "`u{7f}ELF hand-built helper", [Text.Encoding]::Latin1)
     Write-File "$kit\room-build\BUILD_ID" "$Build`n"
     Write-File "$kit\SHA256SUMS" ((@('sf4-net', 'sfve-room-host', 'BUILD_ID') | ForEach-Object { "$((Get-FileHash "$kit\room-build\$_" -Algorithm SHA256).Hash.ToLowerInvariant())  room-build/$_" }) -join "`n")
     $kit
@@ -143,4 +147,21 @@ function Through($X, [string]$Last) {
 }
 $fixtures = [Collections.Generic.List[string]]::new()
 # The default release has no colour pack; -ColourPack opts a fixture into the pack mode (config.json colourPack).
-function Fresh([switch]$ColourPack) { $x = New-Fixture; $fixtures.Add($x.F); $x.Ctx.Config.colourPack = [bool]$ColourPack; $x }
+# -Linux makes its build PC a Linux one (Use-LinuxBuildPc).
+function Fresh([switch]$ColourPack, [switch]$Linux) {
+    $x = New-Fixture; $fixtures.Add($x.F); $x.Ctx.Config.colourPack = [bool]$ColourPack
+    if ($Linux) { Use-LinuxBuildPc $x }
+    $x
+}
+# A Linux build PC (docs/release/PUBLISHING.md, "The build PC"): the config's laptop block as config.json has it
+# for one, rooms built on it, and the fake build PC answering as one (bash, the phase start, clang-cl receipts).
+function Use-LinuxBuildPc($X) {
+    $X.Ctx.Config.laptop = [pscustomobject]@{host = 'laptop'; os = 'linux'; pwsh = '/opt/pwsh/pwsh'; setup = '/home/builder/env.sh'
+        work = '/srv/pub/work'; sourceCheckout = '/srv/pub/sfv'; libraryCheckout = '/srv/pub/lib'; buildDev = '/srv/pub/build-dev'; buildPlayer = '/srv/pub/build-player'
+        vcpkgRoot = '/home/builder/vcpkg'; vcpkgCache = '/srv/pub/vcpkg-cache'; renderStore = '/srv/pub/renders'; oldPackageCheck = ''; discordSdk = '/srv/pub/deps/sdk.zip'
+        dist = '/srv/pub/packages'; testEmulator = '/home/builder/bin/ember-wine'; testPrefix = '/srv/pub/wine-tests'; lock = '/srv/pub/heavy-job.lock'; jobs = 12
+        machineNames = @('builder', 'builder-laptop-7')
+        pollSeconds = 30; startTimeoutMinutes = 10; buildTimeoutMinutes = 60; roomsTimeoutMinutes = 30}
+    $X.Ctx.Config.rooms.backend = 'linux'
+    $X.World.LinuxBuildPc = $true
+}

@@ -14,22 +14,26 @@ $scripts = if ($ScriptsRoot) { $ScriptsRoot } else { Join-Path (Split-Path -Pare
 $Only = @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 $tests = [ordered]@{}
 
-# 1. The Linux script's counting and status, run in bash (WSL): a clean pair ends with STATUS=ok and zero counts.
+# 1. The Linux script's counting and status, run in bash (WSL on Windows): a clean pair ends with STATUS=ok and zero counts.
 $tests['shell-count'] = {
     $dir = Join-Path ([IO.Path]::GetTempPath()) ("sfv-shell-" + [Guid]::NewGuid().ToString('N').Substring(0, 8))
     $fixtures.Add($dir)
     New-Item -ItemType Directory "$dir\in" | Out-Null
     $build = 'sfv-ember/13173604/0.7/55c1d32e7a18ea97/layout-d728d987b541ac1b'
-    [IO.File]::WriteAllText("$dir\in\sfve-room-host", "`u{7f}ELF clean host $build", [Text.Encoding]::Latin1)
-    [IO.File]::WriteAllText("$dir\in\sf4-net", "`u{7f}ELF clean helper", [Text.Encoding]::Latin1)
-    $mnt = ConvertTo-PubWslPath $dir
-    $script = ConvertTo-PubWslPath (Join-Path $scripts 'build-rooms-linux.sh')
-    & wsl -e bash -c "bash '$script' --check '$mnt/in' '$mnt/out' '$build'" *> $null
+    [IO.File]::WriteAllText((Join-Path $dir 'in/sfve-room-host'), "`u{7f}ELF clean host $build", [Text.Encoding]::Latin1)
+    [IO.File]::WriteAllText((Join-Path $dir 'in/sf4-net'), "`u{7f}ELF clean helper", [Text.Encoding]::Latin1)
+    $run = if ($IsWindows) {
+        $mnt = ConvertTo-PubWslPath $dir
+        $script = ConvertTo-PubWslPath (Join-Path $scripts 'build-rooms-linux.sh')
+        { & wsl -e bash -c "bash '$script' --check '$mnt/in' '$mnt/out' '$build'" *> $null }
+    } else { { & bash (Join-Path $scripts 'build-rooms-linux.sh') --check (Join-Path $dir 'in') (Join-Path $dir 'out') $build *> $null } }
+    & $run
     $result = Get-Content "$dir\out\result.txt" -Raw
     Check ($result -match '(?m)^STATUS=ok' -and $result -match '(?m)^PATHS_SFVE_ROOM_HOST=0' -and $result -match '(?m)^PATHS_SF4_NET=0') "clean pair: $result"
     Check ($result -match "(?m)^EMBEDDED=$([regex]::Escape($build))") 'embedded build'
-    [IO.File]::WriteAllText("$dir\in\sf4-net", "`u{7f}ELF helper built in /home/someone/x", [Text.Encoding]::Latin1)
-    & wsl -e bash -c "bash '$script' --check '$mnt/in' '$mnt/out' '$build'" *> $null
+    Check ($result -match '(?m)^GLIBC_SFVE_ROOM_HOST=' -and $result -match '(?m)^GLIBC_SF4_NET=') 'the glibc each needs is reported'
+    [IO.File]::WriteAllText((Join-Path $dir 'in/sf4-net'), "`u{7f}ELF helper built in /home/someone/x", [Text.Encoding]::Latin1)
+    & $run
     $result = Get-Content "$dir\out\result.txt" -Raw
     Check ($result -match '(?m)^STATUS=ok' -and $result -match '(?m)^PATHS_SF4_NET=[1-9]') "a path is counted: $result"
     Pass 'build-rooms-linux.sh (bash): a clean pair ends with STATUS=ok and zero path counts; a build path is counted'
@@ -134,9 +138,9 @@ $tests['rules-and-names'] = {
     Check (@(Find-PubHits $rules ([Text.Encoding]::UTF8.GetBytes("x $($name.ToLowerInvariant()) y")) 't').Count -ge 1) 'lower-case machine name found'
     Check (@(Find-PubHits $rules ([Text.Encoding]::UTF8.GetBytes("x $($name.ToUpperInvariant()) y")) 't').Count -ge 1) 'upper-case machine name found'
     $dir = Join-Path ([IO.Path]::GetTempPath()) ("sfv-rules-" + [Guid]::NewGuid().ToString('N').Substring(0, 8)); $fixtures.Add($dir); New-Item -ItemType Directory $dir | Out-Null
-    [IO.File]::WriteAllBytes("$dir\nul.txt", [byte[]](0x6C, 0x69, 0x74, 0x3A, 0x41, 0x00, 0x42, 0x0A))
+    [IO.File]::WriteAllBytes((Join-Path $dir 'nul.txt'), [byte[]](0x6C, 0x69, 0x74, 0x3A, 0x41, 0x00, 0x42, 0x0A))
     Reject { Read-PubRules @("$dir\nul.txt") } '*NUL bytes*'
-    [IO.File]::WriteAllBytes("$dir\bad.txt", [byte[]](0x41, 0xFF, 0xFE, 0x42, 0x0A))
+    [IO.File]::WriteAllBytes((Join-Path $dir 'bad.txt'), [byte[]](0x41, 0xFF, 0xFE, 0x42, 0x0A))
     Reject { Read-PubRules @("$dir\bad.txt") } '*not valid UTF-8*'
     Set-Content "$dir\empty.txt" "# nothing`n"
     Reject { Read-PubRules @("$dir\empty.txt") } '*hold no rule*'
@@ -147,7 +151,8 @@ $tests['rules-and-names'] = {
 $tests['drain-bound'] = {
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $threw = $false
-    try { $null = Invoke-PubProcess 'cmd.exe' @('/c', 'start /b ping -n 25 127.0.0.1 >nul & exit 0') $null 60 -DrainSeconds 2 } catch { $threw = $true }
+    $held = if ($IsWindows) { @('cmd.exe', @('/c', 'start /b ping -n 25 127.0.0.1 >nul & exit 0')) } else { @('bash', @('-c', 'sleep 25 & exit 0')) }
+    try { $null = Invoke-PubProcess $held[0] $held[1] $null 60 -DrainSeconds 2 } catch { $threw = $true }
     Check ($threw -and $watch.Elapsed.TotalSeconds -lt 15) "returned after $([int]$watch.Elapsed.TotalSeconds) s, threw: $threw"
     Pass 'process: output still held open after the exit stops the wait within its bound'
 }

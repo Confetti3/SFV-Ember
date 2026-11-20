@@ -67,7 +67,7 @@ try {
 
     $y = Fresh; Write-File "$($y.Sfv)\docs\x.md" 'ok'; $null = Commit $y.Sfv 'note from ForbiddenName'
     Reject { Plan $y } '*source being released carries forbidden strings*'
-    $y = Fresh; [IO.File]::WriteAllBytes("$($y.Sfv)\data\blob.bin", [byte[]](@(1, 2, 3) + [Text.Encoding]::Unicode.GetBytes('SecretWord'))); $null = Commit $y.Sfv 'data'
+    $y = Fresh; [IO.File]::WriteAllBytes((Get-PubNativePath "$($y.Sfv)\data\blob.bin"), [byte[]](@(1, 2, 3) + [Text.Encoding]::Unicode.GetBytes('SecretWord'))); $null = Commit $y.Sfv 'data'
     Reject { Plan $y } '*source being released carries forbidden strings*'
     $y = Fresh; Write-File "$($y.Sfv)\docs\SecretWord.md" 'x'; $null = Commit $y.Sfv 'doc'
     Reject { Plan $y } '*source being released carries forbidden strings*'
@@ -202,17 +202,21 @@ try {
     Check ($x.World.VpsStaged -ceq $rooms.facts.kit.sums) 'kit staged on the VPS'
     Check (!@($x.World.Commands | Where-Object { $_ -match 'sudo' -and $_ -like 'ssh*' }).Count) 'the pipeline never runs sudo'
     $archived = [Collections.Generic.List[string]]::new()
-    $reader = [Formats.Tar.TarReader]::new([IO.File]::OpenRead("$($x.Ctx.Root)\rooms\inputs\sfv.tar"))
+    $reader = [Formats.Tar.TarReader]::new([IO.File]::OpenRead((Get-PubNativePath "$($x.Ctx.Root)\rooms\inputs\sfv.tar")))
     try { while ($entry = $reader.GetNextEntry()) { $archived.Add($entry.Name) } } finally { $reader.Dispose() }
     Check ($archived -contains 'cmake/EmbedTextFile.cmake' -and $archived -contains 'scripts/build-room-host-linux.sh' -and $archived -contains 'data/pick-space.json') 'sfv.tar holds what build-room-host-linux.sh runs (its pick space embedder included)'
     Pass 'rooms: the pair built from the plan''s archives, checked, the kit made from the base stage with the new room build and staged; no sudo'
     foreach ($case in @(@({ param($r) $r.own = 'other_build' }, '*for its own build*'), @({ param($r) $r.other = 'ok' }, '*for another build*'),
                         @({ param($r) $r.embedded = $oldBuild }, '*embeds*'), @({ param($r) $r.paths = '3' }, '*build-machine paths*'),
-                        @({ param($r) $r.hostBytes = "`u{7f}ELF host SecretWord" }, '*Linux sfve-room-host carries forbidden*'), @({ param($r) $r.hostBytes = 'MZ windows' }, '*not a Linux binary*'))) {
-        $y = Fresh; $null = Plan $y; $y.World.RoomsTweak = $case[0]
+                        @({ param($r) $r.hostBytes = "`u{7f}ELF host SecretWord" }, '*Linux sfve-room-host carries forbidden*'), @({ param($r) $r.hostBytes = 'MZ windows' }, '*not a Linux binary*'),
+                        @({ param($r) $r.glibc = '2.44' }, '*needs glibc 2.44*newer than the server''s 2.43*'), @({ param($r) $r.netPaths = '2' }, '*build-machine paths*PATHS_SF4_NET*'), @({ param($r) $r.glibc = '' }, '*names no glibc version*'))) {
+        $y = Fresh; $null = Plan $y; $y.World.RoomsTweak = $case[0]; $y.Ctx.Config.rooms | Add-Member -NotePropertyName maxGlibc -NotePropertyValue '2.43' -Force
         Reject { Invoke-PubRooms $y.Ctx $y.P } $case[1]
     }
-    Pass 'rooms: refuses a room host that refuses its own build, takes another, embeds another, carries paths or forbidden strings, or is not Linux'
+    $y = Fresh; $null = Plan $y; $y.Ctx.Config.rooms | Add-Member -NotePropertyName maxGlibc -NotePropertyValue '2.38' -Force
+    Invoke-Quiet { Invoke-PubRooms $y.Ctx $y.P }
+    Check (Test-Path "$($y.Ctx.Root)\rooms\evidence.json") 'a pair within the server''s glibc'
+    Pass 'rooms: refuses a room host that refuses its own build, takes another, embeds another, carries paths or forbidden strings, is not Linux, or needs a newer glibc than the server''s'
     $y = Fresh; $p = $y.P.Clone(); $null = Plan $y; $y.Ctx.Skip = @('vps-stage')
     Invoke-Quiet { Invoke-PubRooms $y.Ctx $p }
     Check (!$y.World.VpsStaged -and (Get-Content "$($y.Ctx.Root)\outward.log" -Raw) -match 'vps-stage SKIPPED') 'skip logged'
@@ -470,7 +474,7 @@ try {
 
     $y = Fresh; $null = Plan $y; Invoke-Quiet { Invoke-PubBuild $y.Ctx $y.P }
     Adopt $y (New-Kit $y $newBuild) $y.K $y.L2 | Out-Null
-    $bin = "$($y.Ctx.Root)\rooms\kit-in\sfve-room-host"; (Get-Item $bin).Attributes = 'Normal'; [IO.File]::AppendAllText($bin, 'x')
+    $bin = Get-PubNativePath "$($y.Ctx.Root)\rooms\kit-in\sfve-room-host"; (Get-Item $bin).Attributes = 'Normal'; [IO.File]::AppendAllText($bin, 'x')
     Reject { Invoke-PubDraft $y.Ctx $y.P 6>$null } '*kit-in/sfve-room-host changed since its evidence was written*'
     Pass 'rooms -AdoptKit: a kit binary changed after adoption stops every later stage'
 
@@ -481,6 +485,57 @@ try {
     $null = Plan $y
     Reject { Invoke-PubRooms $y.Ctx $y.P } '*adopt that kit*'
     Pass 'rooms: an unchanged room build is refused unless its installed kit is adopted'
+    # --- a Linux build PC (config laptop.os "linux") -----------------------------------------------------------------
+    $y = Fresh -Linux; Through $y 'promote'
+    Check (Test-Path "$($y.Ctx.Root)\promote\evidence.json") 'published from a Linux build PC'
+    $laptop = @($y.World.LaptopCommands)
+    Check (!@($laptop | Where-Object { $_ -match 'New-Item|sfv-start|powershell' }).Count) 'no Windows command reaches it'
+    Check (@($laptop | Where-Object { $_ -cmatch "^mkdir -p '/srv/pub/work/0\.1\.0-beta\.9/build-" }).Count -eq 1 -and @($laptop | Where-Object { $_ -cmatch "^mkdir -p '/srv/pub/work/0\.1\.0-beta\.9/rooms-" }).Count -eq 1) 'attempt folders made with mkdir under the Linux work folder'
+    Check (@($laptop | Where-Object { $_ -cmatch ' -Phase start ' }).Count -eq 2) 'build and rooms jobs started by the agent'
+    Check (@($y.World.Commands | Where-Object { $_ -cmatch '^scp \S+ laptop:/srv/pub/work/0\.1\.0-beta\.9/build-[^ ]+/source\.bundle$' }).Count -eq 1) 'the bundle goes to a Linux path'
+    $sync = @($laptop | Where-Object { $_ -cmatch ' -Phase sync ' })[0]
+    Check ($sync -cmatch "-Dist '/srv/pub/packages/0\.1\.0-beta\.9-" -and $sync -cmatch "-Setup '/home/builder/env\.sh'" -and $sync -cmatch "-Lock '/srv/pub/heavy-job\.lock'" -and $sync -cmatch "-VcpkgCache '/srv/pub/vcpkg-cache'") 'the sync carries the Linux settings'
+    $build = Read-PubEvidence $y.Ctx 'build' (Read-PubPlan $y.Ctx)
+    Check ($build.facts.toolchain.host -ceq 'linux' -and $build.facts.toolchain.compiler -like 'clang-cl: clang version *' -and $build.facts.helperToolchain.rustc) 'build evidence names the cross toolchain'
+    Check ((Read-PubEvidence $y.Ctx 'rooms' (Read-PubPlan $y.Ctx)).facts.backend -ceq 'linux') 'rooms built on the Linux build PC itself'
+    Pass 'Linux build PC: bash commands and Linux paths, mkdir for attempts, the agent starts the jobs, the receipts'' clang-cl toolchain recorded, rooms built natively; published end to end'
+    $y = Fresh -Linux; $y.Ctx.Config.laptop.renderStore = "/srv/pub/the owner's renders"; $null = Plan $y
+    Invoke-Quiet { Invoke-PubBuild $y.Ctx $y.P }
+    Check (@($y.World.LaptopCommands | Where-Object { $_.Contains("-RenderStore '/srv/pub/the owner'\''s renders'") }).Count -eq 1) 'a quote in a value is quoted for bash'
+    Pass 'Linux build PC: a value with a quote reaches bash as one word'
+    $toolchainCases = @(
+        @({ param($f) $f.toolchain = [ordered]@{host = 'windows'; compiler = 'MSVC 14.51.36231'; linker = 'MSVC link 14.51.36231'; crt = 'MSVC 14.51.36231'; sdk = 'Windows SDK 10.0.26100.0'} }, '*is not the build PC''s (linux)*'),
+        @({ param($f) $f.toolchain = $null }, '*names no whole toolchain*'),
+        @({ param($f) $f.toolchain.sdk = '' }, '*names no whole toolchain*'),
+        @({ param($f) $f.playerToolchain = [ordered]@{host = 'linux'; compiler = 'clang-cl: clang version 20.1.0 (x)'; linker = 'lld-link: LLD 21.1.8 (x)'; crt = 'c'; sdk = 's'} }, '*name different toolchains*'),
+        @({ param($f) $f.packagedOverride = { param($r) $r.toolchain = [ordered]@{host = 'linux'; compiler = 'clang-cl: clang version 1'; linker = 'lld-link: LLD 1'; crt = 'c'; sdk = 's'} } }, '*names another toolchain*'),
+        @({ param($f) $f.helperToolchain = @{rustc = 'rustc 1.98.0'} }, '*helper''s record names no whole toolchain*'),
+        @({ param($f) $f.extra = 'built in /home/builder/src' }, '*package carries forbidden strings*'),
+        @({ param($f) $f.extra = 'on BUILDER-LAPTOP-7' }, '*package carries forbidden strings*'),
+        @({ param($f) $f.machineNames = @('workhorse'); $f.extra = 'C:\users\workhorse\Temp' }, '*package carries forbidden strings*')
+    )
+    foreach ($case in $toolchainCases) {
+        $y = Fresh -Linux; $null = Plan $y; $y.World.BuildTweak = $case[0]
+        Reject { Invoke-PubBuild $y.Ctx $y.P } $case[1]
+        Check (!(Test-Path "$($y.Ctx.Root)\build\evidence.json")) 'no evidence after a refusal'
+    }
+    $y = Fresh; $null = Plan $y; $y.World.BuildTweak = { param($f) $f.toolchain = [ordered]@{host = 'linux'; compiler = 'clang-cl: clang version 21.1.8 (x)'; linker = 'lld-link: LLD 21.1.8 (x)'; crt = 'c'; sdk = 's'} }
+    Reject { Invoke-PubBuild $y.Ctx $y.P } '*is not the build PC''s (windows)*'
+    Pass "Linux build PC: refuses $($toolchainCases.Count + 1) kinds of wrong result (a toolchain not the build PC's, missing or differing between the builds, the zip and the helper; the build PC's user, computer or reported names in the package)"
+    $y = Fresh -Linux; $null = Plan $y; $y.World.LaptopBusy = 'another job'
+    Reject { Invoke-PubBuild $y.Ctx $y.P } '*one heavy build at a time*'
+    $y = Fresh -Linux; $null = Plan $y; $y.Ctx.Config.laptop.setup = ''
+    Reject { Invoke-PubBuild $y.Ctx $y.P } '*names no setup*'
+    $y = Fresh -Linux; $null = Plan $y; $y.Ctx.Config.laptop.machineNames = @()
+    Reject { Invoke-PubBuild $y.Ctx $y.P } '*names no machineNames*'
+    $y = Fresh -Linux; $null = Plan $y; $y.Ctx.Config.rooms.backend = 'wsl'
+    Reject { Invoke-PubRooms $y.Ctx $y.P } '*its rooms back end is linux*'
+    $y = Fresh; $null = Plan $y; $y.Ctx.Config.rooms.backend = 'linux'
+    Reject { Invoke-PubRooms $y.Ctx $y.P } '*needs a Linux build PC*'
+    $y = Fresh -Linux; $null = Plan $y; $y.World.JobFails = $true
+    Reject { Invoke-PubBuild $y.Ctx $y.P } '*laptop build failed*/srv/pub/work/*job.log*'
+    Pass 'Linux build PC: refuses a busy build PC, a config without its settings or names, a rooms back end that is not the build PC''s, and reports a failed job with its Linux log path'
+
     # the build PC agent itself (scripts/publish/laptop-agent.ps1), on fixture checkouts here
     $y = Fresh
     Write-File "$($y.Lib)\scripts\BuildProvenance.ps1" "function Get-SourceFingerprint([string]`$Root) { ('F' * 64) }`n"
@@ -493,9 +548,19 @@ try {
     G $y.F @('clone', '-q', '-b', 'b9/integrate', $y.Sfv, 'sfv-laptop') | Out-Null; G "$($y.F)\sfv-laptop" @('reset', '-q', '--hard', $y.C0) | Out-Null
     G $y.F @('clone', '-q', '-b', 'feat/ember-library', $y.Lib, 'lib-laptop') | Out-Null; G "$($y.F)\lib-laptop" @('reset', '-q', '--hard', $y.L1) | Out-Null
     $agent = Join-Path $scripts 'laptop-agent.ps1'
+    # On Linux the agent is a Linux build PC's: its settings, and checkouts made with Windows line endings.
+    $lock = Join-Path $y.F 'heavy-job.lock'
+    # Build and package folders that are never made (the job here stops before it builds): a drive path on
+    # Windows, the fixture's on Linux.
+    $fakeRoot = if ($IsWindows) { 'D:' } else { Join-Path $y.F 'never' }
+    $linuxArgs = if ($IsWindows) { @() } else {
+        Write-File "$($y.F)\setup.sh" ": the build PC setup`n"
+        foreach ($clone in 'sfv-laptop', 'lib-laptop') { G "$($y.F)\$clone" @('config', 'core.autocrlf', 'true') | Out-Null }
+        @('-Setup', (Get-PubNativePath "$($y.F)\setup.sh"), '-TestEmulator', '/bin/true', '-Lock', $lock, '-VcpkgCache', '/tmp/none', '-Jobs', '4')
+    }
     $sync = { pwsh -NoProfile -File $agent -Phase sync -Work $work -Label t -Source $y.C1 -SourceTree (G $y.Sfv @('rev-parse', "$($y.C1)^{tree}")) -Library $l3 `
-        -LibraryTree (G $y.Lib @('rev-parse', "$l3^{tree}")) -SourceCheckout "$($y.F)\sfv-laptop" -LibraryCheckout "$($y.F)\lib-laptop" -BuildDev D:\x -BuildPlayer D:\y `
-        -VcpkgRoot D:\v -RenderStore D:\r -MinColourCoverage $coverage -Dist D:\d -Interactive "$($y.F)\interactive" -JobName t-job @packArgs | Select-Object -Last 1 }
+        -LibraryTree (G $y.Lib @('rev-parse', "$l3^{tree}")) -SourceCheckout (Get-PubNativePath "$($y.F)\sfv-laptop") -LibraryCheckout (Get-PubNativePath "$($y.F)\lib-laptop") -BuildDev "$fakeRoot\x" -BuildPlayer "$fakeRoot\y" `
+        -VcpkgRoot "$fakeRoot\v" -RenderStore "$fakeRoot\r" -MinColourCoverage $coverage -Dist "$fakeRoot\d" -Interactive "$($y.F)\interactive" -JobName t-job @packArgs @linuxArgs | Select-Object -Last 1 }
     $packArgs = @(); $coverage = ''
     $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
     Check (!$result.ok -and $result.error -like '*No colour coverage*' -and !(Test-Path "$work\job.json")) 'a sync without the colour coverage is refused'
@@ -505,7 +570,11 @@ try {
     Check ((Get-Content "$work\job.json" -Raw | ConvertFrom-Json).minColourCoverage -ceq '1') 'the job packages with the colour coverage it was given'
     Check (!(Get-Content "$work\job.json" -Raw | ConvertFrom-Json).colourPackRepo) 'the job makes no colour pack unless asked'
     Check ((G "$($y.F)\sfv-laptop" @('rev-parse', 'HEAD')) -ceq $y.C1 -and (G "$($y.F)\lib-laptop" @('rev-parse', 'HEAD')) -ceq $l3) 'checkouts fast-forwarded'
-    Check ((Get-Content "$($y.F)\interactive\t-job.cmd" -Raw) -match '-Phase job') 'job file written'
+    if ($IsWindows) { Check ((Get-Content "$($y.F)\interactive\t-job.cmd" -Raw) -match '-Phase job') 'job file written' }
+    else {
+        $script = Get-Content "$work\job.sh" -Raw
+        Check ($script -match "-Phase job" -and $script.Contains("exec 9>'$lock'") -and $script -match "WINEDLLOVERRIDES='xinput1_3=n,b'" -and $script -match 'CMAKE_BUILD_PARALLEL_LEVEL=4') "job.sh written: $script"
+    }
     $poll = ((pwsh -NoProfile -File $agent -Phase poll -Work $work -Interactive "$($y.F)\interactive" | Select-Object -Last 1) -replace '^RESULT ', '') | ConvertFrom-Json
     Check ($poll.state -ceq 'new') 'poll before the job'
     $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
@@ -519,7 +588,45 @@ try {
     $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
     Check (!$result.ok -and $result.error -like '*not behind*') 'a diverged checkout is refused'
     Pass 'build PC agent: fetches the bundles, fast-forwards both checkouts to the plan''s commits, writes the job; refuses a used folder, a dirty or a diverged checkout, and a sync without the colour coverage'
-    # the desktop as its own build PC: local operations and the local queue
+    if (!$IsWindows) {
+        # A Linux build PC: its own checks, and its job started detached under the heavy-job lock.
+        G "$($y.F)\sfv-laptop" @('reset', '-q', '--hard', $y.C1) | Out-Null
+        Remove-Item "$work\checkout.json", "$work\job.json" -ErrorAction SilentlyContinue
+        G "$($y.F)\sfv-laptop" @('config', 'core.autocrlf', 'false') | Out-Null
+        $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
+        Check (!$result.ok -and $result.error -like '*Windows line endings*') 'a checkout without Windows line endings is refused'
+        G "$($y.F)\sfv-laptop" @('config', 'core.autocrlf', 'true') | Out-Null
+        $linuxArgs = @($linuxArgs | Where-Object { $_ -cne '/bin/true' -and $_ -cne '-TestEmulator' })
+        $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
+        Check (!$result.ok -and $result.error -like '*needs -TestEmulator*') 'a Linux sync without its settings is refused'
+        $linuxArgs += @('-TestEmulator', '/bin/true')
+        $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
+        Check ($result.ok) "the Linux sync: $($result.error)"
+        $phase = { param($Name, [string[]]$More) ((pwsh -NoProfile -File $agent -Phase $Name -Work $work @More | Select-Object -Last 1) -replace '^RESULT ', '') | ConvertFrom-Json }
+        # -o: the lock is flock's own, not its child's, so stopping flock frees it.
+        $holder = Start-Process -FilePath flock -ArgumentList @('-o', $lock, 'sleep', '120') -PassThru
+        try {
+            for ($i = 0; $i -lt 50 -and ((& flock -n $lock true) -or !$LASTEXITCODE); $i++) { Start-Sleep -Milliseconds 100 }
+            Check ((& $phase 'status' @('-Lock', $lock)).task -ceq 'Running') 'the build PC is Running while another job holds the lock'
+            Check ((& $phase 'start').state -ceq 'wait') 'a job waits while another holds the lock'
+            Check ((& $phase 'poll').state -ceq 'new') 'a job that waits is new'
+        } finally { Stop-Process -Id $holder.Id -Force -ErrorAction SilentlyContinue; $holder.WaitForExit() }
+        Check ((& $phase 'status' @('-Lock', $lock)).task -ceq 'Ready') 'Ready once the lock is free'
+        # The desktop puts the agent in the attempt folder; job.sh runs it from there.
+        Copy-Item -LiteralPath $agent -Destination (Join-Path $work 'laptop-agent.ps1')
+        $started = Get-Date
+        $start = & $phase 'start'
+        Check ($start.state -ceq 'started' -and ((Get-Date) - $started).TotalSeconds -lt 30) 'the job starts detached; the call returns'
+        Check ((& $phase 'start').note -like '*started already*') 'a job is started once'
+        # The job runs the phase job in the background; here it fails (the fixture has no build scripts), and
+        # says so through poll.
+        $state = $null
+        for ($i = 0; $i -lt 120; $i++) { $state = & $phase 'poll'; if ($state.state -cin @('done', 'failed')) { break }; Start-Sleep -Milliseconds 500 }
+        Check ($state.state -ceq 'failed' -and $state.tail -like '*build-development failed*') "the job ran and its failure is polled: $($state.state) $($state.tail)"
+        Pass 'Linux build PC agent: checkouts with Windows line endings, its settings, job.sh under the heavy-job lock; start waits while the lock is held, starts detached once, and poll follows the job to its result'
+    }
+    # the desktop as its own build PC: local operations and the local queue (Windows only)
+    if ($IsWindows) {
     $ops = New-PubOperations
     $ran = & $ops.Ssh 'local' "Write-Output 'local ok'" $null 60
     Check ($ran.exitCode -eq 0 -and ([Text.Encoding]::UTF8.GetString($ran.bytes)) -match 'local ok') 'a local command runs here'
@@ -539,6 +646,7 @@ try {
     Remove-Item "$queue\local-queue.pid"
     Check (((powershell -NoProfile -ExecutionPolicy Bypass -File "$queue\sfv-start.ps1" -Job nothing) -join "`n") -match '^ERROR no job') 'an unknown job is refused'
     Pass 'local build PC: commands and copies run here; the queue reports Ready or Running from its job, waits while one runs, refuses an unknown job'
+    } else { Write-Host 'SKIP local build PC (the desktop as its own build PC is Windows only)' }
 
     Write-Host ''
     Write-Host "All $script:passed publish tests passed."

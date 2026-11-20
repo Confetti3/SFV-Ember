@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # The Linux room-host pair for a release (docs/release/PUBLISHING.md, stage rooms), on any Linux with cargo, g++
-# and xxhash.h: WSL on the build PC today. Reads two git archives of the plan's commits from <in>:
+# and the headers server/roomhost/build-linux.sh names (nlohmann-json3-dev, libspdlog-dev, libfmt-dev, and xxhash.h):
+# a Windows build PC's WSL, or a Linux build PC itself. Its glibc should be the server's release (GLIBC_* in
+# result.txt says what the binaries need). Reads two git archives of the plan's commits from <in>:
 #   sfv.tar      (sfv-ember: src scripts data cmake)      library.tar  (Ember library: server rust src)
 # and writes to <out>: sfve-room-host, sf4-net, SHA256SUMS and result.txt (KEY=value lines the desktop checks).
 #
@@ -74,6 +76,12 @@ for f in sfve-room-host sf4-net; do
     put "PATHS_$k" "$n"
 done
 ldd sfve-room-host | awk '{print $1}' > ldd.txt || true
+# The newest glibc symbol version each binary needs: the server's glibc must be at least that (the desktop compares
+# it with config rooms.maxGlibc, the server's release).
+for f in sfve-room-host sf4-net; do
+    k=$(echo "$f" | tr 'a-z-' 'A-Z_')
+    put "GLIBC_$k" "$( { objdump -T "$f" 2>/dev/null || true; } | { grep -o 'GLIBC_[0-9][0-9.]*' || true; } | sed 's/^GLIBC_//' | sort -uV | tail -1)"
+done
 sha256sum sfve-room-host sf4-net > SHA256SUMS
 cat SHA256SUMS
 put STATUS ok
