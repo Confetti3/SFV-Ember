@@ -332,6 +332,9 @@ unsigned EndingCode(unsigned long faultCode, bool afterGracefulExit)
 
 bool IsInGameExe(const void* address)
 {
+	// No address is no code of the exe. GetModuleHandleExW's own answer for a
+	// null address differs: Windows fails it, Wine hands back the exe.
+	if (!address) return false;
 	HMODULE module = nullptr;
 	return GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
 			   static_cast<LPCWSTR>(address), &module) &&
