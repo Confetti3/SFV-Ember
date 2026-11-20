@@ -9,6 +9,9 @@
 
 #include <intrin.h>
 #include <stdint.h>
+#include <string.h>
+
+#include <type_traits>
 
 namespace sfve::mod {
 
@@ -29,6 +32,16 @@ inline int MemoryFaultFilter(unsigned long code)
 	return code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_IN_PAGE_ERROR ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH;
 }
 
+// The access a guarded read or write makes, in a call of its own. A __try
+// takes the faults of the calls made inside it with either compiler; a load
+// or store in the __try's own body only with MSVC (clang-cl treats only calls
+// as able to raise, unless built with /EHa), so a fault there would end the
+// game instead of being taken.
+__declspec(noinline) inline void GuardedCopy(void* to, const void* from, size_t bytes)
+{
+	memcpy(to, from, bytes);
+}
+
 // Reads a T at `at` if the memory is readable, for walking game structures
 // whose layout comes from analysis rather than from the game handing them
 // over (a wrong guess logs instead of crashing both test copies). Only a
@@ -36,8 +49,9 @@ inline int MemoryFaultFilter(unsigned long code)
 template <typename T>
 bool TryRead(const void* at, T* out)
 {
+	static_assert(std::is_trivially_copyable_v<T>, "a guarded read copies bytes");
 	__try {
-		*out = *static_cast<const T*>(at);
+		GuardedCopy(out, at, sizeof(T));
 		return true;
 	} __except (MemoryFaultFilter(GetExceptionCode())) {
 		return false;
@@ -48,8 +62,9 @@ bool TryRead(const void* at, T* out)
 template <typename T>
 bool TryWrite(void* at, const T& value)
 {
+	static_assert(std::is_trivially_copyable_v<T>, "a guarded write copies bytes");
 	__try {
-		*static_cast<T*>(at) = value;
+		GuardedCopy(at, &value, sizeof(T));
 		return true;
 	} __except (MemoryFaultFilter(GetExceptionCode())) {
 		return false;

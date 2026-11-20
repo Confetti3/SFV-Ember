@@ -1,5 +1,7 @@
 #include "mod/WriteWatch.hxx"
 
+#include "mod/GameMemory.hxx"
+
 #include "mod/Log.hxx"
 
 #include <windows.h>
@@ -158,7 +160,8 @@ int WalkFrames(CONTEXT context, StackBounds stack, DWORD64* frames, int maxFrame
 				// address on top of the stack); further out it means no
 				// unwind data, and the walk stops.
 				if (count != 1 || context.Rsp < stack.low || context.Rsp + 8 > stack.high) break;
-				context.Rip = *reinterpret_cast<DWORD64*>(context.Rsp);
+				// A guarded read (GameMemory.hxx): a fault of a load in this __try's own body is not taken under clang-cl.
+				if (!TryRead(reinterpret_cast<const void*>(context.Rsp), &context.Rip)) break;
 				context.Rsp += 8;
 				continue;
 			}

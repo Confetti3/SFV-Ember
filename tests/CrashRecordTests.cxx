@@ -35,11 +35,18 @@ int Keep(EXCEPTION_POINTERS* pointers)
 	return EXCEPTION_EXECUTE_HANDLER;
 }
 
+// The faulting store, in a call of its own: a __try built by clang-cl takes
+// only the faults of the calls it makes (GameMemory.hxx, GuardedCopy).
+__declspec(noinline) void StoreToNull()
+{
+	*reinterpret_cast<volatile int*>(static_cast<uintptr_t>(0x10)) = 1;
+}
+
 // A real access violation's record and context, kept past the handler.
 void Fault()
 {
 	__try {
-		*reinterpret_cast<volatile int*>(static_cast<uintptr_t>(0x10)) = 1;
+		StoreToNull();
 	} __except (Keep(GetExceptionInformation())) {
 	}
 }
