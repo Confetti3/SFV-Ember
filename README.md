@@ -102,11 +102,11 @@ slot, or the keyboard when no pad is there; the frame meter is in Training only;
 Needs Visual Studio 18 Build Tools (C++ x64), a vcpkg checkout next to this
 folder (`..\vcpkg`), and the Ember library: the `feat/ember-library` branch of
 [SF4-Ember-Netplay](https://github.com/Confetti3/SF4-Ember-Netplay). This
-release builds against library commit `658990d6e`.
+release builds against library commit `d2f3f0598`.
 
 ```powershell
 git clone -b feat/ember-library https://github.com/Confetti3/SF4-Ember-Netplay ember-library
-git -C ember-library checkout 658990d6e
+git -C ember-library checkout d2f3f0598
 .\scripts\build.ps1 -EmberRoot ..\ember-library
 ```
 
