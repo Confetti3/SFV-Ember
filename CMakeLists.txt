@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(sfv_ember VERSION 0.1.1 LANGUAGES CXX)
+project(sfv_ember VERSION 0.1.2 LANGUAGES CXX)
 
 # SFV Ember's own version: its log's first line, and the version Ember's
 # shell shows (the library's SF4E_APP_VERSION, EMBER_APP_VERSION below). A
