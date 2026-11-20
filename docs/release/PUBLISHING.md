@@ -291,9 +291,9 @@ flag stands in for that last read only: the hash comparison and the room host's 
 - The `server1` Linux back end is not written; rooms builds in the build PC's WSL or on the Linux build PC, or adopts
   a kit. With `laptop.host` `"local"` that is this PC's own WSL. Its Ubuntu should be the VPS's release (26.04,
   glibc 2.43): the pair links glibc dynamically, so a newer Linux (the Linux laptop's 26.10, glibc 2.44) can make
-  binaries the VPS cannot run. `rooms.maxGlibc` refuses those; the Linux laptop also lacks the room host's build
-  headers (no system packages there without the owner's sudo), so its rooms stage fails until they are there, and
-  adopting a kit or the WSL build stays the way until then.
+  binaries the VPS cannot run. `rooms.maxGlibc` refuses those. Built on the Linux laptop (with the room host's
+  build headers installed there), the pair for 0.1.2 needed glibc 2.38 (`sfve-room-host`) and 2.34 (`sf4-net`), as
+  the WSL builds did; a later change that needs a newer symbol is refused, not shipped.
 - The Linux build PC's cross build is not MSVC: the binaries differ from the desktop's (clang-cl's code, Detours built
   with CMake, the CRT and SDK of the xwin splat), and the receipts say so. Its tests ran under Wine, not Windows.
 - When the supervisor's `config.json` is root-only, whether it lists the build rests on the owner's
