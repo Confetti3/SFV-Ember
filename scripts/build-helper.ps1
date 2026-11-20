@@ -34,6 +34,7 @@ $EmberRepo = (Resolve-Path -LiteralPath $EmberRepo).Path
 $manifest = Join-Path $EmberRepo 'rust\sf4-net\Cargo.toml'
 if (!(Test-Path $manifest)) { throw "no sf4-net crate at $manifest" }
 
+if ($IsWindows) {
 $freeGb = [math]::Round((Get-PSDrive C).Free / 1GB, 1)
 if ($freeGb -lt 120) { throw "C: has $freeGb GB free; stopping before the build (floor 120 GB)" }
 
@@ -47,6 +48,35 @@ $vcvars = Join-Path $VisualStudioPath 'VC\Auxiliary\Build\vcvars64.bat'
 cmd /c "`"$vcvars`" >nul && set" | ForEach-Object {
 	if ($_ -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2]) }
 }
+} else {
+	# A Linux build PC (docs/release/PUBLISHING.md, "The build PC"): the x64 Windows target cross-compiled as
+	# scripts/build.ps1 does (cmake/cross/clang-cl-x64.cmake): lld-link links it against the xwin splat's CRT and
+	# SDK (SF4E_XWIN), the cc crate compiles with clang-cl, and the build script's rc.exe is llvm-rc
+	# (SF4E_LLVM_BIN). Wrappers for them go in the build tree.
+	Assert-OutsideHome $EmberRepo '-EmberRepo'
+	$x = $env:SF4E_XWIN; $l = $env:SF4E_LLVM_BIN
+	foreach ($folder in $x, $l) { if (!$folder -or !(Test-Path -LiteralPath $folder -PathType Container)) { throw 'SF4E_XWIN and SF4E_LLVM_BIN must name the xwin splat and the LLVM tools' } }
+	if ("$x$l".Contains("'") -or "$x$l".Contains(' ')) { throw 'The splat and LLVM paths may hold no quote or space' }
+	$tools = Join-Path $BuildDir 'cross-bin'
+	New-Item -ItemType Directory -Force $tools | Out-Null
+	$inc = "/imsvc $x/crt/include /imsvc $x/sdk/include/ucrt /imsvc $x/sdk/include/um /imsvc $x/sdk/include/shared /imsvc $x/sdk/include/winrt"
+	$wrappers = [ordered]@{
+		'clang-cl-x64' = "exec '$l/clang-cl' --target=x86_64-pc-windows-msvc $inc `"`$@`""
+		'lld-link-x64' = "export LIB='$x/crt/lib/x86_64;$x/sdk/lib/ucrt/x86_64;$x/sdk/lib/um/x86_64'`nexec '$l/lld-link' `"`$@`""
+		'rc.exe' = "args=(); for a in `"`$@`"; do case `"`${a,,}`" in /nologo|-nologo) ;; *) args+=(`"`$a`") ;; esac; done`nexec '$l/llvm-rc' /I $x/sdk/include/um /I $x/sdk/include/shared /I $x/sdk/include/ucrt /I $x/crt/include `"`${args[@]}`""
+		'ml64.exe' = "exec '$l/llvm-ml' -m64 `"`$@`""
+	}
+	foreach ($name in $wrappers.Keys) { [IO.File]::WriteAllText((Join-Path $tools $name), "#!/usr/bin/env bash`n$($wrappers[$name])`n") }
+	& chmod 0755 @($wrappers.Keys | ForEach-Object { Join-Path $tools $_ })
+	if ($LASTEXITCODE) { throw 'chmod failed' }
+	$env:PATH = "$tools$([IO.Path]::PathSeparator)$env:PATH"
+	$env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER = Join-Path $tools 'lld-link-x64'
+	$env:CC_x86_64_pc_windows_msvc = Join-Path $tools 'clang-cl-x64'
+	$env:CXX_x86_64_pc_windows_msvc = Join-Path $tools 'clang-cl-x64'
+	$env:AR_x86_64_pc_windows_msvc = Join-Path $l 'llvm-lib'
+	# No compiler cache wraps rustc here (the receipt's binaries are built from source).
+	Remove-Item Env:\RUSTC_WRAPPER -ErrorAction SilentlyContinue
+}
 
 $env:CARGO_TARGET_DIR = Join-Path $BuildDir 'sf4-net-target'
 
@@ -59,7 +89,7 @@ $env:CARGO_TARGET_DIR = Join-Path $BuildDir 'sf4-net-target'
 # caller already set (CARGO_ENCODED_RUSTFLAGS, RUSTFLAGS, CFLAGS) are kept and ours
 # are appended; rustflags in a cargo config file would be replaced by the
 # environment's, so one there stops the build rather than being lost.
-$userProfile = $env:USERPROFILE
+$userProfile = if ($IsWindows) { $env:USERPROFILE } else { $HOME }
 $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $userProfile '.cargo' }
 $rustupHome = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $userProfile '.rustup' }
 $remaps = [ordered]@{ '/user' = $userProfile; '/cargo' = $cargoHome; '/rustup' = $rustupHome; '/src' = $EmberRepo; '/sfv' = $repo; '/target' = $env:CARGO_TARGET_DIR }
@@ -73,9 +103,10 @@ $trims = @()
 foreach ($name in $remaps.Keys) {
 	$from = $remaps[$name]
 	if (!$from) { continue }
-	$from = [IO.Path]::GetFullPath($from).TrimEnd('\')
+	$from = [IO.Path]::GetFullPath($from).TrimEnd([IO.Path]::DirectorySeparatorChar)
 	$rustFlags.Add("--remap-path-prefix=$from=$name")
-	$trims += "/d1trimfile:$from\"
+	# clang-cl (Linux) maps the prefix as clang does.
+	$trims += if ($IsWindows) { "/d1trimfile:$from\" } else { "/clang:-ffile-prefix-map=$from=$name" }
 }
 foreach ($config in @((Join-Path (Split-Path -Parent $manifest) '.cargo\config.toml'), (Join-Path $EmberRepo '.cargo\config.toml'), (Join-Path $cargoHome 'config.toml'))) {
 	if ((Test-Path -LiteralPath $config) -and (Select-String -LiteralPath $config -Pattern 'rustflags' -Quiet)) {
@@ -84,13 +115,17 @@ foreach ($config in @((Join-Path (Split-Path -Parent $manifest) '.cargo\config.t
 }
 $env:CARGO_ENCODED_RUSTFLAGS = $rustFlags -join [string][char]0x1f
 Remove-Item Env:\RUSTFLAGS -ErrorAction SilentlyContinue
-# cl.exe (the cc crate reads CFLAGS): /d1trimfile cuts the prefix from __FILE__.
-$env:CFLAGS = ((@($env:CFLAGS) + $trims) | Where-Object { $_ }) -join ' '
+# cl.exe (the cc crate reads CFLAGS): /d1trimfile cuts the prefix from __FILE__. On Linux the flags are the
+# Windows target's alone (CFLAGS would reach the host compiler of build scripts too).
+if ($IsWindows) { $env:CFLAGS = ((@($env:CFLAGS) + $trims) | Where-Object { $_ }) -join ' ' }
+else { $env:CFLAGS_x86_64_pc_windows_msvc = ((@($env:CFLAGS_x86_64_pc_windows_msvc) + $trims) | Where-Object { $_ }) -join ' ' }
 $featureArgs = if ($Features) { @('--features', $Features) } else { @() }
-cargo build --release --locked --manifest-path $manifest -j $Jobs @featureArgs
+# On Linux the Windows target is named, and its output goes to a folder of that name.
+$targetArgs = if ($IsWindows) { @() } else { @('--target', 'x86_64-pc-windows-msvc') }
+cargo build --release --locked --manifest-path $manifest -j $Jobs @targetArgs @featureArgs
 if ($LASTEXITCODE) { throw "cargo build failed ($LASTEXITCODE)" }
 $helper = Join-Path $BuildDir 'sf4-net.exe'
-Copy-Item (Join-Path $env:CARGO_TARGET_DIR 'release\sf4-net.exe') $helper -Force
+Copy-Item (Join-Path $env:CARGO_TARGET_DIR $(if ($IsWindows) { 'release\sf4-net.exe' } else { 'x86_64-pc-windows-msvc/release/sf4-net.exe' })) $helper -Force
 
 . (Join-Path $EmberRepo 'scripts\BuildProvenance.ps1')
 [ordered]@{
@@ -101,6 +136,13 @@ Copy-Item (Join-Path $env:CARGO_TARGET_DIR 'release\sf4-net.exe') $helper -Force
 	cargoLockSha256 = (Get-FileHash -LiteralPath (Join-Path $EmberRepo 'rust\sf4-net\Cargo.lock') -Algorithm SHA256).Hash
 	sha256 = (Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash
 	pathRemap = @($remaps.Keys)
+	# The Rust compiler, and the linker and C compiler of the Windows target (build.ps1's toolchain record).
+	toolchain = [ordered]@{
+		# Asked in the crate's folder: its rust-toolchain.toml picks the compiler.
+		rustc = "$(Push-Location (Split-Path -Parent $manifest); try { & rustc --version } finally { Pop-Location })".Trim()
+		linker = if ($IsWindows) { "MSVC link $env:VCToolsVersion" } else { "lld-link: $("$(& (Join-Path $env:SF4E_LLVM_BIN 'lld-link') --version | Select-Object -First 1)".Trim())" }
+		cc = if ($IsWindows) { "MSVC $env:VCToolsVersion" } else { "clang-cl: $("$(& (Join-Path $env:SF4E_LLVM_BIN 'clang-cl') --version | Select-Object -First 1)".Trim())" }
+	}
 	builtAt = (Get-Date).ToUniversalTime().ToString('o')
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $BuildDir 'sf4-net.provenance.json') -Encoding UTF8
 $commit = git -C $EmberRepo rev-parse --short HEAD

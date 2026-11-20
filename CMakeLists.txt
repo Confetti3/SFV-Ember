@@ -74,6 +74,30 @@ set(EMBER_APP_VERSION "${SFVE_VERSION}")
 # what Updater.exe and the update check accept in a package.
 set(EMBER_PACKAGE_INVENTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/launcher/PackageInventory.inc")
 add_subdirectory("${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe" "${CMAKE_BINARY_DIR}/ember")
+# clang-cl (the Linux build PC's build, cmake/cross/clang-cl-x64.cmake) raises
+# warnings under /W4 that MSVC's /W4 does not, and the library's probe builds
+# with /WX. Those that fire in the library's own files are turned off by name
+# on its targets, after its /W4 (a target's options come after its folder's).
+# MSVC builds see none of this. Each is a style point in the library's code:
+#   missing-field-initializers  {a, b} for a struct with more members (the rest take their defaults)
+#   sign-compare                a signed char or int compared with size_t (session/*, NetplayRuntime*)
+#   unused-but-set-variable,    a variable only assigned (session/RoomModel.cxx), a private field
+#   unused-private-field,       never read (ui/ControllerNavigation.hxx), an unused function
+#   unused-function             (ui/PublicRoomsCards.cxx)
+#   reorder-ctor                initializers not in declaration order (session/sf4e__SessionClient.cxx)
+#   range-loop-construct        for (auto x : json) copying a nlohmann value
+#   missing-braces              {a, b} for an aggregate holding an array or sub-aggregate (NetplayFacade.cxx)
+#   misleading-indentation      a statement after an if/for on the same indentation (NetplayRuntime*.cxx)
+#   logical-op-parentheses      a && b || c without parentheses (IdentityMatches.cxx, IdentityPanel.cxx)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    get_property(_sfve_ember_targets DIRECTORY "${SFVE_EMBER_SOURCE_ROOT}/cmake/ember-x64-probe" PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(_target IN LISTS _sfve_ember_targets)
+        get_target_property(_type ${_target} TYPE)
+        if(_type MATCHES "^(STATIC_LIBRARY|SHARED_LIBRARY|MODULE_LIBRARY|OBJECT_LIBRARY|EXECUTABLE)$")
+            target_compile_options(${_target} PRIVATE "$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-missing-field-initializers;-Wno-sign-compare;-Wno-unused-but-set-variable;-Wno-unused-private-field;-Wno-unused-function;-Wno-reorder-ctor;-Wno-range-loop-construct;-Wno-missing-braces;-Wno-misleading-indentation;-Wno-logical-op-parentheses>")
+        endif()
+    endforeach()
+endif()
 
 # Game-agnostic rollback core: state regions, hashing, the GGPO session and
 # the synctest harness. No game, no hooks; unit tested against MockFighter.

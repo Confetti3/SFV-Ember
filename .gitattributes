@@ -1,2 +1,4 @@
 # Shell scripts run on Linux (scripts/build-room-host-linux.sh) from Windows checkouts and archives.
 *.sh text eol=lf
+# The Linux build PC's cross build reads these as they are (a port's patch applies to LF sources).
+cmake/cross/** text eol=lf

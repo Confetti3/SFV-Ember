@@ -55,6 +55,14 @@
 # applies that release's compiled rules. -NoRenders makes a package without
 # renders (a development or test package), with a warning, and the receipt
 # says so.
+#
+# On a Linux build PC (docs/release/PUBLISHING.md, "The build PC") it packages
+# the same files as on Windows: the checkouts there are made with Windows line
+# endings (core.autocrlf), the files this script writes get CRLF lines and
+# MANIFEST.txt its '\' paths, the notices come from python3, and the Windows
+# programs (sfve_package_check.exe, -OldPackageCheck) run through
+# SFVE_WINE_EMULATOR (Linux paths given as Z: paths). The zip's entries are
+# the same; the archive records Unix as their origin.
 
 param(
 	[string]$BuildDir = 'D:\sfv-ember-build-player',
@@ -79,8 +87,10 @@ $repo = (Resolve-Path -LiteralPath (Split-Path -Parent $PSScriptRoot)).Path
 . (Join-Path $PSScriptRoot 'ColourPack.ps1')
 $BuildDir = (Resolve-Path -LiteralPath $BuildDir).Path
 
-$freeGb = [math]::Round((Get-PSDrive C).Free / 1GB, 1)
-if ($freeGb -lt 120) { throw "C: has $freeGb GB free; stopping (floor 120 GB)" }
+if ($IsWindows) {
+	$freeGb = [math]::Round((Get-PSDrive C).Free / 1GB, 1)
+	if ($freeGb -lt 120) { throw "C: has $freeGb GB free; stopping (floor 120 GB)" }
+}
 if ([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($OutDir)) -ieq 'C:\') { throw "Package output stays off the C: drive; got $OutDir" }
 
 $receiptPath = Join-Path $BuildDir 'build-provenance.json'
@@ -89,6 +99,41 @@ $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
 $emberRoot = $receipt.emberRoot
 . (Join-Path $emberRoot 'scripts\BuildProvenance.ps1')
 . (Join-Path $emberRoot 'scripts\PackageFiles.ps1')
+if (!$IsWindows) {
+	# The library's writers of MANIFEST.txt and the .sha256 sidecar, with the bytes they write on Windows: CRLF
+	# lines, and MANIFEST.txt's paths relative with '\' in the ordinal order of the Windows paths.
+	function Write-PackageLines([string]$Path, [string[]]$Lines, [Text.Encoding]$Encoding) {
+		[IO.File]::WriteAllText((Resolve-PackagePath $Path), (-join @($Lines | ForEach-Object { "$_`r`n" })), $Encoding)
+	}
+	function Write-HashManifest([string]$Directory, [string]$Name = 'MANIFEST.txt') {
+		$Directory = $Directory.TrimEnd('\', '/')
+		$files = @{}
+		foreach ($file in Get-ChildItem -LiteralPath $Directory -File -Recurse) { $files[$file.FullName.Substring($Directory.Length + 1).Replace('/', '\')] = $file.FullName }
+		$relative = [string[]]@($files.Keys)
+		[Array]::Sort($relative, [StringComparer]::Ordinal)
+		$lines = [string[]]@(foreach ($path in $relative) { '{0}  {1}' -f (Get-FileSha256 $files[$path]), $path })
+		Write-PackageLines (Join-Path $Directory $Name) $lines ([Text.UTF8Encoding]::new($false))
+	}
+	# A text file this script (or python3) wrote with LF lines, given the CRLF lines Windows writes.
+	function ConvertTo-WindowsLines([string]$Path) {
+		$text = [IO.File]::ReadAllText($Path)
+		[IO.File]::WriteAllText($Path, ($text -replace "(?<!`r)`n", "`r`n"), [Text.UTF8Encoding]::new($false))
+	}
+	# A Windows program run through Wine: a wrapper that gives it its Linux path arguments as Z: paths.
+	$wine = $env:SFVE_WINE_EMULATOR
+	if (!$wine -or !(Get-Command $wine -ErrorAction SilentlyContinue)) { throw "Name the program that runs a Windows program (SFVE_WINE_EMULATOR; got '$wine')" }
+	$wine = (Get-Command $wine).Source
+	$wrappers = Join-Path ([IO.Path]::GetTempPath()) ('sfve-package-wine-' + [Guid]::NewGuid().ToString('N'))
+	New-Item -ItemType Directory -Path $wrappers | Out-Null
+	function New-WineCommand([string]$Program) {
+		if ("$wine$Program".Contains("'")) { throw "A path with a quote: $Program" }
+		$wrapper = Join-Path $wrappers ([IO.Path]::GetFileNameWithoutExtension($Program) + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+		[IO.File]::WriteAllText($wrapper, "#!/usr/bin/env bash`nargs=()`nfor a in `"`$@`"; do case `"`$a`" in /*) a=`"Z:`${a//\//\}`" ;; esac; args+=(`"`$a`"); done`nexec '$wine' '$Program' `"`${args[@]}`"`n")
+		& chmod 0755 $wrapper
+		if ($LASTEXITCODE) { throw "chmod failed for $wrapper" }
+		$wrapper
+	}
+}
 
 # The receipt is this build's, from these checkouts as they are now.
 Assert-CMakeSource $repo $BuildDir
@@ -118,6 +163,7 @@ if ($helper.emberRoot -ne $emberRoot -or $helper.emberRevision -ne $receipt.embe
 if ((Get-FileHash -LiteralPath $helperPath -Algorithm SHA256).Hash -ne $helper.sha256) { throw 'sf4-net.exe is not the binary its record names' }
 $validator = Join-Path $BuildDir 'sfve_package_check.exe'
 if (!(Test-Path -LiteralPath $validator)) { throw "Build sfve_package_check before packaging: $validator" }
+if (!$IsWindows) { $validator = New-WineCommand $validator }
 
 
 $renders = $null
@@ -132,6 +178,7 @@ if ($RenderStore) {
 	throw 'A player package needs the render store: pass -RenderStore <dir> (or -NoRenders for a development package without renders)'
 }
 if ($OldPackageCheck -and !(Test-Path -LiteralPath $OldPackageCheck -PathType Leaf)) { throw "No earlier sfve_package_check at $OldPackageCheck" }
+if ($OldPackageCheck -and !$IsWindows) { $OldPackageCheck = New-WineCommand ((Resolve-Path -LiteralPath $OldPackageCheck).Path) }
 
 if (!$VersionLabel) { $VersionLabel = '{0}-{1}' -f $receipt.version, (Get-Date).ToString('yyyyMMdd-HHmmss', [cultureinfo]::InvariantCulture) }
 if ($VersionLabel -notmatch '^[a-zA-Z0-9._-]+$') { throw 'Invalid version label' }
@@ -183,8 +230,26 @@ Stage (Join-Path $emberRoot 'assets\flags\LICENSE') 'notices\flag-icons-MIT.txt'
 Stage (Join-Path $emberRoot 'LICENSE') 'notices\Ember-LICENSE.txt'
 Stage (Join-Path $emberRoot 'ATTRIBUTION.md') 'notices\Ember-ATTRIBUTION.md'
 Stage (Join-Path $repo 'LICENSE') 'notices\SFV-Ember-LICENSE.txt'
+if ($IsWindows) {
 & python (Join-Path $emberRoot 'scripts\collect-notices.py') --build-dir $BuildDir --output (Join-Path $destination 'notices\THIRD_PARTY_LICENSES.txt') `
 	--product 'SFV Ember' --native cli11 detours fmt ggpo imgui minhook nlohmann-json spdlog xxhash zlib | Out-Host
+} else {
+	# The script runs CARGO_HOME's bin/cargo.exe, as on Windows: a CARGO_HOME of its own whose cargo.exe is this
+	# PC's cargo, with the real one's registry and git checkouts (the crates the helper was built from).
+	$cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $HOME '.cargo' }
+	$cargo = (Get-Command cargo -CommandType Application | Select-Object -First 1).Source
+	$noticeHome = Join-Path $wrappers 'cargo-home'
+	New-Item -ItemType Directory -Path (Join-Path $noticeHome 'bin') -Force | Out-Null
+	foreach ($name in 'registry', 'git') { if (Test-Path -LiteralPath (Join-Path $cargoHome $name)) { New-Item -ItemType SymbolicLink -Path (Join-Path $noticeHome $name) -Target (Join-Path $cargoHome $name) | Out-Null } }
+	[IO.File]::WriteAllText((Join-Path $noticeHome 'bin/cargo.exe'), "#!/usr/bin/env bash`nexec '$cargo' `"`$@`"`n")
+	& chmod 0755 (Join-Path $noticeHome 'bin/cargo.exe')
+	$savedCargoHome = $env:CARGO_HOME
+	$env:CARGO_HOME = $noticeHome
+	try {
+		& python3 (Join-Path $emberRoot 'scripts\collect-notices.py') --build-dir $BuildDir --output (Join-Path $destination 'notices\THIRD_PARTY_LICENSES.txt') `
+			--product 'SFV Ember' --native cli11 detours fmt ggpo imgui minhook nlohmann-json spdlog xxhash zlib | Out-Host
+	} finally { $env:CARGO_HOME = $savedCargoHome }
+}
 if ($LASTEXITCODE) { throw 'Dependency notice collection failed' }
 # The packaged inventory is the repo's plus one OPTIONAL line per render (and
 # the manifest): the installed updater of an earlier beta refuses a file its
@@ -281,6 +346,7 @@ if ($renders) {
 			"Colour pack URL: $($pack.Url)")
 	}
 }
+if (!$IsWindows) { foreach ($name in 'build-provenance.json', 'BUILD_INFO.txt', 'notices\THIRD_PARTY_LICENSES.txt') { ConvertTo-WindowsLines (Join-Path $destination $name) } }
 Write-HashManifest $destination 'MANIFEST.txt'
 
 # The updater's own rules on the folder, then on the zip as a download.
@@ -297,5 +363,6 @@ Compress-Archive -LiteralPath $destination -DestinationPath "$destination.zip"
 & (Join-Path $emberRoot 'scripts\test-updater-download-validation.ps1') -Validator $validator -PackageZip "$destination.zip" | Out-Host
 if ($LASTEXITCODE) { throw "Updater download validation failed ($LASTEXITCODE)" }
 $hash = Write-Sha256Sidecar "$destination.zip"
+if (!$IsWindows) { Remove-Item -LiteralPath $wrappers -Recurse -Force }
 Write-Output "SFV Ember package: $destination.zip ($hash)"
 [pscustomobject]@{ zipPath = "$destination.zip"; folderPath = $destination; sha256 = $hash; colourPackPath = $(if ($pack) { $pack.Path } else { '' }) }
