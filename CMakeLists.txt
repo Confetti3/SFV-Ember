@@ -51,13 +51,7 @@ add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
 # the control pipe's commands. scripts/build.ps1 makes one unless -Player;
 # scripts/package.ps1 packages only a player build (EMBER_LIBRARY.md section 42).
 option(SFVE_DEV_BUILD "Development build: the test switches work (never in a player package)" ON)
-if(SFVE_DEV_BUILD)
-    add_compile_definitions(SFVE_DEV_BUILD=1)
-    message(STATUS "SFV Ember: a development build (the test switches work)")
-else()
-    add_compile_definitions(SFVE_DEV_BUILD=0)
-    message(STATUS "SFV Ember: a player build (no test switches)")
-endif()
+# (Its definition is set after the library's targets below.)
 
 # Ember, the library SFV Ember is built on (docs/design/EMBER_LIBRARY.md,
 # sections 4 and 9): its game-neutral code and its runtime, compiled from the
@@ -97,6 +91,15 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
             target_compile_options(${_target} PRIVATE "$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-missing-field-initializers;-Wno-sign-compare;-Wno-unused-but-set-variable;-Wno-unused-private-field;-Wno-unused-function;-Wno-reorder-ctor;-Wno-range-loop-construct;-Wno-missing-braces;-Wno-misleading-indentation;-Wno-logical-op-parentheses>")
         endif()
     endforeach()
+endif()
+# SFVE_DEV_BUILD for every SFV Ember target from here on. The library's targets above never read it, so they
+# compile the same in a development and a player tree, and a compiler cache serves one tree's compiles to the other.
+if(SFVE_DEV_BUILD)
+    add_compile_definitions(SFVE_DEV_BUILD=1)
+    message(STATUS "SFV Ember: a development build (the test switches work)")
+else()
+    add_compile_definitions(SFVE_DEV_BUILD=0)
+    message(STATUS "SFV Ember: a player build (no test switches)")
 endif()
 
 # Game-agnostic rollback core: state regions, hashing, the GGPO session and

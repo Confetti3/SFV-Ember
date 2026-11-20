@@ -28,6 +28,11 @@ set(_inc "/imsvc ${_xwin}/crt/include /imsvc ${_xwin}/sdk/include/ucrt /imsvc ${
 set(_maps "/clang:-ffile-prefix-map=${_xwin}=/xwin /clang:-ffile-prefix-map=${_llvm}=/llvm")
 if(DEFINED VCPKG_CRT_LINKAGE)
     set(_quiet "/w ")
+    # A port's compiles go through the build's compiler cache (scripts/build.ps1 names it), as the project's do.
+    if(DEFINED ENV{SFVE_COMPILER_LAUNCHER})
+        set(CMAKE_C_COMPILER_LAUNCHER "$ENV{SFVE_COMPILER_LAUNCHER}")
+        set(CMAKE_CXX_COMPILER_LAUNCHER "$ENV{SFVE_COMPILER_LAUNCHER}")
+    endif()
 else()
     set(_quiet "")
 endif()

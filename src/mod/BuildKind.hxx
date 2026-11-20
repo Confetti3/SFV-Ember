@@ -9,7 +9,8 @@
 // packages) takes none of them: its launcher passes the game only its own
 // options, its mod reads only those, and its pipe answers ping and status.
 //
-// CMakeLists.txt's SFVE_DEV_BUILD option sets it for every target.
+// CMakeLists.txt's SFVE_DEV_BUILD option sets it for every SFV Ember target
+// (not the library's, which never read it).
 
 namespace sfve {
 

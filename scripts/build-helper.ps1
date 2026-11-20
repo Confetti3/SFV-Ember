@@ -22,7 +22,9 @@ param(
 	[string]$BuildDir = 'D:\sfv-ember-build',
 	[string]$VisualStudioPath = '',
 	[int]$Jobs = 4,
-	[string]$Features = ''
+	[string]$Features = '',
+	# Linux: rustc and the C compiles go through sccache unless this is given (scripts/build.ps1's cache).
+	[switch]$NoCompilerCache
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -60,8 +62,19 @@ cmd /c "`"$vcvars`" >nul && set" | ForEach-Object {
 	$tools = Join-Path $BuildDir 'cross-bin'
 	New-Item -ItemType Directory -Force $tools | Out-Null
 	$inc = "/imsvc $x/crt/include /imsvc $x/sdk/include/ucrt /imsvc $x/sdk/include/um /imsvc $x/sdk/include/shared /imsvc $x/sdk/include/winrt"
+	# The compiler cache scripts/build.ps1 uses (its folder and server port from the caller): rustc through
+	# RUSTC_WRAPPER, the cc crate's clang-cl through the wrapper below.
+	$sccache = if ($NoCompilerCache) { $null } else { (Get-Command sccache -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source }
+	if ($sccache) {
+		if (!$env:SCCACHE_DIR -or !$env:SCCACHE_SERVER_PORT) { throw 'sccache needs SCCACHE_DIR and SCCACHE_SERVER_PORT here (a cache and a server of this build''s own), or -NoCompilerCache' }
+		Assert-OutsideHome $env:SCCACHE_DIR 'SCCACHE_DIR'
+		if ($sccache.Contains("'")) { throw "A path with a quote: $sccache" }
+		$env:RUSTC_WRAPPER = $sccache
+		& $sccache --zero-stats | Out-Null
+	} else { Remove-Item Env:\RUSTC_WRAPPER -ErrorAction SilentlyContinue }
+	$cc = if ($sccache) { "'$sccache' '$l/clang-cl'" } else { "'$l/clang-cl'" }
 	$wrappers = [ordered]@{
-		'clang-cl-x64' = "exec '$l/clang-cl' --target=x86_64-pc-windows-msvc $inc `"`$@`""
+		'clang-cl-x64' = "exec $cc --target=x86_64-pc-windows-msvc $inc `"`$@`""
 		'lld-link-x64' = "export LIB='$x/crt/lib/x86_64;$x/sdk/lib/ucrt/x86_64;$x/sdk/lib/um/x86_64'`nexec '$l/lld-link' `"`$@`""
 		'rc.exe' = "args=(); for a in `"`$@`"; do case `"`${a,,}`" in /nologo|-nologo) ;; *) args+=(`"`$a`") ;; esac; done`nexec '$l/llvm-rc' /I $x/sdk/include/um /I $x/sdk/include/shared /I $x/sdk/include/ucrt /I $x/crt/include `"`${args[@]}`""
 		'ml64.exe' = "exec '$l/llvm-ml' -m64 `"`$@`""
@@ -74,8 +87,6 @@ cmd /c "`"$vcvars`" >nul && set" | ForEach-Object {
 	$env:CC_x86_64_pc_windows_msvc = Join-Path $tools 'clang-cl-x64'
 	$env:CXX_x86_64_pc_windows_msvc = Join-Path $tools 'clang-cl-x64'
 	$env:AR_x86_64_pc_windows_msvc = Join-Path $l 'llvm-lib'
-	# No compiler cache wraps rustc here (the receipt's binaries are built from source).
-	Remove-Item Env:\RUSTC_WRAPPER -ErrorAction SilentlyContinue
 }
 
 $env:CARGO_TARGET_DIR = Join-Path $BuildDir 'sf4-net-target'
@@ -124,6 +135,17 @@ $featureArgs = if ($Features) { @('--features', $Features) } else { @() }
 $targetArgs = if ($IsWindows) { @() } else { @('--target', 'x86_64-pc-windows-msvc') }
 cargo build --release --locked --manifest-path $manifest -j $Jobs @targetArgs @featureArgs
 if ($LASTEXITCODE) { throw "cargo build failed ($LASTEXITCODE)" }
+if (!$IsWindows -and $sccache) {
+	# What the cache served this build (the publish job reads these lines from the log).
+	Write-Output '== sccache statistics'
+	& $sccache --show-stats
+}
+# The cache rustc went through (RUSTC_WRAPPER), kind and version; null when none.
+$compilerCache = $null
+if ($env:RUSTC_WRAPPER) {
+	$wrapperVersion = [regex]::Match("$(& $env:RUSTC_WRAPPER --version | Select-Object -First 1)", '^(\S+) ([0-9]+(\.[0-9]+)+)')
+	$compilerCache = if ($wrapperVersion.Success) { "$([IO.Path]::GetFileNameWithoutExtension($wrapperVersion.Groups[1].Value)) $($wrapperVersion.Groups[2].Value)" } else { "$(Split-Path -Leaf $env:RUSTC_WRAPPER) (no version)" }
+}
 $helper = Join-Path $BuildDir 'sf4-net.exe'
 Copy-Item (Join-Path $env:CARGO_TARGET_DIR $(if ($IsWindows) { 'release\sf4-net.exe' } else { 'x86_64-pc-windows-msvc/release/sf4-net.exe' })) $helper -Force
 
@@ -143,6 +165,8 @@ Copy-Item (Join-Path $env:CARGO_TARGET_DIR $(if ($IsWindows) { 'release\sf4-net.
 		linker = if ($IsWindows) { "MSVC link $env:VCToolsVersion" } else { "lld-link: $("$(& (Join-Path $env:SF4E_LLVM_BIN 'lld-link') --version | Select-Object -First 1)".Trim())" }
 		cc = if ($IsWindows) { "MSVC $env:VCToolsVersion" } else { "clang-cl: $("$(& (Join-Path $env:SF4E_LLVM_BIN 'clang-cl') --version | Select-Object -First 1)".Trim())" }
 	}
+	# The cache rustc's compiles went through, kind and version (above); null when none.
+	compilerCache = $compilerCache
 	builtAt = (Get-Date).ToUniversalTime().ToString('o')
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $BuildDir 'sf4-net.provenance.json') -Encoding UTF8
 $commit = git -C $EmberRepo rev-parse --short HEAD

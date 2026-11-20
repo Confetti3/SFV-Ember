@@ -25,9 +25,9 @@
 # library's triplet with it chainloaded, release packages only, Detours from
 # cmake/cross/vcpkg-ports), and the tests run through Wine (-TestEmulator).
 # -BuildDir and -VcpkgCache are named there, outside the home folder
-# (BuildPaths.ps1); objects always carry their debug information (/Z7), as
-# with ccache on Windows, and no compiler cache is used. Every receipt's
-# toolchain record says which compiler, linker, CRT and SDK made the build.
+# (BuildPaths.ps1); objects carry their debug information (/Z7), and compiles
+# go through sccache (below). Every receipt's toolchain record says which
+# compiler, linker, CRT and SDK made the build.
 
 param(
 	# D:\sfv-ember-build by default, D:\sfv-ember-build-player with -Player.
@@ -126,27 +126,52 @@ $sourceFingerprint = Get-SourceFingerprint $repo
 $emberRevision = (& git -C $EmberRoot rev-parse HEAD)
 $emberFingerprint = Get-SourceFingerprint $EmberRoot
 
-# Compiles go through ccache, which serves any compile whose inputs it has seen
-# before (another build tree, a switched branch, a rebuilt dev or player tree).
-# It cannot cache /Zi, so objects carry their debug information (/Z7); the
-# linker still writes the PDB. -NoCompilerCache, or no ccache 4.6+ on PATH,
-# builds without it; every configure states the choice, so a tree never keeps
-# an old one. The receipt records the ccache version a build used.
-$ccacheVersion = $null
-$ccache = if ($NoCompilerCache -or !$IsWindows) { $null } else { (Get-Command ccache -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source }
-if ($ccache) {
+# Compiles go through ccache (Windows) or sccache (Linux), which serves any
+# compile whose inputs it has seen before (another build tree, a switched
+# branch, a rebuilt dev or player tree): only a compile with the same
+# preprocessed source, compiler and flags. It cannot cache /Zi, so objects
+# carry their debug information (/Z7); the linker still writes the PDB.
+# -NoCompilerCache, or no ccache 4.6+ (sccache on Linux) on PATH, builds
+# without it; every configure states the choice, so a tree never keeps an old
+# one. The receipt records the cache a build used, kind and version
+# ("ccache 4.14.1", "sccache 0.19.0").
+#
+# On Linux, sccache takes its cache folder (SCCACHE_DIR) and server port
+# (SCCACHE_SERVER_PORT) from the caller: the publish job gives it its own of
+# both, so no other build's sccache server is restarted under it. Paths under
+# SCCACHE_BASEDIRS (the publish job names both build trees) are compared
+# without that prefix, so a development and a player tree share every compile
+# that is the same in both (the library's, which no build kind changes).
+$compilerCacheName = $null
+$ccache = if ($NoCompilerCache) { $null }
+	elseif ($IsWindows) { (Get-Command ccache -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source }
+	else { (Get-Command sccache -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source }
+if ($ccache -and $IsWindows) {
 	# Its cache lives on D: like every other place this build writes to.
 	if (!$env:CCACHE_DIR) { $env:CCACHE_DIR = 'D:\sf4-build\ccache' }
 	New-Item -ItemType Directory -Force $env:CCACHE_DIR | Out-Null
 	$ccacheVersion =[regex]::Match((& $ccache --version | Select-Object -First 1), '\d+(\.\d+)+').Value
-	if (!$ccacheVersion -or [version]$ccacheVersion -lt [version]'4.6') { Write-Warning "ccache '$ccacheVersion' is older than 4.6: building without it."; $ccache = $null; $ccacheVersion = $null }
+	if (!$ccacheVersion -or [version]$ccacheVersion -lt [version]'4.6') { Write-Warning "ccache '$ccacheVersion' is older than 4.6: building without it."; $ccache = $null }
+	else { $compilerCacheName = "ccache $ccacheVersion" }
+} elseif ($ccache) {
+	if (!$env:SCCACHE_DIR -or !$env:SCCACHE_SERVER_PORT) { throw 'sccache needs SCCACHE_DIR and SCCACHE_SERVER_PORT here (a cache and a server of this build''s own), or -NoCompilerCache' }
+	Assert-OutsideHome $env:SCCACHE_DIR 'SCCACHE_DIR'
+	New-Item -ItemType Directory -Force $env:SCCACHE_DIR | Out-Null
+	if (!$env:SCCACHE_BASEDIRS) { $env:SCCACHE_BASEDIRS = $BuildDir }
+	$sccacheVersion = [regex]::Match((& $ccache --version | Select-Object -First 1), '\d+(\.\d+)+').Value
+	if (!$sccacheVersion) { throw "sccache at $ccache gives no version" }
+	$compilerCacheName = "sccache $sccacheVersion"
+	# vcpkg's port builds (cmake/cross/clang-cl-x64.cmake) compile through it too.
+	$env:SFVE_COMPILER_LAUNCHER = $ccache
+	# This build's own statistics (the step's log ends with them).
+	& $ccache --zero-stats | Out-Null
 }
 $compilerCacheOptions = if ($ccache) {
 	"-DCMAKE_C_COMPILER_LAUNCHER=$ccache", "-DCMAKE_CXX_COMPILER_LAUNCHER=$ccache", '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded'
 } elseif ($IsWindows) { '-UCMAKE_C_COMPILER_LAUNCHER', '-UCMAKE_CXX_COMPILER_LAUNCHER', '-UCMAKE_MSVC_DEBUG_INFORMATION_FORMAT' }
-# Linux: no cache, and the debug information of a ccache build.
+# Linux without a cache: the debug information of a cached build all the same.
 else { '-UCMAKE_C_COMPILER_LAUNCHER', '-UCMAKE_CXX_COMPILER_LAUNCHER', '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' }
-Write-Host "Compiler cache: $(if ($ccache) { "ccache $ccacheVersion" } else { 'off' })"
+Write-Host "Compiler cache: $(if ($compilerCacheName) { $compilerCacheName } else { 'off' })"
 
 $triplet = 'x64-windows-static-md-wchar-filenames'
 if ($IsWindows) {
@@ -167,7 +192,7 @@ if ($IsWindows) {
 	$triplets = Join-Path $BuildDir 'cross-triplets'
 	New-Item -ItemType Directory -Force $triplets | Out-Null
 	$tripletText = [IO.File]::ReadAllText((Join-Path $EmberRoot "vcpkg-overlays/triplets/$triplet.cmake"))
-	$tripletText += "`n# build.ps1 on Linux: clang-cl (cmake/cross/clang-cl-x64.cmake); release packages only.`nset(VCPKG_CHAINLOAD_TOOLCHAIN_FILE `"$crossToolchain`")`nset(VCPKG_LOAD_VCVARS_ENV OFF)`nset(VCPKG_BUILD_TYPE release)`nset(VCPKG_ENV_PASSTHROUGH SF4E_XWIN SF4E_LLVM_BIN)`n"
+	$tripletText += "`n# build.ps1 on Linux: clang-cl (cmake/cross/clang-cl-x64.cmake); release packages only.`nset(VCPKG_CHAINLOAD_TOOLCHAIN_FILE `"$crossToolchain`")`nset(VCPKG_LOAD_VCVARS_ENV OFF)`nset(VCPKG_BUILD_TYPE release)`nset(VCPKG_ENV_PASSTHROUGH SF4E_XWIN SF4E_LLVM_BIN)`n# The compiler cache: where it is, not what a package is built from.`nset(VCPKG_ENV_PASSTHROUGH_UNTRACKED SFVE_COMPILER_LAUNCHER SCCACHE_DIR SCCACHE_SERVER_PORT SCCACHE_BASEDIRS)`n"
 	$tripletPath = Join-Path $triplets "$triplet.cmake"
 	# Rewritten only when it changes: vcpkg hashes the triplet into every package's ABI.
 	if (!(Test-Path -LiteralPath $tripletPath) -or [IO.File]::ReadAllText($tripletPath) -cne $tripletText) { [IO.File]::WriteAllText($tripletPath, $tripletText) }
@@ -188,6 +213,11 @@ if ($LASTEXITCODE) { throw "build failed ($LASTEXITCODE)" }
 if (!$SkipTests) {
 	& $ctest --test-dir $BuildDir --output-on-failure
 	if ($LASTEXITCODE) { throw "tests failed ($LASTEXITCODE)" }
+}
+if ($ccache -and !$IsWindows) {
+	# What the cache served this build (the publish job reads these lines from the log).
+	Write-Output '== sccache statistics'
+	& $ccache --show-stats
 }
 if ($sourceRevision -ne (& git -C $repo rev-parse HEAD) -or $sourceFingerprint -ne (Get-SourceFingerprint $repo)) {
 	throw 'SFV Ember source changed while it was being built; no receipt is made for a tree the binaries were not built from. Build again.'
@@ -257,8 +287,8 @@ $receipt = [ordered]@{
 	testsPassed = !$SkipTests
 	tests = @(if (!$SkipTests) { & $ctest --test-dir $BuildDir -N | Select-String '^\s*Test\s+#\d+: (\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } })
 	discordCompanion = $discordCompanion
-	# The ccache version the compiles went through; null when built without it.
-	compilerCache = $ccacheVersion
+	# The cache the compiles went through, kind and version; null when built without one.
+	compilerCache = $compilerCacheName
 	# Which compiler, linker, C runtime and Windows SDK made the binaries (below).
 	toolchain = $toolchain
 	binaries = @(foreach ($name in $binaryNames) {
