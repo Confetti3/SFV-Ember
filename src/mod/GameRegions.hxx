@@ -24,6 +24,13 @@ struct GamePostRestore {
 // sfv::manager::kRunRules lists are restored but not hashed, or masked.
 // False (logged) when the table looks wrong.
 bool AddGameRegions(StateLayout& layout, RegionNames& names, uint8_t* rollbackUnit, uint8_t* manager);
+// One entry of the table, `size` bytes at `ptr`, added to `layout` as `run`
+// names it ("game.<entry>" when it has no owner), with what every
+// sfv::manager::kRunRules row for its owner and run offset says: a kind (not
+// hashed; the name's suffix), masked words, or dwords left out of the peers'
+// hash. `applied` (one count per row, or null) counts the rows that matched.
+// Returns the region's index.
+size_t AddGameRun(StateLayout& layout, const NamedRun& run, size_t entry, uint8_t* ptr, size_t size, int* applied);
 // The manager's post-restore callbacks, in its list's order, into `out`.
 void CollectPostRestore(uint8_t* manager, std::vector<GamePostRestore>& out);
 

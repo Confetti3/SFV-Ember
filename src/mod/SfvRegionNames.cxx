@@ -73,6 +73,11 @@ const OwnerSpec kParts[] = {
 	{"CharaMotionPart", 0x3A64750, {{192, 13092}, {13288, 192}}, {}},
 	{"CharaMaterialPart", 0x3A65C50, {{216, 724}, {944, 1624}}, {}},
 	{"CharaVisualPart", 0x3A64AD0, {{1752, 392}}, {}},
+	// Balrog's (BLR's) own part, the one character part named here: its claw
+	// and mask records (sfv::manager::kRunRules), named by the game
+	// "CharaUniquePart_008" (rva 0x13F6D0). The other characters' own parts
+	// stay unknown parts, their runs unowned.
+	{"CharaUniquePart_008", 0x3A67370, {{240, 208}}, {}},
 	{"AttackDataPart", 0x3A69338, {{192, 632}}, {}},
 	{"ProjectileVisualPart", 0x3A66D00, {{192, 44}, {240, 136}}, {}},
 };

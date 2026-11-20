@@ -383,6 +383,7 @@ add_executable(sfve_ember_tests
     tests/SfvTrainingLabTests.cxx
     tests/SfvBoxesTests.cxx
     tests/RoomBuildTests.cxx
+    tests/GameRegionsTests.cxx
     tests/BuildKindTests.cxx
     tests/AddressRangesTests.cxx
     tests/RuntimeModulesTests.cxx

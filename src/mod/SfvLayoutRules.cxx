@@ -49,6 +49,7 @@ std::string MakeLayoutRulesText()
 		text += " " + std::string(rule.owner) + "+" + std::to_string(rule.offset) + rule.kind + "[" +
 			std::to_string(rule.maskFrom) + "," + std::to_string(rule.maskTo) + ")";
 		if (rule.maskEvery) text += "/" + std::to_string(rule.maskEvery);
+		if (rule.peersOnly) text += "/peers";
 	}
 	// Whose run each of the game's regions is, which the rules above match by
 	// the owner's name (RegionNames' tables).

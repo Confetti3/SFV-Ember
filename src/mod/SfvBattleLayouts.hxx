@@ -595,6 +595,34 @@ constexpr uint32_t kNodeFunction = 0x30;
 // fills rva 0x37F550, 0x453270 stop at +144) and nothing reads them: the
 // spawn (rva 0x470FB0) reads up to +140. The word at +144 is masked with
 // them; it holds the -1 every request starts with.
+//
+// Left out of the peers' hash only: the padding of Balrog's (BLR's) claw and
+// mask records. His own part, CharaUniquePart_008 (type rva 0x3A67370, the
+// name set at rva 0x13F6D0, 576 bytes from GameAlloc, constructor rva
+// 0x38C480), registers +240, 208 bytes: two records of 0x60 (the claw at run
+// +0x00, the mask at +0x60; each a state, a phase, the endurance from the
+// character data's ClawEndurance and MaskEndurance, three 16-byte vectors at
+// +0x20 and the 16.16 timer at +0x50, which the launch and landing code, rva
+// 0x3A4930, sets from the battle's time step: fight state, hashed) and four
+// dwords at +0xC0 (an event, flags; rva 0x39D060). A record is built on the
+// stack and copied whole (rva 0x397D50, from the constructor and again
+// through the part's +0x40 object's third virtual): its 16-byte vectors align
+// it, so +0x18..+0x1F (before the first vector) and +0x54..+0x5F (after the
+// timer) are padding the copy takes from the stack as that call found it;
+// none of the part's virtuals nor the launch code writes or reads them after,
+// and no other code looks the part up by its type. Each process's stack
+// differs: in the 0.1.1 reports (Bugsink EMBER-139/140, Windows 19045 against
+// 26200) the mask's +0xB4 held 0xFFFFFFFF on one copy and the top half of a
+// heap pointer on the other, so the 8-byte word at +0xB0 was zeroed as an
+// address on one copy only and hashed with the timer on the other: a desync
+// at the first checkpoint whatever was played. In six state files (three
+// matches, both copies of each) +0x18 (a heap pointer's copy) and +0xB4
+// differ between the copies of each match; +0xB8 has held null, a heap
+// pointer (a Wine copy) and 0xE528ACEAC0. The timers (+0x50, +0xB0) were
+// equal in every pair. Masked: the ten padding dwords +0x18, +0x1C, +0x54,
+// +0x58, +0x5C, +0x78, +0x7C, +0xB4, +0xB8, +0xBC; the timer beside +0xB4 is
+// then hashed on every copy. The synctest still checks them: a load restores
+// them as saved.
 struct RunRule {
 	const char* owner; // RegionNames' owner type
 	uint32_t offset;   // the run's start in its owner, or kAnyRun: every run it has
@@ -605,6 +633,10 @@ struct RunRule {
 	uint32_t maskFrom = 0;
 	uint32_t maskTo = 0;
 	uint32_t maskEvery = 0;
+	// The masked bytes are left out of the peers' hash only, in 4-byte dwords
+	// (StateLayout::IgnoreForPeers): each process's own bytes, which one
+	// process's replay still reproduces.
+	bool peersOnly = false;
 };
 constexpr uint32_t kToTheEnd = ~0u;
 constexpr uint32_t kAnyRun = ~0u;
@@ -624,6 +656,10 @@ constexpr RunRule kRunRules[] = {
 	{"CharaUnit", 0x764, "", 88, 112},
 	{"CharaStatusPart", 0x238, "", 0x88, 0x90},
 	{"ProjectileGroupUnit", 0x500, "", 0x90, 0xA0, 176},
+	// Each claw and mask record's padding: +0x18..+0x1F and +0x54..+0x5F of
+	// the record at +0x00 and the one at +0x60.
+	{"CharaUniquePart_008", 0xF0, "", 0x18, 0x20, 0x60, true},
+	{"CharaUniquePart_008", 0xF0, "", 0x54, 0x60, 0x60, true},
 };
 } // namespace manager
 

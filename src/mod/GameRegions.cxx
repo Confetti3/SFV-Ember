@@ -42,24 +42,7 @@ bool AddGameRegions(StateLayout& layout, RegionNames& names, uint8_t* rollbackUn
 			return false;
 		}
 		const NamedRun run = names.Name(r->ptr, (size_t)r->size);
-		const sfv::manager::RunRule* rule = nullptr;
-		for (size_t k = 0; run.owner && k < std::size(sfv::manager::kRunRules); k++) {
-			const sfv::manager::RunRule& candidate = sfv::manager::kRunRules[k];
-			if (strcmp(candidate.owner, run.owner) != 0) continue;
-			if (candidate.offset != sfv::manager::kAnyRun && candidate.offset != run.offset) continue;
-			rule = &candidate;
-			applied[k]++;
-		}
-		const char* kind = rule ? rule->kind : "";
-		const std::string name = run.name.empty() ? "game." + std::to_string(r - begin) : run.name;
-		const size_t index = layout.Add(name + kind, r->ptr, (size_t)r->size, !*kind);
-		if (rule) {
-			const size_t width = size_t(rule->maskTo) - rule->maskFrom;
-			for (size_t from = rule->maskFrom; from < r->size; from += rule->maskEvery) {
-				for (size_t at = from; at - from < width && at < r->size; at += 8) layout.IgnoreWord(index, at);
-				if (!rule->maskEvery) break;
-			}
-		}
+		AddGameRun(layout, run, size_t(r - begin), r->ptr, (size_t)r->size, applied);
 	}
 	names.LogSummary();
 	for (size_t k = 0; k < std::size(sfv::manager::kRunRules); k++) {
@@ -69,6 +52,43 @@ bool AddGameRegions(StateLayout& layout, RegionNames& names, uint8_t* rollbackUn
 		}
 	}
 	return true;
+}
+
+// A run may match more than one row (Balrog's part has two, one for each
+// padding of its records), and every row that matches applies.
+size_t AddGameRun(StateLayout& layout, const NamedRun& run, size_t entry, uint8_t* ptr, size_t size, int* applied)
+{
+	namespace m = sfv::manager;
+	bool matched[std::size(m::kRunRules)] = {};
+	const char* kind = "";
+	for (size_t k = 0; run.owner && k < std::size(m::kRunRules); k++) {
+		const m::RunRule& rule = m::kRunRules[k];
+		if (strcmp(rule.owner, run.owner) != 0) continue;
+		if (rule.offset != m::kAnyRun && rule.offset != run.offset) continue;
+		matched[k] = true;
+		if (applied) applied[k]++;
+		if (*rule.kind) kind = rule.kind;
+	}
+	const std::string name = run.name.empty() ? "game." + std::to_string(entry) : run.name;
+	const size_t index = layout.Add(name + kind, ptr, size, !*kind);
+	for (size_t k = 0; k < std::size(m::kRunRules); k++) {
+		if (!matched[k]) continue;
+		const m::RunRule& rule = m::kRunRules[k];
+		// Masked words are 8 bytes, the peers' dwords 4.
+		const size_t unit = rule.peersOnly ? 4 : 8;
+		const size_t width = size_t(rule.maskTo) - rule.maskFrom;
+		for (size_t from = rule.maskFrom; from < size; from += rule.maskEvery) {
+			for (size_t at = from; at - from < width && at < size; at += unit) {
+				if (rule.peersOnly) {
+					layout.IgnoreForPeers(index, at);
+				} else {
+					layout.IgnoreWord(index, at);
+				}
+			}
+			if (!rule.maskEvery) break;
+		}
+	}
+	return index;
 }
 
 void CollectPostRestore(uint8_t* manager, std::vector<GamePostRestore>& out)

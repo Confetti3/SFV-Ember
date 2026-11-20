@@ -51,8 +51,10 @@ namespace sfve::picks {
 // the room wire is the library's Ember 1.6.0 one (the post-match answer and
 // privacy kinds before the Tiny fighters, Skip winner scenes and Banned stages
 // ones, the room's charter; EMBER_LIBRARY.md section 62). No earlier copy may
-// meet one of these.
-constexpr const char* kMatchBuild = "sfv-ember/13173604/0.8";
+// meet one of these. 0.9 (0.1.2): Balrog's claw and mask records are their
+// part's own run, their padding left out of the peers' hash
+// (sfv::manager::kRunRules), so a 0.1.1 copy hashes that run otherwise.
+constexpr const char* kMatchBuild = "sfv-ember/13173604/0.9";
 
 // The stage choice that stands for Random (GameCatalog::randomStage): the
 // library's own selection::RandomStageId, never a stage on the wire. P1's

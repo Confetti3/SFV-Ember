@@ -137,6 +137,28 @@ def action_part_fields() -> dict[int, str]:
     }
 
 
+def balrog_part_fields() -> dict[int, str]:
+    # Balrog's (BLR's) own part, CharaUniquePart_008 (type rva 0x3A67370):
+    # its run at +0xF0 (208 bytes) is the claw's record and the mask's, 0x60
+    # bytes each, which rva 0x397D50 builds on the stack and copies whole,
+    # then four dwords (rva 0x39D060). Keys are part offsets. The padding
+    # (record +0x18..+0x1F and +0x54..+0x5F) is the stack as that copy found
+    # it, each process's own, and is left out of the peers' hash
+    # (sfv::manager::kRunRules); the timers (record +0x50, rva 0x3A4930) are
+    # fight state.
+    fields = {}
+    for record, what in ((0xF0, "claw"), (0x150, "mask")):
+        fields[record] = f"{what}: state | phase"
+        fields[record + 0x08] = f"{what}: dword (-1 at the start) | endurance left (16.16)"
+        fields[record + 0x10] = f"{what}: endurance (16.16, ClawEndurance or MaskEndurance) | dword"
+        fields[record + 0x18] = f"{what}: padding, not compared with peers"
+        fields[record + 0x50] = f"{what}: timer (16.16) | padding, not compared with peers"
+        fields[record + 0x58] = f"{what}: padding, not compared with peers"
+    fields[0x1B0] = "event (-1: none) | dword"
+    fields[0x1B8] = "flags | dword"
+    return fields
+
+
 def owner_fields(name: str) -> tuple[int, dict[int, str]]:
     """The run's start in its owner and the field names known for it."""
     m = RUN_START.search(name)
@@ -147,6 +169,8 @@ def owner_fields(name: str) -> tuple[int, dict[int, str]]:
         return start, action_part_fields()
     if "CharaStatusPart+0xC0" in name:
         return start, status_part_fields()
+    if "CharaUniquePart_008+0xF0" in name:
+        return start, balrog_part_fields()
     if name.startswith(("CharaUnit[", "ProjectileUnit[")) and name.endswith("]+0xF8"):
         # ActionUnit's run (rva 0x2FED60): +248, +252 counter, +256 player slot.
         return start, {0xF8: "dword | sequential counter", 0x100: "player slot (0 P1, 1 P2) | dword"}
