@@ -45,7 +45,21 @@ RUSTUP_HOME_DIR="${RUSTUP_HOME:-$HOME/.rustup}"
 # Later rustc rules win: the broad one (home) first.
 export RUSTFLAGS="--remap-path-prefix=$HOME=/home-remapped --remap-path-prefix=$CARGO_HOME_DIR=/cargo --remap-path-prefix=$RUSTUP_HOME_DIR=/rustup --remap-path-prefix=$W/src/lib=/src --remap-path-prefix=$W/target=/target ${RUSTFLAGS:-}"
 export CXXFLAGS="-ffile-prefix-map=$W/src=/src -ffile-prefix-map=$HOME=/home-remapped ${CXXFLAGS:-}"
+# Kept between runs: the cargo target folder ($W/target) and, with SFVE_SCCACHE (the build PC's sccache, with its
+# SCCACHE_DIR and SCCACHE_SERVER_PORT), a compiler cache for rustc and for g++ (through a wrapper). A cached compile
+# is one whose inputs were the same; the archives and every check below are as without it.
 export CARGO_TARGET_DIR="$W/target"
+if [ -n "${SFVE_SCCACHE:-}" ]; then
+    export RUSTC_WRAPPER="$SFVE_SCCACHE"
+    mkdir -p "$W/bin"
+    printf '#!/usr/bin/env bash\nexec "%s" g++ "$@"\n' "$SFVE_SCCACHE" > "$W/bin/g++-cached"
+    chmod 0755 "$W/bin/g++-cached"
+    export CXX="$W/bin/g++-cached"
+    "$SFVE_SCCACHE" --zero-stats > /dev/null
+    put CACHE "$("$SFVE_SCCACHE" --version | head -1)"
+else
+    put CACHE none
+fi
 echo "== sf4-net"
 (cd "$W/src/lib/rust/sf4-net" && cargo build --profile server --locked -j "${JOBS:-8}")
 cp "$CARGO_TARGET_DIR/server/sf4-net" "$OUT/sf4-net"
@@ -56,6 +70,7 @@ if ! echo '#include <xxhash.h>' | g++ -std=c++17 -x c++ -fsyntax-only - 2>/dev/n
 fi
 echo "== room host"
 (cd "$W/src" && bash sfv/scripts/build-room-host-linux.sh lib "$OUT/sfve-room-host")
+if [ -n "${SFVE_SCCACHE:-}" ]; then echo "== sccache statistics"; "$SFVE_SCCACHE" --show-stats; fi
 fi
 cd "$OUT"
 line='{"room_id":"0123456789abcdef0123456789abcdef","name":"check","capacity":2,"build_id":"%s","bridge_id":"brg_check","ticket_key":"key","ticket_kid":"kid","helper":"/nonexistent","game":"sfv"}'

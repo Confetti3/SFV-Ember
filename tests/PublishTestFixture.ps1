@@ -161,6 +161,7 @@ function Use-LinuxBuildPc($X) {
         vcpkgRoot = '/home/builder/vcpkg'; vcpkgCache = '/srv/pub/vcpkg-cache'; renderStore = '/srv/pub/renders'; oldPackageCheck = ''; discordSdk = '/srv/pub/deps/sdk.zip'
         dist = '/srv/pub/packages'; testEmulator = '/home/builder/bin/ember-wine'; testPrefix = '/srv/pub/wine-tests'; lock = '/srv/pub/heavy-job.lock'; jobs = 12
         machineNames = @('builder', 'builder-laptop-7')
+        sccache = '/home/builder/tools/bin/sccache'; sccacheDir = '/srv/pub/cache/sccache'; sccachePort = 4228
         pollSeconds = 30; startTimeoutMinutes = 10; buildTimeoutMinutes = 60; roomsTimeoutMinutes = 30}
     $X.Ctx.Config.rooms.backend = 'linux'
     $X.World.LinuxBuildPc = $true

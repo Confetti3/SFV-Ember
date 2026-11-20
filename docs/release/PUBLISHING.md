@@ -143,6 +143,7 @@ A Linux build PC's `laptop` block, and `rooms.backend` `"linux"`:
               "discordSdk": "/mnt/games/sfv-publish/deps/DiscordSocialSdk-1.10.19337.zip", "dist": "/mnt/games/sfv-publish/packages",
               "testEmulator": "<ember-wine>", "testPrefix": "/mnt/games/sfv-publish/wine-tests",
               "lock": "/mnt/games/sfv-publish/heavy-job.lock", "jobs": 12, "machineNames": ["<its user>", "<its host name>"],
+              "sccache": "<its sccache>", "sccacheDir": "/mnt/games/sfv-publish/cache/sccache", "sccachePort": 4228,
               "pollSeconds": 60, "startTimeoutMinutes": 90, "buildTimeoutMinutes": 300, "roomsTimeoutMinutes": 90 },
 ```
 
@@ -169,6 +170,18 @@ what differs on that PC:
   and SDK, read from the tools and the splat), the helper's record its `rustc`, linker and C compiler; the build
   stage refuses receipts whose toolchain is not the build PC's kind (MSVC on Windows, clang-cl on Linux), is
   missing, or differs between the two builds and the zip.
+- Every compile goes through sccache (`laptop.sccache`), as the desktop's go through ccache: a compile is served from
+  the cache only when its preprocessed source, compiler and flags are the ones it was made from. The cache has its
+  own folder (`laptop.sccacheDir`, outside the home folder) and its own server (`laptop.sccachePort`), so the
+  laptop's other builds, which restart the default sccache server, never stop it; `job.sh` stops it at the end.
+  The two build trees are its base folders (`SCCACHE_BASEDIRS`): their paths are compared without that prefix, so
+  the player build takes the development build's compiles where they are the same (every library unit: SFV's
+  CMakeLists.txt sets `SFVE_DEV_BUILD` only on SFV Ember's own targets). vcpkg's port builds go through it too, the
+  helper's rustc (`RUSTC_WRAPPER`) and its C compiles, and the room-host pair (below). The receipts name the cache,
+  kind and version (`compilerCache`: `"sccache 0.19.0"`, `"ccache 4.14.1"` on Windows), the helper's record its own;
+  the build stage refuses a receipt without the field, one whose cache is not the build PC's kind (a Linux build PC
+  always uses sccache), or builds that name different caches. Each build step's log ends with the cache's statistics,
+  `result.json` has their hits and misses (`cache`), and the stage prints them.
 - `scripts\package.ps1` on Linux packages the same files: the checkouts are made with Windows line endings
   (`git config core.autocrlf true` in both; the agent refuses a checkout without it), so their fingerprints and the
   packaged text are the desktop's; the files it writes get CRLF lines and `MANIFEST.txt` its `\` paths; the Windows
@@ -185,7 +198,10 @@ what differs on that PC:
 - Rooms (`rooms.backend` `"linux"`) run `build-rooms-linux.sh` on the PC itself. It needs the room host's
   build headers there (`nlohmann-json3-dev`, `libspdlog-dev`, `libfmt-dev`, `libxxhash-dev`), and binaries that run
   on the server's glibc: `result.txt` reports the newest glibc symbol each binary needs, and `rooms.maxGlibc` (the
-  server's release, 2.43 for Ubuntu 26.04) refuses a newer one.
+  server's release, 2.43 for Ubuntu 26.04) refuses a newer one. Its cargo target folder is kept between runs, and
+  `sf4-net` and every `sfve-room-host` compile go through the build PC's sccache (`SFVE_SCCACHE`; `CACHE` in
+  `result.txt`, which a pair built on a Linux build PC must name); the archives are still the plan's, checked by
+  hash, and the pair gets every check.
 
 Setting one up: `git clone` the SFV and library repositories into the two checkout folders, `git config core.autocrlf
 true` in each, and check out a commit at or behind the next release's (the agent only fast-forwards); the bundles the

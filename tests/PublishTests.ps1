@@ -512,7 +512,12 @@ try {
         @({ param($f) $f.helperToolchain = @{rustc = 'rustc 1.98.0'} }, '*helper''s record names no whole toolchain*'),
         @({ param($f) $f.extra = 'built in /home/builder/src' }, '*package carries forbidden strings*'),
         @({ param($f) $f.extra = 'on BUILDER-LAPTOP-7' }, '*package carries forbidden strings*'),
-        @({ param($f) $f.machineNames = @('workhorse'); $f.extra = 'C:\users\workhorse\Temp' }, '*package carries forbidden strings*')
+        @({ param($f) $f.machineNames = @('workhorse'); $f.extra = 'C:\users\workhorse\Temp' }, '*package carries forbidden strings*'),
+        @({ param($f) $f.compilerCache = $null }, '*names no compiler cache*'),
+        @({ param($f) $f.dropCompilerCache = $true }, '*names no compiler cache*'),
+        @({ param($f) $f.compilerCache = 'ccache 4.14.1' }, '*names no compiler cache as the build PC''s builds use one*'),
+        @({ param($f) $f.playerCompilerCache = 'sccache 0.18.0' }, '*name different compiler caches*'),
+        @({ param($f) $f.helperCompilerCache = $null }, '*helper''s record names no sccache*')
     )
     foreach ($case in $toolchainCases) {
         $y = Fresh -Linux; $null = Plan $y; $y.World.BuildTweak = $case[0]
@@ -521,11 +526,24 @@ try {
     }
     $y = Fresh; $null = Plan $y; $y.World.BuildTweak = { param($f) $f.toolchain = [ordered]@{host = 'linux'; compiler = 'clang-cl: clang version 21.1.8 (x)'; linker = 'lld-link: LLD 21.1.8 (x)'; crt = 'c'; sdk = 's'} }
     Reject { Invoke-PubBuild $y.Ctx $y.P } '*is not the build PC''s (windows)*'
-    Pass "Linux build PC: refuses $($toolchainCases.Count + 1) kinds of wrong result (a toolchain not the build PC's, missing or differing between the builds, the zip and the helper; the build PC's user, computer or reported names in the package)"
+    $y = Fresh; $null = Plan $y; $y.World.BuildTweak = { param($f) $f.dropCompilerCache = $true }
+    Reject { Invoke-PubBuild $y.Ctx $y.P } '*names no compiler cache*'
+    $y = Fresh; $null = Plan $y; $y.World.BuildTweak = { param($f) $f.compilerCache = '4.14.1' }
+    Reject { Invoke-PubBuild $y.Ctx $y.P } '*names no compiler cache*'
+    Pass "Linux build PC: refuses $($toolchainCases.Count + 3) kinds of wrong result (a toolchain or compiler cache not the build PC's, missing or differing between the builds, the zip and the helper; the build PC's user, computer or reported names in the package)"
+    $y = Fresh -Linux; $null = Plan $y; Invoke-Quiet { Invoke-PubBuild $y.Ctx $y.P }
+    $build = Read-PubEvidence $y.Ctx 'build' (Read-PubPlan $y.Ctx)
+    Check ($build.facts.compilerCache -ceq 'sccache 0.19.0' -and $build.facts.helperCompilerCache -ceq 'sccache 0.19.0' -and $build.facts.cacheStats.'build-player'.hits -eq 950) 'the build evidence names the cache and what it served'
+    Check ((Get-Content "$($y.Ctx.Root)\publish.log" -Raw) -match 'sccache 0\.19\.0 in build-player: 950 hits, 11 misses') 'the stage prints the cache''s hits and misses'
+    $y.World.RoomsTweak = { param($r) $r.cache = 'none' }
+    Reject { Invoke-PubRooms $y.Ctx $y.P } '*room-host build names no sccache*'
+    Pass 'Linux build PC: the compiler cache recorded and its hits printed for each build; a room-host pair built without it is refused'
     $y = Fresh -Linux; $null = Plan $y; $y.World.LaptopBusy = 'another job'
     Reject { Invoke-PubBuild $y.Ctx $y.P } '*one heavy build at a time*'
     $y = Fresh -Linux; $null = Plan $y; $y.Ctx.Config.laptop.setup = ''
     Reject { Invoke-PubBuild $y.Ctx $y.P } '*names no setup*'
+    $y = Fresh -Linux; $null = Plan $y; $y.Ctx.Config.laptop.sccachePort = $null
+    Reject { Invoke-PubBuild $y.Ctx $y.P } '*names no sccachePort*'
     $y = Fresh -Linux; $null = Plan $y; $y.Ctx.Config.laptop.machineNames = @()
     Reject { Invoke-PubBuild $y.Ctx $y.P } '*names no machineNames*'
     $y = Fresh -Linux; $null = Plan $y; $y.Ctx.Config.rooms.backend = 'wsl'
@@ -556,11 +574,12 @@ try {
     $linuxArgs = if ($IsWindows) { @() } else {
         Write-File "$($y.F)\setup.sh" ": the build PC setup`n"
         foreach ($clone in 'sfv-laptop', 'lib-laptop') { G "$($y.F)\$clone" @('config', 'core.autocrlf', 'true') | Out-Null }
-        @('-Setup', (Get-PubNativePath "$($y.F)\setup.sh"), '-TestEmulator', '/bin/true', '-Lock', $lock, '-VcpkgCache', '/tmp/none', '-Jobs', '4')
+        @('-Setup', (Get-PubNativePath "$($y.F)\setup.sh"), '-TestEmulator', '/bin/true', '-Lock', $lock, '-VcpkgCache', '/tmp/none', '-Jobs', '4',
+            '-Sccache', '/usr/bin/true', '-SccacheDir', (Join-Path $y.F 'sccache'), '-SccachePort', '4299')
     }
     $sync = { pwsh -NoProfile -File $agent -Phase sync -Work $work -Label t -Source $y.C1 -SourceTree (G $y.Sfv @('rev-parse', "$($y.C1)^{tree}")) -Library $l3 `
-        -LibraryTree (G $y.Lib @('rev-parse', "$l3^{tree}")) -SourceCheckout (Get-PubNativePath "$($y.F)\sfv-laptop") -LibraryCheckout (Get-PubNativePath "$($y.F)\lib-laptop") -BuildDev "$fakeRoot\x" -BuildPlayer "$fakeRoot\y" `
-        -VcpkgRoot "$fakeRoot\v" -RenderStore "$fakeRoot\r" -MinColourCoverage $coverage -Dist "$fakeRoot\d" -Interactive "$($y.F)\interactive" -JobName t-job @packArgs @linuxArgs | Select-Object -Last 1 }
+        -LibraryTree (G $y.Lib @('rev-parse', "$l3^{tree}")) -SourceCheckout (Get-PubNativePath "$($y.F)\sfv-laptop") -LibraryCheckout (Get-PubNativePath "$($y.F)\lib-laptop") -BuildDev (Join-Path $fakeRoot 'x') -BuildPlayer (Join-Path $fakeRoot 'y') `
+        -VcpkgRoot (Join-Path $fakeRoot 'v') -RenderStore (Join-Path $fakeRoot 'r') -MinColourCoverage $coverage -Dist (Join-Path $fakeRoot 'd') -Interactive "$($y.F)\interactive" -JobName t-job @packArgs @linuxArgs | Select-Object -Last 1 }
     $packArgs = @(); $coverage = ''
     $result = ((& $sync) -replace '^RESULT ', '') | ConvertFrom-Json
     Check (!$result.ok -and $result.error -like '*No colour coverage*' -and !(Test-Path "$work\job.json")) 'a sync without the colour coverage is refused'
@@ -574,6 +593,7 @@ try {
     else {
         $script = Get-Content "$work\job.sh" -Raw
         Check ($script -match "-Phase job" -and $script.Contains("exec 9>'$lock'") -and $script -match "WINEDLLOVERRIDES='xinput1_3=n,b'" -and $script -match 'CMAKE_BUILD_PARALLEL_LEVEL=4') "job.sh written: $script"
+        Check ($script -match 'SCCACHE_SERVER_PORT=4299' -and $script.Contains("SCCACHE_DIR='$(Join-Path $y.F 'sccache')'") -and $script.Contains("SCCACHE_BASEDIRS='$(Join-Path $fakeRoot 'x'):$(Join-Path $fakeRoot 'y')'") -and $script -match '--stop-server') 'the job''s compiler cache: its own folder, port and base folders, its server stopped at the end'
     }
     $poll = ((pwsh -NoProfile -File $agent -Phase poll -Work $work -Interactive "$($y.F)\interactive" | Select-Object -Last 1) -replace '^RESULT ', '') | ConvertFrom-Json
     Check ($poll.state -ceq 'new') 'poll before the job'

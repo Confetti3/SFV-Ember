@@ -18,14 +18,16 @@
 #   poll            new, starting, running, done or failed, with the log's last line
 # Linux settings (sync and rooms-install; kept in job.json): -Setup, a shell file job.sh sources first (the tools on
 # PATH, SF4E_XWIN and SF4E_LLVM_BIN for scripts/build.ps1's cross build); -VcpkgCache; -DiscordSdk; -TestEmulator,
-# the program that runs a Windows program (Wine) and -TestPrefix, its prefix; -Lock; -Jobs.
+# the program that runs a Windows program (Wine) and -TestPrefix, its prefix; -Lock; -Jobs; -Sccache, the compiler
+# cache every build goes through, with -SccacheDir and -SccachePort, its own folder and server port.
 param([Parameter(Mandatory = $true)][ValidateSet('status', 'sync', 'start', 'job', 'rooms-install', 'rooms-job', 'poll')][string]$Phase,
       [Parameter(Mandatory = $true)][string]$Work,
       [string]$Label = '', [string]$Source = '', [string]$SourceTree = '', [string]$Library = '', [string]$LibraryTree = '',
       [string]$SourceCheckout = '', [string]$LibraryCheckout = '', [string]$BuildDev = '', [string]$BuildPlayer = '',
       [string]$VcpkgRoot = '', [string]$RenderStore = '', [string]$MinColourCoverage = '', [string]$OldPackageCheck = '', [string]$Dist = '', [string]$ColourPackRepo = '',
       [string]$Interactive = 'D:\sf4\interactive', [string]$JobName = '', [string]$BuildId = '', [string]$SfvTar = '', [string]$LibraryTar = '', [ValidateSet('build', 'check')][string]$Mode = 'build',
-      [string]$Setup = '', [string]$VcpkgCache = '', [string]$DiscordSdk = '', [string]$TestEmulator = '', [string]$TestPrefix = '', [string]$Lock = '', [string]$Jobs = '')
+      [string]$Setup = '', [string]$VcpkgCache = '', [string]$DiscordSdk = '', [string]$TestEmulator = '', [string]$TestPrefix = '', [string]$Lock = '', [string]$Jobs = '',
+      [string]$Sccache = '', [string]$SccacheDir = '', [string]$SccachePort = '')
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
@@ -84,17 +86,27 @@ function Write-JobScript([string]$AgentPhase) {
         # Windows' DLL search finds the xinput proxy beside a test program before the system's; Wine prefers its
         # builtin xinput1_3 unless told otherwise (guard_probe and every test that loads the proxy).
         "export SFVE_WINE_EMULATOR=$(& $q $job.testEmulator) EMBER_WINE_DATA=$(& $q $job.testPrefix) WINEDLLOVERRIDES='xinput1_3=n,b'",
-        "trap `"$(& $q $job.testEmulator) --kill >/dev/null 2>&1 || true`" EXIT",
+        # The compiler cache: its own folder and server (no other build's sccache server is restarted under it).
+        # Both build trees are base folders, so one tree's compiles serve the other's where they are the same.
+        "export SCCACHE_DIR=$(& $q $job.sccacheDir) SCCACHE_SERVER_PORT=$([int]$job.sccachePort) SFVE_SCCACHE=$(& $q $job.sccache)",
+        $(if ($job.buildDev) { "export SCCACHE_BASEDIRS=$(& $q (@($job.buildDev, $job.buildPlayer | Where-Object { $_ }) -join ':'))" } else { '# (no build trees: no base folders)' }),
+        "export PATH=$(& $q (Split-Path -Parent $job.sccache)):`"`$PATH`"",
+        "trap `"$(& $q $job.testEmulator) --kill >/dev/null 2>&1 || true; $(& $q $job.sccache) --stop-server >/dev/null 2>&1 || true`" EXIT",
         "nice -n 5 $(& $q $job.pwsh) -NoProfile -File $(& $q (Join-Path $Work 'laptop-agent.ps1')) -Phase $AgentPhase -Work $(& $q $Work) > $(& $q (Join-Path $Work 'job.log')) 2>&1")
     [IO.File]::WriteAllText((Join-Path $Work 'job.sh'), ($lines -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
 }
 # The Linux settings a job needs, checked when it is set up.
 function Get-LinuxSettings {
-    foreach ($pair in @(@('-Setup', $Setup), @('-TestEmulator', $TestEmulator), @('-Lock', $Lock))) { if (!$pair[1]) { throw "A Linux build PC needs $($pair[0])." } }
+    foreach ($pair in @(@('-Setup', $Setup), @('-TestEmulator', $TestEmulator), @('-Lock', $Lock), @('-Sccache', $Sccache), @('-SccacheDir', $SccacheDir), @('-SccachePort', $SccachePort))) {
+        if (!$pair[1]) { throw "A Linux build PC needs $($pair[0])." }
+    }
     if (!(Test-Path -LiteralPath $Setup -PathType Leaf)) { throw "No setup file at $Setup" }
     if (!(Test-Path -LiteralPath $TestEmulator -PathType Leaf)) { throw "No test emulator at $TestEmulator" }
+    if (!(Test-Path -LiteralPath $Sccache -PathType Leaf)) { throw "No sccache at $Sccache" }
+    if ($SccachePort -cnotmatch '^[0-9]{4,5}$') { throw "Not a port: $SccachePort" }
     [ordered]@{setup = $Setup; testEmulator = $TestEmulator; testPrefix = $TestPrefix; lock = $Lock; jobs = $(if ($Jobs) { [int]$Jobs } else { 12 })
-        pwsh = (Get-Process -Id $PID).Path; discordSdk = $DiscordSdk; vcpkgCache = $VcpkgCache}
+        pwsh = (Get-Process -Id $PID).Path; discordSdk = $DiscordSdk; vcpkgCache = $VcpkgCache
+        sccache = $Sccache; sccacheDir = $SccacheDir; sccachePort = [int]$SccachePort; buildDev = $BuildDev; buildPlayer = $BuildPlayer}
 }
 # This PC's own names: user, profile (home) folder, computer.
 function Get-MachineNames {
@@ -120,6 +132,23 @@ function Get-CTest([string]$Log) {
     if (!$last) { return @{passed = 0; failed = 0; total = 0} }
     $failed = [int]$last.Matches[0].Groups[2].Value; $total = [int]$last.Matches[0].Groups[3].Value
     @{passed = $total - $failed; failed = $failed; total = $total}
+}
+# What the compiler cache served a step: the sccache statistics a build script printed last in its log
+# ("== sccache statistics"), or null when it printed none.
+function Get-CacheStats([string]$Log) {
+    if (!(Test-Path -LiteralPath $Log)) { return $null }
+    $lines = @(Get-Content -LiteralPath $Log)
+    $at = -1
+    for ($i = $lines.Count - 1; $i -ge 0; $i--) { if ($lines[$i] -ceq '== sccache statistics') { $at = $i; break } }
+    if ($at -lt 0) { return $null }
+    $stats = [ordered]@{}
+    foreach ($line in $lines[($at + 1)..($lines.Count - 1)]) {
+        if ($line -cmatch '^Cache (hits|misses)(?: \((C/C\+\+|Rust)\))?\s+([0-9]+)\s*$') {
+            $key = $Matches[1] + $(switch ($Matches[2]) { 'C/C++' { 'Cpp' } 'Rust' { 'Rust' } default { '' } })
+            if (!$stats.Contains($key)) { $stats[$key] = [int]$Matches[3] }
+        }
+    }
+    $stats
 }
 function Invoke-Step([string]$Name, [string]$Script, [string[]]$Arguments) {
     $log = Join-Path $Work "$Name.log"
@@ -264,6 +293,9 @@ switch ($Phase) {
             if ($pack) { Copy-Item -LiteralPath $packs[0].FullName $pack }
             Copy-Item -LiteralPath (Join-Path $Work 'checkout.json') (Join-Path $out 'checkout.json')
             $result.ctest = @{development = (Get-CTest (Join-Path $Work 'build-development.log')); player = (Get-CTest (Join-Path $Work 'build-player.log'))}
+            # What the compiler cache served each build (Linux: sccache; a Windows build prints none here).
+            $result.cache = [ordered]@{}
+            foreach ($step in 'build-development', 'build-player', 'helper') { $result.cache[$step] = Get-CacheStats (Join-Path $Work "$step.log") }
             $result.zipSha256 = Sha (Join-Path $out "sfv-ember-$($job.label).zip")
             $result.colourPack = if ($pack) { @{name = $packs[0].Name; sha256 = (Sha $pack)} } else { $null }
             # The pack's entries are stored, so its names and manifest are scanned as they are in the file.
@@ -316,6 +348,7 @@ switch ($Phase) {
                 & bash (Join-Path $Work 'build-rooms-linux.sh') @arguments *> $log
             }
             $result.exit = $LASTEXITCODE
+            $result.cache = Get-CacheStats $log
             $text = if (Test-Path -LiteralPath (Join-Path $Work 'out\result.txt')) { Get-Content -LiteralPath (Join-Path $Work 'out\result.txt') -Raw } else { '' }
             $result.ok = ($result.exit -eq 0 -and $text -cmatch '(?m)^STATUS=ok')
             if (!$result.ok) { $result.error = "the $(if ($IsWindows) { 'WSL' } else { 'Linux' }) build ended with $($result.exit); see $log" }

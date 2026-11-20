@@ -188,7 +188,7 @@ function Invoke-FakeLaptop([object]$World, [string]$Command) {
             foreach ($b in 'source.bundle', 'library.bundle') { if (!(Test-Path -LiteralPath (Join-Path $local $b))) { return ConvertTo-FakeResult "RESULT {`"ok`":false,`"error`":`"no $b`"}`n" } }
             $job = & $arg 'JobName'
             if ($World.LinuxBuildPc) {
-                foreach ($name in 'Setup', 'TestEmulator', 'Lock', 'VcpkgCache', 'DiscordSdk') { if (!(& $arg $name)) { return ConvertTo-FakeResult "RESULT {`"ok`":false,`"error`":`"A Linux build PC needs -$name.`"}`n" } }
+                foreach ($name in 'Setup', 'TestEmulator', 'Lock', 'VcpkgCache', 'DiscordSdk', 'Sccache', 'SccacheDir', 'SccachePort') { if (!(& $arg $name)) { return ConvertTo-FakeResult "RESULT {`"ok`":false,`"error`":`"A Linux build PC needs -$name.`"}`n" } }
                 if ((& $arg 'Dist') -cnotmatch '^/') { throw "A Windows path for a Linux build PC: $(& $arg 'Dist')" }
             }
             Set-Content -LiteralPath (Join-Path $local 'job-name.txt') -Value $job
@@ -238,6 +238,10 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
         toolchain = $(if ($World.LinuxBuildPc) { [ordered]@{host = 'linux'; compiler = 'clang-cl: clang version 21.1.8 (x)'; linker = 'lld-link: LLD 21.1.8 (x)'; crt = 'Microsoft CRT 14.44.35220 (xwin 0.10.0)'; sdk = 'Windows SDK 10.0.26100 (xwin 0.10.0)'} }
             else { [ordered]@{host = 'windows'; compiler = 'MSVC 14.51.36231'; linker = 'MSVC link 14.51.36231'; crt = 'MSVC 14.51.36231'; sdk = 'Windows SDK 10.0.26100.0'} })
         playerToolchain = $null; helperToolchain = [ordered]@{rustc = 'rustc 1.98.0'; linker = 'lld-link: LLD 21.1.8'; cc = 'clang-cl: clang version 21.1.8'}
+        # The compiler cache each names (sccache on a Linux build PC, ccache on Windows), and what it served.
+        compilerCache = $(if ($World.LinuxBuildPc) { 'sccache 0.19.0' } else { 'ccache 4.14.1' }); playerCompilerCache = $null; dropCompilerCache = $false
+        helperCompilerCache = $(if ($World.LinuxBuildPc) { 'sccache 0.19.0' } else { $null })
+        cacheStats = $(if ($World.LinuxBuildPc) { [ordered]@{'build-development' = [ordered]@{hits = 900; misses = 61}; 'build-player' = [ordered]@{hits = 950; misses = 11}; helper = [ordered]@{hits = 380; misses = 9; hitsRust = 380; missesRust = 9}} } else { $null })
         machineNames = @()
         packPicture = 'a colour of a costume'; packRepo = 'Owner/SFV-Ember'; descriptorOverride = $null; packNameOverride = $null
         # package.ps1 -ColourPack: a pack beside the zip, named by the zip's descriptor; without it the zip has every
@@ -249,12 +253,15 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
     [IO.File]::WriteAllText((Join-Path $staging 'Launcher.exe'), $f.launcher)
     [IO.File]::WriteAllBytes((Join-Path $staging $f.extraName), [Text.Encoding]::Unicode.GetBytes($f.extra))
     $binaries = @('sfv_ember.dll', 'Launcher.exe') | ForEach-Object { [ordered]@{path = $_; sha256 = (Get-FileHash -LiteralPath (Join-Path $staging $_) -Algorithm SHA256).Hash} }
-    $receipt = { param($Kind) [ordered]@{schema = 1; product = 'SFV Ember'; version = $f.version; sourceRevision = $f.sourceRevision; sourceFingerprint = $f.sourceFingerprint
+    $receipt = { param($Kind) $r = [ordered]@{schema = 1; product = 'SFV Ember'; version = $f.version; sourceRevision = $f.sourceRevision; sourceFingerprint = $f.sourceFingerprint
         emberRevision = $f.emberRevision; emberFingerprint = $f.emberFingerprint; buildKind = $Kind; testsPassed = $true; tests = $f.tests; binaries = $binaries
-        toolchain = $(if ($Kind -ceq 'player' -and $f.playerToolchain) { $f.playerToolchain } else { $f.toolchain })} }
+        toolchain = $(if ($Kind -ceq 'player' -and $f.playerToolchain) { $f.playerToolchain } else { $f.toolchain })
+        compilerCache = $(if ($Kind -ceq 'player' -and $f.playerCompilerCache) { $f.playerCompilerCache } else { $f.compilerCache })}
+        if ($f.dropCompilerCache) { $r.Remove('compilerCache') }
+        $r }
     Save-FakeJson (Join-Path $out 'receipt-development.json') (& $receipt 'development')
     Save-FakeJson (Join-Path $out 'receipt-player.json') (& $receipt 'player')
-    Save-FakeJson (Join-Path $out 'helper.provenance.json') @{emberRevision = $f.emberRevision; emberFingerprint = $f.emberFingerprint; sha256 = ('C' * 64); toolchain = $f.helperToolchain}
+    Save-FakeJson (Join-Path $out 'helper.provenance.json') @{emberRevision = $f.emberRevision; emberFingerprint = $f.emberFingerprint; sha256 = ('C' * 64); toolchain = $f.helperToolchain; compilerCache = $f.helperCompilerCache}
     $packaged = & $receipt 'player'
     $packaged.package = @{label = $f.label}
     $packaged.renders = [ordered]@{included = $true; colourCoverage = 1; minColourCoverage = 1; colourPack = $null}
@@ -288,7 +295,7 @@ function New-FakeBuildOutput([object]$World, [string]$Work) {
         library = @{commit = $plan.library.commit; tree = $plan.library.tree; clean = $true; fingerprint = $World.Fingerprints.library}}
     Save-FakeJson (Join-Path $out 'result.json') @{ok = $true; steps = @(@{name = 'build-development'; exit = 0}, @{name = 'package'; exit = 0})
         ctest = @{development = @{passed = $f.ctestTotal - $f.ctestFailed; failed = $f.ctestFailed; total = $f.ctestTotal}; player = @{passed = $f.ctestTotal - $f.ctestFailed; failed = $f.ctestFailed; total = $f.ctestTotal}}
-        zipSha256 = $(if ($f.zipShaOverride) { $f.zipShaOverride } else { $sha }); machineScan = $f.machineScan; machineNames = $f.machineNames
+        zipSha256 = $(if ($f.zipShaOverride) { $f.zipShaOverride } else { $sha }); machineScan = $f.machineScan; machineNames = $f.machineNames; cache = $f.cacheStats
         colourPack = $resultPack
         source = @{fingerprint = $f.resultFingerprint}; library = @{fingerprint = $World.Fingerprints.library}}
     Set-Content -LiteralPath (Join-Path $out 'job.log') -Value 'fake job'
@@ -298,7 +305,8 @@ function New-FakeRoomOutput([object]$World, [string]$Work) {
     $out = Join-Path $Work 'out'
     New-Item -ItemType Directory -Path $out -Force | Out-Null
     $build = (Get-Content -LiteralPath (Join-Path $Work 'build-id.txt')).Trim()
-    $r = @{own = 'helper_unavailable'; other = 'other_build'; embedded = $build; paths = '0'; hostBytes = "`u{7f}ELF room host $build"; status = 'ok'; glibc = '2.38'; netPaths = '0'}
+    $r = @{own = 'helper_unavailable'; other = 'other_build'; embedded = $build; paths = '0'; hostBytes = "`u{7f}ELF room host $build"; status = 'ok'; glibc = '2.38'; netPaths = '0'
+        cache = $(if ($World.LinuxBuildPc) { 'sccache 0.19.0' } else { 'none' })}
     if ($World.RoomsTweak) { & $World.RoomsTweak $r }
     $mode = if (Test-Path -LiteralPath (Join-Path $Work 'mode.txt')) { (Get-Content -LiteralPath (Join-Path $Work 'mode.txt')).Trim() } else { 'build' }
     if ($mode -ceq 'check') {
@@ -318,6 +326,6 @@ function New-FakeRoomOutput([object]$World, [string]$Work) {
     $inputsLines = if ($mode -ceq 'check') { @('MODE=check') } else { @('MODE=build', "SFV_TAR=$(& $sha 'sfv.tar')", "LIBRARY_TAR=$(& $sha 'library.tar')") }
     Set-Content -LiteralPath (Join-Path $out 'result.txt') -Value (@("BUILD_ID=$build") + $inputsLines + @(
         "ANSWER_OWN=$($r.own)", "ANSWER_OTHER=$($r.other)", "EMBEDDED=$($r.embedded)", "PATHS_SFVE_ROOM_HOST=$($r.paths)", "PATHS_SF4_NET=$($r.netPaths)",
-        "GLIBC_SFVE_ROOM_HOST=$($r.glibc)", 'GLIBC_SF4_NET=2.34', "STATUS=$($r.status)"))
+        "GLIBC_SFVE_ROOM_HOST=$($r.glibc)", 'GLIBC_SF4_NET=2.34', "CACHE=$($r.cache)", "STATUS=$($r.status)"))
     Set-Content -LiteralPath (Join-Path $out 'job.log') -Value 'fake rooms'
 }

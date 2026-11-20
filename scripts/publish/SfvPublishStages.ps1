@@ -25,9 +25,9 @@ function ConvertTo-PubLaptopQuoted([object]$Ctx, [string]$Value) {
 function Get-PubLinuxJobArguments([object]$Ctx) {
     if (!(Test-PubLinuxBuildPc $Ctx)) { return @() }
     $lap = $Ctx.Config.laptop
-    foreach ($key in 'setup', 'testEmulator', 'lock', 'vcpkgCache', 'discordSdk') { if (!$lap.$key) { throw "config.json's laptop block names no $key, which a Linux build PC needs." } }
+    foreach ($key in 'setup', 'testEmulator', 'lock', 'vcpkgCache', 'discordSdk', 'sccache', 'sccacheDir', 'sccachePort') { if (!$lap.$key) { throw "config.json's laptop block names no $key, which a Linux build PC needs." } }
     @('-Setup', $lap.setup, '-VcpkgCache', $lap.vcpkgCache, '-DiscordSdk', $lap.discordSdk, '-TestEmulator', $lap.testEmulator, '-TestPrefix', "$($lap.testPrefix)",
-        '-Lock', $lap.lock, '-Jobs', "$($lap.jobs)")
+        '-Lock', $lap.lock, '-Jobs', "$($lap.jobs)", '-Sccache', $lap.sccache, '-SccacheDir', $lap.sccacheDir, '-SccachePort', "$($lap.sccachePort)")
 }
 function Invoke-PubLaptop([object]$Ctx, [string]$Command, [int]$TimeoutSeconds = 300) {
     $result = & $Ctx.Ops.Ssh $Ctx.Config.laptop.host $Command $null $TimeoutSeconds
@@ -182,6 +182,9 @@ function Invoke-PubBuild([object]$Ctx, [hashtable]$P) {
     $facts.agentSha256 = Get-PubSha256 $Ctx.AgentPath
     $null = Write-PubEvidence $Ctx 'build' (New-PubEvidence $Ctx 'build' $planRead $files $facts)
     Write-PubLog $Ctx "Build done: $($plan.zip) $($facts.zipSha256)."
+    foreach ($step in @($facts.cacheStats.PSObject.Properties | Where-Object { $_.Value })) {
+        Write-PubLog $Ctx "  $($facts.compilerCache) in $($step.Name): $($step.Value.hits) hits, $($step.Value.misses) misses."
+    }
 }
 
 # The rules files the plan pinned, by SHA-256: a later stage scans with exactly those, and with this PC's own names
@@ -208,6 +211,10 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
     if ($result.source.fingerprint -cne $checkout.source.fingerprint -or $result.library.fingerprint -cne $checkout.library.fingerprint) { throw 'The laptop checkouts changed between the sync and the end of the build.' }
     $tests = $null
     $toolchain = $null
+    # Every build names the compiler cache its compiles went through, kind and version: ccache (Windows) or
+    # sccache (a Linux build PC, which always uses it), the same for both builds. A receipt without the field hides it.
+    $cachePattern = if (Test-PubLinuxBuildPc $Ctx) { '^sccache [0-9]+(\.[0-9]+)+$' } else { '^s?ccache [0-9]+(\.[0-9]+)+$' }
+    $cache = $null
     foreach ($kind in @('development', 'player')) {
         $receipt = Read-PubJson (Join-Path $Folder "receipt-$kind.json")
         # The toolchain the receipt names: the build PC's kind (MSVC on Windows, clang-cl cross on Linux), every
@@ -218,6 +225,8 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
         if ($tool.host -cne $expected[0] -or $tool.compiler -cnotmatch $expected[1] -or $tool.linker -cnotmatch $expected[2]) { throw "The $kind receipt's toolchain ($($tool.compiler), $($tool.linker)) is not the build PC's ($($expected[0]))." }
         $toolText = ConvertTo-Json $tool -Compress
         if ($null -eq $toolchain) { $toolchain = $toolText } elseif ($toolText -cne $toolchain) { throw 'The development and player builds name different toolchains.' }
+        if ($receipt.PSObject.Properties.Name -cnotcontains 'compilerCache' -or "$($receipt.compilerCache)" -cnotmatch $cachePattern) { throw "The $kind receipt names no compiler cache as the build PC's builds use one ('$($receipt.compilerCache)')." }
+        if ($null -eq $cache) { $cache = [string]$receipt.compilerCache } elseif ([string]$receipt.compilerCache -cne $cache) { throw 'The development and player builds name different compiler caches.' }
         if ($receipt.product -cne 'SFV Ember' -or $receipt.version -cne $plan.version) { throw "The $kind receipt is not SFV Ember $($plan.version) ($($receipt.version))." }
         if ($receipt.sourceRevision -cne $plan.source.commit -or $receipt.emberRevision -cne $plan.library.commit) { throw "The $kind receipt is for source $($receipt.sourceRevision) and library $($receipt.emberRevision), not the plan's commits." }
         if ($receipt.sourceFingerprint -cne $checkout.source.fingerprint -or $receipt.emberFingerprint -cne $checkout.library.fingerprint) { throw "The $kind receipt's fingerprints are not those of the plan's checkouts." }
@@ -229,6 +238,9 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
     $helper = Read-PubJson (Join-Path $Folder 'helper.provenance.json')
     if ($helper.emberRevision -cne $plan.library.commit -or $helper.emberFingerprint -cne $checkout.library.fingerprint) { throw 'The helper was not built from the plan''s library checkout.' }
     if (@('rustc', 'linker', 'cc' | Where-Object { "$($helper.toolchain.$_)" -notmatch '\S' }).Count) { throw 'The helper''s record names no whole toolchain (rustc, linker, cc).' }
+    # The helper's rustc cache: on a Linux build PC sccache, which its record names; elsewhere named when there is one.
+    if ($helper.PSObject.Properties.Name -cnotcontains 'compilerCache') { throw 'The helper''s record does not say which compiler cache built it.' }
+    if ((Test-PubLinuxBuildPc $Ctx) -and "$($helper.compilerCache)" -cnotmatch '^sccache [0-9]+(\.[0-9]+)+$') { throw "The helper's record names no sccache ('$($helper.compilerCache)')." }
     # The zip: its hash, its sidecar, and the receipt inside it.
     $zip = Join-Path $Folder $plan.zip
     $zipSha = Get-PubSha256 $zip
@@ -276,7 +288,8 @@ function Assert-PubBuildFiles([object]$Ctx, [object]$PlanRead, [string]$Folder, 
     }
     @{zip = $plan.zip; zipSha256 = $zipSha; zipSize = (Get-Item -LiteralPath $zip).Length; packageFiles = $count; tests = $tests.Count; colourPack = $colourPack
       sourceFingerprint = $checkout.source.fingerprint; libraryFingerprint = $checkout.library.fingerprint; roomBuild = $plan.roomBuild.id
-      toolchain = ($toolchain | ConvertFrom-Json); helperToolchain = $helper.toolchain}
+      toolchain = ($toolchain | ConvertFrom-Json); helperToolchain = $helper.toolchain; compilerCache = $cache; helperCompilerCache = $helper.compilerCache
+      cacheStats = $result.cache}
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -391,7 +404,9 @@ function Assert-PubRoomFiles([object]$Ctx, [object]$Plan, [string]$Out, [object[
     }
     $sums = @{}
     foreach ($line in [IO.File]::ReadAllLines((Join-Path $Out 'SHA256SUMS'))) { if ($line -cmatch '^([0-9a-f]{64}) [ *]?(.+)$') { $sums[$Matches[2]] = $Matches[1] } }
-    $facts = @{buildId = $Plan.roomBuild.id; adopted = [bool]$Adopted}
+    # A pair built on a Linux build PC went through its compiler cache, and says which.
+    if (!$Adopted -and (Test-PubLinuxBuildPc $Ctx) -and "$($result.CACHE)" -cnotmatch '^sccache [0-9]+(\.[0-9]+)+$') { throw "The room-host build names no sccache (CACHE=$($result.CACHE))." }
+    $facts = @{buildId = $Plan.roomBuild.id; adopted = [bool]$Adopted; cache = $result.CACHE}
     foreach ($name in @('sfve-room-host', 'sf4-net')) {
         $path = Join-Path $Out $name
         $bytes = [IO.File]::ReadAllBytes($path)
