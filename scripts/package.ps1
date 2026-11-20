@@ -128,7 +128,15 @@ if (!$IsWindows) {
 	function New-WineCommand([string]$Program) {
 		if ("$wine$Program".Contains("'")) { throw "A path with a quote: $Program" }
 		$wrapper = Join-Path $wrappers ([IO.Path]::GetFileNameWithoutExtension($Program) + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
-		[IO.File]::WriteAllText($wrapper, "#!/usr/bin/env bash`nargs=()`nfor a in `"`$@`"; do case `"`$a`" in /*) a=`"Z:`${a//\//\}`" ;; esac; args+=(`"`$a`"); done`nexec '$wine' '$Program' `"`${args[@]}`"`n")
+		# Each '/' of a Linux path becomes '\' after Z: (bash's ${a//\//$bs}, $bs a backslash).
+		$body = @'
+#!/usr/bin/env bash
+bs='\'
+args=()
+for a in "$@"; do case "$a" in /*) a="Z:${a//\//$bs}" ;; esac; args+=("$a"); done
+exec 'WINE' 'PROGRAM' "${args[@]}"
+'@
+		[IO.File]::WriteAllText($wrapper, $body.Replace("`r`n", "`n").Replace("'WINE'", "'$wine'").Replace("'PROGRAM'", "'$Program'"))
 		& chmod 0755 $wrapper
 		if ($LASTEXITCODE) { throw "chmod failed for $wrapper" }
 		$wrapper
