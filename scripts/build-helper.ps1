@@ -63,7 +63,7 @@ cmd /c "`"$vcvars`" >nul && set" | ForEach-Object {
 	New-Item -ItemType Directory -Force $tools | Out-Null
 	$inc = "/imsvc $x/crt/include /imsvc $x/sdk/include/ucrt /imsvc $x/sdk/include/um /imsvc $x/sdk/include/shared /imsvc $x/sdk/include/winrt"
 	# The compiler cache scripts/build.ps1 uses (its folder and server port from the caller): rustc through
-	# RUSTC_WRAPPER, the cc crate's clang-cl through the wrapper below.
+	# RUSTC_WRAPPER, which the cc crate puts before its C compiler (the clang-cl wrapper below) too.
 	$sccache = if ($NoCompilerCache) { $null } else { (Get-Command sccache -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source }
 	if ($sccache) {
 		if (!$env:SCCACHE_DIR -or !$env:SCCACHE_SERVER_PORT) { throw 'sccache needs SCCACHE_DIR and SCCACHE_SERVER_PORT here (a cache and a server of this build''s own), or -NoCompilerCache' }
@@ -72,9 +72,8 @@ cmd /c "`"$vcvars`" >nul && set" | ForEach-Object {
 		$env:RUSTC_WRAPPER = $sccache
 		& $sccache --zero-stats | Out-Null
 	} else { Remove-Item Env:\RUSTC_WRAPPER -ErrorAction SilentlyContinue }
-	$cc = if ($sccache) { "'$sccache' '$l/clang-cl'" } else { "'$l/clang-cl'" }
 	$wrappers = [ordered]@{
-		'clang-cl-x64' = "exec $cc --target=x86_64-pc-windows-msvc $inc `"`$@`""
+		'clang-cl-x64' = "exec '$l/clang-cl' --target=x86_64-pc-windows-msvc $inc `"`$@`""
 		'lld-link-x64' = "export LIB='$x/crt/lib/x86_64;$x/sdk/lib/ucrt/x86_64;$x/sdk/lib/um/x86_64'`nexec '$l/lld-link' `"`$@`""
 		'rc.exe' = "args=(); for a in `"`$@`"; do case `"`${a,,}`" in /nologo|-nologo) ;; *) args+=(`"`$a`") ;; esac; done`nexec '$l/llvm-rc' /I $x/sdk/include/um /I $x/sdk/include/shared /I $x/sdk/include/ucrt /I $x/crt/include `"`${args[@]}`""
 		'ml64.exe' = "exec '$l/llvm-ml' -m64 `"`$@`""
