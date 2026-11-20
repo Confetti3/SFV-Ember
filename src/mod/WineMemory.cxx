@@ -20,7 +20,13 @@ const HANDLE kThisProcess = reinterpret_cast<HANDLE>(-1);
 
 LONG NTAPI h_NtAllocateVirtualMemory(HANDLE process, PVOID* base, ULONG_PTR zeroBits, PSIZE_T size, ULONG type, ULONG protect)
 {
-	if (TopDownFits(process == kThisProcess, base && *base, zeroBits, type)) type |= MEM_TOP_DOWN;
+	if (!TopDownFits(process == kThisProcess, base && *base, zeroBits, type)) {
+		return o_NtAllocateVirtualMemory(process, base, zeroBits, size, type, protect);
+	}
+	// Top down below 8 TB, not at the end of user space (see kTopDownZeroBits).
+	const LONG status = o_NtAllocateVirtualMemory(process, base, kTopDownZeroBits, size, type | MEM_TOP_DOWN, protect);
+	if (status >= 0) return status;
+	// No room under the limit: the caller's own request, as before the hook.
 	return o_NtAllocateVirtualMemory(process, base, zeroBits, size, type, protect);
 }
 
@@ -35,6 +41,24 @@ bool RunningUnderWine()
 bool TopDownFits(bool thisProcess, bool fixedAddress, uint64_t zeroBits, uint32_t allocationType)
 {
 	return thisProcess && !fixedAddress && zeroBits == 0 && (allocationType & (MEM_RESERVE | MEM_COMMIT)) != 0;
+}
+
+uint64_t ZeroBitsLimit(uint64_t zeroBits)
+{
+	if (zeroBits == 0) return 0;
+	unsigned shift = 0;
+	if (zeroBits < 32) {
+		shift = 32 + static_cast<unsigned>(zeroBits);
+	} else {
+		shift = 63;
+		if (zeroBits >> 32) { shift -= 32; zeroBits >>= 32; }
+		if (zeroBits >> 16) { shift -= 16; zeroBits >>= 16; }
+		if (zeroBits >> 8) { shift -= 8; zeroBits >>= 8; }
+		if (zeroBits >> 4) { shift -= 4; zeroBits >>= 4; }
+		if (zeroBits >> 2) { shift -= 2; zeroBits >>= 2; }
+		if (zeroBits >> 1) shift -= 1;
+	}
+	return ~0ull >> shift;
 }
 
 bool InstallWineMemory()
@@ -64,12 +88,14 @@ bool InstallWineMemory()
 	hooks.Add("NtAllocateVirtualMemory", reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtAllocateVirtualMemory")),
 		reinterpret_cast<void*>(&h_NtAllocateVirtualMemory), reinterpret_cast<void**>(&o_NtAllocateVirtualMemory));
 	if (CommitHookSet(hooks, "wine memory")) return false;
-	// Where a new allocation now lands, for the log: above 1 TB is the point.
+	// Where a new allocation now lands, for the log: in [1 TB, 8 TB) is the point.
 	void* probe = VirtualAlloc(nullptr, 0x10000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	const uint64_t at = reinterpret_cast<uint64_t>(probe);
 	if (probe) VirtualFree(probe, 0, MEM_RELEASE);
-	Log("wine memory: allocations go top down (NtAllocateVirtualMemory hooked); a new one lands at 0x%llX%s",
-		(unsigned long long)at, at >= kHighAddresses ? "" : ", NOT above 1 TB: the low-heap rule serves");
+	Log("wine memory: allocations go top down below 8 TB (NtAllocateVirtualMemory hooked); a new one lands at 0x%llX%s",
+		(unsigned long long)at,
+		InTopDownRange(at) ? "" : at >= kWineUserSpace ? ", NOT below 8 TB: 43-bit pointers (XAudio2_7) would break"
+			: ", NOT above 1 TB: the low-heap rule serves");
 	return true;
 }
 

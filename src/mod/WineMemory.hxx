@@ -18,6 +18,8 @@
 // addresses by every rule. On Windows nothing is hooked and the start ranges
 // stay empty.
 
+#include "mod/AddressRanges.hxx"
+
 #include <stdint.h>
 
 namespace sfve::mod {
@@ -29,6 +31,22 @@ bool RunningUnderWine();
 // one for this process at no fixed address and with no zero-bits limit
 // (an allocation that must lie low says so with zero bits). Pure.
 bool TopDownFits(bool thisProcess, bool fixedAddress, uint64_t zeroBits, uint32_t allocationType);
+
+// Windows 7 era x64 code (XAudio2_7.dll, 2010) cuts pointers to 43 bits, so a
+// pointer at or above 8 TB comes back wrong and its owner faults. A game's
+// heap on Windows lies above 1 TB and far below 8 TB; top down alone puts it
+// at 128 TB. So a top down allocation also passes this zero-bits mask, which
+// Wine reads as an upper limit: the result lies in [1 TB, 8 TB).
+constexpr uint64_t kWineUserSpace = 1ull << 43;
+constexpr uint64_t kTopDownZeroBits = kWineUserSpace - 1;
+
+// The highest address (inclusive) a zero-bits value allows for an allocation
+// at no fixed address, as Wine reads it (get_zero_bits_limit); 0 is no limit.
+// Values below 32 count leading zero bits above bit 32, larger ones are masks.
+uint64_t ZeroBitsLimit(uint64_t zeroBits);
+
+// Whether an address a top down allocation returned lies where it should.
+constexpr bool InTopDownRange(uint64_t address) { return address >= kHighAddresses && address < kWineUserSpace; }
 
 // Under Wine: hooks NtAllocateVirtualMemory to ask top down (TopDownFits),
 // sets the start ranges, and logs both ("wine memory:"). Nothing elsewhere.

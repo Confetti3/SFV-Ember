@@ -242,3 +242,27 @@ TEST_CASE("under Wine only an allocation for this process at no fixed address an
 	CHECK_FALSE(TopDownFits(true, false, 31, MEM_RESERVE));  // asked to lie low
 	CHECK_FALSE(TopDownFits(true, false, 0, MEM_RESET));
 }
+
+TEST_CASE("a top down allocation is limited to below 8 TB, as 43-bit pointer code needs")
+{
+	using namespace sfve::mod;
+	CHECK(kTopDownZeroBits == 0x000007FFFFFFFFFFull);
+	// Wine reads a zero-bits value above 32 as a mask and limits the result to it.
+	CHECK(ZeroBitsLimit(kTopDownZeroBits) == 0x000007FFFFFFFFFFull);
+	CHECK(ZeroBitsLimit(kTopDownZeroBits) + 1 == kWineUserSpace);
+	CHECK(ZeroBitsLimit(0) == 0);
+	CHECK(ZeroBitsLimit(21) == (~0ull >> 53));
+	CHECK(ZeroBitsLimit(0xFFFFFFFFull) == 0xFFFFFFFFull);
+	// A caller that already asked for top down still gets the limit, and one with
+	// its own zero bits keeps its own.
+	CHECK(TopDownFits(true, false, 0, MEM_RESERVE | MEM_TOP_DOWN));
+	CHECK_FALSE(TopDownFits(true, false, kTopDownZeroBits, MEM_RESERVE | MEM_TOP_DOWN));
+	CHECK_FALSE(TopDownFits(true, false, 0xFFFFFFFFull, MEM_RESERVE));
+	// Where a result may lie.
+	CHECK(InTopDownRange(kHighAddresses));
+	CHECK(InTopDownRange(0x000007FFFFFA0000ull));
+	CHECK_FALSE(InTopDownRange(kHighAddresses - 1));
+	CHECK_FALSE(InTopDownRange(kWineUserSpace));
+	CHECK_FALSE(InTopDownRange(0x00007FFFFFBA0000ull)); // what 0.1.1 handed out
+	CHECK_FALSE(InTopDownRange(0));
+}
