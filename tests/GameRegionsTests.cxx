@@ -471,7 +471,26 @@ TEST_CASE("a projectile's action run leaves its controller's fourth lane out of 
 		CAPTURE(manager::kRunRules[k].owner);
 		CHECK(applied[k] == (strcmp(manager::kRunRules[k].owner, "ProjectileActionPart") == 0 ? 1 : 0));
 	}
-	CHECK(sfve::mod::LayoutRulesText().find(" ProjectileActionPart+216[212,216)/peers; ") != std::string::npos);
+	CHECK(sfve::mod::LayoutRulesText().find(" CharaActionPart+216[212,216)/peers ProjectileActionPart+216[212,216)/peers; ") !=
+		std::string::npos);
+}
+
+TEST_CASE("a fighter's action run leaves the same lane out of the peers' hash")
+{
+	ActionRun run = ReportedActionRun(true);
+	int applied[std::size(manager::kRunRules)] = {};
+	StateLayout layout;
+	const size_t index = AddGameRun(layout, {sfve::mod::RunName("CharaUnit[0].CharaActionPart", 0xD8), "CharaActionPart", 0xD8}, 40,
+		run.bytes, kActionRunSize, applied);
+	const StateRegion& r = layout.Regions().at(index);
+	for (size_t at = 0; at < kActionRunSize; at += 4) {
+		CAPTURE(at);
+		CHECK(Bit(r.peerIgnore, at / 4) == (at == kLane3));
+	}
+	for (size_t k = 0; k < std::size(manager::kRunRules); k++) {
+		CAPTURE(manager::kRunRules[k].owner);
+		CHECK(applied[k] == (strcmp(manager::kRunRules[k].owner, "CharaActionPart") == 0 ? 1 : 0));
+	}
 }
 
 TEST_CASE("the EMBER-147 pair of 11-22: the controller's fourth lane no longer decides the peers' hash")
