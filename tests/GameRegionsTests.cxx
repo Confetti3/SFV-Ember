@@ -112,7 +112,7 @@ TEST_CASE("Balrog's own part is a known owner, and the rules' text names its run
 	CHECK(owners.find(", CharaVisualPart 0x3A64AD0 +1752/392, CharaUniquePart_008 0x3A67370 +240/208, AttackDataPart ") !=
 		std::string::npos);
 	const std::string& text = sfve::mod::LayoutRulesText();
-	CHECK(text.find(" CharaUniquePart_008+240[24,32)/96/peers CharaUniquePart_008+240[84,96)/96/peers; ") != std::string::npos);
+	CHECK(text.find(" CharaUniquePart_008+240[24,32)/96/peers CharaUniquePart_008+240[84,96)/96/peers ") != std::string::npos);
 	// The rows before them kept their text (no "/peers").
 	CHECK(text.find(" ProjectileGroupUnit+1280[144,160)/176 ") != std::string::npos);
 }
@@ -471,7 +471,7 @@ TEST_CASE("a projectile's action run leaves its controller's fourth lane out of 
 		CAPTURE(manager::kRunRules[k].owner);
 		CHECK(applied[k] == (strcmp(manager::kRunRules[k].owner, "ProjectileActionPart") == 0 ? 1 : 0));
 	}
-	CHECK(sfve::mod::LayoutRulesText().find(" ProjectileActionPart+216[212,216)/peers") != std::string::npos);
+	CHECK(sfve::mod::LayoutRulesText().find(" ProjectileActionPart+216[212,216)/peers; ") != std::string::npos);
 }
 
 TEST_CASE("the EMBER-147 pair of 11-22: the controller's fourth lane no longer decides the peers' hash")
