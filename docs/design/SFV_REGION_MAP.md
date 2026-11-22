@@ -236,6 +236,7 @@ The last group's layouts are single-source, but the regions are small and their 
 ### Tier B: fight hash with CANON
 
 - ProjectileGroupUnit +640/600: 3 × (24 pointers + count). CANON each pointer to `ProjectileUnit[k]`; keep the counts RAW.
+  Until CANON exists (0.1.3): the 24 pointers of each 200-byte block are left out of the peers' hash and the counts compared (`sfv::manager::kRunRules`, `ProjectileGroupUnit` +0x280 `[0, 0xC0)` every 200, peers only), after EMBER-147.
 - ProjectileGroupUnit +1280/1408: RAW, plus the pointer detector.
 - CharaUnit sub-object `->C58+0x10`/32: CANON +16 and +24 (polymorphic pointee; kind 19/24 from its vtable+32 is also usable as the canonical value); dwords +32..+44 RAW.
 
@@ -301,7 +302,7 @@ The last group's layouts are single-source, but the regions are small and their 
 15. Two uncertainties about registrations during battle:
     - It is unverified whether `sub_1404D2160`'s vslot-5 calls register objects spawned mid-battle. If they do, those regions enter the map but not the table until a rebuild, so they would be neither snapshotted nor hashed.
     - ProjectileGroupUnit sets ProjectileUnit+928, the flag that makes a projectile skip its own registration. Whether that happens before or after the projectiles register is unknown. If the projectiles are a preallocated pool, it is likely before.
-      Field logs (EMBER-147, Z41 v KEN, 0.1.2) show the pool is full at the bind (count 24 in group 0; the region hashes alike at the start state and at checkpoint 20 on each copy) and that most of it registers nothing: the group's entries 20 to 23 are `ProjectileUnit[20..23]` and have their runs, while entries 8 to 19 lie in the same address window with no run in the table. In that battle only `ProjectileUnit[20..23]`, `[40..47]` and `[68..71]` had runs. The low-heap address rule therefore takes every object `RegionNames` finds (registered or not) as an arena holder (`mod/AddressRanges.hxx`, 0.1.3).
+      Field logs (EMBER-147, Z41 v KEN, 0.1.2) show the pool is full at the bind (count 24 in group 0; the region hashes alike at the start state and at checkpoint 20 on each copy) and that most of it registers nothing: the group's entries 20 to 23 are `ProjectileUnit[20..23]` and have their runs, while entries 8 to 19 lie in the same address window with no run in the table. In that battle only `ProjectileUnit[20..23]`, `[40..47]` and `[68..71]` had runs. So a low-heap copy's arenas need not hold the pointed-to projectiles, which is why the group's pointers are left out of the peers' hash (Tier B above).
 16. It is not verified that every object a registration covers is reachable from battle+344 or unit+192. Objects held only in other containers will show up as `unowned`; log them and extend the Step 5 table.
 17. The other battle containers (battle+312, keyed by unit+112; battle+328, built from unit+116..+148) are not used by this recipe and are uncharacterised.
 

@@ -18,22 +18,9 @@
 //   also a word inside one of the game allocator's arenas, read at the bind.
 //   An arena is a run of committed private memory, joined across gaps of at
 //   most kJoinGap, that holds one of the game's own heap objects (the
-//   battle's units and its rollback regions) or one of the battle's other
-//   known objects (LowHeapArenas). Thread stacks (an allocation with a guard
-//   page), images and mapped views are never part of one, and no arena is
-//   joined across them.
-//
-// The other known objects are every unit, part and sub-object the battle
-// holds, whether or not it registered a run (mod/SfvRegionNames.hxx), because
-// a run that did register can point to one that did not. A projectile group
-// keeps 24 projectile pointers (ProjectileGroupUnit+0x280), and the
-// projectiles it marks register nothing of their own. In EMBER-147 (Z41 v
-// KEN, 0.1.2) a Windows copy with its heap below 1 TB had three of them in a
-// run no registered object lay in, so it hashed those three pointers as
-// numbers while the other copy zeroed its own: equal state, unequal hash at
-// the first checkpoint, which the start repair cannot mend (it keeps a word
-// that is an address on either side). Only the game's own heap objects decide
-// the rule; the other objects only widen the low-heap rule's arenas.
+//   battle's units and its rollback regions). Thread stacks (an allocation
+//   with a guard page), images and mapped views are never part of one, and
+//   no arena is joined across them.
 //
 // Under Wine and Proton the heap lies low because Wine places memory bottom
 // up with no randomization. There the mod asks for every later allocation
@@ -123,12 +110,6 @@ struct QueriedRegion {
 // only the ones holding one of `gameHeap`.
 AddressRanges ArenasHolding(std::vector<QueriedRegion> committed, const std::vector<uint64_t>& gameHeap, uint64_t joinGap);
 
-// The low-heap rule's arenas (see the top): ArenasHolding over `gameHeap` and
-// those of `knownObjects` (the battle's other units, parts and sub-objects)
-// that lie below 1 TB. Pure.
-AddressRanges LowHeapArenas(const std::vector<QueriedRegion>& committed, const std::vector<uint64_t>& gameHeap,
-	const std::vector<uint64_t>& knownObjects, uint64_t joinGap);
-
 // This process's committed regions (VirtualQuery over user space).
 std::vector<QueriedRegion> ReadCommittedRegions();
 
@@ -160,12 +141,10 @@ void PublishProcessRanges(AddressRanges ranges);
 const AddressRanges* PublishedProcessRanges();
 
 // At the battle's bind, with the game's own heap objects (its units and its
-// rollback regions) and the battle's other known objects (RegionNames'
-// objects, registered or not): chooses the rule from `gameHeap` alone
-// (RuleForGameHeap), publishes the start ranges with the arenas
-// (LowHeapArenas) for the low-heap rule and alone for the value rule, and
-// logs which ("address test:"). Game thread.
-AddressRule ChooseAddressRule(const std::vector<uint64_t>& gameHeap, const std::vector<uint64_t>& knownObjects = {});
+// rollback regions): chooses the rule (RuleForGameHeap), publishes the start
+// ranges with the arenas for the low-heap rule and alone for the value rule, and logs
+// which ("address test:"). Game thread.
+AddressRule ChooseAddressRule(const std::vector<uint64_t>& gameHeap);
 // The rule last chosen (Value before any); any thread.
 AddressRule CurrentAddressRule();
 

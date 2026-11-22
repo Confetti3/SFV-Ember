@@ -596,6 +596,21 @@ constexpr uint32_t kNodeFunction = 0x30;
 // spawn (rva 0x470FB0) reads up to +140. The word at +144 is masked with
 // them; it holds the -1 every request starts with.
 //
+// Left out of the peers' hash only: a projectile group's pointers. Its run at
+// +0x280 (600 bytes, registered at rva 0x480670) is three blocks of 200
+// bytes, each 24 ProjectileUnit pointers (+0..+191) and a count qword (+192;
+// the group's +832, +1032, +1232; SFV_REGION_MAP.md section 2). A pointer is
+// never equal on two processes, so only the address rule kept two copies
+// alike, and it decides per copy: in EMBER-147 (Z41 v KEN, 0.1.2) P1's heap
+// lay below 1 TB, three of its 24 pointers lay in no range it took as
+// addresses and were hashed as numbers, while P2 zeroed all of its own, a
+// desync at the first checkpoint the start repair kept (an address on either
+// side is left as it is). Most of a group's projectiles register no run of
+// their own, so no arena need hold them. The 24 pointers of each block are
+// left out of the peers' hash whatever either copy's rule, as a copy on the
+// value rule already zeroed them; the counts are compared. Each process's own
+// hash (replays, the synctest) still reads the pointers.
+//
 // Left out of the peers' hash only: the padding of Balrog's (BLR's) claw and
 // mask records. His own part, CharaUniquePart_008 (type rva 0x3A67370, the
 // name set at rva 0x13F6D0, 576 bytes from GameAlloc, constructor rva
@@ -655,6 +670,9 @@ constexpr RunRule kRunRules[] = {
 	{"ReplayUnit", 0xF8, ".replaycount"},
 	{"CharaUnit", 0x764, "", 88, 112},
 	{"CharaStatusPart", 0x238, "", 0x88, 0x90},
+	// Each block's 24 projectile pointers, +0x00..+0xBF every 200 bytes; the
+	// count at +0xC0 of each is compared.
+	{"ProjectileGroupUnit", 0x280, "", 0x00, 0xC0, 200, true},
 	{"ProjectileGroupUnit", 0x500, "", 0x90, 0xA0, 176},
 	// Each claw and mask record's padding: +0x18..+0x1F and +0x54..+0x5F of
 	// the record at +0x00 and the one at +0x60.

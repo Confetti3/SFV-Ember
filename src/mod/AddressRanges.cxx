@@ -123,16 +123,6 @@ AddressRanges ArenasHolding(std::vector<QueriedRegion> committed, const std::vec
 	return AddressRanges::Joined(std::move(held), 0);
 }
 
-AddressRanges LowHeapArenas(const std::vector<QueriedRegion>& committed, const std::vector<uint64_t>& gameHeap,
-	const std::vector<uint64_t>& knownObjects, uint64_t joinGap)
-{
-	std::vector<uint64_t> held = gameHeap;
-	for (const uint64_t object : knownObjects) {
-		if (object < kHighAddresses) held.push_back(object);
-	}
-	return ArenasHolding(committed, held, joinGap);
-}
-
 std::vector<QueriedRegion> ReadCommittedRegions()
 {
 	SYSTEM_INFO system;
@@ -221,7 +211,7 @@ const AddressRanges* PublishedProcessRanges()
 	return s_published.load(std::memory_order_acquire);
 }
 
-AddressRule ChooseAddressRule(const std::vector<uint64_t>& gameHeap, const std::vector<uint64_t>& knownObjects)
+AddressRule ChooseAddressRule(const std::vector<uint64_t>& gameHeap)
 {
 	uint64_t lowest = UINT64_MAX, highest = 0;
 	for (const uint64_t object : gameHeap) {
@@ -232,14 +222,7 @@ AddressRule ChooseAddressRule(const std::vector<uint64_t>& gameHeap, const std::
 	const AddressRule rule = RuleForGameHeap(gameHeap);
 	// The ranges first, then the rule: the value rule's set (the start ranges
 	// alone) drops the last battle's arenas.
-	AddressRanges arenas;
-	size_t knownOnly = 0; // arenas only the battle's other known objects hold
-	if (rule == AddressRule::LowHeap) {
-		const std::vector<QueriedRegion> committed = ReadCommittedRegions();
-		arenas = LowHeapArenas(committed, gameHeap, knownObjects, kJoinGap);
-		const size_t registered = ArenasHolding(committed, gameHeap, kJoinGap).Ranges().size();
-		knownOnly = arenas.Ranges().size() - (std::min)(registered, arenas.Ranges().size());
-	}
+	const AddressRanges arenas = rule == AddressRule::LowHeap ? ArenasHolding(ReadCommittedRegions(), gameHeap, kJoinGap) : AddressRanges();
 	s_arenas.store(new AddressRanges(arenas), std::memory_order_release);
 	s_agreed.store(nullptr, std::memory_order_release);
 	PublishProcessRanges(Union(s_start, arenas));
@@ -249,10 +232,9 @@ AddressRule ChooseAddressRule(const std::vector<uint64_t>& gameHeap, const std::
 			(unsigned long long)lowest, (unsigned long long)highest,
 			lowest < kHighAddresses && !gameHeap.empty() ? ", not all below 1 TB" : "");
 	} else {
-		Log("address test: %s; the game's heap lies below 1 TB (its objects from 0x%llX to 0x%llX); %zu arena(s) hold none of "
-			"them, only others of the battle's %zu known objects. A copy whose heap lies above 1 TB reads a number in these arenas "
-			"as a number, so the two can part on such a word",
-			AddressRuleText().c_str(), (unsigned long long)lowest, (unsigned long long)highest, knownOnly, knownObjects.size());
+		Log("address test: %s; the game's heap lies below 1 TB (its objects from 0x%llX to 0x%llX). A copy whose heap lies "
+			"above 1 TB reads a number in these arenas as a number, so the two can part on such a word",
+			AddressRuleText().c_str(), (unsigned long long)lowest, (unsigned long long)highest);
 	}
 	return rule;
 }

@@ -240,3 +240,161 @@ TEST_CASE("every other run keeps its rows: masked words, presentation, and nothi
 		}
 	}
 }
+
+namespace {
+
+// A projectile group's run at +0x280: three blocks of 200 bytes, each 24
+// projectile pointers and a count (SFV_REGION_MAP.md section 2).
+constexpr size_t kGroupRunSize = 600;
+constexpr size_t kGroupBlock = 200;
+constexpr size_t kGroupPointers = 24;
+
+NamedRun GroupRun()
+{
+	return {sfve::mod::RunName("ProjectileGroupUnit[0]", 0x280), "ProjectileGroupUnit", 0x280};
+}
+
+struct Group {
+	alignas(16) uint8_t bytes[kGroupRunSize] = {};
+	void Put(size_t at, uint64_t value) { memcpy(bytes + at, &value, sizeof(value)); }
+	uint32_t Dword(size_t at) const
+	{
+		uint32_t value;
+		memcpy(&value, bytes + at, sizeof(value));
+		return value;
+	}
+};
+
+// Group 0's first block in EMBER-147 (Z41 v KEN, 0.1.2) at checkpoint 20, as
+// each copy's word lines print it; the other two blocks were zero.
+constexpr uint64_t kP1Pointers[kGroupPointers] = {0x12FE3400, 0x12FE2800, 0x12FE1000, 0x7A81EC00, 0x7A81D400, 0x7A81C800,
+	0x7A81C400, 0x7A81B800, 0x9E199000, 0xA1FEAC00, 0xA1FEDC00, 0xA1FED800, 0xA1FEF800, 0xA1FEF400, 0xA1FEF000, 0xA1FEEC00,
+	0xA1FEE800, 0xA1FED400, 0xA1FED000, 0xA1FECC00, 0xA1FEC800, 0xA1FEC400, 0xA1FEC000, 0xA1FE9C00};
+constexpr uint64_t kP2Pointers[kGroupPointers] = {0x1FD87345800, 0x1FD87342000, 0x1FD87347400, 0x1FD8734E800, 0x1FD8734E400,
+	0x1FD87343400, 0x1FD87346400, 0x1FD0A101400, 0x1FD8C330C00, 0x1FD8C332800, 0x1FD8C332400, 0x1FD8C33D000, 0x1FD8C33B800,
+	0x1FD8C33A800, 0x1FD8C33AC00, 0x1FD8C339800, 0x1FD8C337C00, 0x1FD8C338000, 0x1FD8C337800, 0x1FD8C337400, 0x1FD8C335800,
+	0x1FD8C333400, 0x1FD8C333800, 0x1FD8C330400};
+
+Group ReportedGroup(const uint64_t (&pointers)[kGroupPointers], uint64_t count = 0x18)
+{
+	Group r;
+	for (size_t i = 0; i < kGroupPointers; i++) r.Put(8 * i, pointers[i]);
+	r.Put(0xC0, count);
+	return r;
+}
+
+// P1's 7 arenas (its heap below 1 TB, the low-heap rule), which the start
+// agreement gave P2 too: after it both copies test a word by the value rule
+// and these ranges.
+constexpr uint64_t kP1Arenas[][2] = {{0x19850000, 0x1CFB0000}, {0x2B450000, 0x2C0A1000}, {0x32E90000, 0x36C31000},
+	{0x4A990000, 0x4D140000}, {0x699C0000, 0x79D60000}, {0x7A1C0000, 0x7BE90000}, {0x8E910000, 0xCC640000}};
+
+bool AgreedRule(uint64_t value)
+{
+	if (ValueRule(value)) return true;
+	if ((value & 3) != 0) return false;
+	for (const auto& range : kP1Arenas) {
+		if (value >= range[0] && value < range[1]) return true;
+	}
+	return false;
+}
+
+// One copy's layout of the run: as the rules name it, or unowned (game.N),
+// which hashes it as 0.1.2 did (no row named +0x280 then).
+StateLayout GroupLayoutOf(Group& run, bool owned, bool (*test)(uint64_t))
+{
+	StateLayout layout;
+	layout.SetAddressTest(test);
+	AddGameRun(layout, owned ? GroupRun() : NamedRun{}, 300, run.bytes, kGroupRunSize, nullptr);
+	return layout;
+}
+
+} // namespace
+
+TEST_CASE("a projectile group's run leaves each block's 24 pointers out of the peers' hash and compares its counts")
+{
+	CHECK(sfve::mod::LayoutRulesText().find(" ProjectileGroupUnit+640[0,192)/200/peers ProjectileGroupUnit+1280[144,160)/176 ") !=
+		std::string::npos);
+	Group run;
+	int applied[std::size(manager::kRunRules)] = {};
+	StateLayout layout;
+	const size_t index = AddGameRun(layout, GroupRun(), 300, run.bytes, kGroupRunSize, applied);
+	const StateRegion& r = layout.Regions().at(index);
+	CHECK(r.name == "ProjectileGroupUnit[0]+0x280");
+	CHECK(r.checked);
+	CHECK(r.comparedWithPeers);
+	size_t left = 0;
+	for (size_t at = 0; at < kGroupRunSize; at += 4) {
+		CAPTURE(at);
+		// The pointers of blocks 0, 1 and 2 (+0..+191, +200..+391, +400..+591);
+		// the counts at +192, +392 and +592 are compared.
+		const bool pointer = at % kGroupBlock < kGroupPointers * 8;
+		CHECK(Bit(r.peerIgnore, at / 4) == pointer);
+		CHECK_FALSE(layout.IsIgnored(index, at)); // the synctest still checks every byte
+		left += pointer ? 1 : 0;
+	}
+	CHECK(left == 3 * kGroupPointers * 2);
+	for (size_t k = 0; k < std::size(manager::kRunRules); k++) {
+		CAPTURE(manager::kRunRules[k].owner);
+		const bool row = strcmp(manager::kRunRules[k].owner, "ProjectileGroupUnit") == 0 && manager::kRunRules[k].offset == 0x280;
+		CHECK(applied[k] == (row ? 1 : 0));
+	}
+	// The group's other run keeps its own row only: nothing left out for peers.
+	alignas(16) uint8_t requests[1408] = {};
+	StateLayout other;
+	const size_t spawn =
+		AddGameRun(other, {"ProjectileGroupUnit[0]+0x500", "ProjectileGroupUnit", 0x500}, 301, requests, 1408, nullptr);
+	for (size_t at = 0; at < 1408; at += 4) CHECK_FALSE(Bit(other.Regions()[spawn].peerIgnore, at / 4));
+}
+
+TEST_CASE("the EMBER-147 pair: a low-heap P1 and a value-rule P2 hash the group's run alike")
+{
+	Group p1 = ReportedGroup(kP1Pointers), p2 = ReportedGroup(kP2Pointers);
+	// As 0.1.2 hashed them, after the start agreement: P1's first three
+	// pointers lie in none of the agreed ranges and were hashed as numbers;
+	// P2's are all above 1 TB and zeroed. The desync both reports name.
+	CHECK(GroupLayoutOf(p1, false, AgreedRule).HashLive(HashScope::Peers) !=
+		  GroupLayoutOf(p2, false, AgreedRule).HashLive(HashScope::Peers));
+	// With the row: equal, whatever rule each copy has.
+	const uint64_t agreed = GroupLayoutOf(p1, true, AgreedRule).HashLive(HashScope::Peers);
+	CHECK(GroupLayoutOf(p2, true, AgreedRule).HashLive(HashScope::Peers) == agreed);
+	CHECK(GroupLayoutOf(p1, true, ValueRule).HashLive(HashScope::Peers) == agreed);
+	CHECK(GroupLayoutOf(p2, true, ValueRule).HashLive(HashScope::Peers) == agreed);
+	CHECK(GroupLayoutOf(p1, true, nullptr).HashLive(HashScope::Peers) == agreed); // no address test at all
+	// Each process's own hash still reads the pointers.
+	CHECK(GroupLayoutOf(p1, true, AgreedRule).HashLive(HashScope::Local) !=
+		  GroupLayoutOf(p2, true, AgreedRule).HashLive(HashScope::Local));
+	// A pointer in another block is left out too.
+	p1.Put(kGroupBlock + 8, 0x12FE4C00);
+	p2.Put(kGroupBlock + 8, 0x1FD8C339C00);
+	CHECK(GroupLayoutOf(p1, true, AgreedRule).HashLive(HashScope::Peers) ==
+		  GroupLayoutOf(p2, true, AgreedRule).HashLive(HashScope::Peers));
+}
+
+TEST_CASE("a projectile group's counts are compared on every copy")
+{
+	Group p1 = ReportedGroup(kP1Pointers), p2 = ReportedGroup(kP2Pointers, 0x17);
+	CHECK(GroupLayoutOf(p1, true, AgreedRule).HashLive(HashScope::Peers) !=
+		  GroupLayoutOf(p2, true, AgreedRule).HashLive(HashScope::Peers));
+	Group q1 = ReportedGroup(kP1Pointers), q2 = ReportedGroup(kP2Pointers);
+	q2.Put(2 * kGroupBlock + 0xC0, 1); // the third block's count
+	CHECK(GroupLayoutOf(q1, true, ValueRule).HashLive(HashScope::Peers) !=
+		  GroupLayoutOf(q2, true, ValueRule).HashLive(HashScope::Peers));
+}
+
+TEST_CASE("the start state's repair of the group's run takes P1's count and leaves each copy's pointers")
+{
+	Group p1 = ReportedGroup(kP1Pointers), p2 = ReportedGroup(kP2Pointers, 0x17);
+	const StateLayout reference = GroupLayoutOf(p1, true, AgreedRule);
+	const StateLayout follower = GroupLayoutOf(p2, true, AgreedRule);
+	REQUIRE(reference.HashLive(HashScope::Peers) != follower.HashLive(HashScope::Peers));
+	std::vector<uint64_t> referenceUnits;
+	reference.AddressUnits(0, p1.bytes, referenceUnits);
+	size_t kept = 0;
+	const size_t written = sfve::start_state::ApplyRegion(follower, 0, p1.bytes, referenceUnits, &kept);
+	CHECK(written == 1);               // the count
+	CHECK(kept == kGroupPointers * 2); // the 48 dwords of the 24 pointers, each copy's own
+	CHECK(p2.Dword(0xC0) == 0x18);
+	CHECK(p2.Dword(0x00) == 0x87345800); // P2's own first pointer, untouched
+	CHECK(reference.HashLive(HashScope::Peers) == follower.HashLive(HashScope::Peers));
+}
