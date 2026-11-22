@@ -678,6 +678,10 @@ constexpr RunRule kRunRules[] = {
 	// the record at +0x00 and the one at +0x60.
 	{"CharaUniquePart_008", 0xF0, "", 0x18, 0x20, 0x60, true},
 	{"CharaUniquePart_008", 0xF0, "", 0x54, 0x60, 0x60, true},
+	// A projectile's action controller (part +0xC0): the fourth lane (w) of
+	// its vector at controller +224, part +0x1AC, run +0xD4. Each process
+	// holds its own value there (EMBER-147, SFV_REGION_MAP.md gap 19).
+	{"ProjectileActionPart", 0xD8, "", 0xD4, 0xD8, 0, true},
 };
 } // namespace manager
 

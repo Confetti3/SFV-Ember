@@ -398,3 +398,94 @@ TEST_CASE("the start state's repair of the group's run takes P1's count and leav
 	CHECK(p2.Dword(0x00) == 0x87345800); // P2's own first pointer, untouched
 	CHECK(reference.HashLive(HashScope::Peers) == follower.HashLive(HashScope::Peers));
 }
+
+namespace {
+
+// A projectile's action part's run at +0xD8 (15808 bytes, RegionNames).
+constexpr size_t kActionRunSize = 15808;
+constexpr size_t kLane3 = 0xD4; // part +0x1AC: controller +236, w of its vector at +224
+
+NamedRun ProjectileActionRun()
+{
+	return {sfve::mod::RunName("ProjectileUnit[23].ProjectileActionPart", 0xD8), "ProjectileActionPart", 0xD8};
+}
+
+struct ActionRun {
+	alignas(16) uint8_t bytes[kActionRunSize] = {};
+	void Put(size_t at, uint64_t value) { memcpy(bytes + at, &value, sizeof(value)); }
+};
+
+// ProjectileUnit[23]'s run in EMBER-147 match 0000000000000001.0.4 (0.1.2,
+// 2026-11-22), as each copy's word lines print it: P1 on Windows 22000, P2 on
+// 26200. Words both copies zero as addresses are each copy's own; every other
+// word is equal but the dword at +0xD4.
+ActionRun ReportedActionRun(bool p1)
+{
+	ActionRun r;
+	r.Put(0x0000, p1 ? 0x1AAC3F7EC40ull : 0x180E76B1C20ull);
+	r.Put(0x0028, 0xFFFFFFFFull);
+	r.Put(0x00D0, p1 ? 0x4000000000ull : 0x3A00000000ull);
+	r.Put(0x0118, p1 ? 0x7FF68445D7B0ull : 0x7FF721D9D7B0ull);
+	r.Put(0x0120, 0xBE19999ABE19999Aull);
+	r.Put(0x0128, 0x3E99999A00000000ull);
+	r.Put(0x0130, 0x3E99999Aull);
+	r.Put(0x0138, 0x1900190019ull);
+	r.Put(0x0140, 0x48);
+	r.Put(0x0148, 0x100000046ull);
+	r.Put(0x0150, 0xA00000001ull);
+	r.Put(0x0160, 0x1E);
+	r.Put(0x0170, 0x370000);
+	r.Put(0x0178, p1 ? 0x7FF68494B890ull : 0x7FF72228B890ull);
+	r.Put(0x0180, 0x4001CD1E409FF1A1ull);
+	r.Put(0x1098, 0x200000);
+	r.Put(0x3DB8, 0x100000001ull);
+	return r;
+}
+
+StateLayout ActionLayoutOf(ActionRun& run, bool owned)
+{
+	StateLayout layout;
+	layout.SetAddressTest(ValueRule);
+	AddGameRun(layout, owned ? ProjectileActionRun() : NamedRun{}, 120, run.bytes, kActionRunSize, nullptr);
+	return layout;
+}
+
+} // namespace
+
+TEST_CASE("a projectile's action run leaves its controller's fourth lane out of the peers' hash, and nothing else")
+{
+	ActionRun run = ReportedActionRun(true);
+	int applied[std::size(manager::kRunRules)] = {};
+	StateLayout layout;
+	const size_t index = AddGameRun(layout, ProjectileActionRun(), 120, run.bytes, kActionRunSize, applied);
+	const StateRegion& r = layout.Regions().at(index);
+	CHECK(r.name == "ProjectileUnit[23].ProjectileActionPart+0xD8");
+	CHECK(r.checked);
+	CHECK(r.comparedWithPeers);
+	for (size_t at = 0; at < kActionRunSize; at += 4) {
+		CAPTURE(at);
+		CHECK(Bit(r.peerIgnore, at / 4) == (at == kLane3));
+		CHECK_FALSE(layout.IsIgnored(index, at)); // the synctest still checks every byte
+	}
+	for (size_t k = 0; k < std::size(manager::kRunRules); k++) {
+		CAPTURE(manager::kRunRules[k].owner);
+		CHECK(applied[k] == (strcmp(manager::kRunRules[k].owner, "ProjectileActionPart") == 0 ? 1 : 0));
+	}
+	CHECK(sfve::mod::LayoutRulesText().find(" ProjectileActionPart+216[212,216)/peers") != std::string::npos);
+}
+
+TEST_CASE("the EMBER-147 pair of 11-22: the controller's fourth lane no longer decides the peers' hash")
+{
+	ActionRun p1 = ReportedActionRun(true), p2 = ReportedActionRun(false);
+	// As 0.1.2 hashed them: the desync both reports name.
+	CHECK(ActionLayoutOf(p1, false).HashLive(HashScope::Peers) != ActionLayoutOf(p2, false).HashLive(HashScope::Peers));
+	// With the row: equal.
+	const StateLayout a = ActionLayoutOf(p1, true), b = ActionLayoutOf(p2, true);
+	CHECK(a.LayoutId() == b.LayoutId());
+	CHECK(a.HashLive(HashScope::Peers) == b.HashLive(HashScope::Peers));
+	// Each process's own hash still reads it.
+	CHECK(a.HashLive(HashScope::Local) != b.HashLive(HashScope::Local));
+	// The vector's other lanes are compared: a difference in z is a desync.
+	p2.Put(0x00D0, 0x3A00000001ull);
+	CHECK(ActionLayoutOf(p1, true).HashLive(HashScope::Peers) != ActionLayoutOf(p2, true).HashLive(HashScope::Peers));
+}
