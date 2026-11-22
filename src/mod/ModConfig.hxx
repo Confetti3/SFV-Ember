@@ -86,6 +86,10 @@
 //                        and done events and the mailbox, as this process's
 //                        handle values in hex (SfvLaunch.cxx; CrashRecord.hxx)
 //   -sfve_crash_command=1  test: the pipe's "crash game|thread" faults on purpose
+//   -sfve_low_heap=1     test: under Wine, the game's heap stays where Wine puts it
+//                        (no top-down lift, mod/WineMemory.hxx), so this copy plays
+//                        the low-heap address rule (mod/AddressRanges.hxx) as a
+//                        Windows copy with bottom-up ASLR off does
 //
 // All of them are a development build's (mod/BuildKind.hxx). A player build
 // reads only what its launcher passes, -sfve_mode=netplay, -sfve_room and
@@ -228,6 +232,10 @@ struct ModConfig {
 	DumpChannelHandles dumpChannel;
 	// Test only: the pipe may be asked to crash the game.
 	bool crashCommand = false;
+	// Test only: under Wine the game's heap is not lifted above 1 TB
+	// (InstallWineMemory sets the start ranges and hooks nothing), so a
+	// Proton copy plays the low-heap address rule against a Windows one.
+	bool lowHeap = false;
 };
 
 const ModConfig& Config();

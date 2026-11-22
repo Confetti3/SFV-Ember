@@ -44,10 +44,14 @@ constexpr uint64_t kTopDownZeroBits = kWineUserSpace - 1;
 // Whether an address a top down allocation returned lies where it should.
 constexpr bool InTopDownRange(uint64_t address) { return address >= kHighAddresses && address < kWineUserSpace; }
 
-// Under Wine: hooks NtAllocateVirtualMemory to ask top down (TopDownFits),
-// sets the start ranges, and logs both ("wine memory:"). Nothing elsewhere.
-// From SfveStart, before the game's code runs; false when the hook could not
-// go in (the low-heap rule then still serves).
-bool InstallWineMemory();
+// Under Wine: sets the start ranges, hooks NtAllocateVirtualMemory to ask
+// top down (TopDownFits) unless `liftHeap` is false, and logs both ("wine
+// memory:"). Nothing elsewhere. From SfveStart, before the game's code runs;
+// false when the hook could not go in (the low-heap rule then still serves).
+// `liftHeap` false is a test's (ModConfig's lowHeap, -sfve_low_heap=1): the
+// game's heap stays low, so a Proton copy plays the low-heap rule, while the
+// images and the heaps made before the game ran stay start ranges (their
+// words read as addresses, as a Windows copy's images above 1 TB do).
+bool InstallWineMemory(bool liftHeap = true);
 
 } // namespace sfve::mod

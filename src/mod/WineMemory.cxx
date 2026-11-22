@@ -43,7 +43,7 @@ bool TopDownFits(bool thisProcess, bool fixedAddress, uint64_t zeroBits, uint32_
 	return thisProcess && !fixedAddress && zeroBits == 0 && (allocationType & (MEM_RESERVE | MEM_COMMIT)) != 0;
 }
 
-bool InstallWineMemory()
+bool InstallWineMemory(bool liftHeap)
 {
 	if (!RunningUnderWine()) return true;
 	const MH_STATUS init = MH_Initialize();
@@ -64,6 +64,11 @@ bool InstallWineMemory()
 		start.Ranges().size(), count, (unsigned long long)(bytes >> 20));
 	for (const AddressRange& r : start.Ranges()) {
 		Log("wine memory:   0x%llX-0x%llX", (unsigned long long)r.begin, (unsigned long long)r.end);
+	}
+	if (!liftHeap) {
+		Log("wine memory: -sfve_low_heap=1 (test): allocations are not asked top down, so the game's heap stays below 1 TB "
+			"and the low-heap address rule serves");
+		return true;
 	}
 
 	HookTransaction hooks;

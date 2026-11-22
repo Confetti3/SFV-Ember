@@ -241,6 +241,7 @@ void LoadConfigFromCommandLine(const wchar_t* line, BuildKind kind)
 	c.gameOwnershipCheck = options.Number(L"sfve_game_ownership", 0) != 0;
 	c.grantAll = options.Number(L"sfve_grant_all", 1) != 0;
 	c.crashCommand = options.Number(L"sfve_crash_command", 0) != 0;
+	c.lowHeap = options.Number(L"sfve_low_heap", 0) != 0;
 	wchar_t channel[64];
 	if (options.Find(L"sfve_dump_channel", channel, 64)) c.dumpChannel = ParseDumpChannel(channel);
 	ReadEntries(options, L"sfve_unowned", &ParseUnowned, c.unowned, s_unownedProblem);
