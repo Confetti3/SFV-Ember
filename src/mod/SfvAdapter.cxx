@@ -153,12 +153,16 @@ bool SfvAdapter::Bind()
 		// Which words the hashes read as addresses (mod/AddressRanges.hxx):
 		// where the game's own heap lies decides the rule, from its battle
 		// objects and its rollback regions (all the game allocator's), before
-		// anything is hashed.
+		// anything is hashed. Every unit, part and sub-object the battle holds
+		// (RegionNames, registered or not) holds an arena too: a projectile
+		// group's pointers name projectiles that registered nothing.
 		std::vector<uint64_t> gameHeap = {reinterpret_cast<uint64_t>(battleFrame_), reinterpret_cast<uint64_t>(inputUnit_),
 			reinterpret_cast<uint64_t>(rollbackUnit_), reinterpret_cast<uint64_t>(flowUnit), reinterpret_cast<uint64_t>(ruleUnit),
 			reinterpret_cast<uint64_t>(battleData)};
 		for (const StateRegion& r : layout_.Regions()) gameHeap.push_back(reinterpret_cast<uint64_t>(r.ptr));
-		ChooseAddressRule(gameHeap);
+		std::vector<uint64_t> knownObjects;
+		for (const NamedObject& o : regionNames_.Objects()) knownObjects.push_back(o.address);
+		ChooseAddressRule(gameHeap, knownObjects);
 	}
 	CollectPostRestore(manager, postRestore_);
 	AddStateOutsideTheGameSnapshot(layout_, outside);

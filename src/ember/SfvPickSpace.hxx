@@ -53,8 +53,11 @@ namespace sfve::picks {
 // ones, the room's charter; EMBER_LIBRARY.md section 62). No earlier copy may
 // meet one of these. 0.9 (0.1.2): Balrog's claw and mask records are their
 // part's own run, their padding left out of the peers' hash
-// (sfv::manager::kRunRules), so a 0.1.1 copy hashes that run otherwise.
-constexpr const char* kMatchBuild = "sfv-ember/13173604/0.9";
+// (sfv::manager::kRunRules), so a 0.1.1 copy hashes that run otherwise. 0.10
+// (0.1.3): a copy whose heap lies below 1 TB also takes the runs holding the
+// battle's unregistered units and parts as arenas (mod/AddressRanges.hxx), so
+// it zeroes words a 0.1.2 copy hashes as numbers.
+constexpr const char* kMatchBuild = "sfv-ember/13173604/0.10";
 
 // The stage choice that stands for Random (GameCatalog::randomStage): the
 // library's own selection::RandomStageId, never a stage on the wire. P1's

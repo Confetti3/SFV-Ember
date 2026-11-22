@@ -64,8 +64,11 @@ void AddStateOutsideTheGameSnapshot(StateLayout& layout, const OutsideState& whe
 //   src/mod/SfvAdapter.cxx: ReseedRandom's place formula and fighter draw reset; OnInputRecord's input while loading
 //   src/mod/GameInput.hxx: RecordedInput, what a pad records while the battle loads
 //   src/mod/SocketReads.cxx: Policy and AnchorPosition, the rules the anchor text names the sites and offsets of
-// 1 from 0.1.1 (the demo guard).
-constexpr int kRollbackCodeRules = 1;
+//   src/mod/AddressRanges.cxx: LowHeapArenas and ChooseAddressRule, which memory the low-heap rule zeroes words in
+// 1 from 0.1.1 (the demo guard). 2 from 0.1.3: the low-heap rule's arenas
+// also hold the battle's units, parts and sub-objects that registered no run
+// (SfvAdapter's bind), so such a copy zeroes more words below 1 TB.
+constexpr int kRollbackCodeRules = 2;
 
 // The rules in words, which the id hashes: kRunRules; the owners those rules
 // match by name (RegionOwnersText: RegionNames' tables); the regions and peer

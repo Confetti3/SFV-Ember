@@ -6,7 +6,9 @@
 
 #include <doctest/doctest.h>
 
+#include <iterator>
 #include <memory>
+#include <vector>
 
 using sfve::AddressRange;
 using sfve::mod::AddressRanges;
@@ -113,6 +115,112 @@ TEST_CASE("this process's arenas hold its heap and neither its stack nor its cod
 	CHECK(arenas.Contains(reinterpret_cast<uint64_t>(heap.get())));
 	CHECK_FALSE(arenas.Contains(reinterpret_cast<uint64_t>(&local)));
 	CHECK_FALSE(arenas.Contains(reinterpret_cast<uint64_t>(&sfve::mod::ReadCommittedRegions)));
+}
+
+namespace {
+// EMBER-147 (Z41 v KEN, 0.1.2), P1: Windows with its heap below 1 TB. Four of
+// its arenas' runs and the page holding three projectiles of
+// ProjectileGroupUnit[0], 104 MB below the lowest arena; no registered run
+// lies in that page.
+const std::vector<QueriedRegion> kEmber147Committed = {
+	{0x12FE0000, 0x12FF0000, 0x12FE0000, true, false}, // the three projectiles' page
+	{0x19850000, 0x1CFB0000, 0x19850000, true, false}, // the battle frame's arena
+	{0x32E90000, 0x36C31000, 0x32E90000, true, false}, // the group's run is in this one
+	{0x7A1C0000, 0x7BE90000, 0x7A1C0000, true, false}, // the input unit's, and five more projectiles
+};
+// The battle frame, ProjectileGroupUnit[0]+0x280 and inputunit.counters, as P1 logged them.
+const std::vector<uint64_t> kEmber147GameHeap = {0x1B0DD390, 0x35D87760, 0x7BE44600};
+// The group's first eight pointers on P1, and on P2 (heap above 1 TB).
+const uint64_t kEmber147P1Words[] = {0x12FE3400, 0x12FE2800, 0x12FE1000, 0x7A81EC00, 0x7A81D400, 0x7A81C800, 0x7A81C400, 0x7A81B800};
+const uint64_t kEmber147P2Words[] = {0x1FD87345800ull, 0x1FD87342000ull, 0x1FD87347400ull, 0x1FD8734E800ull, 0x1FD8734E400ull,
+	0x1FD87343400ull, 0x1FD87346400ull, 0x1FD0A101400ull};
+} // namespace
+
+TEST_CASE("a projectile its group points to is in an arena even when it registered no run (EMBER-147)")
+{
+	const std::vector<uint64_t> projectiles(std::begin(kEmber147P1Words), std::end(kEmber147P1Words));
+	// 0.1.2: the registered objects alone leave the page out, so P1 hashed
+	// the first three pointers as numbers; the other five lay in an arena
+	// another object held.
+	const AddressRanges registered = sfve::mod::ArenasHolding(kEmber147Committed, kEmber147GameHeap, sfve::mod::kJoinGap);
+	REQUIRE(registered.Ranges().size() == 3);
+	CHECK_FALSE(registered.Contains(0x12FE1000));
+	CHECK(registered.Contains(0x7A81EC00));
+	// The battle's known objects hold the page too.
+	const AddressRanges arenas = sfve::mod::LowHeapArenas(kEmber147Committed, kEmber147GameHeap, projectiles, sfve::mod::kJoinGap);
+	REQUIRE(arenas.Ranges().size() == 4);
+	CHECK(arenas.Ranges()[0].begin == 0x12FE0000);
+	CHECK(arenas.Ranges()[0].end == 0x12FF0000);
+	for (const uint64_t p : projectiles) CHECK(arenas.Contains(p));
+	CHECK_FALSE(arenas.Contains(0x12FF0000));
+	CHECK_FALSE(arenas.Contains(0x3F800000)); // 1.0f in a low dword, between the arenas
+	// No known object makes a stack, an image or memory above 1 TB an arena.
+	const uint64_t mb = 1ull << 20;
+	const std::vector<QueriedRegion> others = {
+		{0x2C * mb, 0x2C * mb + 0x1000, 0x2B * mb, true, true}, // a stack's guard page
+		{0x2C * mb + 0x1000, 0x2D * mb, 0x2B * mb, true, false},
+		{0x40 * mb, 0x48 * mb, 0x40 * mb, false, false}, // an image
+		{0x00000204F0000000ull, 0x00000204F1000000ull, 0x00000204F0000000ull, true, false},
+	};
+	CHECK(sfve::mod::LowHeapArenas(others, {}, {0x2C * mb + 0x2000, 0x41 * mb, 0x00000204F0000100ull}, sfve::mod::kJoinGap)
+			  .Ranges()
+			  .empty());
+	CHECK(sfve::mod::LowHeapArenas(kEmber147Committed, kEmber147GameHeap, {}, sfve::mod::kJoinGap).Ranges() == registered.Ranges());
+}
+
+TEST_CASE("with the projectiles' page an arena, P1 and P2 zero every pointer of the group's run and decide equal values alike")
+{
+	sfve::mod::SetStartRanges({});
+	// P1 at its bind (the low-heap rule's arenas), then the start agreement:
+	// it shares them and takes them with P2's none.
+	const std::vector<uint64_t> projectiles(std::begin(kEmber147P1Words), std::end(kEmber147P1Words));
+	sfve::mod::PublishProcessRanges(
+		sfve::mod::LowHeapArenas(kEmber147Committed, kEmber147GameHeap, projectiles, sfve::mod::kJoinGap));
+	const std::vector<AddressRange> shared = sfve::mod::RangesToShare(16);
+	REQUIRE(shared.size() == 4);
+	CHECK(shared[0].begin == 0x12FE0000);
+	sfve::mod::AdoptAgreedRanges(shared);
+	for (const uint64_t word : kEmber147P1Words) CHECK(LooksLikeAddress(word));
+	// Values both copies may hold as numbers: the group's count, nothing, a
+	// 16.16 3.0, 1.0f, a number inside the projectiles' page, and the other
+	// copy's pointers.
+	std::vector<uint64_t> values = {0x18, 0, 0x30000, 0x3F800000, 0x12FE5000};
+	values.insert(values.end(), std::begin(kEmber147P1Words), std::end(kEmber147P1Words));
+	values.insert(values.end(), std::begin(kEmber147P2Words), std::end(kEmber147P2Words));
+	std::vector<bool> p1;
+	for (const uint64_t v : values) p1.push_back(LooksLikeAddress(v));
+	CHECK_FALSE(LooksLikeAddress(0x18));
+	CHECK(LooksLikeAddress(0x12FE5000));
+
+	// P2 at its bind (heap above 1 TB), then the ranges the start agreement settled.
+	CHECK(sfve::mod::ChooseAddressRule({0x1FD0B386CC0ull}, {0x1FD87345800ull}) == AddressRule::Value);
+	sfve::mod::AdoptAgreedRanges(shared);
+	for (const uint64_t word : kEmber147P2Words) CHECK(LooksLikeAddress(word));
+	for (size_t i = 0; i < values.size(); i++) {
+		INFO("value " << values[i]);
+		const bool atP1 = p1[i];
+		CHECK(LooksLikeAddress(values[i]) == atP1);
+	}
+	sfve::mod::ChooseAddressRule({0x00000204F5F98000ull});
+}
+
+TEST_CASE("the battle's other known objects widen a low heap's arenas but never choose the rule")
+{
+	sfve::mod::SetStartRanges({});
+	void* block = VirtualAlloc(nullptr, 0x10000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	REQUIRE(block);
+	const uint64_t object = reinterpret_cast<uint64_t>(block) + 0x400;
+	// A heap above 1 TB is the value rule, whatever else the battle holds.
+	CHECK(sfve::mod::ChooseAddressRule({0x00000204F5F98000ull}, {0x02A41F10ull, object}) == AddressRule::Value);
+	REQUIRE(sfve::mod::PublishedProcessRanges());
+	CHECK(sfve::mod::PublishedProcessRanges()->Ranges().empty());
+	// A heap below 1 TB: the private run a known object lies in is an arena
+	// when it lies below 1 TB (above, the value rule has it already).
+	CHECK(sfve::mod::ChooseAddressRule({0x02A41F10ull}, {object}) == AddressRule::LowHeap);
+	CHECK(sfve::mod::PublishedProcessRanges()->Contains(object) == (object < sfve::mod::kHighAddresses));
+	CHECK(LooksLikeAddress(object));
+	VirtualFree(block, 0, MEM_RELEASE);
+	CHECK(sfve::mod::ChooseAddressRule({0x00000204F5F98000ull}) == AddressRule::Value);
 }
 
 TEST_CASE("a copy whose heap lies low publishes its arenas and says so, and the next battle's normal heap drops them")
