@@ -684,8 +684,15 @@ constexpr RunRule kRunRules[] = {
 	// commands (rva 0x453F50, 0x454C30) and the scale (rva 0x2FA820, lane 3
 	// of its stack scale never written) carry it; movement reads x, y, z only
 	// (rva 0x351510 loads (x, y, z, 0)). Fighters share the controller.
+	// The acceleration after it (controller +240, part +0x1B0, run +0xD8)
+	// gets the same scale, so its w at run +0xE4 is each process's own too
+	// (EMBER-158: Seth's V-Trigger II orb, 1 on one machine and 0x7FF6 on the
+	// other, every other word equal); movement reads it as (x, y, z, 0)
+	// (rva 0x2F9D30).
 	{"CharaActionPart", 0xD8, "", 0xD4, 0xD8, 0, true},
+	{"CharaActionPart", 0xD8, "", 0xE4, 0xE8, 0, true},
 	{"ProjectileActionPart", 0xD8, "", 0xD4, 0xD8, 0, true},
+	{"ProjectileActionPart", 0xD8, "", 0xE4, 0xE8, 0, true},
 };
 } // namespace manager
 

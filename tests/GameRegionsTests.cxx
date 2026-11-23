@@ -404,6 +404,12 @@ namespace {
 // A projectile's action part's run at +0xD8 (15808 bytes, RegionNames).
 constexpr size_t kActionRunSize = 15808;
 constexpr size_t kLane3 = 0xD4; // part +0x1AC: controller +236, w of its vector at +224
+constexpr size_t kAccelLane3 = 0xE4; // part +0x1BC: controller +252, w of the acceleration at +240
+
+bool PeersOnlyLane(size_t at)
+{
+	return at == kLane3 || at == kAccelLane3;
+}
 
 NamedRun ProjectileActionRun()
 {
@@ -452,7 +458,7 @@ StateLayout ActionLayoutOf(ActionRun& run, bool owned)
 
 } // namespace
 
-TEST_CASE("a projectile's action run leaves its controller's fourth lane out of the peers' hash, and nothing else")
+TEST_CASE("a projectile's action run leaves its controller's velocity and acceleration w out of the peers' hash, and nothing else")
 {
 	ActionRun run = ReportedActionRun(true);
 	int applied[std::size(manager::kRunRules)] = {};
@@ -464,18 +470,19 @@ TEST_CASE("a projectile's action run leaves its controller's fourth lane out of 
 	CHECK(r.comparedWithPeers);
 	for (size_t at = 0; at < kActionRunSize; at += 4) {
 		CAPTURE(at);
-		CHECK(Bit(r.peerIgnore, at / 4) == (at == kLane3));
+		CHECK(Bit(r.peerIgnore, at / 4) == PeersOnlyLane(at));
 		CHECK_FALSE(layout.IsIgnored(index, at)); // the synctest still checks every byte
 	}
 	for (size_t k = 0; k < std::size(manager::kRunRules); k++) {
 		CAPTURE(manager::kRunRules[k].owner);
 		CHECK(applied[k] == (strcmp(manager::kRunRules[k].owner, "ProjectileActionPart") == 0 ? 1 : 0));
 	}
-	CHECK(sfve::mod::LayoutRulesText().find(" CharaActionPart+216[212,216)/peers ProjectileActionPart+216[212,216)/peers; ") !=
+	CHECK(sfve::mod::LayoutRulesText().find(" CharaActionPart+216[212,216)/peers CharaActionPart+216[228,232)/peers "
+											"ProjectileActionPart+216[212,216)/peers ProjectileActionPart+216[228,232)/peers; ") !=
 		std::string::npos);
 }
 
-TEST_CASE("a fighter's action run leaves the same lane out of the peers' hash")
+TEST_CASE("a fighter's action run leaves the same lanes out of the peers' hash")
 {
 	ActionRun run = ReportedActionRun(true);
 	int applied[std::size(manager::kRunRules)] = {};
@@ -485,7 +492,7 @@ TEST_CASE("a fighter's action run leaves the same lane out of the peers' hash")
 	const StateRegion& r = layout.Regions().at(index);
 	for (size_t at = 0; at < kActionRunSize; at += 4) {
 		CAPTURE(at);
-		CHECK(Bit(r.peerIgnore, at / 4) == (at == kLane3));
+		CHECK(Bit(r.peerIgnore, at / 4) == PeersOnlyLane(at));
 	}
 	for (size_t k = 0; k < std::size(manager::kRunRules); k++) {
 		CAPTURE(manager::kRunRules[k].owner);
@@ -507,4 +514,84 @@ TEST_CASE("the EMBER-147 pair of 11-22: the controller's fourth lane no longer d
 	// The vector's other lanes are compared: a difference in z is a desync.
 	p2.Put(0x00D0, 0x3A00000001ull);
 	CHECK(ActionLayoutOf(p1, true).HashLive(HashScope::Peers) != ActionLayoutOf(p2, true).HashLive(HashScope::Peers));
+}
+
+namespace {
+
+// The address rule of EMBER-158's P1, whose game image sat at 0x140000000:
+// the value rule, and the image's words, which its start ranges held.
+bool ImageLowRule(uint64_t value)
+{
+	return ValueRule(value) || ((value & 3) == 0 && value >= 0x140000000ull && value < 0x150000000ull);
+}
+
+// ProjectileUnit[46]'s run, Seth's (Z37) V-Trigger II orb, in EMBER-158
+// match 0000000000000001.0.1 (0.1.3, 2026-11-23) at checkpoint 6700, as each
+// copy's word lines print it (both on Windows 19045). Both copies have the
+// orb's velocity (0.36, -0.36, 0) at run +0xC8 and acceleration (0, 0, 0) at
+// +0xD8. Words both copies zero as addresses are each copy's own; every other
+// word is equal but the two w lanes: velocity w (+0xD4) 0x7FF v 0x227,
+// acceleration w (+0xE4) 1 v 0x7FF6.
+ActionRun ReportedOrbRun(bool p1)
+{
+	ActionRun r;
+	r.Put(0x0000, p1 ? 0x7FFE2701F80ull : 0x227452C6C00ull);
+	r.Put(0x0028, 0x54);
+	r.Put(0x0068, 0xBEB3333300000000ull);
+	r.Put(0x00C8, 0xBEB851EB3EB851EBull);
+	r.Put(0x00D0, p1 ? 0x7FF00000000ull : 0x22700000000ull);
+	r.Put(0x00E0, p1 ? 0x100000000ull : 0x7FF600000000ull);
+	r.Put(0x0118, p1 ? 0x142C4D7B0ull : 0x7FF6E525D7B0ull);
+	r.Put(0x0120, 0xBD4CCCCDBD4CCCCDull);
+	r.Put(0x0128, 0x3DCCCCCD00000000ull);
+	r.Put(0x0130, 0x3DCCCCCDull);
+	r.Put(0x0138, 0x1900190019ull);
+	r.Put(0x0140, 0x8007F);
+	r.Put(0x0148, 0x100000000ull);
+	r.Put(0x0150, 6);
+	r.Put(0x0158, 1);
+	r.Put(0x0160, 0x2D);
+	r.Put(0x0170, 0x300A20000ull);
+	r.Put(0x0178, p1 ? 0x142C4D6F8ull : 0x7FF6E525D6F8ull);
+	r.Put(0x0180, 0x3F9A8587C099D1CCull);
+	r.Put(0x0188, 0x3DCCCCCD3DCCCCCDull);
+	r.Put(0x1020, 1);
+	r.Put(0x10B0, 0x200000);
+	r.Put(0x13E8, p1 ? 0x7FFC2B941F8ull : 0x227C74141F8ull);
+	r.Put(0x1468, 1);
+	r.Put(0x1608, p1 ? 0x142C4D9D0ull : 0x7FF6E525D9D0ull);
+	r.Put(0x3040, p1 ? 0x142C4D858ull : 0x7FF6E525D858ull);
+	r.Put(0x3998, p1 ? 0x142C4DA78ull : 0x7FF6E525DA78ull);
+	r.Put(0x3DB8, 0x100000001ull);
+	return r;
+}
+
+StateLayout OrbLayoutOf(ActionRun& run, bool owned)
+{
+	StateLayout layout;
+	layout.SetAddressTest(ImageLowRule);
+	AddGameRun(layout, owned ? NamedRun{sfve::mod::RunName("ProjectileUnit[46].ProjectileActionPart", 0xD8), "ProjectileActionPart", 0xD8}
+							 : NamedRun{},
+		120, run.bytes, kActionRunSize, nullptr);
+	return layout;
+}
+
+} // namespace
+
+TEST_CASE("the EMBER-158 pair of 11-23: Seth's orb's acceleration w no longer decides the peers' hash")
+{
+	ActionRun p1 = ReportedOrbRun(true), p2 = ReportedOrbRun(false);
+	// Without rows, as 0.1.3 hashed this pair (both copies zero the word at
+	// +0xD0 as an address, so its velocity row changes nothing here): P1 hashes
+	// the word at +0xE0 as a value, P2 zeroes it as an address.
+	CHECK(OrbLayoutOf(p1, false).HashLive(HashScope::Peers) != OrbLayoutOf(p2, false).HashLive(HashScope::Peers));
+	// With the rows: equal.
+	const StateLayout a = OrbLayoutOf(p1, true), b = OrbLayoutOf(p2, true);
+	CHECK(a.LayoutId() == b.LayoutId());
+	CHECK(a.HashLive(HashScope::Peers) == b.HashLive(HashScope::Peers));
+	// Each process's own hash still reads it.
+	CHECK(a.HashLive(HashScope::Local) != b.HashLive(HashScope::Local));
+	// The acceleration's other lanes are compared: a difference in z is a desync.
+	p2.Put(0x00E0, 0x7FF600000001ull);
+	CHECK(OrbLayoutOf(p1, true).HashLive(HashScope::Peers) != OrbLayoutOf(p2, true).HashLive(HashScope::Peers));
 }
